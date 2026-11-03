@@ -343,7 +343,7 @@ KR_EVENT_MODE=0 npm run bench:server -- --seconds 60 --out reports/performance/s
 PowerShell environment assignment uses `$env:KR_EVENT_MODE = "0"`, but this does not by itself make the current
 wrapper's process spawning Windows-compatible. Do not work around a failed launch by pointing tests at a public host.
 
-For implementation PRs, run `npm run build` then `npm test`, plus the narrow scenario/correctness gates.
+Before every PR, run `npm run build` then `npm test`, plus the narrow scenario/correctness gates.
 Visible changes also need a real-GPU local play check and screenshot or clip. Record unavailable checks as blocked,
 not passed. Do not install dependencies or change CI just to conceal an environment limitation.
 

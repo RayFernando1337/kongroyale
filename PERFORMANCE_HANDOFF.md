@@ -57,7 +57,7 @@ Do not test against kongroyale.com or another server we do not run.
    Do not combine cleanup, quality reductions and algorithm changes into one unexplained result.
 5. Compare repeated interleaved baseline/candidate runs on the same runner. Record run-level variability, raw data
    and environment. If the runner is unavailable or results are noisy, report blocked/inconclusive, not a win.
-6. Run the narrow correctness/performance gates, then npm run build followed by npm test for implementation.
+6. Run the narrow correctness/performance gates, then npm run build followed by npm test before every PR.
    Visible changes also require real-GPU local play and screenshot/clip evidence. Do not fake hardware performance
    with software rendering or change tests to hide failures.
 7. Return the report below. Do not push, open a PR, merge, deploy, change external services or enable scheduled
