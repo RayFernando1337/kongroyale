@@ -20,7 +20,7 @@
 //   --shot FILE       screenshot at the end (default shots/verify-boot.png; shots/ is gitignored)
 //
 // Fails on: any entry in window.__kr.errors, any uncaught page error, the boot reaching stage "failed" or not reaching
-// ready in time, and a match that never starts, whose clock never advances, or with one player or fewer alive.
+// ready in time, and a match that never starts, whose tick never advances, or with one player or fewer alive.
 // Console warnings, and console.error lines that never reach __kr.errors, are printed or counted but don't fail the run.
 //
 // The browser only ever loads the server this script starts on 127.0.0.1 (AGENTS.md rule 7).
@@ -47,8 +47,8 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 const URL_PATH = `/?debug&seed=42${flag("--splat") ? "" : "&vegsplat=0"}`;
 const PHASES = ["warmup", "plane", "play", "results"];
 
-const T0 = Date.now();
-const log = (msg: string) => console.log(`${((Date.now() - T0) / 1000).toFixed(1).padStart(6)}s  ${msg}`);
+const T0_MS = Date.now();
+const log = (msg: string) => console.log(`${((Date.now() - T0_MS) / 1000).toFixed(1).padStart(6)}s  ${msg}`);
 const failures: string[] = [];
 const fail = (msg: string) => { failures.push(msg); log(`FAIL ${msg}`); };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -103,16 +103,20 @@ const readKr = () => page.evaluate(() => {
   const k = (window as unknown as { __kr?: { stage?: string; ready?: boolean; errors?: string[]; engine?: { pendingHolds?: () => string[] } } }).__kr;
   return k ? { stage: k.stage ?? "", ready: !!k.ready, errors: k.errors?.slice() ?? [], holds: k.engine?.pendingHolds?.() ?? [] } : null;
 });
-type MatchState = { phase: number; time: number; alive: number; squads: number };
+type MatchState = { phase: number; time: number; alive: number; squads: number; tick: number };
+// (tick is the offline host's own Match.tick: it advances in every phase, warm-up included, while time only runs in the
+// plane and play phases)
 const readMatch = () => page.evaluate(() => {
-  const g = (window as unknown as { __kr: { game?: { inMatch: boolean; state: () => MatchState | null } } }).__kr.game;
-  return g?.inMatch ? g.state() : null;
+  const g = (window as unknown as { __kr: { game?: { inMatch: boolean; state: () => Omit<MatchState, "tick"> | null; link?: { host?: { m?: { tick: number } } } } } }).__kr.game;
+  const s = g?.inMatch ? g.state() : null;
+  return s ? { ...s, tick: g?.link?.host?.m?.tick ?? -1 } : null;
 });
 
 let exitCode = 1;
 try {
   log(`open ${ORIGIN}${URL_PATH}`);
   await page.goto(ORIGIN + URL_PATH, { waitUntil: "load", timeout: 120_000 });
+  const bootT0 = Date.now();
   const gl = await page.evaluate(() => {
     const c = document.createElement("canvas").getContext("webgl2");
     const ext = c?.getExtension("WEBGL_debug_renderer_info");
@@ -121,13 +125,13 @@ try {
   log(`WebGL renderer: ${gl}`);
 
   // ---- boot: log every stage change until ready, failed or the timeout
-  const bootT0 = Date.now();
   let state: Awaited<ReturnType<typeof readKr>> = null, lastStage = "";
   for (;;) {
     state = await readKr();
     if (state && state.stage !== lastStage) { lastStage = state.stage; log(`stage ${lastStage}${state.holds.length ? `  (holds: ${state.holds.join(", ")})` : ""}`); }
-    if (state?.ready || state?.stage === "failed" || pageErrors.length) break;
-    if (Date.now() - bootT0 > BOOT_TIMEOUT_MS) { fail(`not ready after ${BOOT_TIMEOUT_MS / 1000} s (stage ${lastStage}, holds: ${state?.holds.join(", ") || "none"})`); break; }
+    const late = Date.now() - bootT0 > BOOT_TIMEOUT_MS;
+    if (!late && (state?.ready || state?.stage === "failed" || pageErrors.length)) break;
+    if (late) { if (state) state.ready = false; fail(`not ready after ${BOOT_TIMEOUT_MS / 1000} s (stage ${lastStage}, holds: ${state?.holds.join(", ") || "none"})`); break; }
     await sleep(1000);
   }
   for (const e of state?.errors ?? []) fail(`__kr.errors: ${e.split("\n")[0]}`);
@@ -137,8 +141,9 @@ try {
   // ---- a short practice match: seed 42 from the URL, bots, the real offline host running in the page
   if (state?.ready && !failures.length && MATCH_S > 0) {
     log(`practice ${MODE}, seed 42, watching for ${MATCH_S} s`);
-    await page.evaluate((mode) => (window as unknown as { __kr: { game: { practice: (m: string) => unknown } } }).__kr.game.practice(mode), MODE);
+    // (practice() resolves only after the island prepare: fire it without waiting so the deadline below covers that too)
     const startT0 = Date.now();
+    await page.evaluate((mode) => { void (window as unknown as { __kr: { game: { practice: (m: string) => unknown } } }).__kr.game.practice(mode); }, MODE);
     let first: MatchState | null = null;
     while (!(first = await readMatch()) && Date.now() - startT0 < BOOT_TIMEOUT_MS && !pageErrors.length) await sleep(1000);
     if (first) log(`match started ${((Date.now() - startT0) / 1000).toFixed(1)} s after Play`);
@@ -154,9 +159,9 @@ try {
     }
     if (!first || !last) fail(`the practice match did not start within ${BOOT_TIMEOUT_MS / 1000} s`);
     else {
-      const advanced = last.time - first.time;
-      log(`match clock advanced ${advanced.toFixed(1)} s in ${MATCH_S} s of wall time; phase ${PHASES[last.phase] ?? last.phase}, alive=${last.alive}, squads=${last.squads}`);
-      if (!(advanced > 1)) fail("the match clock did not advance");
+      const ticks = last.tick - first.tick;
+      log(`match advanced ${ticks} ticks (clock ${(last.time - first.time).toFixed(1)} s) in ${MATCH_S} s of wall time; phase ${PHASES[last.phase] ?? last.phase}, alive=${last.alive}, squads=${last.squads}`);
+      if (!(ticks > 0)) fail("the match did not advance");
       if (!(last.alive > 1)) fail(`only ${last.alive} player(s) alive`);
     }
     for (const e of (await readKr())?.errors ?? []) fail(`__kr.errors after the match: ${e.split("\n")[0]}`);
