@@ -27,8 +27,28 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 
 | Command | Writes | Notes |
 |---|---|---|
-| `npm run bench:host -- --out <file>` | `kong-perf-result` | Authoritative host and snapshot fan-out, CPU only. `--root <checkout>` measures another checkout, `--scenario combat` runs one scenario, `--ticks N` sets the window. The four scenarios are synthetic and run in the match's warm-up phase. They are not real-play coverage. |
-| `npm run bench:server -- --seconds 60 --out <file>` | its own JSON (not yet the contract) | Private server and 50 real WebSocket players. Build first. |
+| `npm run bench:host -- --out <file>` | `kong-perf-result` | Authoritative host and snapshot fan-out, CPU only. `--root <checkout>` measures another checkout, `--scenario combat` runs one scenario, `--ticks N` sets the window. Each scenario plays the real start, plane and drop untimed, then times the PLAY phase. The four scenarios are still synthetic: scripted placement and inputs, humans kept alive. They are not full-match coverage. |
+| `npm run bench:server -- --seconds 60 --out <file>` | `kong-perf-result` | Private server and 50 real WebSocket players, each also on an aux socket. Build first. The match gets a 5 s warm-up and a real plane, so the bench takes about 50 s plus `--seconds`. The timed window starts at the first PLAY snapshot. Linux and macOS only. |
+
+### What the windows include
+
+- **Host**: CPU time, wall time and memory cover the measured ticks only. The 240 benchmark warm-up ticks and the
+  untimed match setup (about 2460 ticks of warm-up skip and plane) are excluded. Packet hashing for the checksum still
+  runs inside the timed tick.
+- **Server**: client-side metrics (RTT, snapshot gaps, input-to-ack, bytes) and the achieved load cover the PLAY window
+  only. The server's own tick and event-loop histograms (`serverTickMsLifetime`, `eventLoopDelayMsLifetime`) cover
+  the server's whole life, including the lobby, warm-up and plane, because `/health` can't reset them. `serverCpuMsPerSecond`
+  is the CPU delta across the window. `bytesPerPlayerSecond` counts each snapshot once per player, not once per socket.
+
+### Achieved load
+
+A run that missed its intended load fails a gate instead of reporting low latency:
+
+- **Host**: every measured tick is in PLAY, every driven human is alive and sent one input per tick, and combat fired
+  every tick.
+- **Server**: at least 95% of 60 inputs per player per second were sent, with skipped generator steps counted. The
+  server kept at least 95% of 60 ticks per second, measured from snapshot tick numbers. Every snapshot in the window
+  was PLAY. No errors or disconnects. Every client got at least 28 snapshots per second.
 
 ## Comparing runs
 
