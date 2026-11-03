@@ -300,7 +300,7 @@ async function main() {
   // ---- the rematch: the room still works, and the room-only rejoiner gets a seat this time
   host.link!.sendJSON({ t: "start" });
   if (await until("every client seated for the rematch", () => clients.every((c) => c.seated), 10)) say(`rematch started: ${CLIENTS}/${CLIENTS} seated`);
-  await until("a second of the rematch", () => clients.every((c) => c.snaps > 0 && c.cm !== null && c.cm.snapTick() > 0), 10);
+  await until("a second of the rematch (30 snapshots each)", () => clients.every((c) => c.cm !== null && c.cm.netStats.snapshots >= 30), 10);
 }
 
 function checkOutcome(planeRejoin: Client, playRejoin: Client) {
