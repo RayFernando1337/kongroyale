@@ -6,8 +6,8 @@
 //   1. credits  - a path or glob in backticks in CREDITS.md that starts with public/assets/ ("*" = within a folder,
 //                 "**" = any depth; a path ending in "/" covers the whole folder).
 //   2. sidecar  - a provenance file in the file's folder or a parent folder under public/assets/. LICENSE, NOTICE and
-//                 provenance.json cover the folder tree. SOURCES.json and tex.json must mention a licence, and cover
-//                 only files whose name starts with one of their top-level keys (e.g. "wall" covers wall-d.webp).
+//                 provenance.json cover the folder tree. SOURCES.json and tex.json cover only files whose name
+//                 starts with a top-level key whose own entry has a source and a licence (e.g. "wall" covers wall-d.webp).
 //                 Licence texts are covered by being one.
 //   3. manifest - tools/asset-sources.json, if present (optional, proposed format below).
 // *.json files are project data (indexes, metadata) rather than art, so they are skipped unless --all is given.
@@ -78,8 +78,9 @@ for (const f of files) {
     sidecarDirs.add(dir);
     continue;
   }
-  const text = fs.readFileSync(path.join(root, f), "utf8");
-  if (/licen[cs]e/i.test(text)) keyedSidecars.set(dir, Object.keys(JSON.parse(text)));
+  const entries = JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
+  const documented = (e: any) => typeof e?.source === "string" && e.source !== "" && (e.license || e.licence);
+  keyedSidecars.set(dir, Object.keys(entries).filter((k) => documented(entries[k])));
 }
 const isLicenceText = (f: string) => /(^|\/)(LICENSE|NOTICE)$|-OFL\.txt$/.test(f);
 
@@ -94,7 +95,7 @@ for (const f of files) {
   let how: string | undefined;
   const matched = rules.filter((r) => r.re.test(f));
   for (const r of matched) r.hits++;
-  if (matched.length) how = matched[0].kind + ": " + matched[0].path; else if (isLicenceText(f)) how = "licence text";
+  if (matched.length) how = matched[0].kind + ": " + matched[0].path; else if (isLicenceText(f) || SIDECARS.has(path.posix.basename(f))) how = "licence text or sidecar";
   else {
     for (let d = path.posix.dirname(f); d.length >= ASSETS.length - 1 && !how; d = path.posix.dirname(d)) {
       if (sidecarDirs.has(d)) how = "sidecar: " + d + "/";
