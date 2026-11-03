@@ -28,11 +28,16 @@ looks or frame rate, so doctor fails when the GPU string does not match the prof
 | Profile | Where | Browser | Renderer doctor expects | What it can prove |
 |---|---|---|---|---|
 | `mac` | macOS, Apple silicon | Google Chrome (`--channel chrome`), headless, `--use-angle=metal` | `ANGLE Metal Renderer` | everything, including fps and visuals |
-| `win` | Windows, discrete or integrated GPU | Google Chrome, headless, `--use-angle=d3d11` | `Direct3D11` / `D3D11`, not SwiftShader or "Basic Render" | everything, including fps and visuals (not yet validated on hardware) |
+| `win` | Windows, discrete or integrated GPU | Google Chrome, headless, `--use-angle=d3d11` | `Direct3D11` / `D3D11`, not SwiftShader or "Basic Render" | everything, including fps and visuals |
 | `nogpu` | Linux cloud machine with no GPU | Playwright's bundled Chromium, `--use-angle=swiftshader --enable-unsafe-swiftshader` | anything (SwiftShader) | boot reaches ready with no errors; a bot match starts. Not fps, not visuals |
 
-Validated end to end so far: `mac` (M3 Max) and `nogpu`. The `win` profile follows Chrome's ANGLE flags but is not yet
-validated on Windows hardware; treat its first run there as a check of this skill too.
+Validated end to end: `mac` (M3 Max), `nogpu`, and `win` on a Windows on ARM64 laptop (NVIDIA RTX Spark N1X, driver
+617.42, Node 24.20 arm64, Chrome 156 arm64; renderer `ANGLE (NVIDIA, NVIDIA RTX Spark N1X ... Direct3D11 vs_5_0 ps_5_0,
+D3D11)`). There `up`, `doctor`, `all` and `down` passed from Windows PowerShell 5.1 with no changes to the helper:
+the title was ready in 30-35 s on the dev client with a fresh profile, `all` took about 5 minutes, play fps was
+2 / 3 / 20 / 55 / 56 at 0 / 5 / 15 / 30 / 60 s, the range walk moved the kong 10.7 m, the room pings were 23 and 39 ms,
+and `__kr.errors` and the console errors were empty. `up --prod` with `play --secs 30`, and `room --url` against
+`npm run dev` plus a `KR_EVENT_MODE=0` `npm run server` started by hand, passed too.
 
 On `nogpu` (validated on a 4-vCPU, 16 GB Ubuntu 24.04 cloud machine): run `npx playwright install chromium` once (add
 `--with-deps` if libraries are missing); the helper uses a 640x360 viewport, because at 1600x900 SwiftShader trips
@@ -45,7 +50,8 @@ timeouts. Never judge looks or performance from a `nogpu` run; say "smoke only" 
 
 1. `npm ci` once per checkout. Use Node 22.12 or newer: on Ray's Mac the default `node` is 18, so put Homebrew's first
    (`export PATH=/opt/homebrew/opt/node@22/bin:$PATH`). On Windows run the commands in PowerShell or cmd; the helper
-   needs no shell env syntax.
+   needs no shell env syntax. Git Bash works as well. On Windows on ARM, install the arm64 builds of Node and Chrome:
+   an x64 browser runs emulated, and its frame rate says nothing about the game.
 2. `node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs up`. It spawns `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5417 --strictPort` and
    `node node_modules/tsx/dist/cli.mjs server/index.ts` with `KR_EVENT_MODE=0 KR_PORT=3120`, logs to
    `shots/verify/logs/`, records the pids in `shots/verify/.instance.json`, and returns once `/health` and the page
@@ -56,7 +62,14 @@ timeouts. Never judge looks or performance from a `nogpu` run; say "smoke only" 
    if a previous instance is only partly alive it refuses too: run `down`, then `up`.
 
 To drive an instance you started yourself (for example `npm run dev` plus `KR_EVENT_MODE=0 npm run server`), pass
-`--url http://localhost:5317 --port 3020` to `doctor` and the drives; `down` then has nothing to stop.
+`--url http://localhost:5317 --port 3020` to `doctor` and the drives; `down` then has nothing to stop. The env
+syntax there is POSIX: in PowerShell it is `$env:KR_EVENT_MODE = "0"; npm run server`, in cmd
+`set KR_EVENT_MODE=0&& npm run server`.
+
+Agents on Windows: `up` prints its JSON line in about 15 s, but the processes it starts inherit the calling shell's
+output handles, so a tool that waits for the output pipe to close does not return until its own timeout, even with
+`up`'s output redirected to a file. The instance itself stays up. Start `up` as a detached or background command and
+confirm it with `doctor`.
 
 ## Doctor
 
@@ -119,6 +132,13 @@ list: commands land over time, and a newer one beats a recipe here.
 | `npm run bench:host` / `npm run bench:server` | host tick cost; 50 players over 100 real sockets against a local built server | no |
 | `node tools/shot.mjs <view>` | fixed-camera captures of a POI or biome on the real GPU | yes |
 
+On Windows: `npm test` reports 10 of its 11 checks failed in 0.0 s each, because `tools/run-tests.mjs` spawns `npx`
+and `npm` without a shell. Run the failed checks one by one (the commands are in that file); `swimming` and `building
+walk graph` also fail on Windows paths in the tests themselves (`URL.pathname` gives `/C:/...`). Say which checks you
+could not run in the PR; CI on Linux runs them all. `npm start` and `npm run kongbot:db` use POSIX shell syntax and
+do not run from cmd or PowerShell: use `up --prod` to serve `dist/`. `node tools/shot.mjs` launches Playwright's own
+Chromium unless `KR_CHROME` names a browser; set it to Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`).
+
 Verifiers being added on the fork (an online-match check, pass/fail thresholds for sim and netlab, a no-GPU boot
 check, an asset-licence check against CREDITS.md) will appear as `npm run` scripts or under `tools/`; prefer them
 when present and add a row here in the same PR that adds them.
@@ -126,7 +146,7 @@ when present and add a row here in the same PR that adds them.
 ## Gotchas
 
 - The first ~15 s of a match run at 2-6 fps on a real GPU while the island streams in ("Warm-up · loading island N %"
-  in the HUD); judge fps from the 30 s sample on.
+  in the HUD; 3 fps at 5 s and 20 at 15 s on the RTX Spark); judge fps from the 30 s sample on.
 - The primary button's label differs by build (above). Select `button.tn-play-cta`, never the text "Play": the top
   nav also has a "Play" tab, and clicking it does nothing visible.
 - Two headed windows on one machine fight over focus: the unfocused one can open the pause menu. The helper runs
