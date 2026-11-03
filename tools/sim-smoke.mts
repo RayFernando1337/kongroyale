@@ -80,8 +80,8 @@ let h = 0x811c9dc5;
 const mix = (v: number) => { hashBuf.setFloat64(0, v); for (let i = 0; i < 8; i++) h = Math.imul(h ^ hashBuf.getUint8(i), 0x01000193) >>> 0; };
 mix(m.tick); mix(m.winnerTeam); for (const p of m.players) { mix(p.x); mix(p.z); mix(p.kills); mix(p.damage); }
 const stateHash = h.toString(16).padStart(8, "0");
-console.log(`state hash: ${stateHash}`);
 if (check) {
+  console.log(`state hash: ${stateHash}`);
   const SIM_HASH_TRIOS_42 = "c8f3110c";
   const MAX_AVG_TICK_MS = 3, MAX_TICK_MS = 100, MIN_ARMED_PCT = 90;
   const fail: string[] = [];

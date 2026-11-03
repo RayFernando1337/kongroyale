@@ -147,6 +147,7 @@ for (const rtt of rtts) {
   if (!check) continue;
   const problems: string[] = [];
   if (r.pellets === 0 || r.predHits === 0) problems.push(`no data (${r.pellets} pellets, ${r.predHits} predicted hits)`);
+  if (r.predMissing !== 0) problems.push(`${r.predMissing} predicted pellets have no server verdict`);
   if (r.confirmPct < CHECK_MIN_CONFIRM_PCT) problems.push(`confirm ${r.confirmPct}% < ${CHECK_MIN_CONFIRM_PCT}%`);
   if (r.ghost > 0) problems.push(`${r.ghost} ghost hits`);
   if (!problems.length) continue;
