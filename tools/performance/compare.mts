@@ -6,8 +6,10 @@
 // Each run contributes ONE value per metric and statistic; frames/ticks inside a run are correlated and never pooled.
 // A change is "worse"/"better" only when every candidate run falls outside the baseline runs' range AND the medians
 // differ by at least the threshold. Anything else is reported as no clear change or inconclusive.
-// Exit status: 0 no regression, 1 a regression or a failed candidate gate, 2 inputs that cannot be compared.
+// Exit status: 0 no regression; 1 a regression, a failed candidate gate, or a candidate metric that is invalid or no
+// longer measured; 2 inputs that cannot be compared (including a --metrics name no case has).
 import fs from "node:fs";
+import path from "node:path";
 import { comparabilityKey, parseResult, type Metric, type RunResult, type Summary } from "./schema.ts";
 
 const MIN_RUNS = 3;
@@ -41,7 +43,9 @@ interface Row { scenario: string; metric: string; stat: string; unit: string; ve
 interface Side { n: number; median: number; min: number; max: number; spreadPct: number; values: number[] }
 const side = (values: number[]): Side => { const md = median(values), min = Math.min(...values), max = Math.max(...values); return { n: values.length, median: md, min, max, spreadPct: md ? ((max - min) / Math.abs(md)) * 100 : 0, values }; };
 
-const rows: Row[] = [], failedGates: string[] = [];
+const rows: Row[] = [], failedGates: string[] = [], lostMetrics: string[] = [];
+const known = new Set(runs.flatMap((r) => r.cases.flatMap((c) => Object.keys(c.metrics))));
+for (const m of onlyMetrics) if (!known.has(m)) fail(`--metrics ${m} is not in any case; known: ${[...known].join(", ")}`);
 const caseOf = (r: RunResult, id: string) => r.cases.find((c) => c.scenario.id === id);
 for (const id of [...new Set(runs.flatMap((r) => r.cases.map((c) => c.scenario.id)))]) {
   const cases = runs.map((r, i) => { const c = caseOf(r, id); if (!c) fail(`${files[i]} has no scenario ${id}`); return c; });
@@ -55,12 +59,16 @@ for (const id of [...new Set(runs.flatMap((r) => r.cases.map((c) => c.scenario.i
     const stats = "value" in m0 ? ["value"] : statNames;
     for (const stat of stats) {
       const row = { scenario: id, metric, stat, unit: m0.unit } as Row;
-      if (bad) { rows.push({ ...row, verdict: bad.status, reason: bad.reason }); continue; }
+      if (bad) {
+        const candBad = ms.slice(base.length).find((m) => m.status !== "ok"), baseOk = ms.slice(0, base.length).every((m) => m.status === "ok");
+        if (candBad && (candBad.status === "invalid" || baseOk)) lostMetrics.push(`${id} ${metric}: candidate is ${candBad.status}${baseOk ? " where the baseline measured it" : ""}`);
+        rows.push({ ...row, verdict: bad.status, reason: bad.reason }); continue;
+      }
       const vals = ms.map((m) => valueOf(m, stat as keyof Summary)!);
       row.base = side(vals.slice(0, base.length));
       if (!cand.length) { row.verdict = base.length < MIN_RUNS ? `noise floor (n<${MIN_RUNS})` : "noise floor"; rows.push(row); continue; }
       const c = row.cand = side(vals.slice(base.length)), b = row.base!;
-      row.deltaPct = b.median ? ((c.median - b.median) / Math.abs(b.median)) * 100 : 0;
+      row.deltaPct = b.median ? ((c.median - b.median) / Math.abs(b.median)) * 100 : c.median === b.median ? 0 : Math.sign(c.median) * Infinity;
       const better = "better" in m0 ? m0.better : "lower";
       const above = c.min > b.max, below = c.max < b.min, worseDir = better === "lower" ? above : below, betterDir = better === "lower" ? below : above;
       if (b.n < MIN_RUNS || c.n < MIN_RUNS) row.verdict = `inconclusive (n<${MIN_RUNS})`;
@@ -81,12 +89,13 @@ console.log(cand.length ? "| scenario | metric | stat | baseline | candidate | �
 for (const r of rows) {
   const what = `| ${r.scenario} | ${r.metric} (${r.unit}) | ${r.stat} |`;
   if (r.reason) console.log(`${what} ${cand.length ? "— | — | — |" : "— |"} ${r.verdict}: ${r.reason} |`);
-  else if (r.cand) console.log(`${what} ${range(r.base!)} | ${range(r.cand)} | ${r.deltaPct! >= 0 ? "+" : ""}${r.deltaPct!.toFixed(1)}% | ${r.verdict} |`);
+  else if (r.cand) console.log(`${what} ${range(r.base!)} | ${range(r.cand)} | ${!Number.isFinite(r.deltaPct!) ? "from zero" : (r.deltaPct! >= 0 ? "+" : "") + r.deltaPct!.toFixed(1) + "%"} | ${r.verdict} |`);
   else console.log(`${what} ${range(r.base!)} | ${r.verdict} |`);
 }
 for (const w of warnings) console.log("\nwarning: " + w);
 for (const g of failedGates) console.log("\nFAILED GATE: " + g);
+for (const m of lostMetrics) console.log("\nUNUSABLE CANDIDATE METRIC: " + m);
 const worse = rows.filter((r) => r.verdict === "worse");
 if (worse.length) console.log(`\n${worse.length} regression(s) beyond ${threshold}%`);
-if (out) fs.writeFileSync(out, JSON.stringify({ threshold, stats: statNames, baseFiles, candFiles, warnings, failedGates, rows }, null, 2) + "\n");
-process.exitCode = worse.length || failedGates.length ? 1 : 0;
+if (out) { fs.mkdirSync(path.dirname(out), { recursive: true }); fs.writeFileSync(out, JSON.stringify({ threshold, stats: statNames, baseFiles, candFiles, warnings, failedGates, lostMetrics, rows }, null, 2) + "\n"); }
+process.exitCode = worse.length || failedGates.length || lostMetrics.length ? 1 : 0;

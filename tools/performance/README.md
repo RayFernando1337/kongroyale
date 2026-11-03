@@ -42,8 +42,10 @@ npx tsx tools/performance/compare.mts --base base1.json base2.json base3.json --
   baseline alone (`--base` only) to see the noise floor.
 - A metric is **worse** or **better** only when every candidate run is outside the baseline runs' range and the
   medians differ by at least `--threshold` percent (default 5). Fewer than three runs on a side is **inconclusive**.
-- Exit status: 0 means no regression, 1 means a regression or a failed candidate gate, 2 means the inputs can't be
-  compared (different config, machine, scenario version, or contract version).
+- Exit status: 0 means no regression. 1 means a regression, a failed candidate gate, or a candidate metric that is
+  `invalid` or no longer measured. 2 means the inputs can't be compared (different config, machine, scenario version
+  or contract version, or a `--metrics` name that no case has).
+- A zero baseline has no percentage. Any change from zero shows as "from zero" and is judged on the range test alone.
 - Options: `--stats p50,p95,p99`, `--metrics hostTickMs,simulationMs`, `--threshold 5`, `--out comparison.json`.
 
 Interleave the runs (base, candidate, base, candidate, ...) on the same machine. `compare.mts` warns when all

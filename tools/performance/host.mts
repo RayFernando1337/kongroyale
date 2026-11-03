@@ -16,7 +16,7 @@ const mod=(p:string)=>import(pathToFileURL(path.join(root,p)).href);
 const [{Terrain},{decodeTerrainFile},{buildStaticWorld},{Match},{MatchHost,writeSnapshotFor,SnapshotBatch},{Writer},{makeInput,PS,SK,B},{SNAP_EVERY},{POIS,WEAPONS}] = await Promise.all([
   mod('shared/world/terrain.ts'),mod('shared/world/terrain-gen.ts'),mod('shared/sim/static-world.ts'),mod('shared/sim/match.ts'),mod('shared/net/host.ts'),mod('shared/net/proto.ts'),mod('shared/sim/player.ts'),mod('shared/sim/const.ts'),mod('shared/world/map.ts')
 ]);
-const startedAt=new Date().toISOString(), run0=performance.now();
+const startedAt=new Date().toISOString(), run0=performance.now(), environment=env();
 const b=fs.readFileSync(path.join(root,'public/assets/terrain/island.bin'));
 const td=decodeTerrainFile(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));
 const boot=performance.now(), {world,hash}=await buildStaticWorld(new Terrain(td.heights,td.biome),td), buildMs=performance.now()-boot;
@@ -65,7 +65,7 @@ for(const scenario of only.length?only:all){
   cases.push(c);
   const tick=stats(costs);console.log(`${c.scenario.id}: host tick p50/p95/p99/max ${[tick.p50,tick.p95,tick.p99,tick.max].map(v=>v.toFixed(2)).join(' / ')} ms, ${c.load.seats} seats, ${pellets} pellets`);
 }
-const result:RunResult={schema:RESULT_SCHEMA,version:RESULT_VERSION,tool:'bench:host',startedAt,durationMs:performance.now()-run0,source:source(root),environment:env(),
+const result:RunResult={schema:RESULT_SCHEMA,version:RESULT_VERSION,tool:'bench:host',startedAt,durationMs:performance.now()-run0,source:source(root),environment,
   config:{ticks,benchWarmupTicks:warm,scenarios:(only.length?only:all).join(','),worldHash:hash,mode:'trios'},cases,errors:[],artifacts:[]};
 (result as any).detail={buildMs};
 save(out,result);
