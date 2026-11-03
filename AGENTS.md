@@ -72,6 +72,8 @@ playable) and read `window.__kr.errors` for anything that went wrong. The game n
 use the hardware, for example `chromium.launch({ channel: "chrome", args: ["--use-angle=metal", "--enable-gpu"] })`
 on a Mac. Software rendering is too slow to judge anything. Attach a screenshot or short clip to the pull request.
 
+Agents: the `verify-kongroyale` skill (`.agents/skills/verify-kongroyale/`) scripts all of this on macOS, Windows and no-GPU Linux.
+
 ## Code style
 
 There is no formatter or linter. Match the code around you:
