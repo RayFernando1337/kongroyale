@@ -47,9 +47,11 @@ win until their scenario produces repeatable baseline/candidate comparisons.
 
 ### Fix benchmark blind spots
 
-1. **Add real-play scenarios.** Host scenarios set warmup to `1e9`; the socket wrapper keeps warmup longer than its
-   test. Extend them with seeded ground combat, loot acquisition, storm/endgame and multiple-lobby scenarios.
-   Do not relabel warmup or synthetic islet combat as a representative full match.
+1. **Separate match warmup from benchmark warmup and add real-play scenarios.** `host.mts` has a 240-tick
+   benchmark warmup, but `m.warmupS = 1e9` keeps that match in its warmup phase. The server wrapper sets
+   `KR_WARMUP_S` to the run duration plus 90 seconds, so its timed socket workload also remains in match warmup.
+   Add seeded ground combat, loot acquisition, storm/endgame and multiple-lobby scenarios; do not label synthetic
+   islet combat or a warmup-only run as representative full-match coverage.
 2. **Separate correctness instrumentation from timing.** Host packet hashing runs inside timed calls. Preserve a
    verified trace mode, but distinguish its overhead from representative timing. Align CPU/memory windows with
    the reported tick window and report what includes warmup.
@@ -57,8 +59,8 @@ win until their scenario produces repeatable baseline/candidate comparisons.
    generator lateness and server/client counts; reject an under-driven run rather than celebrating low latency.
 4. **Gate relevant network tails.** Existing socket gates do not cover every reported RTT/ack/snapshot-gap metric.
    Add scenario-specific checks after establishing noise and intended behavior.
-5. **Make prerequisites explicit.** The server wrapper inherits event mode, so private room-creation tests need
-   `KR_EVENT_MODE=0`. Its extensionless `tsx` spawn targets Linux/macOS; Windows compatibility is not established.
+5. **Keep platform prerequisites explicit.** The server wrapper sets `KR_EVENT_MODE=0` for private room creation.
+   Its extensionless `node_modules/.bin/tsx` spawn targets Linux/macOS; Windows compatibility is not established.
 6. **Do not confuse render throughput with live latency.** `Engine.bench()` forces completion with `readPixels`.
    Keep it for controlled rendering comparisons; add normal-rAF, moving-camera/in-match measurements.
 7. **Unify GPU query ownership.** The engine's continuous timer and display calibration have separate query
