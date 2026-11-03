@@ -104,3 +104,5 @@ Open an issue and discuss before changing any of these:
 - **New modes, weapons, vehicles or locations.** Good ideas, but big ones; agree the plan before building it.
 
 Security problems and cheats go to [SECURITY.md](SECURITY.md), never to a public issue.
+
+Model choices for pstack roles: Cursor agents read `.cursor/rules/pstack-models.mdc` and Capy agents read `.capy/pstack-models.md`.
