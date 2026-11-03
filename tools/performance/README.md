@@ -50,7 +50,8 @@ A run that missed its intended load fails a gate instead of reporting low latenc
   every tick.
 - **Server**: at least 95% of 60 inputs per player per second were sent, with skipped generator steps counted. The
   server kept at least 95% of 60 ticks per second, measured from snapshot tick numbers. Every snapshot in the window
-  was PLAY. Nobody in the match died during the window, bots included. No errors or disconnects. Every client got at least 28 snapshots per
+  was PLAY. The match-wide alive count never dropped below its value at the start of the window, bots included, so a
+  death followed by a redeploy still fails. No errors or disconnects. Every client got at least 28 snapshots per
   second.
 
 ## Comparing runs

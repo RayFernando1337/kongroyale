@@ -12,7 +12,7 @@ const maxSetupS=+arg('--max-setup-s','120'),warmupS=arg('--warmup-s','server def
 const PLAY=2, TICK_HZ=60;
 const startedAt=new Date().toISOString(),run0=performance.now(),environment=env();
 const sleep=(n:number)=>new Promise(r=>setTimeout(r,n)),peers:any[]=[],errors:string[]=[],rtt:number[]=[],gaps:number[]=[],ack:number[]=[],loopGaps:number[]=[];
-let bytes=0,packets=0,matchSeed=-1,active=false,disconnects=0,phase=-1,alive=0,firstTick=-1,lastTick=-1,inputsSent=0,skippedSteps=0;
+let bytes=0,packets=0,matchSeed=-1,minAlive=Infinity,active=false,disconnects=0,phase=-1,alive=0,firstTick=-1,lastTick=-1,inputsSent=0,skippedSteps=0;
 const phaseSeen:Record<number,number>={};
 const wait=async(f:()=>boolean,label:string,ms=60000)=>{const end=performance.now()+ms;while(!f()){if(performance.now()>end)throw Error('timeout '+label);await sleep(10);}};
 try{
@@ -24,7 +24,7 @@ try{
       const r=new Reader(new Uint8Array(data.buffer,data.byteOffset,data.byteLength));const kind=r.u8(),now=performance.now();
       // The main and aux sockets both carry snapshots: only the first copy of each tick counts, stale copies are dropped.
       if(kind===M.Snapshot){const h={} as SnapHeader;readSnapHeader(r,h);if(h.tick<=p.lastTick)return;p.lastTick=h.tick;
-        if(p===peers[0]){phase=h.phase;alive=h.alive;if(active){phaseSeen[h.phase]=(phaseSeen[h.phase]??0)+1;if(firstTick<0)firstTick=h.tick;lastTick=h.tick;}}
+        if(p===peers[0]){phase=h.phase;alive=h.alive;if(active){minAlive=Math.min(minAlive,h.alive);phaseSeen[h.phase]=(phaseSeen[h.phase]??0)+1;if(firstTick<0)firstTick=h.tick;lastTick=h.tick;}}
         if(!active)return;
         p.snaps++;if(p.last)gaps.push(now-p.last);p.last=now;const at=p.sent[h.lastSeq%4096];if(at&&h.lastSeq>p.seq-4096)ack.push(now-at);return;}
       if(active&&kind===M.Pong)rtt.push(now-r.f64());
@@ -65,7 +65,7 @@ try{
     cases:[{
       scenario:{id:'server/trios-play',version:2,seed:-1,workload:'socket-load'},
       windows:{untimedSetupMs:Math.round(setupMs),measuredMs:Math.round(elapsed),measuredFrom:'first PLAY snapshot',serverLifetimeMetrics:'server start to end of window (includes lobby, warm-up and plane)',bytes:'every frame received on every socket (main and aux) in the window',seed:'chosen at random by the server per match; see detail.matchSeed',transport:'real WebSocket; loopback when URL is local; no WAN inference'},
-      load:{players:count,sockets:count*(aux?2:1),inputsPerPlayerSecond,skippedInputSteps:skippedSteps,serverTicksPerSecond,minSnapshotsPerClient:minSnapshots,aliveAtStart,aliveAtEnd:alive,...Object.fromEntries(Object.entries(phaseSeen).map(([k,v])=>['snapshotsInPhase'+k,v]))},
+      load:{players:count,sockets:count*(aux?2:1),inputsPerPlayerSecond,skippedInputSteps:skippedSteps,serverTicksPerSecond,minSnapshotsPerClient:minSnapshots,aliveAtStart,minAliveInWindow:minAlive,aliveAtEnd:alive,...Object.fromEntries(Object.entries(phaseSeen).map(([k,v])=>['snapshotsInPhase'+k,v]))},
       metrics:{
         rttMs:ms(rtt),snapshotGapMs:ms(gaps),inputToAcknowledgmentMs:ms(ack),generatorLoopGapMs:ms(loopGaps),
         bytesPerPlayerSecond:{status:'ok',unit:'bytes/s',better:'lower',value:bytes/s/count},
@@ -77,7 +77,7 @@ try{
         {id:'measuredInPlay',pass:Object.keys(phaseSeen).join()===String(PLAY),detail:`snapshots by phase: ${JSON.stringify(phaseSeen)}`},
         {id:'inputLoadAchieved',pass:inputsPerPlayerSecond>=TICK_HZ*.95,detail:`${inputsPerPlayerSecond.toFixed(1)} inputs per player per s (target ${TICK_HZ}), ${skippedSteps} skipped steps`},
         {id:'serverKeptTickRate',pass:serverTicksPerSecond>=TICK_HZ*.95,detail:`${serverTicksPerSecond.toFixed(1)} server ticks per s (target ${TICK_HZ})`},
-        {id:'noDeathsInWindow',pass:alive===aliveAtStart,detail:`${aliveAtStart} alive at the start of the window, ${alive} at the end (whole match, bots included)`},
+        {id:'noDeathsInWindow',pass:minAlive===aliveAtStart,detail:`${aliveAtStart} alive at the start of the window, fewest ${minAlive}, ${alive} at the end (whole match, bots included)`},
         {id:'snapshotsDelivered',pass:minSnapshots>=s*28,detail:`fewest snapshots for one client: ${minSnapshots} in ${s.toFixed(1)} s`},
         {id:'serverTickP99Within60Hz',pass:!(perf1?.tickMs?.p99>1000/TICK_HZ),detail:`lifetime server tick p99 ${perf1?.tickMs?.p99?.toFixed(2) ?? 'n/a'} ms`},
       ],
