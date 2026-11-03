@@ -1,6 +1,6 @@
 // Compares repeated benchmark runs (kong-perf-result files, schema.ts) at the run level and sets an exit status.
-//   npx tsx tools/performance/compare.mts --base b1.json b2.json b3.json --cand c1.json c2.json c3.json
-//   npx tsx tools/performance/compare.mts --base b1.json b2.json b3.json          (noise floor of one side only)
+//   npx tsx tools/performance/compare.mts --base base-{1..5}.json --cand cand-{1..5}.json --metrics hostTickMs
+//   npx tsx tools/performance/compare.mts --base base-{1..5}.json                  (noise floor of one side only)
 // Options: --stats p50,p95,p99 (which per-run statistic to compare), --threshold 5 (% change that counts),
 // --metrics hostTickMs,simulationMs (default: every metric), --out comparison.json.
 // Each run contributes ONE value per metric and statistic; frames/ticks inside a run are correlated and never pooled.

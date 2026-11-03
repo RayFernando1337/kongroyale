@@ -33,7 +33,7 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 ## Comparing runs
 
 ```sh
-npx tsx tools/performance/compare.mts --base base1.json base2.json base3.json --cand cand1.json cand2.json cand3.json
+npx tsx tools/performance/compare.mts --base base-{1..5}.json --cand cand-{1..5}.json --metrics hostTickMs --stats p50,p99
 ```
 
 - Each run contributes one number per metric and statistic, for example its p99 host tick. Ticks or frames inside a
