@@ -1,6 +1,9 @@
 // Headless sim smoke test: 50 bots play a full match. Reports tick cost, phase timeline, squad attrition, kills,
 // friendly fire, how fast bots arm up after landing and how long the final circles last.
-//   npx tsx tools/sim-smoke.mts [solo|trios] [seed] [maxTicks]
+//   npx tsx tools/sim-smoke.mts [solo|trios] [seed] [maxTicks] [--check]
+//   --check: also fail (exit 1) on a regression: no winner, friendly-fire hits, bots not arming up, tick cost over budget, or
+//            (trios seed 42 only) a different final-state hash than SIM_HASH_TRIOS_42 (the match is deterministic within Node).
+//            Without --check the output and exit code are unchanged. Run: npx tsx tools/sim-smoke.mts trios 42 --check
 import { Terrain } from "../shared/world/terrain";
 import { decodeTerrainFile, generateTerrain } from "../shared/world/terrain-gen";
 import { buildStaticWorld } from "../shared/sim/static-world";
@@ -9,9 +12,10 @@ import { Match, Phase } from "../shared/sim/match";
 import { alive, PS, SK } from "../shared/sim/player";
 import { Reader, EV, EV_BYTES, ANN } from "../shared/net/proto";
 
-const mode = (process.argv[2] === "solo" ? "solo" : "trios") as "solo" | "trios";
-const seed = Number(process.argv[3] || 42);
-const maxTicks = Number(process.argv[4] || 60 * 60 * 20);
+const args = process.argv.slice(2).filter((a) => !a.startsWith("--")), check = process.argv.includes("--check");
+const mode = (args[0] === "solo" ? "solo" : "trios") as "solo" | "trios";
+const seed = Number(args[1] || 42);
+const maxTicks = Number(args[2] || 60 * 60 * 20);
 const td = (() => { try { const b = fsTd.readFileSync(new URL("../public/assets/terrain/island.bin", import.meta.url)); return decodeTerrainFile(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); } catch { return generateTerrain(); } })();
 const terrain = new Terrain(td.heights, td.biome);
 const { world } = await buildStaticWorld(terrain, td);
@@ -69,3 +73,24 @@ console.log("kill causes:", JSON.stringify(causes), "rockets fired:", rocketsFir
 for (const c of m.chests) if (c.opened) ps(c.poi >= 0 ? POIS[c.poi].id : "open").chests++;
 console.log("per POI (first landing / kills in it / chests opened):");
 for (const q of [...POIS.map((p) => p.id), "open"]) { const v = poiStats[q]; if (v) console.log(`  ${q.padEnd(15)} landed ${String(v.landed).padStart(2)}  kills ${String(v.kills).padStart(3)}  chests ${String(v.chests).padStart(3)}`); else console.log(`  ${q.padEnd(15)} —`); }
+
+// FNV-1a over the final tick, the winner and every player's position, kills and damage (exact float bits)
+const hashBuf = new DataView(new ArrayBuffer(8));
+let h = 0x811c9dc5;
+const mix = (v: number) => { hashBuf.setFloat64(0, v); for (let i = 0; i < 8; i++) h = Math.imul(h ^ hashBuf.getUint8(i), 0x01000193) >>> 0; };
+mix(m.tick); mix(m.winnerTeam); for (const p of m.players) { mix(p.x); mix(p.z); mix(p.kills); mix(p.damage); }
+const stateHash = h.toString(16).padStart(8, "0");
+console.log(`state hash: ${stateHash}`);
+if (check) {
+  const SIM_HASH_TRIOS_42 = "c8f3110c";
+  const MAX_AVG_TICK_MS = 3, MAX_TICK_MS = 100, MIN_ARMED_PCT = 90;
+  const fail: string[] = [];
+  if (m.phase !== Phase.Results || m.winnerTeam < 0) fail.push(`no winner (phase ${Phase[m.phase]}, winnerTeam ${m.winnerTeam}, ticks ${m.tick})`);
+  if (ff > 0) fail.push(`${ff} friendly-fire hits (expected 0)`);
+  if (checked.length === 0 || (armed / checked.length) * 100 < MIN_ARMED_PCT) fail.push(`only ${armed}/${checked.length} bots armed 30 s after landing (need ${MIN_ARMED_PCT}%)`);
+  if (total / m.tick > MAX_AVG_TICK_MS) fail.push(`average tick ${(total / m.tick).toFixed(3)} ms over budget ${MAX_AVG_TICK_MS} ms`);
+  if (maxMs > MAX_TICK_MS) fail.push(`max tick ${maxMs.toFixed(2)} ms over budget ${MAX_TICK_MS} ms`);
+  if (mode === "trios" && seed === 42 && stateHash !== SIM_HASH_TRIOS_42) fail.push(`state hash ${stateHash} != ${SIM_HASH_TRIOS_42} (deterministic outcome changed; if intended, update SIM_HASH_TRIOS_42)`);
+  if (fail.length) { console.error("SIM CHECK FAILED:\n  " + fail.join("\n  ")); process.exit(1); }
+  console.log("SIM CHECK PASSED");
+}
