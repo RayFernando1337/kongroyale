@@ -87,6 +87,9 @@ create their own rooms; see [HOSTING.md](HOSTING.md) for what it and the other s
 
 [ARCHITECTURE.md](ARCHITECTURE.md) explains how the pieces fit together.
 
+For benchmark-driven optimization work, read [PERFORMANCE.md](PERFORMANCE.md). Agent assignments and a copyable
+handoff prompt are in [PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md).
+
 ## Check your changes
 
 ```sh

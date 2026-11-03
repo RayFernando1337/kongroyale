@@ -2,7 +2,12 @@
 // same host loop the Node server runs) and two headless ClientMatch instances (the browser's prediction /
 // interpolation / lag-comp input code), connected by FIFO latency pipes with jitter. Simulated clock (deterministic).
 //
-//   npx tsx tools/netlab.mts [rtt ms list, default 20,80,160,250,320] [--jitter 20] [--secs 20] [--weapon ar] [--kill]
+//   npx tsx tools/netlab.mts [rtt ms list, default 20,80,160,250,320] [--jitter 20] [--secs 20] [--weapon ar] [--kill] [--check]
+//   --check: exit 1 when hit registration regresses. At every RTT up to CHECK_MAX_RTT_MS (250) the run must fire pellets and
+//            have predicted hits, confirm at least CHECK_MIN_CONFIRM_PCT (99) of them and show 0 ghost hits. Longer RTTs are only
+//            reported as KNOWN ISSUE lines, never failed: main shotgun at 320 ms RTT, 20 ms jitter confirms 89.7% with 3 ghost hits
+//            because every pellet is clamped by the 350 ms rewind cap. Whole grid:
+//              for w in pistol smg ar shotgun sniper; do npx tsx tools/netlab.mts --weapon $w --jitter 20 --check; done
 //   --kill: B is KILLABLE (100 hp + 50 shield, respawns on the spot 3 s later, warm-up rules) — measures kill races: pellets
 //           fired at a target our own in-flight bullets already killed must not show a (ghost) hit marker
 //
@@ -29,7 +34,7 @@ import type { Link } from "../client/src/game/net";
 const argv = process.argv.slice(2);
 const opt = (k: string, d: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const rtts = (argv[0] && !argv[0].startsWith("--") ? argv[0] : "20,80,160,250,320").split(",").map(Number);
-const jitter = Number(opt("--jitter", "0")), secs = Number(opt("--secs", "20")), weapon = opt("--weapon", "ar") as WeaponId, killable = argv.includes("--kill");
+const jitter = Number(opt("--jitter", "0")), secs = Number(opt("--secs", "20")), weapon = opt("--weapon", "ar") as WeaponId, killable = argv.includes("--kill"), check = argv.includes("--check");
 
 // ---- simulated clock drives performance.now() everywhere
 let now = 0;
@@ -134,4 +139,23 @@ async function run(rtt: number) {
   return { rtt, jitter, weapon, ...(killable ? { kills: deaths } : {}), pellets: n, predMissing: pred.length - serv.length, agreePct: pc(agree, n), predHits, confirmPct: pc(confirmed, predHits), ghost, surprise, servHits, clamped: clampedN, rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: clients[0].cm.netStats.moveCorrections, corrMaxMm: Math.round(clients[0].cm.netStats.corrMax * 1000) };
 }
 
-for (const rtt of rtts) console.log(JSON.stringify(await run(rtt)));
+const CHECK_MAX_RTT_MS = 250, CHECK_MIN_CONFIRM_PCT = 99;
+const failures: string[] = [];
+for (const rtt of rtts) {
+  const r = await run(rtt);
+  console.log(JSON.stringify(r));
+  if (!check) continue;
+  const problems: string[] = [];
+  if (r.pellets === 0 || r.predHits === 0) problems.push(`no data (${r.pellets} pellets, ${r.predHits} predicted hits)`);
+  if (r.predMissing !== 0) problems.push(`${r.predMissing} predicted pellets have no server verdict`);
+  if (r.confirmPct < CHECK_MIN_CONFIRM_PCT) problems.push(`confirm ${r.confirmPct}% < ${CHECK_MIN_CONFIRM_PCT}%`);
+  if (r.ghost > 0) problems.push(`${r.ghost} ghost hits`);
+  if (!problems.length) continue;
+  const label = `${weapon} rtt=${rtt}ms jitter=${jitter}${killable ? " kill" : ""}: ${problems.join(", ")}`;
+  if (rtt > CHECK_MAX_RTT_MS) console.log(`KNOWN ISSUE (not failed, rtt > ${CHECK_MAX_RTT_MS} ms): ${label}`);
+  else failures.push(label);
+}
+if (check) {
+  if (failures.length) { console.error("NETLAB CHECK FAILED:\n  " + failures.join("\n  ")); process.exit(1); }
+  console.log("NETLAB CHECK PASSED");
+}
