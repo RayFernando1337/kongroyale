@@ -55,7 +55,7 @@ for (const id of [...new Set(runs.flatMap((r) => r.cases.map((c) => c.scenario.i
   const s0 = JSON.stringify(cases[0].scenario);
   cases.forEach((c, i) => { if (JSON.stringify(c.scenario) !== s0) fail(`${files[i]}: scenario ${id} is ${JSON.stringify(c.scenario)}, expected ${s0}`); });
   cases.forEach((c, i) => { for (const g of c.gates) if (!g.pass) { const msg = `${i < base.length ? "baseline" : "candidate"} ${files[i]}: ${id} ${g.id}: ${g.detail}`; if (i < base.length) warnings.push(msg); else failedGates.push(msg); } });
-  for (const metric of Object.keys(cases[0].metrics)) {
+  for (const metric of [...new Set(cases.flatMap((c) => Object.keys(c.metrics)))]) {
     if (onlyMetrics.length && !onlyMetrics.includes(metric)) continue;
     const ms = cases.map((c, i) => c.metrics[metric] ?? fail(`${files[i]}: ${id} has no metric ${metric}`));
     const m0 = ms[0], bad = ms.find((m): m is Extract<Metric, { reason: string }> => m.status !== "ok");
