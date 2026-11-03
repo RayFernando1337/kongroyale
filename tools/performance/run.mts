@@ -29,7 +29,9 @@ for (let i = 0; i < reps; i++) {
   for (const sideName of (i % 2 ? ["cand", "base"] : ["base", "cand"]) as Array<"base" | "cand">) {
     const file = path.join(outDir, `${sideName}-${i + 1}.json`);
     console.log(`run ${i + 1}/${reps} ${sideName}${aa ? " (A/A)" : ""}: ${sideName === "base" ? baseRoot : candRoot}`);
+    fs.rmSync(file, { force: true });
     const r = tsx("host.mts", ["--root", sideName === "base" ? baseRoot : candRoot, "--scenario", scenario, "--out", file, ...hostArgs]);
+    if (r.error) throw r.error;
     if (!fs.existsSync(file)) throw Error(`host.mts wrote no result (exit ${r.status}); see its output above`);
     files[sideName].push(file);
   }
