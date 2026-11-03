@@ -3,7 +3,7 @@
 //   npx tsx tools/performance/run.mts --base .                         (A/A: the same checkout on both sides)
 // Each run is a fresh Node process measuring the checkout given (host.mts --root), so JIT and GC state never carry
 // over. Pairs alternate order (base,cand then cand,base) so machine drift falls on both sides.
-// The match-state digest must be identical across every run of one side (determinism), and between the sides unless
+// The match-state digest (and with --trace the packet checksum) must be identical across every run of one side (determinism), and between the sides unless
 // --allow-outcome-change: a performance change should replay the same match.
 // Options: --reps 5, --scenario real-play, --out-dir reports/performance/run-<time>, host.mts's --ticks and --trace,
 // and compare.mts's --metrics,
@@ -36,7 +36,8 @@ for (let i = 0; i < reps; i++) {
 }
 
 let digestFailure = false;
-const digests = (list: string[]) => list.map((f) => Object.fromEntries(parseResult(JSON.parse(fs.readFileSync(f, "utf8")), f).cases.map((c) => [c.scenario.id, String(c.detail?.stateDigest)])));
+// With --trace the packet checksum must match too: the same final state can hide a different packet stream.
+const digests = (list: string[]) => list.map((f) => Object.fromEntries(parseResult(JSON.parse(fs.readFileSync(f, "utf8")), f).cases.map((c) => [c.scenario.id, String(c.detail?.stateDigest) + (hostArgs.includes("--trace") ? "/" + String(c.detail?.packetChecksum) : "")])));
 const base = digests(files.base), cand = digests(files.cand);
 for (const id of Object.keys(base[0])) {
   const b = new Set(base.map((d) => d[id])), c = new Set(cand.map((d) => d[id]));
@@ -47,7 +48,11 @@ for (const id of Object.keys(base[0])) {
   } else console.log(`\n${id}: every run replayed the same match (state digest ${[...b][0].slice(0, 12)})`);
 }
 
-const passThrough = ["--metrics", "--stats", "--threshold", "--budgets"].flatMap((flag) => { const i = process.argv.indexOf(flag); return i < 0 ? [] : [flag, process.argv[i + 1]]; });
+const passThrough = ["--metrics", "--stats", "--threshold", "--budgets"].flatMap((flag) => {
+  const i = process.argv.indexOf(flag); if (i < 0) return [];
+  const values: string[] = []; for (let j = i + 1; j < process.argv.length && !process.argv[j].startsWith("--"); j++) values.push(process.argv[j]);
+  return [flag, ...values];
+});
 const cmp = tsx("compare.mts", ["--base", ...files.base, "--cand", ...files.cand, ...passThrough, "--out", path.join(outDir, "comparison.json")], true);
 const table = (cmp.stdout ?? "") + (cmp.stderr ?? "");
 fs.writeFileSync(path.join(outDir, "comparison.md"), table);
