@@ -95,8 +95,11 @@ async function browser() {
   return chromium.launch({ channel: channel === "chromium" ? undefined : channel, headless: !flag("--headed"), args, timeout: 120_000 });
 }
 async function openGame(b, query) {
-  const ctx = await b.newContext({ viewport: { width: 1600, height: 900 } });
+  // nogpu: at 1600x900 SwiftShader cannot settle the vegetation impostors inside the game's own 90 s ready budget
+  // (main.ts), and frames are seconds apart, so a smaller viewport and long Playwright timeouts
+  const ctx = await b.newContext({ viewport: NOGPU ? { width: 640, height: 360 } : { width: 1600, height: 900 } });
   const page = await ctx.newPage();
+  if (NOGPU) page.setDefaultTimeout(180_000);
   const consoleErrors = [];
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 300)); });
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${String(e.message).slice(0, 300)}`));

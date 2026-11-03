@@ -34,7 +34,11 @@ looks or frame rate, so doctor fails when the GPU string does not match the prof
 Validated end to end so far: `mac` (M3 Max) and `nogpu`. The `win` profile follows Chrome's ANGLE flags but is not yet
 validated on Windows hardware; treat its first run there as a check of this skill too.
 
-On `nogpu` the title takes minutes and frames are seconds apart, so `all` runs only `boot` and `play` (20 s) with long
+On `nogpu` (validated on a 4-vCPU, 16 GB Ubuntu 24.04 cloud machine): run `npx playwright install chromium` once (add
+`--with-deps` if libraries are missing); the helper uses a 640x360 viewport, because at 1600x900 SwiftShader trips
+the game's own 90 s settle timeout (`[ready] timed out waiting for: veg-impostors`, `__kr.stage === "failed"`). The
+title takes about 2.5 minutes, play about 5, and `all` about 9. One `all` run on that machine was killed at a
+12.6 GB memory cap; if that happens, run `boot` and `play` one at a time. On `nogpu` the title takes minutes and frames are seconds apart, so `all` runs only `boot` and `play` (20 s) with long
 timeouts. Never judge looks or performance from a `nogpu` run; say "smoke only" in the PR.
 
 ## Launch
@@ -63,7 +67,7 @@ failed drive, and whenever something looks odd. A failing doctor means fix or re
 
 ## Drive
 
-Each drive opens fresh browser contexts at 1600x900, waits for `window.__kr.ready` (the title is playable), acts only
+Each drive opens fresh browser contexts at 1600x900 (640x360 on `nogpu`), waits for `window.__kr.ready` (the title is playable), acts only
 through what a player touches (buttons, keys), and reads results from the game's own debug handle:
 
 - `window.__kr.ready` / `__kr.stage`: boot state (`"ready"` or `"failed"`). `__kr.errors`: every boot error, uncaught
