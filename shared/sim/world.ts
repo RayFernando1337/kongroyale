@@ -8,6 +8,8 @@ import type { VehicleSet } from "./vehicle";
 import type { CoverSet } from "./cover";
 
 const GRID_CELL = 24;
+/** padding (m) on each box's x/z bounds so float32 rounding can never cull a box a ray really hits */
+const BOUNDS_PAD = 0.01;
 // terrain slopes: full speed up to 35°, uphill
 // speed falls to SLOPE_SLOW_MUL at 45°, steeper TERRAIN is a slide (no uphill progress, no jump). Box ramps keep the
 // older SLOPE_LIMIT (51°) so designed ramps / stairs are untouched.
@@ -87,6 +89,8 @@ export class StaticWorld {
   cx!: Float32Array; cy!: Float32Array; cz!: Float32Array;
   hx!: Float32Array; hy!: Float32Array; hz!: Float32Array;
   cos!: Float32Array; sin!: Float32Array;          // yaw
+  /** each box's world x/z bounds (yaw included, a little padded): rays skip a box whose bounds their segment misses */
+  bx0!: Float32Array; bx1!: Float32Array; bz0!: Float32Array; bz1!: Float32Array;
   surf!: Uint8Array; noShoot!: Uint8Array; noWalk!: Uint8Array;
   /** boxes a tuk-tuk drives through (fences, hedges, crop stems — Box.noDrive), and the switch the vehicle step
    * sets around its own collision queries (shared/sim/vehicle.ts move): while on, movement and ground rays skip them */
@@ -128,6 +132,7 @@ export class StaticWorld {
     this.cx = new Float32Array(n); this.cy = new Float32Array(n); this.cz = new Float32Array(n);
     this.hx = new Float32Array(n); this.hy = new Float32Array(n); this.hz = new Float32Array(n);
     this.cos = new Float32Array(n); this.sin = new Float32Array(n);
+    this.bx0 = new Float32Array(n); this.bx1 = new Float32Array(n); this.bz0 = new Float32Array(n); this.bz1 = new Float32Array(n);
     this.surf = new Uint8Array(n); this.noShoot = new Uint8Array(n); this.noWalk = new Uint8Array(n); this.noDrive = new Uint8Array(n);
     this.roundDx = new Int16Array(n).fill(ROUND_NONE); this.roundDz = new Int16Array(n);
     this.glass = null;
@@ -147,6 +152,8 @@ export class StaticWorld {
       const ez = Math.abs(this.sin[i]) * b.h[0] + Math.abs(this.cos[i]) * b.h[2];
       const x0 = this.cell(b.c[0] - ex), x1 = this.cell(b.c[0] + ex), z0 = this.cell(b.c[2] - ez), z1 = this.cell(b.c[2] + ez);
       spans.push([x0, x1, z0, z1]);
+      const bex = Math.abs(this.cos[i]) * this.hx[i] + Math.abs(this.sin[i]) * this.hz[i] + BOUNDS_PAD, bez = Math.abs(this.sin[i]) * this.hx[i] + Math.abs(this.cos[i]) * this.hz[i] + BOUNDS_PAD;
+      this.bx0[i] = this.cx[i] - bex; this.bx1[i] = this.cx[i] + bex; this.bz0[i] = this.cz[i] - bez; this.bz1[i] = this.cz[i] + bez;
       for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) counts[z * this.gridN + x]++;
     }
     this.cellStart = new Int32Array(this.gridN * this.gridN + 1);
@@ -838,10 +845,11 @@ export class StaticWorld {
     }
     // boxes: walk grid cells along the ray (2D DDA over x/z)
     const ex = ox + dx * out.t, ez = oz + dz * out.t;
-    const cx0 = this.cell(Math.min(ox, ex) - 1), cx1 = this.cell(Math.max(ox, ex) + 1), cz0 = this.cell(Math.min(oz, ez) - 1), cz1 = this.cell(Math.max(oz, ez) + 1);
+    const rx0 = Math.min(ox, ex), rx1 = Math.max(ox, ex), rz0 = Math.min(oz, ez), rz1 = Math.max(oz, ez);
+    const cx0 = this.cell(rx0 - 1), cx1 = this.cell(rx1 + 1), cz0 = this.cell(rz0 - 1), cz1 = this.cell(rz1 + 1);
     const span = (cx1 - cx0 + 1) * (cz1 - cz0 + 1);
     if (span <= 64) {
-      for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets);
+      for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
     } else {
       // long ray: DDA
       let cx = this.cell(ox), cz = this.cell(oz);
@@ -853,7 +861,7 @@ export class StaticWorld {
       let tmz = dz !== 0 ? ((dz > 0 ? bz + GRID_CELL - oz : oz - bz) / Math.abs(dz)) : 1e9;
       for (let guard = 0; guard < 400; guard++) {
         // visit this cell and its neighbours across (boxes may straddle)
-        this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets);
+        this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
         if (cx === tcx && cz === tcz) break;
         if (tmx < tmz) { if (tmx > out.t) break; cx += sx; tmx += tdx; } else { if (tmz > out.t) break; cz += sz; tmz += tdz; }
         if (cx < 0 || cz < 0 || cx >= this.gridN || cz >= this.gridN) break;
@@ -863,10 +871,12 @@ export class StaticWorld {
     return out;
   }
   private lastCellVisited = -1;
-  private rayCell(c: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, out: Hit, bullets: boolean) {
+  /** test the boxes of grid cell c; rx0..rz1 bound the ray segment in x/z (a box outside it can't be hit) */
+  private rayCell(c: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, out: Hit, bullets: boolean, rx0: number, rx1: number, rz0: number, rz1: number) {
     for (let k = this.cellStart[c]; k < this.cellStart[c + 1]; k++) {
       const i = this.cellItems[k];
       if (bullets ? this.noShoot[i] : this.noWalk[i] || (this.drive && this.noDrive[i])) continue;
+      if (this.bx1[i] < rx0 || this.bx0[i] > rx1 || this.bz1[i] < rz0 || this.bz0[i] > rz1) continue;
       this.rayBox(i, ox, oy, oz, dx, dy, dz, out);
     }
   }
