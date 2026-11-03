@@ -47,7 +47,7 @@ try{
   const setup0=performance.now();
   while(phase!==PLAY){if(performance.now()-setup0>maxSetupS*1000)throw Error(`no PLAY phase within ${maxSetupS} s (last phase ${phase}); is KR_WARMUP_S huge?`);drive(performance.now());await sleep(2);}
   const setupMs=performance.now()-setup0,health0=await(await fetch(base+'/health')).json();
-  active=true;const start=performance.now();
+  active=true;const start=performance.now(),aliveAtStart=alive;
   while(performance.now()-start<seconds*1000){
     const now=performance.now();drive(now);
     // Asset-serving contention is part of a real match: a player joins while others are already fighting.
@@ -65,7 +65,7 @@ try{
     cases:[{
       scenario:{id:'server/trios-play',version:2,seed:-1,workload:'socket-load'},
       windows:{untimedSetupMs:Math.round(setupMs),measuredMs:Math.round(elapsed),measuredFrom:'first PLAY snapshot',serverLifetimeMetrics:'server start to end of window (includes lobby, warm-up and plane)',bytes:'every frame received on every socket (main and aux) in the window',seed:'chosen at random by the server per match; see detail.matchSeed',transport:'real WebSocket; loopback when URL is local; no WAN inference'},
-      load:{players:count,sockets:count*(aux?2:1),inputsPerPlayerSecond,skippedInputSteps:skippedSteps,serverTicksPerSecond,minSnapshotsPerClient:minSnapshots,aliveAtEnd:alive,...Object.fromEntries(Object.entries(phaseSeen).map(([k,v])=>['snapshotsInPhase'+k,v]))},
+      load:{players:count,sockets:count*(aux?2:1),inputsPerPlayerSecond,skippedInputSteps:skippedSteps,serverTicksPerSecond,minSnapshotsPerClient:minSnapshots,aliveAtStart,aliveAtEnd:alive,...Object.fromEntries(Object.entries(phaseSeen).map(([k,v])=>['snapshotsInPhase'+k,v]))},
       metrics:{
         rttMs:ms(rtt),snapshotGapMs:ms(gaps),inputToAcknowledgmentMs:ms(ack),generatorLoopGapMs:ms(loopGaps),
         bytesPerPlayerSecond:{status:'ok',unit:'bytes/s',better:'lower',value:bytes/s/count},
@@ -77,7 +77,7 @@ try{
         {id:'measuredInPlay',pass:Object.keys(phaseSeen).join()===String(PLAY),detail:`snapshots by phase: ${JSON.stringify(phaseSeen)}`},
         {id:'inputLoadAchieved',pass:inputsPerPlayerSecond>=TICK_HZ*.95,detail:`${inputsPerPlayerSecond.toFixed(1)} inputs per player per s (target ${TICK_HZ}), ${skippedSteps} skipped steps`},
         {id:'serverKeptTickRate',pass:serverTicksPerSecond>=TICK_HZ*.95,detail:`${serverTicksPerSecond.toFixed(1)} server ticks per s (target ${TICK_HZ})`},
-        {id:'allPlayersAlive',pass:alive===count,detail:`${alive}/${count} alive at the end of the window`},
+        {id:'noDeathsInWindow',pass:alive===aliveAtStart,detail:`${aliveAtStart} alive at the start of the window, ${alive} at the end (whole match, bots included)`},
         {id:'snapshotsDelivered',pass:minSnapshots>=s*28,detail:`fewest snapshots for one client: ${minSnapshots} in ${s.toFixed(1)} s`},
         {id:'serverTickP99Within60Hz',pass:!(perf1?.tickMs?.p99>1000/TICK_HZ),detail:`lifetime server tick p99 ${perf1?.tickMs?.p99?.toFixed(2) ?? 'n/a'} ms`},
       ],
