@@ -12,20 +12,20 @@ const maxSetupS=+arg('--max-setup-s','120'),warmupS=arg('--warmup-s','server def
 const PLAY=2, TICK_HZ=60;
 const startedAt=new Date().toISOString(),run0=performance.now(),environment=env();
 const sleep=(n:number)=>new Promise(r=>setTimeout(r,n)),peers:any[]=[],errors:string[]=[],rtt:number[]=[],gaps:number[]=[],ack:number[]=[],loopGaps:number[]=[];
-let bytes=0,packets=0,active=false,disconnects=0,phase=-1,alive=0,firstTick=-1,lastTick=-1,inputsSent=0,skippedSteps=0;
+let bytes=0,packets=0,matchSeed=-1,active=false,disconnects=0,phase=-1,alive=0,firstTick=-1,lastTick=-1,inputsSent=0,skippedSteps=0;
 const phaseSeen:Record<number,number>={};
 const wait=async(f:()=>boolean,label:string,ms=60000)=>{const end=performance.now()+ms;while(!f()){if(performance.now()>end)throw Error('timeout '+label);await sleep(10);}};
 try{
   for(let i=0;i<count;i++){
     const p:any={ws:new WebSocket(base.replace(/^http/,'ws')+'/ws'),uid:0,token:'',code:'',pid:-1,seq:0,last:0,lastTick:-1,w:new Writer(new ArrayBuffer(64)),input:makeInput(),sent:new Float64Array(4096),snaps:0};peers.push(p);
     const onMessage=(data:any,binary:boolean)=>{
-      if(!binary){const j=JSON.parse(String(data));if(j.t==='welcome'){p.uid=j.uid;p.token=j.aux;}if(j.t==='lobby')p.code=j.code;if(j.t==='match')p.pid=j.pids[p.uid];if(j.t==='error')errors.push(j.msg);return;}
+      if(active){bytes+=data.length;packets++;}
+      if(!binary){const j=JSON.parse(String(data));if(j.t==='welcome'){p.uid=j.uid;p.token=j.aux;}if(j.t==='lobby')p.code=j.code;if(j.t==='match'){p.pid=j.pids[p.uid];matchSeed=j.seed;}if(j.t==='error')errors.push(j.msg);return;}
       const r=new Reader(new Uint8Array(data.buffer,data.byteOffset,data.byteLength));const kind=r.u8(),now=performance.now();
       if(kind===M.Snapshot){const h={} as SnapHeader;readSnapHeader(r,h);if(p===peers[0]){phase=h.phase;alive=h.alive;if(active){phaseSeen[h.phase]=(phaseSeen[h.phase]??0)+1;if(firstTick<0)firstTick=h.tick;lastTick=Math.max(lastTick,h.tick);}}
         if(!active||h.tick<=p.lastTick){if(!active)p.lastTick=Math.max(p.lastTick,h.tick);return;}
-        bytes+=data.length;packets++;p.lastTick=h.tick;p.snaps++;if(p.last)gaps.push(now-p.last);p.last=now;const at=p.sent[h.lastSeq%4096];if(at&&h.lastSeq>p.seq-4096)ack.push(now-at);return;}
-      if(!active)return;bytes+=data.length;packets++;
-      if(kind===M.Pong)rtt.push(now-r.f64());
+        p.lastTick=h.tick;p.snaps++;if(p.last)gaps.push(now-p.last);p.last=now;const at=p.sent[h.lastSeq%4096];if(at&&h.lastSeq>p.seq-4096)ack.push(now-at);return;}
+      if(active&&kind===M.Pong)rtt.push(now-r.f64());
     };
     p.ws.on('message',onMessage);p.ws.on('error',(e:Error)=>errors.push(e.message));p.ws.on('close',()=>{if(active)disconnects++;});
     await wait(()=>!!p.uid,'welcome');p.ws.send(JSON.stringify({t:'hello',name:'BENCH '+i}));
@@ -52,16 +52,17 @@ try{
     if(assets&&!assetRequest&&now-start>4000){assetRequest=(async()=>{const html=await(await fetch(base)).text(),urls=[...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+\.(?:js|css))"/g)].map(m=>m[1]);for(const url of urls.slice(0,12)){const t=performance.now();const r=await fetch(base+url,{headers:{'accept-encoding':'br'}});await r.arrayBuffer();httpResults.push({url,ms:performance.now()-t,status:r.status,encoding:r.headers.get('content-encoding')});}})();}
     await sleep(2);
   }
-  const elapsed=performance.now()-start;active=false;await assetRequest;
-  const health=await(await fetch(base+'/health')).json(),perf0=(health0 as any).performance,perf1=(health as any).performance;
+  const elapsed=performance.now()-start;active=false;
+  const health=await(await fetch(base+'/health')).json();await assetRequest;
+  const perf0=(health0 as any).performance,perf1=(health as any).performance;
   const s=elapsed/1000,ms=(v:number[]):Metric=>({status:'ok',unit:'ms',better:'lower',summary:stats(v)});
   const minSnapshots=Math.min(...peers.map(p=>p.snaps)),serverTicksPerSecond=(lastTick-firstTick)/s,inputsPerPlayerSecond=inputsSent/count/s;
   const lifetime=(m:any):Metric=>perf1?{status:'ok',unit:'ms',better:'lower',summary:m}:{status:'unsupported',unit:'ms',reason:'server runs without KR_PERF_METRICS=1'};
   const result:RunResult={schema:RESULT_SCHEMA,version:RESULT_VERSION,tool:'bench:server',startedAt,durationMs:performance.now()-run0,source:source(process.cwd()),environment,
     config:{players:count,seconds,aux,assets,mode:'trios',warmupS},
     cases:[{
-      scenario:{id:'server/trios-play',version:2,seed:0,workload:'socket-load'},
-      windows:{untimedSetupMs:Math.round(setupMs),measuredMs:Math.round(elapsed),measuredFrom:'first PLAY snapshot',serverLifetimeMetrics:'server start to end of window (includes lobby, warm-up and plane)',transport:'real WebSocket; loopback when URL is local; no WAN inference'},
+      scenario:{id:'server/trios-play',version:2,seed:-1,workload:'socket-load'},
+      windows:{untimedSetupMs:Math.round(setupMs),measuredMs:Math.round(elapsed),measuredFrom:'first PLAY snapshot',serverLifetimeMetrics:'server start to end of window (includes lobby, warm-up and plane)',bytes:'every frame received on every socket (main and aux) in the window',seed:'chosen at random by the server per match; see detail.matchSeed',transport:'real WebSocket; loopback when URL is local; no WAN inference'},
       load:{players:count,sockets:count*(aux?2:1),inputsPerPlayerSecond,skippedInputSteps:skippedSteps,serverTicksPerSecond,minSnapshotsPerClient:minSnapshots,aliveAtEnd:alive,...Object.fromEntries(Object.entries(phaseSeen).map(([k,v])=>['snapshotsInPhase'+k,v]))},
       metrics:{
         rttMs:ms(rtt),snapshotGapMs:ms(gaps),inputToAcknowledgmentMs:ms(ack),generatorLoopGapMs:ms(loopGaps),
@@ -74,10 +75,11 @@ try{
         {id:'measuredInPlay',pass:Object.keys(phaseSeen).join()===String(PLAY),detail:`snapshots by phase: ${JSON.stringify(phaseSeen)}`},
         {id:'inputLoadAchieved',pass:inputsPerPlayerSecond>=TICK_HZ*.95,detail:`${inputsPerPlayerSecond.toFixed(1)} inputs per player per s (target ${TICK_HZ}), ${skippedSteps} skipped steps`},
         {id:'serverKeptTickRate',pass:serverTicksPerSecond>=TICK_HZ*.95,detail:`${serverTicksPerSecond.toFixed(1)} server ticks per s (target ${TICK_HZ})`},
+        {id:'allPlayersAlive',pass:alive===count,detail:`${alive}/${count} alive at the end of the window`},
         {id:'snapshotsDelivered',pass:minSnapshots>=s*28,detail:`fewest snapshots for one client: ${minSnapshots} in ${s.toFixed(1)} s`},
         {id:'serverTickP99Within60Hz',pass:!(perf1?.tickMs?.p99>1000/TICK_HZ),detail:`lifetime server tick p99 ${perf1?.tickMs?.p99?.toFixed(2) ?? 'n/a'} ms`},
       ],
-      detail:{bytes,packets,httpResults,health,errors:errors.slice(0,20)},
+      detail:{matchSeed,bytes,packets,httpResults,health,errors:errors.slice(0,20)},
     }],
     errors,artifacts:[]};
   save(out,result);

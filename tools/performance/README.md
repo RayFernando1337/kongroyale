@@ -38,7 +38,9 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 - **Server**: client-side metrics (RTT, snapshot gaps, input-to-ack, bytes) and the achieved load cover the PLAY window
   only. The server's own tick and event-loop histograms (`serverTickMsLifetime`, `eventLoopDelayMsLifetime`) cover
   the server's whole life, including the lobby, warm-up and plane, because `/health` can't reset them. `serverCpuMsPerSecond`
-  is the CPU delta across the window. `bytesPerPlayerSecond` counts each snapshot once per player, not once per socket.
+  is the CPU delta across the window. `bytesPerPlayerSecond` is every frame received on the player's sockets (main
+  and aux). The server picks a random match seed and has no knob to fix it, so each server run samples a different
+  match: the scenario records seed -1 and the real seed is in `detail.matchSeed`.
 
 ### Achieved load
 
@@ -48,7 +50,8 @@ A run that missed its intended load fails a gate instead of reporting low latenc
   every tick.
 - **Server**: at least 95% of 60 inputs per player per second were sent, with skipped generator steps counted. The
   server kept at least 95% of 60 ticks per second, measured from snapshot tick numbers. Every snapshot in the window
-  was PLAY. No errors or disconnects. Every client got at least 28 snapshots per second.
+  was PLAY. All players were alive at the end. No errors or disconnects. Every client got at least 28 snapshots per
+  second.
 
 ## Comparing runs
 
