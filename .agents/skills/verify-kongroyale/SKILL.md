@@ -66,10 +66,11 @@ To drive an instance you started yourself (for example `npm run dev` plus `KR_EV
 syntax there is POSIX: in PowerShell it is `$env:KR_EVENT_MODE = "0"; npm run server`, in cmd
 `set KR_EVENT_MODE=0&& npm run server`.
 
-Agents on Windows: `up` prints its JSON line in about 15 s, but the processes it starts inherit the calling shell's
-output handles, so a tool that waits for the output pipe to close does not return until its own timeout, even with
-`up`'s output redirected to a file. The instance itself stays up. Start `up` as a detached or background command and
-confirm it with `doctor`.
+Agents on Windows: `up` prints its JSON line in about 15 s, but an agent shell tool that runs it in the foreground
+does not return until its own timeout, even with `up`'s output redirected to a file. The instance itself stays up.
+The cause is not pinned down: the helper gives its children log files as stdout and stderr, so the likely holder is a
+handle or job object they inherit from the calling shell rather than their stdio. Start `up` as a detached or
+background command and confirm it with `doctor`.
 
 ## Doctor
 
