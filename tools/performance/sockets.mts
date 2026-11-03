@@ -22,9 +22,11 @@ try{
       if(active){bytes+=data.length;packets++;}
       if(!binary){const j=JSON.parse(String(data));if(j.t==='welcome'){p.uid=j.uid;p.token=j.aux;}if(j.t==='lobby')p.code=j.code;if(j.t==='match'){p.pid=j.pids[p.uid];matchSeed=j.seed;}if(j.t==='error')errors.push(j.msg);return;}
       const r=new Reader(new Uint8Array(data.buffer,data.byteOffset,data.byteLength));const kind=r.u8(),now=performance.now();
-      if(kind===M.Snapshot){const h={} as SnapHeader;readSnapHeader(r,h);if(p===peers[0]){phase=h.phase;alive=h.alive;if(active){phaseSeen[h.phase]=(phaseSeen[h.phase]??0)+1;if(firstTick<0)firstTick=h.tick;lastTick=Math.max(lastTick,h.tick);}}
-        if(!active||h.tick<=p.lastTick){if(!active)p.lastTick=Math.max(p.lastTick,h.tick);return;}
-        p.lastTick=h.tick;p.snaps++;if(p.last)gaps.push(now-p.last);p.last=now;const at=p.sent[h.lastSeq%4096];if(at&&h.lastSeq>p.seq-4096)ack.push(now-at);return;}
+      // The main and aux sockets both carry snapshots: only the first copy of each tick counts, stale copies are dropped.
+      if(kind===M.Snapshot){const h={} as SnapHeader;readSnapHeader(r,h);if(h.tick<=p.lastTick)return;p.lastTick=h.tick;
+        if(p===peers[0]){phase=h.phase;alive=h.alive;if(active){phaseSeen[h.phase]=(phaseSeen[h.phase]??0)+1;if(firstTick<0)firstTick=h.tick;lastTick=h.tick;}}
+        if(!active)return;
+        p.snaps++;if(p.last)gaps.push(now-p.last);p.last=now;const at=p.sent[h.lastSeq%4096];if(at&&h.lastSeq>p.seq-4096)ack.push(now-at);return;}
       if(active&&kind===M.Pong)rtt.push(now-r.f64());
     };
     p.ws.on('message',onMessage);p.ws.on('error',(e:Error)=>errors.push(e.message));p.ws.on('close',()=>{if(active)disconnects++;});
