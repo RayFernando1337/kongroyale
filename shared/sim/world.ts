@@ -821,7 +821,9 @@ export class StaticWorld {
     // terrain: march with adaptive steps, refine with bisection
     const len = Math.hypot(dx, dy, dz);
     if (len > 0) {
-      let t = 0, prevAbove = oy - this.terrain.height(ox, oz);
+      // a vertical ray samples the ground at one (x, z): read it once instead of at every march and bisection step
+      const vert = dx === 0 && dz === 0, h0 = this.terrain.height(ox, oz);
+      let t = 0, prevAbove = oy - h0;
       if (prevAbove < 0) { // start under ground → immediate hit
         out.hit = true; out.t = 0; out.x = ox; out.y = oy; out.z = oz; const n = this.terrain.normal(ox, oz, TN); out.nx = n[0]; out.ny = n[1]; out.nz = n[2]; out.surf = 255;
       } else {
@@ -830,11 +832,11 @@ export class StaticWorld {
         while (t < out.t) {
           const nt = Math.min(out.t, t + step);
           const px = ox + dx * nt, py = oy + dy * nt, pz = oz + dz * nt;
-          const above = py - this.terrain.height(px, pz);
+          const above = py - (vert ? h0 : this.terrain.height(px, pz));
           if (above < 0) {
             // bisect between t and nt
             let a = t, b = nt;
-            for (let k = 0; k < 8; k++) { const m = (a + b) * 0.5; const ay = oy + dy * m - this.terrain.height(ox + dx * m, oz + dz * m); if (ay < 0) b = m; else a = m; }
+            for (let k = 0; k < 8; k++) { const m = (a + b) * 0.5; const ay = oy + dy * m - (vert ? h0 : this.terrain.height(ox + dx * m, oz + dz * m)); if (ay < 0) b = m; else a = m; }
             out.hit = true; out.t = a; out.x = ox + dx * a; out.y = oy + dy * a; out.z = oz + dz * a;
             const n = this.terrain.normal(out.x, out.z, TN); out.nx = n[0]; out.ny = n[1]; out.nz = n[2]; out.surf = 255; out.box = -1;
             break;
