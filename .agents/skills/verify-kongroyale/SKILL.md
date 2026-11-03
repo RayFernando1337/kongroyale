@@ -91,7 +91,7 @@ command also prints one JSON line per feature and exits 0 only when every featur
 Proof standard: the action and its result, not only the last frame. Every match drive also requires the newest
 authoritative snapshot tick (`snapTick` in the result, from `__kr.game.cm.snapTick()`) to keep rising, so a match that
 stalls after it starts fails. Play proves the match started and advanced (fps samples at 5/15/30/60 s, and the plane
-phase reached on runs of 30 s or more). Range proves input reaches the simulation (W held 2 s moves the kong;
+phase reached on GPU runs of 30 s or more; on `nogpu` match time lags wall time, so only the tick check applies). Range proves input reaches the simulation (W held 2 s moves the kong;
 `walkedM` in the result). Room proves two real clients share one server match (both `inMatch`, both receiving snapshots, non-zero `ping`).
 For a PR, attach the relevant screenshots and quote the `result.json` lines that prove the change; name the profile.
 

@@ -132,11 +132,12 @@ async function driveBoot(b, out) {
 }
 async function drivePlay(b, out) {
   const seed = opt("--seed", "42"), secs = Number(opt("--secs", NOGPU ? 20 : 60));
+  if (!(secs > 0)) throw new Error("--secs must be a positive number");
   const { ctx, page, consoleErrors, boot } = await openGame(b, `debug&seed=${seed}`);
   await page.screenshot({ path: path.join(out, "play-0-title.png") });
   await page.locator("button.tn-play-cta").click();
   await page.waitForFunction(() => window.__kr.game?.inMatch === true, null, { timeout: NOGPU ? 300_000 : 120_000, polling: 500 });
-  const t0 = Date.now(), samples = [];
+  const t0 = Date.now(), samples = [{ at: 0, ...(await snap(page)) }];
   for (const at of [5, 15, 30, secs].filter((s, i, a) => s <= secs && a.indexOf(s) === i)) {
     await sleep(Math.max(0, at * 1000 - (Date.now() - t0)));
     samples.push({ at, ...(await snap(page)) });
@@ -145,7 +146,7 @@ async function drivePlay(b, out) {
   const errors = await krErrors(page);
   await ctx.close();
   const first = samples[0], last = samples.at(-1);
-  const advanced = last.snapTick > first.snapTick, reachedPlane = secs < 30 || (last.state?.phase ?? 0) >= 1;
+  const advanced = last.snapTick > first.snapTick, reachedPlane = NOGPU || secs < 30 || (last.state?.phase ?? 0) >= 1;
   return { feature: "play", seed, ok: errors.length === 0 && last.inMatch && advanced && reachedPlane, advanced, reachedPlane, boot, samples, errors, consoleErrors: consoleErrors.slice(0, 20) };
 }
 async function driveRange(b, out) {
