@@ -35,12 +35,12 @@ for(const scenario of ['clustered','dispersed','combat','bots']){
     if(measure){costs.push(dt);if(m.tick%SNAP_EVERY===0)snaps.push(dt);}
   }
   const used=process.cpuUsage(usage);
-  result.cases.push({scenario,seats:m.players.length,peers:host.peers.length,pellets,hostMs:stats(costs),snapshotTickMs:stats(snaps),simulationMs:stats(sim),bytes,packets,bytesPerPlayerSecond:bytes/(ticks/60)/50,checksum:h.digest('hex'),wallMs:performance.now()-start,cpuMs:(used.user+used.system)/1000,memory0,memory1:process.memoryUsage()});
+  result.cases.push({scenario,seats:m.players.length,peers:host.peers.length,pellets,hostMs:stats(costs),snapshotTickMs:stats(snaps),simulationMs:stats(sim),bytes,packets,bytesPerPlayerSecond:bytes/(ticks/60)/m.players.length,checksum:h.digest('hex'),wallMs:performance.now()-start,cpuMs:(used.user+used.system)/1000,memory0,memory1:process.memoryUsage()});
   // Isolate serialization from sim/transport; checksum covers the real tick stream above.
   const w=new Writer(new ArrayBuffer(16384)), serial:number[]=[];
-  for(let k=0;k<180;k++){const t=performance.now();for(let pid=0;pid<50;pid++)writeSnapshotFor(w,m,pid);serial.push(performance.now()-t);}
+  for(let k=0;k<180;k++){const t=performance.now();for(let pid=0;pid<m.players.length;pid++)writeSnapshotFor(w,m,pid);serial.push(performance.now()-t);}
   result.cases.at(-1).legacySnapshotFanoutMs=stats(serial.slice(30));
-  if(SnapshotBatch){const batch=new SnapshotBatch(),cached:number[]=[];for(let k=0;k<180;k++){const t=performance.now();batch.begin(m);for(let pid=0;pid<50;pid++)writeSnapshotFor(w,m,pid,batch);cached.push(performance.now()-t);}result.cases.at(-1).cachedSnapshotFanoutMs=stats(cached.slice(30));}
+  if(SnapshotBatch){const batch=new SnapshotBatch(),cached:number[]=[];for(let k=0;k<180;k++){const t=performance.now();batch.begin(m);for(let pid=0;pid<m.players.length;pid++)writeSnapshotFor(w,m,pid,batch);cached.push(performance.now()-t);}result.cases.at(-1).cachedSnapshotFanoutMs=stats(cached.slice(30));}
   console.log(scenario,JSON.stringify(result.cases.at(-1)));
 }
 save(arg('--out','reports/performance/host.json'),result);
