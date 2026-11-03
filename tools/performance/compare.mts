@@ -5,14 +5,17 @@
 // --metrics hostTickMs,simulationMs (default: every metric), --out comparison.json.
 // Each run contributes ONE value per metric and statistic; frames/ticks inside a run are correlated and never pooled.
 // A change is "worse"/"better" only when every candidate run falls outside the baseline runs' range AND the medians
-// differ by at least the threshold. Anything else is reported as no clear change or inconclusive.
+// differ by at least the threshold, with at least MIN_RUNS runs a side. Anything else is no clear change or
+// inconclusive. Gate on the metrics you named in advance (--metrics): every extra row is another chance of a false hit.
 // Exit status: 0 no regression; 1 a regression, a failed candidate gate, or a candidate metric that is invalid or no
 // longer measured; 2 inputs that cannot be compared (including a --metrics name no case has).
 import fs from "node:fs";
 import path from "node:path";
 import { comparabilityKey, parseResult, type Metric, type RunResult, type Summary } from "./schema.ts";
 
-const MIN_RUNS = 3;
+// With 5 runs a side, every candidate landing outside the baseline range by chance is under 1% per row (2 of 252
+// orderings). With 3 it is 10%, and an A/A run of identical code did produce false "worse" rows at 3.
+const MIN_RUNS = 5;
 const argv = process.argv.slice(2);
 const list = (flag: string) => { const i = argv.indexOf(flag); if (i < 0) return []; const out: string[] = []; for (let j = i + 1; j < argv.length && !argv[j].startsWith("--"); j++) out.push(argv[j]); return out; };
 const opt = (flag: string, fallback: string) => list(flag)[0] ?? fallback;

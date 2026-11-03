@@ -41,7 +41,11 @@ npx tsx tools/performance/compare.mts --base base1.json base2.json base3.json --
 - The table shows the median over runs, the min–max range, and that range as a percentage of the median. Run the
   baseline alone (`--base` only) to see the noise floor.
 - A metric is **worse** or **better** only when every candidate run is outside the baseline runs' range and the
-  medians differ by at least `--threshold` percent (default 5). Fewer than three runs on a side is **inconclusive**.
+  medians differ by at least `--threshold` percent (default 5). Fewer than five runs on a side is **inconclusive**:
+  with three, all candidates land outside the baseline range by chance 10% of the time per row, and an A/A run of
+  identical code did report false regressions. With five it is under 1% per row.
+- Name the primary metric and guardrails with `--metrics` before you run, and gate on those. Every extra row
+  compared is another chance of a false hit, so a run over every metric is for exploring, not for a verdict.
 - Exit status: 0 means no regression. 1 means a regression, a failed candidate gate, or a candidate metric that is
   `invalid` or no longer measured. 2 means the inputs can't be compared (different config, machine, scenario version
   or contract version, or a `--metrics` name that no case has).
