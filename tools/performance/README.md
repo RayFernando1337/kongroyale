@@ -27,14 +27,17 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 
 | Command | Writes | Notes |
 |---|---|---|
-| `npm run bench:host -- --out <file>` | `kong-perf-result` | Authoritative host and snapshot fan-out, CPU only. `--root <checkout>` measures another checkout, `--scenario combat` runs one scenario, `--ticks N` sets the window. Each scenario plays the real start, plane and drop untimed, then times the PLAY phase. The four scenarios are still synthetic: scripted placement and inputs, humans kept alive. They are not full-match coverage. |
+| `npm run bench:host -- --out <file>` | `kong-perf-result` | Authoritative host and snapshot fan-out, CPU only. `--root <checkout>` measures another checkout, `--scenario combat` runs one scenario, `--ticks N` sets the synthetic window. Each scenario plays the real start, plane and drop untimed, then times the PLAY phase. `real-play` ([scenarios/real-play.mts](scenarios/real-play.mts)) is the representative one: a seeded all-bot trios match, nothing placed, timed for the first 7200 PLAY ticks (about 30 s on a 4-vCPU runner). The other four are synthetic: scripted placement and inputs, humans kept alive. `--trace` also hashes every packet. |
+| `npx tsx tools/performance/run.mts --base <checkout> --cand <checkout>` | a folder of results plus `comparison.md` | Interleaved repeated `bench:host` runs and the comparison. See below. |
 | `npm run bench:server -- --seconds 60 --out <file>` | `kong-perf-result` | Private server and 50 real WebSocket players, each also on an aux socket. Build first. The match gets a 5 s warm-up and a real plane, so the bench takes about 50 s plus `--seconds`. The timed window starts at the first PLAY snapshot. Linux and macOS only. |
 
 ### What the windows include
 
 - **Host**: CPU time, wall time and memory cover the measured ticks only. The 240 benchmark warm-up ticks and the
-  untimed match setup (about 2460 ticks of warm-up skip and plane) are excluded. Packet hashing for the checksum still
-  runs inside the timed tick.
+  untimed match setup (about 2460 ticks of warm-up skip and plane) are excluded. The timed ticks hash nothing: after
+  the window, `detail.stateDigest` hashes the match state (tick, items, every player's position, health, state and
+  kills) to prove a run replayed the same match. `--trace` adds `detail.packetChecksum` over every packet, hashed
+  inside the timed tick, so traced runs only compare with traced runs.
 - **Server**: client-side metrics (RTT, snapshot gaps, input-to-ack, bytes) and the achieved load cover the PLAY window
   only. The server's own tick and event-loop histograms (`serverTickMsLifetime`, `eventLoopDelayMsLifetime`) cover
   the server's whole life, including the lobby, warm-up and plane, because `/health` can't reset them. `serverCpuMsPerSecond`
@@ -47,7 +50,8 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 A run that missed its intended load fails a gate instead of reporting low latency:
 
 - **Host**: every measured tick is in PLAY, every driven human is alive and sent one input per tick, and combat fired
-  every tick.
+  every tick. `real-play` has no driven humans; its load is recorded (alive at end, kills, pellets) and fixed by the
+  seed, which the state digest checks.
 - **Server**: at least 95% of 60 inputs per player per second were sent, with skipped generator steps counted. The
   server kept at least 95% of 60 ticks per second, measured from snapshot tick numbers. Every snapshot in the window
   was PLAY. The match-wide alive count never dropped between two snapshots in the window, bots included, so any death
@@ -74,7 +78,34 @@ npx tsx tools/performance/compare.mts --base base-{1..5}.json --cand cand-{1..5}
   `invalid` or no longer measured. 2 means the inputs can't be compared (different config, machine, scenario version
   or contract version, or a `--metrics` name that no case has).
 - A zero baseline has no percentage. Any change from zero shows as "from zero" and is judged on the range test alone.
-- Options: `--stats p50,p95,p99`, `--metrics hostTickMs,simulationMs`, `--threshold 5`, `--out comparison.json`.
+- Options: `--stats p50,p95,p99`, `--metrics hostTickMs,simulationMs`, `--threshold 5`, `--out comparison.json`,
+  `--budgets tools/performance/budgets.json`.
+- [budgets.json](budgets.json) holds per-scenario thresholds calibrated from A/A runs on one runner class, with the
+  calibration written next to them. Recalibrate before gating on a different machine.
 
 Interleave the runs (base, candidate, base, candidate, ...) on the same machine. `compare.mts` warns when all
 baseline runs came before all candidate runs, because machine drift can then look like a change.
+
+## Repeated baseline/candidate runs
+
+`run.mts` does the interleaving for you: `--reps` pairs, alternating which side runs first, each run a fresh Node
+process measuring the checkout you name with `host.mts --root`. Then it checks the state digests and runs
+`compare.mts`.
+
+```sh
+git worktree add ../kong-base origin/main          # the baseline checkout
+ln -s "$PWD/node_modules" ../kong-base/node_modules
+npx tsx tools/performance/run.mts --base ../kong-base --cand . --scenario real-play \
+  --metrics hostTickMs,simulationMs --stats p50,p99 --budgets tools/performance/budgets.json
+npx tsx tools/performance/run.mts --base .           # A/A: the noise floor of this runner
+```
+
+- The harness (`run.mts`, `host.mts`) always comes from the checkout you run it in; only the measured game code
+  comes from `--base`/`--cand`. Commit the candidate first, or the results say `dirty`.
+- Every run of one side must produce the same state digest, or the run fails as nondeterministic. The two sides must
+  produce the same digest too, because a performance change should replay the same match. Pass
+  `--allow-outcome-change` only for an intended gameplay change.
+- Results go to `--out-dir` (default `reports/performance/run-<time>/`, which git ignores): one JSON per run,
+  `comparison.json` and `comparison.md`.
+- Exit status is `compare.mts`'s, or 1 on a digest mismatch. Five pairs of `real-play` take about 10 minutes on a
+  4-vCPU runner. Don't run anything else on the machine meanwhile.

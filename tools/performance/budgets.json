@@ -1,0 +1,20 @@
+{
+  "about": "compare.mts --budgets: per scenario/metric/statistic change (%) that counts, replacing --threshold. A change must also clear the range test (every candidate run outside the baseline runs' range, 5+ runs a side).",
+  "calibration": {
+    "host/real-play": "2026-11-03, cloud Linux 4 vCPU AMD EPYC, Node 22.23.4, 5+5 interleaved A/A runs of the same commit: |median delta| <= 3.5% on every row, run-to-run spread 12-18%. Tail thresholds are about twice the largest A/A median delta. Recalibrate on each runner class before gating on it."
+  },
+  "thresholdPct": {
+    "host/real-play": {
+      "hostTickMs": {
+        "p50": 5,
+        "p95": 8,
+        "p99": 8
+      },
+      "simulationMs": {
+        "p50": 5,
+        "p95": 8,
+        "p99": 8
+      }
+    }
+  }
+}
