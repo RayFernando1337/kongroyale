@@ -31,8 +31,15 @@ function fail(msg: string): never { console.error("compare: " + msg); process.ex
 const load = (f: string) => { try { return parseResult(JSON.parse(fs.readFileSync(f, "utf8")), f); } catch (e) { fail((e as Error).message); } };
 type Budgets = Record<string, Record<string, Record<string, number>>>;
 const budgets: Budgets = budgetFile ? (() => { try { return JSON.parse(fs.readFileSync(budgetFile, "utf8")).thresholdPct ?? fail(`${budgetFile} has no thresholdPct`); } catch (e) { fail(`${budgetFile}: ${(e as Error).message}`); } })() : {};
-for (const [id, metrics] of Object.entries(budgets)) for (const [metric, stats] of Object.entries(metrics)) for (const [stat, pct] of Object.entries(stats))
-  if (!(typeof pct === "number" && pct >= 0)) fail(`${budgetFile}: ${id} ${metric} ${stat} must be a non-negative percentage, got ${JSON.stringify(pct)}`);
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+if (!isRecord(budgets)) fail(`${budgetFile}: thresholdPct must be an object`);
+for (const [id, metrics] of Object.entries(budgets)) {
+  if (!isRecord(metrics)) fail(`${budgetFile}: ${id} must be an object of metrics`);
+  for (const [metric, stats] of Object.entries(metrics)) {
+    if (!isRecord(stats)) fail(`${budgetFile}: ${id} ${metric} must be an object of statistics`);
+    for (const [stat, pct] of Object.entries(stats)) if (!(typeof pct === "number" && pct >= 0)) fail(`${budgetFile}: ${id} ${metric} ${stat} must be a non-negative percentage, got ${JSON.stringify(pct)}`);
+  }
+}
 const base = baseFiles.map(load), cand = candFiles.map(load), runs = [...base, ...cand], files = [...baseFiles, ...candFiles];
 
 const key0 = comparabilityKey(runs[0]);
