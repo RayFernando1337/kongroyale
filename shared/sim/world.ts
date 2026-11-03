@@ -89,7 +89,7 @@ export class StaticWorld {
   cx!: Float32Array; cy!: Float32Array; cz!: Float32Array;
   hx!: Float32Array; hy!: Float32Array; hz!: Float32Array;
   cos!: Float32Array; sin!: Float32Array;          // yaw
-  /** each box's world x/z bounds (yaw included, a little padded): rays skip a box whose bounds their segment misses */
+  /** each box's world x/z bounds (yaw included, a little padded): rays and capsule gathers skip a box they miss */
   bx0!: Float32Array; bx1!: Float32Array; bz0!: Float32Array; bz1!: Float32Array;
   surf!: Uint8Array; noShoot!: Uint8Array; noWalk!: Uint8Array;
   /** boxes a tuk-tuk drives through (fences, hedges, crop stems — Box.noDrive), and the switch the vehicle step
@@ -399,6 +399,7 @@ export class StaticWorld {
         const i = this.cellItems[k];
         if (stamp[i] === gen) continue; stamp[i] = gen;
         if (this.noWalk[i] || (this.drive && this.noDrive[i])) continue;
+        if (this.bx1[i] < px - r || this.bx0[i] > px + r || this.bz1[i] < pz - r || this.bz0[i] > pz + r) continue;
         const top = this.cy[i] + this.hy[i], bot = this.cy[i] - this.hy[i];
         if (capBot >= top || capTop <= bot + CEIL_TOL) continue;
         const dx = px - this.cx[i], dz = pz - this.cz[i];
