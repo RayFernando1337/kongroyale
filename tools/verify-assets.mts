@@ -8,6 +8,8 @@
 //   2. sidecar  - a provenance file in the file's folder or a parent folder under public/assets/. LICENSE, NOTICE and
 //                 provenance.json cover the folder tree. SOURCES.json and tex.json cover only files whose name
 //                 starts with a top-level key whose own entry has a source and a licence (e.g. "wall" covers wall-d.webp).
+//                 A sidecar with a string "note" and a "layers" array (terrain/tex3) covers every file under a folder named
+//                 by a layer.
 //                 Licence texts are covered by being one.
 //   3. manifest - tools/asset-sources.json, if present (optional, proposed format below).
 // *.json files are project data (indexes, metadata) rather than art, so they are skipped unless --all is given.
@@ -80,7 +82,9 @@ for (const f of files) {
   }
   const entries = JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
   const documented = (e: any) => typeof e?.source === "string" && e.source !== "" && (e.license || e.licence);
-  keyedSidecars.set(dir, Object.keys(entries).filter((k) => documented(entries[k])));
+  const keys = Object.keys(entries).filter((k) => documented(entries[k]));
+  if (typeof entries.note === "string" && entries.note !== "" && Array.isArray(entries.layers)) keys.push(...entries.layers);
+  keyedSidecars.set(dir, keys);
 }
 const isLicenceText = (f: string) => /(^|\/)(LICENSE|NOTICE)$|-OFL\.txt$/.test(f);
 
@@ -100,7 +104,7 @@ for (const f of files) {
     for (let d = path.posix.dirname(f); d.length >= ASSETS.length - 1 && !how; d = path.posix.dirname(d)) {
       if (sidecarDirs.has(d)) how = "sidecar: " + d + "/";
       const keys = keyedSidecars.get(d);
-      if (!how && keys?.some((k) => path.posix.basename(f).startsWith(k))) how = "sidecar keys: " + d + "/";
+      if (!how && keys?.some((k) => f.slice(d.length + 1).split("/").some((s, i, a) => (i === a.length - 1 ? s.startsWith(k) : s === k)))) how = "sidecar keys: " + d + "/";
     }
   }
   if (!how) unattributed.push(f);
