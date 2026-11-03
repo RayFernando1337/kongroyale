@@ -19,7 +19,7 @@ try{
     };
     p.ws.on('message',onMessage);p.ws.on('error',(e:Error)=>errors.push(e.message));p.ws.on('close',()=>{if(active)disconnects++;});
     await wait(()=>!!p.uid,'welcome');p.ws.send(JSON.stringify({t:'hello',name:'BENCH '+i}));
-    if(aux){p.aux=new WebSocket(base.replace(/^http/,'ws')+'/ws?aux='+encodeURIComponent(p.token));p.aux.on('message',onMessage);p.aux.on('error',(e:Error)=>errors.push(e.message));p.aux.on('close',()=>{if(active)disconnects++;});await wait(()=>p.aux.readyState===WebSocket.OPEN,'aux');}
+    if(aux){p.aux=new WebSocket(base.replace(/^http/,'ws')+'/ws?attach=1');p.aux.on('open',()=>p.aux.send(JSON.stringify({t:'aux',token:p.token})));p.aux.on('message',onMessage);p.aux.on('error',(e:Error)=>errors.push(e.message));p.aux.on('close',()=>{if(active)disconnects++;});await wait(()=>p.aux.readyState===WebSocket.OPEN,'aux');}
     p.ws.send(JSON.stringify(i===0?{t:'create',mode:'trios'}:{t:'join',code:peers[0].code}));await wait(()=>!!p.code,'join');
   }
   peers[0].ws.send('{"t":"start"}');await wait(()=>peers.every(p=>p.pid>=0),'50 seats');await sleep(1500);

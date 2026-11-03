@@ -13,7 +13,7 @@ fs.mkdirSync(path.dirname(out),{recursive:true});
 const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
 const log=fs.openSync(out.replace(/\.json$/,'')+'.server.log','w');
 const runner=path.join(root,'node_modules/.bin/tsx');
-const server=spawn(runner,['server/index.ts'],{cwd:root,env:{...process.env,KR_HOST:'127.0.0.1',KR_PORT:String(port),KR_SERVE:'1',KR_PERF_METRICS:'1',KR_WARMUP_S:String(seconds+90)},stdio:['ignore',log,log]});
+const server=spawn(runner,['server/index.ts'],{cwd:root,env:{...process.env,KR_HOST:'127.0.0.1',KR_PORT:String(port),KR_SERVE:'1',KR_PERF_METRICS:'1',KR_EVENT_MODE:'0',KR_WARMUP_S:String(seconds+90)},stdio:['ignore',log,log]});
 let failure;server.on('error',e=>{failure=e;});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const stop=()=>server.kill('SIGTERM');process.on('SIGINT',stop);process.on('SIGTERM',stop);
