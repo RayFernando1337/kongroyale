@@ -5,13 +5,14 @@
 // A file counts as attributed when any of these covers it, checked in this order:
 //   1. credits  - a path or glob in backticks in CREDITS.md that starts with public/assets/ ("*" = within a folder,
 //                 "**" = any depth; a path ending in "/" covers the whole folder).
-//   2. sidecar  - a provenance file sitting in the file's folder or a parent folder under public/assets/:
-//                 LICENSE, NOTICE, provenance.json, SOURCES.json or tex.json. Licence texts are covered by being one.
+//   2. sidecar  - a provenance file in the file's folder or a parent folder under public/assets/. LICENSE, NOTICE and
+//                 provenance.json cover the folder tree. SOURCES.json and tex.json must mention a licence, and cover
+//                 only files whose name starts with one of their top-level keys (e.g. "wall" covers wall-d.webp).
+//                 Licence texts are covered by being one.
 //   3. manifest - tools/asset-sources.json, if present (optional, proposed format below).
 // *.json files are project data (indexes, metadata) rather than art, so they are skipped unless --all is given.
 //
-// Manifest format (tools/asset-sources.json): an array of entries. The longest matching "path" wins for the report;
-// any match counts.
+// Manifest format (tools/asset-sources.json): an array of entries. Any matching entry counts.
 //   [
 //     { "path": "public/assets/audio/kr/step/", "source": "Freesound CC0 packs", "licence": "CC0" },
 //     { "path": "public/assets/terrain/tex3/", "source": "original", "licence": "MIT (AI-generated, see CREDITS.md)" }
@@ -41,7 +42,7 @@ function walk(dir: string, out: string[]): string[] {
 
 function globToRegExp(g: string): RegExp {
   const body = g.endsWith("/") ? g + "**" : g;
-  const re = body.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*");
+  const re = body.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "\u0001").replace(/\*\*/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*").replace(/\u0001/g, "(?:.*/)?");
   return new RegExp("^" + re + "$");
 }
 
@@ -67,7 +68,19 @@ if (fs.existsSync(manifestPath)) {
 }
 
 const files = walk(path.join(root, ASSETS), []);
-const sidecarDirs = new Set(files.filter((f) => SIDECARS.has(path.posix.basename(f))).map((f) => path.posix.dirname(f)));
+const sidecarDirs = new Set<string>();
+const keyedSidecars = new Map<string, string[]>();
+for (const f of files) {
+  const name = path.posix.basename(f);
+  if (!SIDECARS.has(name)) continue;
+  const dir = path.posix.dirname(f);
+  if (name !== "SOURCES.json" && name !== "tex.json") {
+    sidecarDirs.add(dir);
+    continue;
+  }
+  const text = fs.readFileSync(path.join(root, f), "utf8");
+  if (/licen[cs]e/i.test(text)) keyedSidecars.set(dir, Object.keys(JSON.parse(text)));
+}
 const isLicenceText = (f: string) => /(^|\/)(LICENSE|NOTICE)$|-OFL\.txt$/.test(f);
 
 const unattributed: string[] = [];
@@ -79,14 +92,14 @@ for (const f of files) {
     continue;
   }
   let how: string | undefined;
-  const rule = rules.find((r) => r.re.test(f));
-  if (rule) {
-    rule.hits++;
-    how = rule.kind + ": " + rule.path;
-  } else if (isLicenceText(f)) how = "licence text";
+  const matched = rules.filter((r) => r.re.test(f));
+  for (const r of matched) r.hits++;
+  if (matched.length) how = matched[0].kind + ": " + matched[0].path; else if (isLicenceText(f)) how = "licence text";
   else {
     for (let d = path.posix.dirname(f); d.length >= ASSETS.length - 1 && !how; d = path.posix.dirname(d)) {
       if (sidecarDirs.has(d)) how = "sidecar: " + d + "/";
+      const keys = keyedSidecars.get(d);
+      if (!how && keys?.some((k) => path.posix.basename(f).startsWith(k))) how = "sidecar keys: " + d + "/";
     }
   }
   if (!how) unattributed.push(f);
