@@ -1,0 +1,50 @@
+# Performance tools
+
+This folder holds the Node benchmark runners and the shared result contract. Read
+[PERFORMANCE.md](../../PERFORMANCE.md) for the plan these tools serve. Every runner here measures only servers and
+processes you start yourself.
+
+## Result contract
+
+Every runner writes one JSON file per run in the shape defined in [schema.ts](schema.ts) (`kong-perf-result`,
+version 1). The file records:
+
+- **source**: the measured checkout, its commit, and whether it had uncommitted changes.
+- **environment**: OS, CPU, Node, memory, load average at start, and the GPU. `gpu` is `null` for CPU-only runners.
+- **config**: every option that shapes the workload. Runs with different config are never compared.
+- **cases**: one per scenario. A case has the scenario id, version, seed and workload kind, the warmup and measurement
+  windows, the achieved load, the metrics, and pass/fail gates.
+
+A metric is either a per-run distribution (`summary`: n, mean, p50, p95, p99, max), a single per-run `value`, or
+`unsupported`/`invalid` with a reason. A runner that can't measure something records it that way, never as zero.
+
+`schema.ts` imports nothing from Node, so a browser or GPU collector can use the same types.
+
+When a scenario's workload changes, bump its `version`. When a field in the contract changes meaning, bump
+`RESULT_VERSION`. `compare.mts` refuses to mix either.
+
+## Runners
+
+| Command | Writes | Notes |
+|---|---|---|
+| `npm run bench:host -- --out <file>` | `kong-perf-result` | Authoritative host and snapshot fan-out, CPU only. `--root <checkout>` measures another checkout, `--scenario combat` runs one scenario, `--ticks N` sets the window. The four scenarios are synthetic and run in the match's warm-up phase. They are not real-play coverage. |
+| `npm run bench:server -- --seconds 60 --out <file>` | its own JSON (not yet the contract) | Private server and 50 real WebSocket players. Build first. |
+
+## Comparing runs
+
+```sh
+npx tsx tools/performance/compare.mts --base base1.json base2.json base3.json --cand cand1.json cand2.json cand3.json
+```
+
+- Each run contributes one number per metric and statistic, for example its p99 host tick. Ticks or frames inside a
+  run are correlated, so they are never pooled across runs.
+- The table shows the median over runs, the min–max range, and that range as a percentage of the median. Run the
+  baseline alone (`--base` only) to see the noise floor.
+- A metric is **worse** or **better** only when every candidate run is outside the baseline runs' range and the
+  medians differ by at least `--threshold` percent (default 5). Fewer than three runs on a side is **inconclusive**.
+- Exit status: 0 means no regression, 1 means a regression or a failed candidate gate, 2 means the inputs can't be
+  compared (different config, machine, scenario version, or contract version).
+- Options: `--stats p50,p95,p99`, `--metrics hostTickMs,simulationMs`, `--threshold 5`, `--out comparison.json`.
+
+Interleave the runs (base, candidate, base, candidate, ...) on the same machine. `compare.mts` warns when all
+baseline runs came before all candidate runs, because machine drift can then look like a change.

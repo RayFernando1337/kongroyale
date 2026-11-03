@@ -1,22 +1,30 @@
-// CPU-only authoritative host + fan-out benchmark; runs unchanged on Linux.
+// CPU-only authoritative host + fan-out benchmark; runs unchanged on Linux. Writes a kong-perf-result (schema.ts).
 // Target any checkout: npm run bench:host -- --root <other checkout> --out reports/performance/host-base.json
+// One scenario only: --scenario combat. Compare runs with tools/performance/compare.mts.
+// The four scenarios are synthetic and run in the match's WARM-UP phase (m.warmupS = 1e9): they isolate host/fan-out
+// cost, they are not real-play coverage.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { arg, env, save, stats } from './common.mts';
-const root=path.resolve(arg('--root','.')), ticks=+arg('--ticks','1800'), warm=240;
+import { arg, env, save, source, stats } from './common.mts';
+import { RESULT_SCHEMA, RESULT_VERSION, type CaseResult, type RunResult } from './schema.ts';
+const root=path.resolve(arg('--root','.')), ticks=+arg('--ticks','1800'), warm=240, seed=707, out=arg('--out','reports/performance/host.json');
+const all=['clustered','dispersed','combat','bots'], only=arg('--scenario','').split(',').filter(Boolean);
+for(const s of only)if(!all.includes(s))throw Error(`unknown --scenario ${s}; one of ${all.join(', ')}`);
 const mod=(p:string)=>import(pathToFileURL(path.join(root,p)).href);
 const [{Terrain},{decodeTerrainFile},{buildStaticWorld},{Match},{MatchHost,writeSnapshotFor,SnapshotBatch},{Writer},{makeInput,PS,SK,B},{SNAP_EVERY},{POIS,WEAPONS}] = await Promise.all([
   mod('shared/world/terrain.ts'),mod('shared/world/terrain-gen.ts'),mod('shared/sim/static-world.ts'),mod('shared/sim/match.ts'),mod('shared/net/host.ts'),mod('shared/net/proto.ts'),mod('shared/sim/player.ts'),mod('shared/sim/const.ts'),mod('shared/world/map.ts')
 ]);
+const startedAt=new Date().toISOString(), run0=performance.now();
 const b=fs.readFileSync(path.join(root,'public/assets/terrain/island.bin'));
 const td=decodeTerrainFile(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));
-const boot=performance.now(), {world,hash}=await buildStaticWorld(new Terrain(td.heights,td.biome),td);
-const result:any={environment:env(), worldHash:hash, buildMs:performance.now()-boot, seed:707, ticks, warmupTicks:warm, cases:[]};
-for(const scenario of ['clustered','dispersed','combat','bots']){
+const boot=performance.now(), {world,hash}=await buildStaticWorld(new Terrain(td.heights,td.biome),td), buildMs=performance.now()-boot;
+const cases:CaseResult[]=[];
+const ms=(summary:ReturnType<typeof stats>)=>({status:'ok' as const,unit:'ms' as const,better:'lower' as const,summary});
+for(const scenario of only.length?only:all){
   const humans=scenario==='bots'?[]:Array.from({length:50},(_,id)=>({id,name:'P'+id,team:Math.floor(id/3)}));
-  const m=new Match({seed:707,mode:'trios',world,humans}), host=new MatchHost(m), h=createHash('sha256');
+  const m=new Match({seed,mode:'trios',world,humans}), host=new MatchHost(m), h=createHash('sha256');
   m.warmupS=1e9;
   if(scenario==='dispersed')for(const p of m.players){p.x=-480+(p.id%10)*100;p.z=-360+Math.floor(p.id/10)*160;p.y=world.ground(p.x,p.z)+2;}
   const islet=POIS.find((p:any)=>p.id==='lobby-islet');
@@ -34,15 +42,32 @@ for(const scenario of ['clustered','dispersed','combat','bots']){
     const t=performance.now();host.tick();const dt=performance.now()-t;
     if(measure){costs.push(dt);if(m.tick%SNAP_EVERY===0)snaps.push(dt);}
   }
-  const used=process.cpuUsage(usage);
-  result.cases.push({scenario,seats:m.players.length,peers:host.peers.length,pellets,hostMs:stats(costs),snapshotTickMs:stats(snaps),simulationMs:stats(sim),bytes,packets,bytesPerPlayerSecond:bytes/(ticks/60)/m.players.length,checksum:h.digest('hex'),wallMs:performance.now()-start,cpuMs:(used.user+used.system)/1000,memory0,memory1:process.memoryUsage()});
+  const used=process.cpuUsage(usage), wallMs=performance.now()-start;
+  const c:CaseResult={
+    scenario:{id:'host/'+scenario,version:1,seed,workload:'synthetic-warmup'},
+    windows:{matchPhase:'warmup',benchWarmupTicks:warm,measuredTicks:ticks,cpuAndWallInclude:'bench warm-up ticks'},
+    load:{seats:m.players.length,peers:host.peers.length,humansDriven:humans.length,pellets},
+    metrics:{
+      hostTickMs:ms(stats(costs)),snapshotTickMs:ms(stats(snaps)),simulationMs:ms(stats(sim)),
+      bytesPerPlayerSecond:{status:'ok',unit:'bytes/s',better:'lower',value:bytes/(ticks/60)/m.players.length},
+      cpuMs:{status:'ok',unit:'ms',better:'lower',value:(used.user+used.system)/1000},
+    },
+    gates:[{id:'hostP99Within60Hz',pass:stats(costs).p99<=1000/60,detail:`host p99 ${stats(costs).p99.toFixed(2)} ms, budget ${(1000/60).toFixed(2)} ms`}],
+    detail:{bytes,packets,checksum:h.digest('hex'),checksumCovers:'every packet sent in the measured window (hashed inside the timed tick)',wallMs,memory0,memory1:process.memoryUsage()},
+  };
+  if(scenario==='combat')c.gates.push({id:'combatSustainedFire',pass:pellets>=ticks,detail:`${pellets} pellets in ${ticks} ticks`});
   // Isolate serialization from sim/transport; checksum covers the real tick stream above.
   const w=new Writer(new ArrayBuffer(16384)), serial:number[]=[];
   for(let k=0;k<180;k++){const t=performance.now();for(let pid=0;pid<m.players.length;pid++)writeSnapshotFor(w,m,pid);serial.push(performance.now()-t);}
-  result.cases.at(-1).legacySnapshotFanoutMs=stats(serial.slice(30));
-  if(SnapshotBatch){const batch=new SnapshotBatch(),cached:number[]=[];for(let k=0;k<180;k++){const t=performance.now();batch.begin(m);for(let pid=0;pid<m.players.length;pid++)writeSnapshotFor(w,m,pid,batch);cached.push(performance.now()-t);}result.cases.at(-1).cachedSnapshotFanoutMs=stats(cached.slice(30));}
-  console.log(scenario,JSON.stringify(result.cases.at(-1)));
+  c.metrics.legacySnapshotFanoutMs=ms(stats(serial.slice(30)));
+  if(SnapshotBatch){const batch=new SnapshotBatch(),cached:number[]=[];for(let k=0;k<180;k++){const t=performance.now();batch.begin(m);for(let pid=0;pid<m.players.length;pid++)writeSnapshotFor(w,m,pid,batch);cached.push(performance.now()-t);}c.metrics.cachedSnapshotFanoutMs=ms(stats(cached.slice(30)));}
+  else c.metrics.cachedSnapshotFanoutMs={status:'unsupported',unit:'ms',reason:'this checkout has no SnapshotBatch'};
+  cases.push(c);
+  const tick=stats(costs);console.log(`${c.scenario.id}: host tick p50/p95/p99/max ${[tick.p50,tick.p95,tick.p99,tick.max].map(v=>v.toFixed(2)).join(' / ')} ms, ${c.load.seats} seats, ${pellets} pellets`);
 }
-save(arg('--out','reports/performance/host.json'),result);
-if(result.cases.some((c:any)=>c.hostMs.p99>1000/60)){console.error('FAIL: host p99 exceeds 60 Hz tick budget');process.exitCode=1;}
-if(result.cases.find((c:any)=>c.scenario==='combat').pellets<ticks){console.error('FAIL: combat workload did not sustain firing');process.exitCode=1;}
+const result:RunResult={schema:RESULT_SCHEMA,version:RESULT_VERSION,tool:'bench:host',startedAt,durationMs:performance.now()-run0,source:source(root),environment:env(),
+  config:{ticks,benchWarmupTicks:warm,scenarios:(only.length?only:all).join(','),worldHash:hash,mode:'trios'},cases,errors:[],artifacts:[]};
+(result as any).detail={buildMs};
+save(out,result);
+console.log('wrote',out);
+for(const c of cases)for(const g of c.gates)if(!g.pass){console.error(`FAIL: ${c.scenario.id} ${g.id}: ${g.detail}`);process.exitCode=1;}
