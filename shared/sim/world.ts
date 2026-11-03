@@ -9,7 +9,7 @@ import type { CoverSet } from "./cover";
 
 const GRID_CELL = 24;
 /** padding (m) on each box's x/z bounds so float32 rounding can never cull a box a ray really hits */
-const BOUNDS_PAD = 0.01;
+const BOUNDS_PAD_M = 0.01;
 // terrain slopes: full speed up to 35°, uphill
 // speed falls to SLOPE_SLOW_MUL at 45°, steeper TERRAIN is a slide (no uphill progress, no jump). Box ramps keep the
 // older SLOPE_LIMIT (51°) so designed ramps / stairs are untouched.
@@ -152,7 +152,7 @@ export class StaticWorld {
       const ez = Math.abs(this.sin[i]) * b.h[0] + Math.abs(this.cos[i]) * b.h[2];
       const x0 = this.cell(b.c[0] - ex), x1 = this.cell(b.c[0] + ex), z0 = this.cell(b.c[2] - ez), z1 = this.cell(b.c[2] + ez);
       spans.push([x0, x1, z0, z1]);
-      const bex = Math.abs(this.cos[i]) * this.hx[i] + Math.abs(this.sin[i]) * this.hz[i] + BOUNDS_PAD, bez = Math.abs(this.sin[i]) * this.hx[i] + Math.abs(this.cos[i]) * this.hz[i] + BOUNDS_PAD;
+      const bex = Math.abs(this.cos[i]) * this.hx[i] + Math.abs(this.sin[i]) * this.hz[i] + BOUNDS_PAD_M, bez = Math.abs(this.sin[i]) * this.hx[i] + Math.abs(this.cos[i]) * this.hz[i] + BOUNDS_PAD_M;
       this.bx0[i] = this.cx[i] - bex; this.bx1[i] = this.cx[i] + bex; this.bz0[i] = this.cz[i] - bez; this.bz1[i] = this.cz[i] + bez;
       for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) counts[z * this.gridN + x]++;
     }
