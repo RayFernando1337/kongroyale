@@ -14,6 +14,7 @@ import { CONSUMABLES } from "../world/map";
 import * as islet from "../pois/lobby-islet";
 import { chestRegen, IK, lootReachable, placeLoot, REGEN, rollAmmoBox, rollChestContents, settleLoot, tossClear, type Chest, type Item } from "./loot";
 import { aimedItem, standNear } from "./pickup";
+import { ItemGrid } from "./item-grid";
 const NO_STANDS: ReadonlyArray<{ x: number; y: number; z: number }> = [];
 import {
   AMMO_TYPES, B, PS, SK, alive, applyDamage, bombSlot, copyInput, currentSpread, eyeY, giveAmmo, height, invDrop, invMove, makeInput, makePlayer, recordHistory,
@@ -98,6 +99,8 @@ export class Match {
   phase: Phase = Phase.Warmup; phaseT = 0; tick = 0; time = 0;
   readonly plan: StormPlan; readonly storm: StormState = makeStormState();
   chests: Chest[]; items: Item[]; nextItemId: number;
+  /** a spatial index over `items` for auto pick-up's nearby-item query */
+  private readonly itemGrid = new ItemGrid();
   private deathLoot: Array<{ kind: IK; sub: number; rarity: number; count: number; loaded?: number; x: number; y: number; z: number; owner: number }> = [];
   /** Publish after simulation, so a new drop cannot be picked up before its SpawnItem event. */
   private flushDeathLoot() {
@@ -1206,11 +1209,20 @@ export class Match {
     return best;
   }
   private autoPickup(p: Player) {
-    for (const it of this.items) {
-      if (it.taken) continue;
+    const items = this.items, grid = this.itemGrid;
+    grid.sync(items);
+    // something you dropped stays on the ground until you have walked away from it once (then walking over it grabs it)
+    for (let k = 0; k < grid.heldN; k++) {
+      const it = items[grid.held[k]];
+      if (it.dropper !== p.id) continue;
+      const dx = it.x - p.x, dz = it.z - p.z;
+      if (dx * dx + dz * dz > (PICKUP_DIST + 1) ** 2) it.dropper = -1;
+    }
+    const n = grid.near(p.x, p.z, PICKUP_DIST);
+    for (let k = 0; k < n; k++) {
+      const it = items[grid.out[k]];
+      if (it.taken || it.dropper === p.id) continue;
       const dx = it.x - p.x, dz = it.z - p.z, d2 = dx * dx + dz * dz;
-      // something you dropped stays on the ground until you have walked away from it once (then walking over it grabs it)
-      if (it.dropper === p.id) { if (d2 > (PICKUP_DIST + 1) ** 2) it.dropper = -1; continue; }
       if (d2 > PICKUP_DIST * PICKUP_DIST || it.y - p.y < -1.3 || it.y - p.y > 1.5) continue;
       if (!this.range && !lootReachable(this.world, p.x, p.y, p.z, it.x, it.y, it.z, !p.bot)) continue;
       // walking over a gun you already carry (same weapon, any rarity) never fills a second slot with it — take it with E
