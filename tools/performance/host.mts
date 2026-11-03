@@ -4,8 +4,10 @@
 // Each scenario plays the real START -> plane -> drop path untimed, then times the PLAY phase. real-play
 // (scenarios/real-play.mts) is the representative workload: bots only, nothing placed. The other four are synthetic
 // (scripted placement and inputs): they isolate host/fan-out cost, they are not full-match coverage.
-// The timed ticks hash nothing. A digest of the match state after the window checks the run replayed the same match;
-// --trace also hashes every packet inside the timed tick (slower, so traced runs only compare with traced runs).
+// The timed ticks hash nothing. A digest of the match state after the window (every item, chest, rocket, the storm, and
+// each player's position, health, state, kills and inventory) checks the run replayed the same match; --trace also
+// hashes every packet inside the timed tick (slower, so traced runs only compare with traced runs).
+// --ticks sets the synthetic scenarios' window only; real-play always times REAL_PLAY.measuredTicks.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -56,7 +58,8 @@ for(const scenario of only.length?only:all){
     if(measure){costs.push(dt);if(m.tick%SNAP_EVERY===0)snaps.push(dt);phaseTicks[Phase[m.phase]]=(phaseTicks[Phase[m.phase]]??0)+1;}
   }
   const used=process.cpuUsage(usage), wallMs=performance.now()-start;
-  const state=createHash('sha256').update(JSON.stringify([m.tick,m.items.length,m.players.map((p:any)=>[p.x,p.y,p.z,p.hp,p.shield,p.st,p.kills])])).digest('hex');
+  const state=createHash('sha256').update(JSON.stringify([m.tick,m.nextItemId,m.items,m.chests,m.rockets,[m.storm.phase,m.storm.r,m.storm.cx,m.storm.cz],
+    m.players.map((p:any)=>[p.x,p.y,p.z,p.yaw,p.hp,p.shield,p.st,p.kills,p.active,p.slots,[...p.ammo]])])).digest('hex');
   const c:CaseResult={
     scenario:real?{id:REAL_PLAY.id,version:REAL_PLAY.version,seed,workload:REAL_PLAY.workload}:{id:'host/'+scenario,version:2,seed,workload:'synthetic-play'},
     windows:{untimedMatchSetupTicks:setupTicks,benchWarmupTicks:warm,measuredTicks:ticks,cpuWallAndMemory:'measured ticks only'},
