@@ -28,8 +28,11 @@ looks or frame rate, so doctor fails when the GPU string does not match the prof
 | Profile | Where | Browser | Renderer doctor expects | What it can prove |
 |---|---|---|---|---|
 | `mac` | macOS, Apple silicon | Google Chrome (`--channel chrome`), headless, `--use-angle=metal` | `ANGLE Metal Renderer` | everything, including fps and visuals |
-| `win` | Windows, discrete or integrated GPU | Google Chrome, headless, `--use-angle=d3d11` | `Direct3D11` / `D3D11`, not SwiftShader or "Basic Render" | everything, including fps and visuals |
+| `win` | Windows, discrete or integrated GPU | Google Chrome, headless, `--use-angle=d3d11` | `Direct3D11` / `D3D11`, not SwiftShader or "Basic Render" | everything, including fps and visuals (not yet validated on hardware) |
 | `nogpu` | Linux cloud machine with no GPU | Playwright's bundled Chromium, `--use-angle=swiftshader --enable-unsafe-swiftshader` | anything (SwiftShader) | boot reaches ready with no errors; a bot match starts. Not fps, not visuals |
+
+Validated end to end so far: `mac` (M3 Max) and `nogpu`. The `win` profile follows Chrome's ANGLE flags but is not yet
+validated on Windows hardware; treat its first run there as a check of this skill too.
 
 On `nogpu` the title takes minutes and frames are seconds apart, so `all` runs only `boot` and `play` (20 s) with long
 timeouts. Never judge looks or performance from a `nogpu` run; say "smoke only" in the PR.
@@ -45,7 +48,8 @@ timeouts. Never judge looks or performance from a `nogpu` run; say "smoke only" 
    answer (about 15 s). The client proxies `/ws`, `/api` and `/health` to `KR_PORT`, so this pair never touches the
    default :5317/:3020 that a person may be using. `--web` / `--port` pick other ports; `up --prod` serves the built
    `dist/` from the game server alone (run `npm run build` first; the built title is the "playtest" variant).
-3. Ready = `up` prints `{"ok":true,...}`. If a port is taken it refuses instead of driving someone else's instance.
+3. Ready = `up` prints `{"ok":true,...}`. If a port is taken it refuses instead of driving someone else's instance;
+   if a previous instance is only partly alive it refuses too: run `down`, then `up`.
 
 To drive an instance you started yourself (for example `npm run dev` plus `KR_EVENT_MODE=0 npm run server`), pass
 `--url http://localhost:5317 --port 3020` to `doctor` and the drives; `down` then has nothing to stop.
@@ -84,9 +88,11 @@ PNG screenshots named `<feature>-<step>.png` and `result.json` with the platform
 time, fps samples, game state before and after each action, `__kr.errors`, and the first 20 console errors. Each
 command also prints one JSON line per feature and exits 0 only when every feature passed.
 
-Proof standard: the action and its result, not only the last frame. Play proves the match started and advanced
-(fps samples at 5/15/30/60 s, the plane phase). Range proves input reaches the simulation (W held 2 s moves the kong;
-`walkedM` in the result). Room proves two real clients share one server match (both `inMatch`, non-zero `ping`).
+Proof standard: the action and its result, not only the last frame. Every match drive also requires the newest
+authoritative snapshot tick (`snapTick` in the result, from `__kr.game.cm.snapTick()`) to keep rising, so a match that
+stalls after it starts fails. Play proves the match started and advanced (fps samples at 5/15/30/60 s, and the plane
+phase reached on runs of 30 s or more). Range proves input reaches the simulation (W held 2 s moves the kong;
+`walkedM` in the result). Room proves two real clients share one server match (both `inMatch`, both receiving snapshots, non-zero `ping`).
 For a PR, attach the relevant screenshots and quote the `result.json` lines that prove the change; name the profile.
 
 ## Cleanup

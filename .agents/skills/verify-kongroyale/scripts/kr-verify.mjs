@@ -47,7 +47,11 @@ function killTree(pid) {
 
 // ---------------------------------------------------------------- up / down
 async function up() {
-  if (state && state.pids.some(alive)) { console.log(JSON.stringify({ ok: true, note: "already up", ...state })); return 0; }
+  if (state && state.pids.some(alive)) {
+    const healthy = state.pids.every(alive) && (await answers(state.url + "/")) === 200 && (await answers(`http://127.0.0.1:${state.port}/health`)) === 200;
+    if (healthy) { console.log(JSON.stringify({ ok: true, note: "already up", ...state })); return 0; }
+    console.error("a previous instance is only partly alive or not answering; run down, then up"); return 1;
+  }
   for (const p of [WEB_PORT, GAME_PORT]) if (await answers(`http://127.0.0.1:${p}/`)) { console.error(`port ${p} is taken by something this run did not start; pick another with --web / --port`); return 1; }
   if (!fs.existsSync("node_modules/playwright")) { console.error("node_modules missing: run npm ci first"); return 1; }
   const prod = flag("--prod");
@@ -107,7 +111,9 @@ async function openGame(b, query) {
   return { ctx, page, consoleErrors, boot: { ...boot, wallMs: Date.now() - t0 } };
 }
 const krErrors = (page) => page.evaluate(() => window.__kr.errors.slice());
-const snap = (page) => page.evaluate(() => ({ fps: Math.round(window.__kr.fps?.() ?? 0), inMatch: !!window.__kr.game?.inMatch, state: window.__kr.game?.state?.() ?? null }));
+// snapTick = the newest authoritative snapshot tick the client received: it only moves while the simulation runs and
+// its snapshots arrive, so a stalled match or a dead socket cannot pass on inMatch alone
+const snap = (page) => page.evaluate(() => ({ fps: Math.round(window.__kr.fps?.() ?? 0), inMatch: !!window.__kr.game?.inMatch, snapTick: window.__kr.game?.cm?.snapTick?.() ?? -1, state: window.__kr.game?.state?.() ?? null }));
 function gpuOk(gpu) {
   const g = String(gpu).toLowerCase();
   if (PROFILE === "mac") return g.includes("metal");
@@ -138,8 +144,9 @@ async function drivePlay(b, out) {
   }
   const errors = await krErrors(page);
   await ctx.close();
-  const last = samples.at(-1);
-  return { feature: "play", seed, ok: errors.length === 0 && !!last?.inMatch && !!last?.state, boot, samples, errors, consoleErrors: consoleErrors.slice(0, 20) };
+  const first = samples[0], last = samples.at(-1);
+  const advanced = last.snapTick > first.snapTick, reachedPlane = secs < 30 || (last.state?.phase ?? 0) >= 1;
+  return { feature: "play", seed, ok: errors.length === 0 && last.inMatch && advanced && reachedPlane, advanced, reachedPlane, boot, samples, errors, consoleErrors: consoleErrors.slice(0, 20) };
 }
 async function driveRange(b, out) {
   const { ctx, page, consoleErrors, boot } = await openGame(b, "debug");
@@ -156,7 +163,7 @@ async function driveRange(b, out) {
   const moved = before.state && after.state ? Math.hypot(after.state.x - before.state.x, after.state.z - before.state.z) : 0;
   const errors = await krErrors(page);
   await ctx.close();
-  return { feature: "range", ok: errors.length === 0 && after.inMatch && moved > 1, walkedM: +moved.toFixed(1), before, after, boot, errors, consoleErrors: consoleErrors.slice(0, 20) };
+  return { feature: "range", ok: errors.length === 0 && after.inMatch && after.snapTick > before.snapTick && moved > 1, walkedM: +moved.toFixed(1), before, after, boot, errors, consoleErrors: consoleErrors.slice(0, 20) };
 }
 async function driveRoom(b, out) {
   const host = await openGame(b, "debug&dev"), guest = await openGame(b, "debug&dev");
@@ -174,12 +181,15 @@ async function driveRoom(b, out) {
   const inMatch = (p) => p.waitForFunction(() => window.__kr.game?.inMatch === true, null, { timeout: 120_000, polling: 500 });
   await Promise.all([inMatch(host.page), inMatch(guest.page)]);
   await sleep(NOGPU ? 20_000 : 10_000);
+  const h0 = await snap(host.page), g0 = await snap(guest.page);
+  await sleep(3000);
   const hs = await snap(host.page), gs = await snap(guest.page);
+  const live = (a, b) => b.inMatch && b.snapTick > a.snapTick && (b.state?.ping ?? 0) > 0;
   await host.page.screenshot({ path: path.join(out, "room-1-host-match.png") });
   await guest.page.screenshot({ path: path.join(out, "room-1-guest-match.png") });
   const errors = [...(await krErrors(host.page)), ...(await krErrors(guest.page))];
   await host.ctx.close(); await guest.ctx.close();
-  return { feature: "room", code, ok: errors.length === 0 && hs.inMatch && gs.inMatch && !!hs.state && !!gs.state, host: hs, guest: gs, boot: host.boot, errors, consoleErrors: [...host.consoleErrors, ...guest.consoleErrors].slice(0, 20) };
+  return { feature: "room", code, ok: errors.length === 0 && live(h0, hs) && live(g0, gs), host: hs, guest: gs, boot: host.boot, errors, consoleErrors: [...host.consoleErrors, ...guest.consoleErrors].slice(0, 20) };
 }
 
 async function doctor() {
