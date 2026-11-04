@@ -44,6 +44,11 @@ const PROBE = `(function () {
     var t = k.tb[type] || 1;
     return t < 0 ? -t : (k.ch[format] || k.ch[internal] || 4) * t;
   }
+  var BLOCKS = { 33776: [4, 4, 8], 33777: [4, 4, 8], 35916: [4, 4, 8], 35917: [4, 4, 8], 33778: [4, 4, 16], 33779: [4, 4, 16], 35918: [4, 4, 16], 35919: [4, 4, 16],
+    36283: [4, 4, 8], 36284: [4, 4, 8], 36285: [4, 4, 16], 36286: [4, 4, 16], 36492: [4, 4, 16], 36493: [4, 4, 16], 36494: [4, 4, 16], 36495: [4, 4, 16],
+    37488: [4, 4, 8], 37489: [4, 4, 8], 37490: [4, 4, 16], 37491: [4, 4, 16], 37492: [4, 4, 8], 37493: [4, 4, 8], 37494: [4, 4, 8], 37495: [4, 4, 8], 37496: [4, 4, 16], 37497: [4, 4, 16] };
+  [[4, 4], [5, 4], [5, 5], [6, 5], [6, 6], [8, 5], [8, 6], [8, 8], [10, 5], [10, 6], [10, 8], [10, 10], [12, 10], [12, 12]].forEach(function (d, i) { BLOCKS[37808 + i] = [d[0], d[1], 16]; BLOCKS[37840 + i] = [d[0], d[1], 16]; });
+  function storage(gl, internal, w, h) { var b = BLOCKS[internal]; return b ? Math.ceil(w / b[0]) * Math.ceil(h / b[1]) * b[2] : w * h * bpp(gl, internal, 0, 0); }
   function curTex(gl, target) { var s = st(gl), u = s.units[s.unit], k = consts(gl); return u ? u[k.cube[target] !== undefined ? gl.TEXTURE_CUBE_MAP : target] : null; }
   function site() {
     var lines = String(new Error().stack || "").split("\\n").slice(3);
@@ -57,13 +62,13 @@ const PROBE = `(function () {
   }
   function rec(t) {
     var r = M.tex.get(t);
-    if (!r) { r = { levels: {}, w: 0, h: 0, d: 1, fmt: 0, site: site(), immutable: false }; M.tex.set(t, r); }
+    if (!r) { r = { levels: {}, w: 0, h: 0, d: 1, fmt: 0, site: site(), immutable: false, is3d: false }; M.tex.set(t, r); }
     return r;
   }
   function setLevel(gl, target, level, w, h, d, internal, bytes) {
     var t = curTex(gl, target); if (!t) return;
     var r = rec(t), face = consts(gl).cube[target] || 0;
-    if (level === 0) { r.w = w; r.h = h; r.d = d; r.fmt = internal; }
+    if (level === 0) { r.w = w; r.h = h; r.d = d; r.fmt = internal; r.is3d = target === gl.TEXTURE_3D; }
     r.levels[face + ":" + level] = bytes;
   }
   function srcDims(s) {
@@ -95,15 +100,15 @@ const PROBE = `(function () {
     });
     wrap(C, "texStorage2D", function (gl, a) {
       var t = curTex(gl, a[0]); if (!t) return;
-      var r = rec(t), faces = a[0] === gl.TEXTURE_CUBE_MAP ? 6 : 1, b = bpp(gl, a[2], 0, 0);
+      var r = rec(t), faces = a[0] === gl.TEXTURE_CUBE_MAP ? 6 : 1;
       r.w = a[3]; r.h = a[4]; r.d = 1; r.fmt = a[2]; r.immutable = true; r.levels = {};
-      for (var f = 0; f < faces; f++) for (var l = 0; l < a[1]; l++) r.levels[f + ":" + l] = Math.max(1, a[3] >> l) * Math.max(1, a[4] >> l) * b;
+      for (var f = 0; f < faces; f++) for (var l = 0; l < a[1]; l++) r.levels[f + ":" + l] = storage(gl, a[2], Math.max(1, a[3] >> l), Math.max(1, a[4] >> l));
     });
     wrap(C, "texStorage3D", function (gl, a) {
       var t = curTex(gl, a[0]); if (!t) return;
-      var r = rec(t), b = bpp(gl, a[2], 0, 0), is3d = a[0] === gl.TEXTURE_3D;
+      var r = rec(t), is3d = a[0] === gl.TEXTURE_3D;
       r.w = a[3]; r.h = a[4]; r.d = a[5]; r.fmt = a[2]; r.immutable = true; r.levels = {};
-      for (var l = 0; l < a[1]; l++) r.levels["0:" + l] = Math.max(1, a[3] >> l) * Math.max(1, a[4] >> l) * (is3d ? Math.max(1, a[5] >> l) : a[5]) * b;
+      for (var l = 0; l < a[1]; l++) r.levels["0:" + l] = storage(gl, a[2], Math.max(1, a[3] >> l), Math.max(1, a[4] >> l)) * (is3d ? Math.max(1, a[5] >> l) : a[5]);
     });
     wrap(C, "generateMipmap", function (gl, a) {
       var t = curTex(gl, a[0]); if (!t) return;
@@ -111,8 +116,8 @@ const PROBE = `(function () {
       var faces = a[0] === gl.TEXTURE_CUBE_MAP ? 6 : 1;
       for (var f = 0; f < faces; f++) {
         var b0 = r.levels[f + ":0"]; if (!b0) continue;
-        var w = r.w, h = r.h, per = b0 / (w * h), l = 0;
-        while (w > 1 || h > 1) { w = Math.max(1, w >> 1); h = Math.max(1, h >> 1); l++; r.levels[f + ":" + l] = w * h * per; }
+        var w = r.w, h = r.h, d = r.is3d ? r.d : 1, per = b0 / (w * h * d), l = 0;
+        while (w > 1 || h > 1 || d > 1) { w = Math.max(1, w >> 1); h = Math.max(1, h >> 1); d = Math.max(1, d >> 1); l++; r.levels[f + ":" + l] = w * h * d * per; }
       }
     });
     wrap(C, "bindBuffer", function (gl, a) { st(gl).buf[a[0]] = a[1]; });
@@ -271,7 +276,7 @@ async function processes(cdp: CDPSession): Promise<Proc[]> {
   const mem = osMemory(processInfo.map((p) => p.id));
   return processInfo.map((p) => ({ type: p.type, pid: p.id, ...(mem.get(p.id) ?? { pssMB: null, rssMB: null, privateMB: null, footprintMB: null }) }));
 }
-const procMB = (p: Proc) => p.pssMB ?? p.footprintMB ?? p.privateMB ?? p.rssMB ?? 0;
+const procMB = (p: Proc) => p.pssMB ?? p.footprintMB ?? p.privateMB ?? p.rssMB;
 
 async function heapSnapshot(page: CDPSession) {
   const chunks: string[] = [];
@@ -285,16 +290,21 @@ async function heapSnapshot(page: CDPSession) {
   const T = meta.node_fields.indexOf("type"), N = meta.node_fields.indexOf("name"), S = meta.node_fields.indexOf("self_size"), EC = meta.node_fields.indexOf("edge_count");
   const ET = meta.edge_fields.indexOf("type"), EN = meta.edge_fields.indexOf("name_or_index"), TO = meta.edge_fields.indexOf("to_node");
   const types = meta.node_types[0], etypes = meta.edge_types[0], n = snap.nodes.length / nf;
-  const retainer = new Int32Array(n).fill(-1), retEdge = new Int32Array(n).fill(-1);
-  for (let i = 0, e = 0; i < n; i++) {
-    const ec = snap.nodes[i * nf + EC];
-    for (let j = 0; j < ec; j++, e += ef) {
-      const et = etypes[snap.edges[e + ET]];
-      if (et === "weak" || et === "shortcut") continue;
+  const retainer = new Int32Array(n).fill(-1), retEdge = new Int32Array(n).fill(-1), firstEdge = new Int32Array(n + 1);
+  for (let i = 0; i < n; i++) firstEdge[i + 1] = firstEdge[i] + snap.nodes[i * nf + EC] * ef;
+  const queue = new Int32Array(n);
+  let head = 0, tail = 0;
+  queue[tail++] = 0; retainer[0] = 0;
+  while (head < tail) {
+    const i = queue[head++];
+    for (let e = firstEdge[i]; e < firstEdge[i + 1]; e += ef) {
+      if (etypes[snap.edges[e + ET]] === "weak") continue;
       const to = snap.edges[e + TO] / nf;
-      if (retainer[to] === -1) { retainer[to] = i; retEdge[to] = e; }
+      if (retainer[to] !== -1) continue;
+      retainer[to] = i; retEdge[to] = e; queue[tail++] = to;
     }
   }
+  retainer[0] = -1;
   const nameOf = (i: number) => { const t = types[snap.nodes[i * nf + T]], s = snap.strings[snap.nodes[i * nf + N]]; return t === "object" || t === "native" || t === "closure" ? s : `(${t})${t === "string" || t === "code" || t === "concatenated string" || t === "sliced string" ? "" : " " + s}`; };
   const byName = new Map<string, { count: number; bytes: number }>();
   let total = 0;
@@ -307,7 +317,7 @@ async function heapSnapshot(page: CDPSession) {
     const size = snap.nodes[i * nf + S];
     if (size < MB) continue;
     const hops: string[] = [];
-    for (let at = i, hop = 0; hop < 8 && retainer[at] >= 0; hop++) {
+    for (let at = i, hop = 0; hop < 8 && retainer[at] > 0; hop++) {
       const edge = retEdge[at], et = etypes[snap.edges[edge + ET]], en = snap.edges[edge + EN];
       const label = et === "element" || et === "hidden" ? `[${en}]` : String(snap.strings[en] ?? en);
       at = retainer[at];
@@ -337,11 +347,12 @@ async function takeSample(name: string, browserCdp: CDPSession, pageCdp: CDPSess
   const game = await page.evaluate(() => (window as unknown as { __krMem: { sample(top: number): unknown } }).__krMem.sample(80)) as GameSample;
   const kr = await page.evaluate(() => { const k = (window as unknown as { __kr?: { stage?: string; game?: { inMatch?: boolean; cm?: { phase?: number } } } }).__kr; return { stage: String(k?.stage), inMatch: !!k?.game?.inMatch, phase: k?.game?.cm?.phase ?? -1 }; });
   const byType: Record<string, number> = {};
-  for (const p of procs) byType[p.type] = Math.round(((byType[p.type] ?? 0) + procMB(p)) * 10) / 10;
+  for (const p of procs) byType[p.type] = Math.round(((byType[p.type] ?? 0) + (procMB(p) ?? 0)) * 10) / 10;
+  const unmeasured = procs.filter((p) => procMB(p) === null).map((p) => `${p.type} ${p.pid}`);
   const b = game.buffers, bufferBytes = b.vertex + b.index + b.uniform + b.other;
   const s = {
     name, atS: Math.round((performance.now() - t0) / 100) / 10, kr,
-    totalMB: Math.round(procs.reduce((a, p) => a + procMB(p), 0) * 10) / 10, byType, processes: procs,
+    totalMB: Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0) * 10) / 10, byType, processes: procs, unmeasured,
     heapUsedMB: mb(heap.usedSize), heapTotalMB: mb(heap.totalSize),
     webglMB: mb(game.textures.bytes + bufferBytes + game.renderbuffers.bytes + game.drawing), textureMB: mb(game.textures.bytes), textureCount: game.textures.count,
     bufferMB: mb(bufferBytes), renderbufferMB: mb(game.renderbuffers.bytes), drawingMB: mb(game.drawing),
@@ -398,10 +409,9 @@ async function run() {
       const suffix = m === 1 ? "" : String(m);
       await page.locator("button.tn-play-cta").click({ timeout: 120_000, force: true });
       if (!await waitFor("the match (inMatch)", "!!(window.__kr.game && window.__kr.game.inMatch)", waitS)) break;
-      const inAt = Date.now();
-      if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", Math.max(30, matchSecs - 10), true)) samples.push(await takeSample("plane", browserCdp, pageCdp, page, t0));
-      const left = matchSecs * 1000 - (Date.now() - inAt);
-      if (left > 0) await sleep(left);
+      if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", waitS, true)) samples.push(await takeSample("plane", browserCdp, pageCdp, page, t0));
+      if (!await waitFor("the play phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 2", nogpu ? 1200 : 240)) break;
+      await sleep(matchSecs * 1000);
       samples.push(await takeSample(`match${suffix}`, browserCdp, pageCdp, page, t0));
       await page.evaluate(() => (window as unknown as { __kr: { game: { leave(): void } } }).__kr.game.leave());
       if (!await waitFor("the title after leaving", "!(window.__kr.game && window.__kr.game.inMatch)", 60)) break;
@@ -415,13 +425,15 @@ async function run() {
   } finally {
     await browser.close().catch(() => undefined);
   }
+  for (const s of samples) if (s.unmeasured.length) errors.push(`${s.name}: no memory reading for ${s.unmeasured.join(", ")}`);
   const value = (v: number, unit: "MB" | "count" = "MB"): Metric => ({ status: "ok", unit, better: "lower", value: v });
   const cases: CaseResult[] = samples.map((s) => ({
     scenario: { id: `memory/${s.name}`, version: SCENARIO_VERSION, seed, workload: "page-load" },
     windows: { atS: s.atS, stage: s.kr.stage, phase: s.kr.phase },
     load: {},
     metrics: {
-      totalMB: value(s.totalMB), ...Object.fromEntries(Object.entries(s.byType).map(([k, v]) => [`${k}MB`, value(v)])), heapUsedMB: value(s.heapUsedMB),
+      totalMB: s.unmeasured.length ? { status: "invalid", unit: "MB", reason: `no memory reading for ${s.unmeasured.join(", ")}` } : value(s.totalMB),
+      ...Object.fromEntries(Object.entries(s.byType).map(([k, v]) => [`${k}MB`, value(v)])), heapUsedMB: value(s.heapUsedMB),
       webglMB: value(s.webglMB), textureMB: value(s.textureMB), bufferMB: value(s.bufferMB), renderbufferMB: value(s.renderbufferMB), drawingMB: value(s.drawingMB),
       geometryCpuMB: value(s.geometryCpuMB), textureCpuMB: value(s.textureCpuMB), audioMB: value(s.audioMB), textureCount: value(s.textureCount, "count"),
     },

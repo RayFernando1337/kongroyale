@@ -28,8 +28,10 @@ you started (AGENTS.md rule 7); the helper refuses any host but localhost.
 One fresh browser profile, one page:
 
 1. Load the title (`window.__kr.ready`), wait 5 s, sample **title**.
-2. Press **Play** (`button.tn-play-cta`), sample **plane** when the match reaches the plane phase (if it does within
-   the match window; on `nogpu` it usually doesn't), sample **match** `--match-secs` (60) after the match started.
+2. Press **Play** (`button.tn-play-cta`), sample **plane** when the match reaches the plane phase, then wait for the
+   play phase (`cm.phase === 2`, after the drop) and sample **match** `--match-secs` (60) into it. Warm-up never counts
+   as the match: on `nogpu` the 25 s warm-up and the plane take several minutes of wall time, and a run that never
+   reaches play fails instead of recording a warm-up sample as `match`.
 3. Leave the match (`__kr.game.leave()`, what the pause menu's Leave match calls), wait 10 s, sample **left1**.
 4. Repeat for the second match: **match2**, **left2** (`--matches N` sets how many).
 
@@ -49,10 +51,10 @@ to left2. `--heap` adds a V8 heap snapshot at the title (about 1 minute and 3 GB
 | `totalMB` | Every browser process from CDP `SystemInfo.getProcessInfo`, memory from the OS | What the browser costs the machine. Linux: PSS (shared pages split between sharers, so the sum is honest). macOS: `phys_footprint` from `footprint` (Activity Monitor's Memory column), RSS if that fails. Windows: private bytes (closest to Task Manager's Memory column) |
 | `browserMB`, `rendererMB`, `GPUMB`, ... | The same, per process type | The renderer holds the JS heap, decoded images and audio; the GPU process holds the driver's copy of textures and buffers |
 | `heapUsedMB` | CDP `Runtime.getHeapUsage` after GC | Retained JS objects. ArrayBuffer and typed array contents are **not** in it; they show in `rendererMB` and in `--heap` as `system / JSArrayBufferData` |
-| `webglMB` | Wrappers on every WebGL allocation call, installed before the game's scripts | What the game asked WebGL to hold: `textureMB` (per mip level and cube face, from `texImage*`, `texStorage*`, `compressedTexImage*`, `generateMipmap`, minus `deleteTexture`), `bufferMB`, `renderbufferMB`, `drawingMB` (the canvas, estimated from its context attributes). Exact and deterministic for a build and viewport |
+| `webglMB` | Wrappers on every WebGL allocation call, installed before the game's scripts | What the game asked WebGL to hold: `textureMB` (per mip level and cube face, from `texImage*`, `texStorage*`, `compressedTexImage*`, `generateMipmap`, minus `deleteTexture`), `bufferMB`, `renderbufferMB`, `drawingMB` (the canvas, estimated from its context attributes). Every count but `drawingMB` is exact for what the page's own WebGL contexts allocate; contexts in workers are not wrapped. Repeat runs agree within about 1.5% (streaming order varies) |
 | `textureCount` | The same | Live WebGL textures |
 | `geometryCpuMB` | three.js objects reachable from the scene and the world modules | Vertex and index arrays three keeps in JS after upload |
-| `textureCpuMB` | The same | Images, ImageBitmaps, canvases and DataTexture arrays a texture still holds after upload |
+| `textureCpuMB` | The same | Images, ImageBitmaps, canvases and DataTexture arrays a texture reachable from the scene still holds after upload. Copies held by render targets or off-scene caches are not in it, so it is a lower bound |
 | `audioMB` | Wrappers on `decodeAudioData`, `createBuffer` and `OfflineAudioContext` | Live decoded AudioBuffers (32-bit float per sample per channel) |
 
 `table --md` adds, for the last match sample: the 40 largest textures with size, mip levels, format and owner
@@ -80,8 +82,8 @@ a machine of its own and never run two at once.
 ## A/B and reporting
 
 1. Same profile, viewport, DPR and seed on both sides; `config` in result.json records them.
-2. `webglMB`, `textureCount`, `geometryCpuMB`, `textureCpuMB` and `audioMB` are deterministic for a build: one run
-   a side shows a change. `totalMB` and `heapUsedMB` move by tens of MB between runs: run 3 a side, interleaved,
+2. `webglMB`, `textureCount`, `geometryCpuMB`, `textureCpuMB` and `audioMB` repeat within a few percent for a build:
+   one run a side shows a change bigger than that. `totalMB` and `heapUsedMB` move by tens of MB between runs: run 3 a side, interleaved,
    and quote the range.
 3. Quote the phase (`match` and `left2` matter most: a player's machine has to survive the match, and leaks show
    after the second one), the profile and the viewport. Attach the `table --md` output to the pull request.
