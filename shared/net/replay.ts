@@ -24,13 +24,14 @@ export class ReplayRecorder {
   reclaim(tick: number, id: number, name: string) { this.events.push([tick, RE.Reclaim, id, name]); }
   startNow(tick: number) { this.events.push([tick, RE.StartNow]); }
   hold(tick: number, held: boolean) { this.events.push([tick, RE.Hold, held ? 1 : 0]); }
-  /** the log so far, for a match that has played up to its current tick */
+  /** a copy of the log so far: the match at its current tick, outside calls made since its last step included */
   log(m: Match): ReplayLog {
-    return { version: 1, opts: this.opts, warmupS: m.warmupS, endAfterResults: m.endAfterResults, ticks: m.tick, events: this.events };
+    return { version: 1, opts: this.opts, warmupS: m.warmupS, endAfterResults: m.endAfterResults, ticks: m.tick, events: this.events.slice() };
   }
 }
 
-/** play a log again on a fresh Match and return it at the log's last tick. onTick sees each tick's events before they
+/** play a log again on a fresh Match and return it at the log's last tick, with the calls made after that tick's step
+ * applied (as when the log was taken). onTick sees each tick's events before they
  * are cleared. Throws where the replay stops matching the
  * log (a warm-up hold asked for at another tick), which means the sim or the log changed. */
 export function replayMatch(log: ReplayLog, world: StaticWorld, onTick?: (m: Match) => void): Match {
@@ -45,7 +46,7 @@ export function replayMatch(log: ReplayLog, world: StaticWorld, onTick?: (m: Mat
     k++;
     return e[2] === 1;
   };
-  while (m.tick < log.ticks) {
+  const playCalls = () => {
     for (; k < ev.length && ev[k][0] === m.tick && ev[k][1] !== RE.Hold; k++) {
       const e = ev[k];
       switch (e[1]) {
@@ -60,11 +61,15 @@ export function replayMatch(log: ReplayLog, world: StaticWorld, onTick?: (m: Mat
         default: throw new Error(`replay log: unknown event ${JSON.stringify(e)}`);
       }
     }
+  };
+  while (m.tick < log.ticks) {
+    playCalls();
     if (k < ev.length && (ev[k][0] as number) < m.tick) throw new Error(`replay diverged at tick ${m.tick}: ${JSON.stringify(ev[k])} was not played`);
     m.step();
     onTick?.(m);
     m.ev.reset();
   }
+  playCalls();
   if (k !== ev.length) throw new Error(`replay ended at tick ${m.tick} with ${ev.length - k} log events not played`);
   return m;
 }
