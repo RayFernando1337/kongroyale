@@ -36,7 +36,6 @@ export function recordFrame(dt: number): void {
 
 export function pauseClock(): void {
   clock.skip = true;
-  clearSecond();
 }
 
 function percentile(p: number): number {
