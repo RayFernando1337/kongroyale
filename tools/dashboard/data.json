@@ -501,7 +501,7 @@
         "targetNote": "the game's own title-screen budget",
         "status": "improving",
         "detail": "26.0 s is the median of 5 first-visit loads in the #88 comparison (30.0 s just before it, and 32.3 s before the overnight fixes). A separate 3-run batch on the same build, compared against v0.2.0, measured 27.3 s. About 10 s of a first visit is the graphics driver preparing shaders, and two more cuts worth an estimated 3 to 5.5 s are in progress.",
-        "source": "fork PR #88 body; RAY-89; RAY-53; RAY-86"
+        "source": "fork PR #88 body; RAY-89; RAY-53; RAY-86; RAY-94 precise re-run (27.3 s batch)"
       },
       {
         "category": "load",
