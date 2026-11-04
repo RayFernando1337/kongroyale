@@ -76,8 +76,12 @@ Metal and D3D11 against SwiftShader is the calibration. Record the viewport and 
 number: render targets scale with the drawing buffer. On `nogpu` keep 640x360; at 1600x900 SwiftShader trips the
 game's 90 s settle timeout. `nogpu` adds `?vegsplat=0` like kr-verify does.
 
-A `nogpu` run takes about 15 minutes (the title alone takes about 6) and needs about 8 GB of free memory, so give it
-a machine of its own and never run two at once.
+A `nogpu` run with two matches takes about 11 minutes on 8 vCPUs and about 25 on 4 (the title alone takes 2 and 6). It
+peaks around 10 GB, and once a renderer briefly passed 28 GB while Peel Harbor streamed in. Give it a machine of its
+own with 16 GB or more, and never run two at once. Every 15 s (`--trace-secs`) the harness logs the process totals, the
+JS heap, WebGL bytes, the match phase and the stream stage into `timeline` in result.json; that is where to look for a
+spike between samples. A watchdog stops the browser and fails the run once the processes pass `--max-mb` (default 70%
+of the machine's memory), so a runaway can't take the machine down with it.
 
 ## A/B and reporting
 
