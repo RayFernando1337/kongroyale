@@ -13,7 +13,7 @@ import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
 import { afterPaint } from "./frame";
 import { flag } from "../flags";
-const STREAM_SLICE: readonly number[] = flag("streamslice") ?? [];
+const STREAM_SLICE_MS: readonly number[] = flag("streamslice") ?? [];
 
 // engine fades dissolve instead of scaling — three's shared chunks are patched before the first compile
 installDitherChunks();
@@ -268,7 +268,7 @@ export class Engine implements WorldCtx {
    * ?streamslice=title,warm,match overrides (A/B).
    */
   streamSlice(inMatch: boolean, phase: number, workLeftMs = 0, warmLeftMs = 0) {
-    const o = STREAM_SLICE;
+    const o = STREAM_SLICE_MS;
     // (the title gets 14 ms — the island must be complete before a match starts: every ms of stream left at PRACTICE
     // lands in warm-up / plane frames. The title is a menu over the islet: ~45 fps there while it streams.)
     if (!inMatch) return o[0] > 0 ? o[0] : 14;
