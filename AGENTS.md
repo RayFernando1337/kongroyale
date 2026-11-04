@@ -124,7 +124,7 @@ catching it; turn it into a check when the same mistake shows up twice.
 | 6. Build and test before the pull request | CI job "build and test" runs `npm run build` and `npm test` |
 | 7. Only test against servers you run | Review only |
 | No comments | Lint rule `no-comments` |
-| Constants carry their unit | Review only |
+| Constants carry their unit | Lint rule `unit-suffix`, report only: `npm test` prints the count and never fails on it |
 | Tunable numbers live in `shared/sim/const.ts` | Review only |
 | `import type` for type-only imports | Lint rule `import-type` (also flags unused imports) |
 | Wire ids are `const enum`s | Review only |

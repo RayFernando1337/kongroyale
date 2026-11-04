@@ -26,6 +26,7 @@ type Rule = {
   applies: (rel: string) => boolean;
   check: (sf: ts.SourceFile, rel: string) => Hit[];
   counted?: boolean;
+  report?: boolean;
 };
 /** key = the site's identity in the baseline: the trimmed text of the flagged line */
 type Finding = { rule: string; file: string; line: number; key: string; message: string };
@@ -339,7 +340,35 @@ const importType: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType];
+const UNIT_SUFFIXES = ["S", "MS", "M", "R", "MPS", "DEG", "RAD", "HZ", "PX", "TICKS", "N", "PCT", "KB", "MB", "BYTES"];
+
+function isNumeric(e: ts.Expression): boolean {
+  if (ts.isNumericLiteral(e)) return true;
+  if (ts.isParenthesizedExpression(e)) return isNumeric(e.expression);
+  if (ts.isPrefixUnaryExpression(e)) return isNumeric(e.operand);
+  if (ts.isBinaryExpression(e)) return isNumeric(e.left) && isNumeric(e.right);
+  return false;
+}
+
+const unitSuffix: Rule = {
+  id: "unit-suffix",
+  report: true,
+  applies: (rel) => /\.m?ts$/.test(rel),
+  check(sf) {
+    const hits: Hit[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && /^[A-Z][A-Z0-9_]*$/.test(n.name.text) && n.initializer && isNumeric(n.initializer)
+        && ts.isVariableDeclarationList(n.parent) && n.parent.flags & ts.NodeFlags.Const && !UNIT_SUFFIXES.includes(n.name.text.split("_").pop() ?? "")) {
+        hits.push({ node: n, message: `${n.name.text} is a number without a unit suffix (${UNIT_SUFFIXES.map((s) => "_" + s).join(", ")}): name its unit, like WARMUP_S or NEAR_R (AGENTS.md "Code style"; report only for now)` });
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return hits;
+  },
+};
+
+const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix];
 
 // ---- engine ----
 
@@ -493,8 +522,13 @@ for (const file of files) {
   for (const r of rules) findings.push(...runRule(r, sf, file));
 }
 const baseline: Baseline = JSON.parse(fs.readFileSync(path.join(ROOT, BASELINE), "utf8"));
-const { fresh, errors } = compareBaseline(findings, baseline, RULES, (rel) => fs.existsSync(path.join(ROOT, rel)));
+const gated = RULES.filter((r) => !r.report);
+const { fresh, errors } = compareBaseline(findings.filter((f) => gated.some((r) => r.id === f.rule)), baseline, gated, (rel) => fs.existsSync(path.join(ROOT, rel)));
+for (const r of RULES.filter((r) => r.report)) {
+  const mine = findings.filter((f) => f.rule === r.id);
+  console.log(`${r.id} (report only, never fails): ${mine.length} site(s) in ${new Set(mine.map((f) => f.file)).size} file(s)`);
+}
 for (const f of fresh) console.error(`${f.file}:${f.line}  ${f.rule}  ${f.message}`);
 const ms = Math.round(performance.now() - t0);
 if (errors.length) { console.error(`\nlint FAILED (${files.length} files, ${ms} ms):\n  ${errors.join("\n  ")}`); process.exit(1); }
-console.log(`lint passed: ${files.length} files, ${RULES.length} rule(s), ${findings.length} baselined site(s), ${ms} ms`);
+console.log(`lint passed: ${files.length} files, ${gated.length} gating rule(s), ${findings.length - findings.filter((f) => !gated.some((r) => r.id === f.rule)).length} baselined site(s), ${ms} ms`);
