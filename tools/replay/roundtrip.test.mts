@@ -1,8 +1,3 @@
-// Replay round trip: record a match with two scripted humans (steering, jumping, firing, duplicate inputs, a drop, a
-// seat released, reclaimed and claimed, START NOW, the warm-up hold), replay its log through JSON and require the same
-// final-state hash. Then require that a log with one input changed ends on a different hash, and that a log taken
-// right after an outside call (before the next step) replays. Exit 1 on any failure.
-//   npx tsx tools/replay/roundtrip.test.mts [--write <log.json>]
 import fs from "node:fs";
 import { Terrain } from "../../shared/world/terrain";
 import { decodeTerrainFile } from "../../shared/world/terrain-gen";

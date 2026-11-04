@@ -1,7 +1,3 @@
-// Replay a match log (shared/net/replay.ts) and print where it ends: the tick, the phase and the final-state hash
-// (tools/state-hash.mts). Same JS engine, same build, same log: the same hash, so a log is a bug report you can rerun.
-//   npx tsx tools/replay.mts <log.json> [--expect <hash>]
-//   --expect: exit 1 unless the replay ends on that hash
 import fs from "node:fs";
 import { Terrain } from "../shared/world/terrain";
 import { decodeTerrainFile } from "../shared/world/terrain-gen";
