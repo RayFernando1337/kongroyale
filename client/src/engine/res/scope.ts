@@ -127,6 +127,7 @@ export class Scope {
 
   child(name: string): Scope {
     this.alive();
+    if (!name || name.includes("/")) throw new Error("scope name " + JSON.stringify(name) + " must be non-empty and contain no /");
     if (this.children.some((x) => x.name === name)) throw new Error("scope " + this.path + " already has a live child named " + name);
     const c = new Scope(name, this.ledger, this);
     this.children.push(c);
@@ -172,7 +173,7 @@ export class Scope {
     if (this.disposed) return;
     const errors: unknown[] = [];
     for (let i = this.children.length - 1; i >= 0; i--) {
-      try { this.children[i].dispose(); } catch (err) { errors.push(err); }
+      try { this.children[i].dispose(); } catch (err) { if (err instanceof AggregateError) errors.push(...err.errors); else errors.push(err); }
     }
     this.children.length = 0;
     for (let i = this.owned.length - 1; i >= 0; i--) {

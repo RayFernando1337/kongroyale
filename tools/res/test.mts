@@ -93,7 +93,7 @@ const mb = (r: ReturnType<Ledger["report"]>, k: keyof ReturnType<Ledger["report"
   const fx = disposed(effects.geometry("geo.actor", tri()));
   actors.defer(() => { throw new Error("actor teardown failed"); });
   const kong = disposed(actors.geometry("geo.actor", tri()));
-  assert.throws(() => match.dispose(), (e: unknown) => e instanceof AggregateError && e.errors.length === 1 && e.errors[0] instanceof AggregateError);
+  assert.throws(() => match.dispose(), (e: unknown) => e instanceof AggregateError && e.errors.length === 1 && String(e.errors[0]).includes("actor teardown failed"));
   assert.deepEqual([rt.hit, fx.hit, kong.hit], [1, 1, 1]);
   assert.equal(match.isDisposed, true);
   assert.equal(res.report().scopes, 1);
@@ -104,6 +104,8 @@ const mb = (r: ReturnType<Ledger["report"]>, k: keyof ReturnType<Ledger["report"
   const res = new Ledger();
   res.root.child("match");
   assert.throws(() => res.root.child("match"), /already has a live child named match/);
+  assert.throws(() => res.root.child("match/x"), /contain no \//);
+  assert.throws(() => res.root.child(""), /non-empty/);
   res.root.child("other").dispose();
   res.root.child("other");
   console.log("PASS  live siblings have unique names, so per-scope totals never merge");
