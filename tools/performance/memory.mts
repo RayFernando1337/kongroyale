@@ -13,7 +13,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MB = 2 ** 20;
 const mb = (b: number) => Math.round((b / MB) * 10) / 10;
 
-const SCENARIO_VERSION = 1;
+const SCENARIO_VERSION = 2;
 type Profile = "nogpu" | "mac" | "win";
 
 const PROBE = `(function () {
@@ -388,7 +388,7 @@ async function run() {
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`pageerror: ${String(e.message).slice(0, 300)}`));
   const pageCdp = await ctx.newCDPSession(page);
-  const waitS = nogpu ? 420 : 180;
+  const waitS = nogpu ? 900 : 180;
   const notes: string[] = [];
   const waitFor = async (what: string, fn: string, secs: number, optional = false) => {
     const end = Date.now() + secs * 1000;
