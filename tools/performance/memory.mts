@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { chromium, type CDPSession, type Page } from "playwright";
 import { env, save, source } from "./common.mts";
@@ -173,6 +174,12 @@ const PROBE = `(function () {
     if (img.data && img.data.byteLength !== undefined) return { kind: "typed array", bytes: img.data.byteLength };
     return null;
   }
+  M.totals = function () {
+    var t = 0, b = 0, k = window.__kr || {}, cm = k.game && k.game.cm;
+    M.tex.forEach(function (rr) { for (var key in rr.levels) t += rr.levels[key]; });
+    M.buf.forEach(function (x) { b += x.bytes; });
+    return { textureBytes: t, textures: M.tex.size, bufferBytes: b, phase: cm ? cm.phase | 0 : -1, stage: String(k.stage || ""), streamStage: String(k.streamStage || "") };
+  };
   M.sample = function (top) {
     var k = window.__kr || {}, eng = k.engine, r = eng && eng.renderer, props = r && r.properties;
     var levelsOf = function (rr) { var s = 0; for (var key in rr.levels) s += rr.levels[key]; return s; };
@@ -386,14 +393,42 @@ async function run() {
   const ctx = await browser.newContext({ viewport: { width: vw, height: vh }, deviceScaleFactor: dpr });
   await ctx.addInitScript(PROBE);
   const page = await ctx.newPage();
+  page.on("crash", () => errors.push("the page crashed (renderer process gone)"));
   page.on("pageerror", (e) => errors.push(`pageerror: ${String(e.message).slice(0, 300)}`));
   const pageCdp = await ctx.newCDPSession(page);
   const waitS = nogpu ? 900 : 180;
+  const traceS = Number(opt("--trace-secs", "15")), maxMB = Number(opt("--max-mb", String(Math.round(os.totalmem() / MB * 0.7))));
+  const timeline: Array<{ atS: number; totalMB: number; byType: Record<string, number>; heapUsedMB: number; webglMB: number; textures: number; phase: number; stage: string; streamStage: string }> = [];
+  let lastTrace = 0;
+  const trace = async () => {
+    if (Date.now() - lastTrace < traceS * 1000) return;
+    lastTrace = Date.now();
+    const procs = await processes(browserCdp);
+    const byType: Record<string, number> = {};
+    for (const p of procs) byType[p.type] = Math.round(((byType[p.type] ?? 0) + (procMB(p) ?? 0)) * 10) / 10;
+    const totalMB = Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0));
+    const heap = await pageCdp.send("Runtime.getHeapUsage") as { usedSize: number };
+    const g = await page.evaluate(() => (window as unknown as { __krMem: { totals(): { textureBytes: number; textures: number; bufferBytes: number; phase: number; stage: string; streamStage: string } } }).__krMem.totals());
+    const point = { atS: Math.round((performance.now() - t0) / 1000), totalMB, byType, heapUsedMB: mb(heap.usedSize), webglMB: mb(g.textureBytes + g.bufferBytes), textures: g.textures, phase: g.phase, stage: g.stage, streamStage: g.streamStage };
+    timeline.push(point);
+    console.log(`    ${point.atS} s: ${totalMB} MB (GPU ${byType.GPU ?? 0}, renderer ${byType.renderer ?? 0}), JS heap ${point.heapUsedMB}, WebGL ${point.webglMB} in ${g.textures} textures, phase ${g.phase} ${g.stage} ${g.streamStage}`);
+  };
   const notes: string[] = [];
+  let overCap = "";
+  const watchdog = setInterval(() => {
+    void processes(browserCdp).then((procs) => {
+      const total = Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0));
+      if (total <= maxMB || overCap) return;
+      overCap = `the browser passed --max-mb ${maxMB} MB (${total} MB at ${Math.round((performance.now() - t0) / 1000)} s); stopped it before the machine runs out of memory`;
+      errors.push(overCap);
+      void browser.close();
+    }, () => undefined);
+  }, 5000);
+  const hold = async (ms: number) => { const end = Date.now() + ms; while (Date.now() < end && !overCap) { await trace(); await sleep(Math.min(1000, Math.max(0, end - Date.now()))); } };
   const waitFor = async (what: string, fn: string, secs: number, optional = false) => {
     const end = Date.now() + secs * 1000;
-    while (Date.now() < end) { if (await page.evaluate(fn).catch(() => false)) return true; await sleep(1000); }
-    (optional ? notes : errors).push(`timed out after ${secs} s waiting for ${what}`);
+    while (Date.now() < end && !overCap) { if (await page.evaluate(fn).catch(() => false)) return true; await trace(); await sleep(5000); }
+    if (!overCap) (optional ? notes : errors).push(`timed out after ${secs} s waiting for ${what}`);
     return false;
   };
   let gpu = "";
@@ -402,7 +437,7 @@ async function run() {
     await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 120_000 });
     if (!await waitFor("the title (__kr.ready)", "!!(window.__kr && window.__kr.ready)", waitS)) throw Error("the title never became ready");
     gpu = await page.evaluate(() => { const c = (window as unknown as { __kr: { engine: { renderer: { getContext(): WebGL2RenderingContext } } } }).__kr.engine.renderer.getContext(), d = c.getExtension("WEBGL_debug_renderer_info"); return String(d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : c.getParameter(c.RENDERER)); });
-    await sleep(5000);
+    await hold(5000);
     samples.push(await takeSample("title", browserCdp, pageCdp, page, t0));
     if (flag("--heap")) { samples[0].heap = await heapSnapshot(pageCdp); console.log(`  heap snapshot: ${samples[0].heap.totalMB} MB in ${samples[0].heap.nodes} nodes`); }
     for (let m = 1; m <= matches; m++) {
@@ -411,11 +446,11 @@ async function run() {
       if (!await waitFor("the match (inMatch)", "!!(window.__kr.game && window.__kr.game.inMatch)", waitS)) break;
       if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", waitS, true)) samples.push(await takeSample("plane", browserCdp, pageCdp, page, t0));
       if (!await waitFor("the play phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 2", nogpu ? 1200 : 240)) break;
-      await sleep(matchSecs * 1000);
+      await hold(matchSecs * 1000);
       samples.push(await takeSample(`match${suffix}`, browserCdp, pageCdp, page, t0));
       await page.evaluate(() => (window as unknown as { __kr: { game: { leave(): void } } }).__kr.game.leave());
       if (!await waitFor("the title after leaving", "!(window.__kr.game && window.__kr.game.inMatch)", 60)) break;
-      await sleep(10_000);
+      await hold(10_000);
       samples.push(await takeSample(`left${m}`, browserCdp, pageCdp, page, t0));
     }
     const krErrors = await page.evaluate(() => ((window as unknown as { __kr?: { errors?: unknown[] } }).__kr?.errors ?? []).map((e) => String(e).slice(0, 300)));
@@ -423,6 +458,7 @@ async function run() {
   } catch (e) {
     errors.push(String((e as Error).message ?? e).slice(0, 400));
   } finally {
+    clearInterval(watchdog);
     await browser.close().catch(() => undefined);
   }
   for (const s of samples) if (s.unmeasured.length) errors.push(`${s.name}: no memory reading for ${s.unmeasured.join(", ")}`);
@@ -449,9 +485,9 @@ async function run() {
     schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "memory", startedAt, durationMs: Math.round(performance.now() - t0),
     source: source(process.cwd()), environment: { ...env(), gpu: gpu || null },
     config: { url: url.pathname + url.search, profile, viewport: `${vw}x${vh}`, dpr, seed, matchSecs, matches, heap: flag("--heap") },
-    cases, errors, notes, artifacts: [],
+    cases, errors, notes, timeline, artifacts: [],
     leaks: [delta("left1", "left2"), delta("match", "match2"), delta("title", "left1")].filter(Boolean),
-  } satisfies RunResult & { leaks: unknown[]; notes: string[] };
+  } satisfies RunResult & { leaks: unknown[]; notes: string[]; timeline: unknown[] };
   const file = path.join(out, "result.json");
   save(file, result);
   console.log(`wrote ${file}${errors.length ? `\nerrors:\n  ${errors.join("\n  ")}` : ""}`);
@@ -512,4 +548,5 @@ function table() {
 
 if (cmd === "run") await run();
 else if (cmd === "table") table();
+if (cmd === "run") process.exit(process.exitCode ?? 0);
 else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--heap] | table result.json... [--md]"); process.exitCode = cmd === "help" ? 0 : 2; }
