@@ -91,6 +91,10 @@ export class StaticWorld {
   cos!: Float32Array; sin!: Float32Array;          // yaw
   /** each box's world x/z bounds (yaw included, a little padded): rays and capsule gathers skip a box they miss */
   bx0!: Float32Array; bx1!: Float32Array; bz0!: Float32Array; bz1!: Float32Array;
+  /** each box's lowest grid cell column / row: where a row-major walk of the grid first meets it */
+  private gx0!: Int32Array; private gz0!: Int32Array;
+  /** while a ray skips cells of its rectangle: the rectangle's first column / row (−1 = not skipping) */
+  private tieX0 = -1; private tieZ0 = -1;
   surf!: Uint8Array; noShoot!: Uint8Array; noWalk!: Uint8Array;
   /** boxes a tuk-tuk drives through (fences, hedges, crop stems — Box.noDrive), and the switch the vehicle step
    * sets around its own collision queries (shared/sim/vehicle.ts move): while on, movement and ground rays skip them */
@@ -132,6 +136,7 @@ export class StaticWorld {
     this.cx = new Float32Array(n); this.cy = new Float32Array(n); this.cz = new Float32Array(n);
     this.hx = new Float32Array(n); this.hy = new Float32Array(n); this.hz = new Float32Array(n);
     this.cos = new Float32Array(n); this.sin = new Float32Array(n);
+    this.gx0 = new Int32Array(n); this.gz0 = new Int32Array(n);
     this.bx0 = new Float32Array(n); this.bx1 = new Float32Array(n); this.bz0 = new Float32Array(n); this.bz1 = new Float32Array(n);
     this.surf = new Uint8Array(n); this.noShoot = new Uint8Array(n); this.noWalk = new Uint8Array(n); this.noDrive = new Uint8Array(n);
     this.roundDx = new Int16Array(n).fill(ROUND_NONE); this.roundDz = new Int16Array(n);
@@ -152,6 +157,7 @@ export class StaticWorld {
       const ez = Math.abs(this.sin[i]) * b.h[0] + Math.abs(this.cos[i]) * b.h[2];
       const x0 = this.cell(b.c[0] - ex), x1 = this.cell(b.c[0] + ex), z0 = this.cell(b.c[2] - ez), z1 = this.cell(b.c[2] + ez);
       spans.push([x0, x1, z0, z1]);
+      this.gx0[i] = x0; this.gz0[i] = z0;
       const bex = Math.abs(this.cos[i]) * this.hx[i] + Math.abs(this.sin[i]) * this.hz[i] + BOUNDS_PAD_M, bez = Math.abs(this.sin[i]) * this.hx[i] + Math.abs(this.cos[i]) * this.hz[i] + BOUNDS_PAD_M;
       this.bx0[i] = this.cx[i] - bex; this.bx1[i] = this.cx[i] + bex; this.bz0[i] = this.cz[i] - bez; this.bz1[i] = this.cz[i] + bez;
       for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) counts[z * this.gridN + x]++;
@@ -852,7 +858,9 @@ export class StaticWorld {
     if (span <= 64) {
       // a diagonal ray's cell rectangle is mostly cells it never enters: skip a cell (grown by the 1 m margin above)
       // unless the segment up to the nearest hit so far passes through it; the rest keep their row-major order
+      // Skipping changes which cell first offers a box, so rayBox settles an exact tie as the full walk would have.
       const ix = 1 / dx, iz = 1 / dz;
+      if (span > 2) { this.tieX0 = cx0; this.tieZ0 = cz0; }
       for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
         if (span > 2) {
           const x0 = this.gridMin + cx * GRID_CELL - 1, z0 = this.gridMin + cz * GRID_CELL - 1, x1 = x0 + GRID_CELL + 2, z1 = z0 + GRID_CELL + 2;
@@ -865,6 +873,7 @@ export class StaticWorld {
         }
         this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
       }
+      this.tieX0 = this.tieZ0 = -1;
     } else {
       // long ray: DDA
       let cx = this.cell(ox), cz = this.cell(oz);
@@ -921,11 +930,21 @@ export class StaticWorld {
       if (hi < tmax) tmax = hi;
       if (tmin > tmax) return;
     }
-    if (axis < 0 || tmin >= out.t || tmin <= 0) return;
+    if (axis < 0 || tmin > out.t || tmin <= 0) return;
+    // an exact tie keeps the box found first, in the full row-major walk of the ray's cell rectangle
+    if (tmin === out.t && !(this.tieZ0 >= 0 && out.box >= 0 && this.walkedFirst(i, out.box))) return;
     out.hit = true; out.t = tmin; out.box = i; out.surf = this.surf[i];
     out.x = ox + dx * tmin; out.y = oy + dy * tmin; out.z = oz + dz * tmin;
     const nx = axis === 0 ? sign : 0, ny = axis === 1 ? sign : 0, nz = axis === 2 ? sign : 0;
     out.nx = nx * c - nz * s; out.ny = ny; out.nz = nx * s + nz * c;
+  }
+
+  /** does the row-major walk of the current ray's cell rectangle reach box a before box b? (cell, then box index) */
+  private walkedFirst(a: number, b: number): boolean {
+    const za = Math.max(this.tieZ0, this.gz0[a]), zb = Math.max(this.tieZ0, this.gz0[b]);
+    if (za !== zb) return za < zb;
+    const xa = Math.max(this.tieX0, this.gx0[a]), xb = Math.max(this.tieX0, this.gx0[b]);
+    return xa !== xb ? xa < xb : a < b;
   }
 
   /** quick line-of-sight test (no hit details) */
