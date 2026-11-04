@@ -850,7 +850,21 @@ export class StaticWorld {
     const cx0 = this.cell(rx0 - 1), cx1 = this.cell(rx1 + 1), cz0 = this.cell(rz0 - 1), cz1 = this.cell(rz1 + 1);
     const span = (cx1 - cx0 + 1) * (cz1 - cz0 + 1);
     if (span <= 64) {
-      for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
+      // a diagonal ray's cell rectangle is mostly cells it never enters: skip a cell (grown by the 1 m margin above)
+      // unless the segment up to the nearest hit so far passes through it; the rest keep their row-major order
+      const ix = 1 / dx, iz = 1 / dz;
+      for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
+        if (span > 2) {
+          const x0 = this.gridMin + cx * GRID_CELL - 1, z0 = this.gridMin + cz * GRID_CELL - 1, x1 = x0 + GRID_CELL + 2, z1 = z0 + GRID_CELL + 2;
+          let t0 = 0, t1 = out.t;
+          if (dx === 0) { if (ox < x0 || ox > x1) continue; }
+          else { const a = (x0 - ox) * ix, b = (x1 - ox) * ix; t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b)); }
+          if (dz === 0) { if (oz < z0 || oz > z1) continue; }
+          else { const a = (z0 - oz) * iz, b = (z1 - oz) * iz; t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b)); }
+          if (t0 > t1) continue;
+        }
+        this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
+      }
     } else {
       // long ray: DDA
       let cx = this.cell(ox), cz = this.cell(oz);
