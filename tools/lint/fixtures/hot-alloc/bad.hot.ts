@@ -30,3 +30,8 @@ export class Wired {
     this.tick = () => [SCRATCH.x]; // lint-expect
   }
 }
+export class Defaulted {
+  constructor(
+    public tick = () => [SCRATCH.z], // lint-expect
+  ) {}
+}
