@@ -110,6 +110,7 @@ const FLAGS = {
   program: { kind: present, owner: "caster", routing: true, purpose: "this caster window is the program output (OBS feed)" },
   q: { kind: text, owner: "boot", purpose: "build quality ultra, high, medium or low instead of the video preset's" },
   readyby: { kind: num(25000), owner: "boot", purpose: "target time (ms) for the title to be ready; the stream planner works back from it" },
+  readyest: { kind: one, owner: "boot", purpose: "pre-ready planner uses the measured post-build estimate (stored per device) and never plans past readyby" },
   rockMerge: { kind: on, owner: "pois", purpose: "Mist Falls merges its near rock sets into meshes; =0 = the old instanced sets" },
   rocks: { kind: on, owner: "terrain", purpose: "draw the terrain rocks" },
   scale: { kind: num(0), owner: "engine", purpose: "pin the 3D resolution scale; 0 = not pinned" },

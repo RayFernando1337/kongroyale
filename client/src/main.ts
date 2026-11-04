@@ -127,6 +127,16 @@ const EST: Record<string, number> = {
   "poi:mist-falls": 220, "poi:coco-caves": 130, "poi:ripe-peak": 450, "poi:cnvs-lab": 450, "poi:wreck-bay": 250,
 };
 const est = (id: string) => EXPECT[id] ?? EST[id] ?? 700;
+const POST_BUILD_EXPECT_MS = { afterBuild: 750, game: 11200, settle: 4300 };
+const POST_MS_PER_PRE_READY_BUILD_MS = 0.27;
+const POST_BUILD_STORE_KEY = "kr-boot-post-v1";
+const POST_BUILD_STORED_MIN_MS = 2000, POST_BUILD_STORED_MAX_MS = 90_000;
+function storedPostBuildMs(): number | null {
+  try {
+    const ms = Number((JSON.parse(localStorage.getItem(POST_BUILD_STORE_KEY) ?? "null") as { baseMs?: unknown } | null)?.baseMs);
+    return Number.isFinite(ms) && ms >= POST_BUILD_STORED_MIN_MS && ms <= POST_BUILD_STORED_MAX_MS ? ms : null;
+  } catch { return null; }
+}
 /**
  * READY BY (ms after navigation): behind the loading screen the boot keeps building the streamed POIs (largest first)
  * while the predicted ready time — now + this module + afterBuild + game + settle, scaled by how slow this machine ran
@@ -307,10 +317,16 @@ if (streamOn && READY_BY > 0) {
   const want = done.reduce((a, id) => a + est(id), 0), got = done.reduce((a, id) => a + buildMs[id], 0);
   const factor = Math.min(3, Math.max(0.8, want > 0 ? got / want : 1));
   kr.bootFactor = +factor.toFixed(2);
-  const rest = (n: number) => (EXPECT.afterBuild + EXPECT.game + EXPECT.settle + 120 * n) * factor;
+  const storedPost = storedPostBuildMs();
+  const postBase = storedPost ?? (POST_BUILD_EXPECT_MS.afterBuild + POST_BUILD_EXPECT_MS.game + POST_BUILD_EXPECT_MS.settle) * factor;
+  kr.postBuildEstimate = { ms: Math.round(postBase), stored: storedPost !== null };
+  const rest = flag("readyest")
+    ? (_n: number, preMs: number) => postBase + POST_MS_PER_PRE_READY_BUILD_MS * preMs
+    : (n: number) => (EXPECT.afterBuild + EXPECT.game + EXPECT.settle + 120 * n) * factor;
   const plan = (t: number, ids: string[]) => {
     const out: string[] = [];
-    for (const id of [...ids].sort((a, b) => est(b) - est(a))) if (t + est(id) * factor + rest(out.length + 1) <= READY_BY) { out.push(id); t += est(id) * factor; }
+    let preMs = 0;
+    for (const id of [...ids].sort((a, b) => est(b) - est(a))) if (t + est(id) * factor + rest(out.length + 1, preMs + est(id) * factor) <= READY_BY) { out.push(id); t += est(id) * factor; preMs += est(id) * factor; }
     return out;
   };
   const planned = plan(performance.now(), streamList);
@@ -318,7 +334,7 @@ if (streamOn && READY_BY > 0) {
   kr.preReadyPlan = planned.slice();
   const pre: string[] = [];
   for (const id of planned) {
-    if (performance.now() + est(id) * factor + rest(pre.length + 1) > READY_BY) continue;
+    if (performance.now() + est(id) * factor + rest(pre.length + 1, pre.reduce((a, p) => a + buildMs[p], 0) + est(id) * factor) > READY_BY) continue;
     streamList.splice(streamList.indexOf(id), 1);
     pre.push(id);
     await buildOne(id, false);
@@ -327,6 +343,7 @@ if (streamOn && READY_BY > 0) {
 }
 kr.programsAfterTitleModules = engine.renderer.info.programs?.length;
 enterStep("afterBuild");
+const postBuildFrom = performance.now();
 // (before the game's prewarm: the post chain it compiles is the one the settings ask for)
 try { display?.apply(); } catch (e) { report("display", e); }
 for (const m of [...loaded]) await runAfterBuild(m, false);
@@ -413,6 +430,16 @@ if (kr.bootError) {
   bootReady = true;
   kr.stage = "ready";
   kr.readyAt = Math.round(performance.now());
+  if (gameMode && streamOn) {
+    const postMs = performance.now() - postBuildFrom;
+    const preMs = ((kr.preReady as string[] | undefined) ?? []).reduce((a, id) => a + (buildMs[id] ?? 0), 0);
+    const baseMs = postMs - POST_MS_PER_PRE_READY_BUILD_MS * preMs;
+    kr.postBuildMs = Math.round(postMs);
+    if (baseMs >= POST_BUILD_STORED_MIN_MS && baseMs <= POST_BUILD_STORED_MAX_MS) {
+      const prev = storedPostBuildMs();
+      try { localStorage.setItem(POST_BUILD_STORE_KEY, JSON.stringify({ baseMs: Math.round(prev === null ? baseMs : (prev + baseMs) / 2) })); } catch { kr.postBuildStoreFailed = true; }
+    }
+  }
   kr.ready = true;
   document.documentElement.dataset.ready = "1";
 }
