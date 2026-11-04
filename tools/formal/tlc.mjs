@@ -29,11 +29,15 @@ async function ensureJar() {
   console.log(`tlc: downloading TLA+ tools ${TLA_VERSION}`);
   const res = await fetch(TLA_URL);
   if (!res.ok) fail(`download failed: HTTP ${res.status} for ${TLA_URL}`);
-  const tmp = jar + ".part";
-  fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
-  const got = sha256(tmp);
-  if (got !== TLA_SHA256) { fs.rmSync(tmp); fail(`checksum mismatch for tla2tools.jar: got ${got}, want ${TLA_SHA256}`); }
-  fs.renameSync(tmp, jar);
+  // a name of its own, so two checks downloading at once never touch each other's file
+  const tmp = `${jar}.${process.pid}.${Date.now()}.part`;
+  try {
+    fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
+    const got = sha256(tmp);
+    if (got !== TLA_SHA256) { fs.rmSync(tmp, { force: true }); fail(`checksum mismatch for tla2tools.jar: got ${got}, want ${TLA_SHA256}`); }
+    try { fs.renameSync(tmp, jar); }
+    catch (e) { if (!(fs.existsSync(jar) && sha256(jar) === TLA_SHA256)) throw e; }   // (another check got there first)
+  } finally { fs.rmSync(tmp, { force: true }); }
 }
 
 function ensureJava() {
