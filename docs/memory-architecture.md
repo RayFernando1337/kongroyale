@@ -147,6 +147,20 @@ What changes for each owner:
 
 Sharing is explicit: a resource from the cache is borrowed, and only the cache frees it.
 
+## One asset cache
+
+`engine/assets.ts` becomes the only way to get a file-backed or shared procedural resource:
+
+- **Keyed by what the resource is, not by how it was asked for.** Today the key `tex:path:srgb:repeat` makes two GPU
+  textures from one image when two callers want different wrap modes. The cache keys the upload by path and decode
+  options, and hands out `Texture` objects that share one `Source` when only sampler state differs.
+- **Reference counted.** `acquire(key, scope)` adds a reference owned by that scope, and disposing the scope drops it. A
+  resource with no references stays cached until its category needs the room, then the least recently used goes first.
+- **Procedural builds go through it too:** `cache.build(key, cat, () => buildTukTuk())`. This replaces the hand-rolled
+  `Map` caches, one area at a time.
+- **One loader of each kind**, owned by the cache: one GLTF loader, one KTX2 transcoder pool, one image path. The ten
+  bypass sites move onto it.
+
 ## CPU copies
 
 After a texture is uploaded, the layer drops its CPU copy by default: `texture.onUpdate` closes an `ImageBitmap`, and
