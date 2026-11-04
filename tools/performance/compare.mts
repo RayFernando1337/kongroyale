@@ -21,9 +21,9 @@ const argv = process.argv.slice(2);
 const list = (flag: string) => { const i = argv.indexOf(flag); if (i < 0) return []; const out: string[] = []; for (let j = i + 1; j < argv.length && !argv[j].startsWith("--"); j++) out.push(argv[j]); return out; };
 const opt = (flag: string, fallback: string) => list(flag)[0] ?? fallback;
 const baseFiles = list("--base"), candFiles = list("--cand");
-const statNames = (list("--stats").length ? list("--stats") : ["p50,p95,p99"]).flatMap((s) => s.split(",")).filter(Boolean) as Array<keyof Summary>;
+const statNames = (list("--stats").length ? list("--stats") : ["p50,p95,p99"]).flatMap((s) => s.split(",")) as Array<keyof Summary>;
 const threshold = Number(opt("--threshold", "5")), onlyMetrics = list("--metrics").flatMap((m) => m.split(",")), out = list("--out")[0], budgetFile = list("--budgets")[0];
-for (const s of statNames) if (!["n", "mean", "p50", "p95", "p99", "max"].includes(s)) fail(`unknown statistic ${s}`);
+for (const s of statNames) if (!["n", "mean", "p50", "p95", "p99", "max"].includes(s)) fail(`unknown statistic "${s}" in --stats; use n, mean, p50, p95, p99 or max`);
 if (!baseFiles.length) fail("pass at least one --base result file");
 if (!(threshold >= 0)) fail("--threshold must be a non-negative percentage");
 
