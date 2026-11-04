@@ -21,16 +21,19 @@
 // frame: the rAF interval, the main-thread step time, and an EXT_disjoint_timer_query_webgl2 TIME_ELAPSED query around
 // the frame's GL work. Results are read asynchronously (never a blocking read); every query that was in flight when
 // GPU_DISJOINT_EXT reports a disjoint event is discarded, and a frame without a valid sample stays unmeasured, never 0.
-// The engine's own timer (dynamic resolution) is off (?dynres=0), so queries never nest.
+// The engine's own timer (dynamic resolution) is off (?dynres=0), so queries never nest. The collector is armed before
+// Play and decides the match boundary in the page: it times every frame and keeps the first one at whose end inMatch is
+// true (enterMatch runs inside the step's update hooks), so warmup-15s starts with the first, most expensive match frame.
 //
 // The route. Nothing moves the player but the match itself, so every run follows the same path: warm-up on the lobby
 // islet (its first 15 s are the "slow start" window), the plane's chase camera across the island, the forced drop
 // (freefall + glide), then a scripted constant-rate camera pan where the player lands. The only scripted inputs are
-// JUMP, held from the moment the plane passes closest to the first safe circle, and the pan. Each becomes one case:
-//   gpu/match/warmup-15s   the first 15 s after the match starts (island still streaming in)
+// JUMP, held from the moment the plane passes closest to the first safe circle, and the pan, which the page starts on
+// the first frame the player stands on the ground in phase play and flags per frame. Each becomes one case:
+//   gpu/match/warmup-15s   the first 15 s from the first match frame (island still streaming in)
 //   gpu/match/plane        riding the plane once the island has streamed in (chase camera, ~720 m up)
 //   gpu/match/descent      freefall + glide down to the ground
-//   gpu/match/ground-pan   --pan-s seconds of a 0.6 rad/s yaw pan at eye height after landing
+//   gpu/match/ground-pan   the first --pan-s seconds of frames with the 0.6 rad/s yaw pan active, at eye height
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -86,8 +89,14 @@ const server: ChildProcess = spawn(process.execPath, ["--import", "tsx", "server
   cwd: root, env: { ...process.env, KR_SERVE: "1", KR_PORT: String(PORT), KR_HOST: "127.0.0.1" }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
 });
 for (const s of [server.stdout!, server.stderr!]) s.on("data", (d: Buffer) => serverLog.push(...d.toString().split("\n").filter(Boolean)));
-const stopServer = () => { if (server.exitCode === null) server.kill(); };
-process.on("exit", stopServer);
+// wait for the exit, so a run started right after this one finds the port free
+const stopServer = async () => {
+  if (server.exitCode !== null || server.signalCode !== null) return;
+  const gone = new Promise((r) => server.once("exit", r));
+  server.kill();
+  await Promise.race([gone, sleep(10_000)]);
+};
+process.on("exit", () => { if (server.exitCode === null) server.kill(); });
 for (let i = 0; !(await up()); i++) {
   if (server.exitCode !== null || i > 120) throw Error("the server did not come up:\n" + serverLog.slice(-20).join("\n"));
   await sleep(500);
@@ -101,19 +110,24 @@ function install(cfg: { maxFrames: number; panRate: number; panPitch: number; pl
   const gl = e.renderer.getContext() as GL2;
   const ext = gl.getExtension("EXT_disjoint_timer_query_webgl2") as { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number } | null;
   const N = cfg.maxFrames;
-  const c = { on: false, pan: false, n: 0, invalid: 0, disjoints: 0, timer: !!ext, jumping: false, jumpAt: null as null | Record<string, number>, T: new Float64Array(N), CPU: new Float32Array(N), GPU: new Float32Array(N).fill(-1), PH: new Int8Array(N).fill(-1), ST: new Int8Array(N).fill(-1), SR: new Int8Array(N) };
-  // pending queries and the frame each one timed (-1 = discard: a disjoint event happened while it was in flight)
+  const c = { arm: false, lineSeen: false, on: false, pan: false, panT0: 0, n: 0, invalid: 0, disjoints: 0, timer: !!ext, jumping: false, jumpAt: null as null | Record<string, number>, T: new Float64Array(N), CPU: new Float32Array(N), GPU: new Float32Array(N).fill(-1), PH: new Int8Array(N).fill(-1), ST: new Int8Array(N).fill(-1), SR: new Int8Array(N), PN: new Int8Array(N) };
+  // pending queries and the frame each one timed (-1 = discard: a disjoint event happened while it was in flight;
+  // -2 = a pre-match frame the collector dropped)
   const pq: WebGLQuery[] = [], pi: number[] = [], free: WebGLQuery[] = [];
   const step = e.step;
   e.step = function (dt: number) {
     const g = kr.game, cm = g?.cm;
-    if (c.pan && cm && cm.pred.st === 0) { g.input.yaw += cfg.panRate * Math.min(dt, 0.1); g.input.pitch = cfg.panPitch; }
+    if (c.on && !c.pan && cm && cm.phase >= 2 && cm.pred.st === 0) { c.pan = true; c.panT0 = performance.now(); }
+    const panning = c.pan && !!cm && cm.pred.st === 0;
+    if (panning) { g.input.yaw += cfg.panRate * Math.min(dt, 0.1); g.input.pitch = cfg.panPitch; }
     // the drop: hold JUMP from the plane time at which its line passes closest to the first safe circle's centre (the
     // door opens at 6 s and the game ignores JUMP before that) until the player is out, so every run lands in the same
-    // spot inside the circle
+    // spot inside the circle. The player state can turn Plane a frame before the phase message brings the flight
+    // line and start tick, so the jump waits until it has seen a valid line with planeT still short of tStar
     if (c.on && cm && cm.pred.st === 4) {
       const pl = cm.plane, tStar = ((cm.storm.cx - pl.x0) * pl.dx + (cm.storm.cz - pl.z0) * pl.dz) / cfg.planeSpeed;
-      if (!c.jumping && cm.planeT() >= tStar) {
+      if (pl.dx * pl.dx + pl.dz * pl.dz > 0.5 && cm.planeT() < tStar) c.lineSeen = true;
+      if (!c.jumping && c.lineSeen && cm.planeT() >= tStar) {
         const pp = { x: 0, z: 0 }; cm.planePos(pp);
         c.jumping = true; c.jumpAt = { x: Math.round(pp.x), z: Math.round(pp.z), cx: Math.round(cm.storm.cx), cz: Math.round(cm.storm.cz), tStar: +tStar.toFixed(2), planeT: +cm.planeT().toFixed(2) };
         dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " " }));
@@ -123,24 +137,29 @@ function install(cfg: { maxFrames: number; panRate: number; panPitch: number; pl
       let avail = 0;
       while (avail < pq.length && gl.getQueryParameter(pq[avail], gl.QUERY_RESULT_AVAILABLE)) avail++;
       if (avail) {
-        if (gl.getParameter(ext.GPU_DISJOINT_EXT)) { c.disjoints++; for (let k = 0; k < pi.length; k++) pi[k] = -1; }
+        if (gl.getParameter(ext.GPU_DISJOINT_EXT)) { let hit = false; for (let k = 0; k < pi.length; k++) if (pi[k] >= 0) { pi[k] = -1; hit = true; } if (hit) c.disjoints++; }
         for (let k = 0; k < avail; k++) {
           const q = pq.shift()!, i = pi.shift()!;
-          if (i >= 0) c.GPU[i] = (gl.getQueryParameter(q, gl.QUERY_RESULT) as number) / 1e6; else c.invalid++;
+          if (i >= 0) c.GPU[i] = (gl.getQueryParameter(q, gl.QUERY_RESULT) as number) / 1e6; else if (i === -1) c.invalid++;
           free.push(q);
         }
       }
     }
-    if (!c.on || c.n >= N) return step.call(this, dt);
+    if (!(c.on || c.arm) || c.n >= N) return step.call(this, dt);
     const i = c.n++;
     const s0 = performance.now();
-    c.T[i] = s0; c.PH[i] = cm?.phase ?? -1; c.ST[i] = cm?.pred.st ?? -1; c.SR[i] = kr.streamed ? 1 : 0;
+    c.T[i] = s0; c.PH[i] = cm?.phase ?? -1; c.ST[i] = cm?.pred.st ?? -1; c.SR[i] = kr.streamed ? 1 : 0; c.PN[i] = panning ? 1 : 0;
     let q: WebGLQuery | null = null;
     if (ext && pq.length < 8) { q = free.pop() ?? gl.createQuery(); if (q) gl.beginQuery(ext.TIME_ELAPSED_EXT, q); }
     try { step.call(this, dt); }
     finally {
       if (q && ext) { gl.endQuery(ext.TIME_ELAPSED_EXT); pq.push(q); pi.push(i); }
       c.CPU[i] = performance.now() - s0;
+      // armed, not yet in the match: keep this frame only if the match began during it, else give its slot back
+      if (!c.on) {
+        if (kr.game?.inMatch) { c.on = true; c.arm = false; }
+        else { c.n = i; if (q && ext) pi[pi.length - 1] = -2; }
+      }
     }
   };
   kr.gpuCollector = c;
@@ -168,7 +187,7 @@ let exitCode = 0;
 const marks: Record<string, number> = {};
 const route: Record<string, unknown> = {};
 let pageInfo: Record<string, unknown> = {};
-let data: { n: number; invalid: number; disjoints: number; timer: boolean; T: number[]; CPU: number[]; GPU: number[]; PH: number[]; ST: number[]; SR: number[] } | null = null;
+let data: { panT0: number; PN: number[]; n: number; invalid: number; disjoints: number; timer: boolean; T: number[]; CPU: number[]; GPU: number[]; PH: number[]; ST: number[]; SR: number[] } | null = null;
 try {
   const load0 = Date.now();
   await page.goto(ORIGIN + "/?" + QUERY, { waitUntil: "domcontentloaded", timeout: 120_000 });
@@ -191,13 +210,12 @@ try {
 
   if (TRACE) await browser.startTracing(page, { path: TRACE, screenshots: false, categories: ["devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.frame", "v8.execute", "blink.user_timing", "gpu", "disabled-by-default-v8.gc"] });
   const click0 = Date.now();
-  await page.evaluate((m) => { void (window as any).__kr.game.practice(m); }, MODE);
-  await page.waitForFunction(() => (window as any).__kr.game?.inMatch === true, null, { timeout: 300_000, polling: 50 });
-  await page.evaluate(() => { (window as any).__kr.gpuCollector.on = true; });
+  await page.evaluate((m) => { (window as any).__kr.gpuCollector.arm = true; void (window as any).__kr.game.practice(m); }, MODE);
+  await page.waitForFunction(() => (window as any).__kr.gpuCollector.on === true, null, { timeout: 300_000, polling: 50 });
   marks.playToMatchMs = Date.now() - click0;
   log("in match " + (marks.playToMatchMs / 1000).toFixed(1) + " s after Play");
 
-  const read = () => page.evaluate(() => { const cm = (window as any).__kr.game.cm; return cm ? { phase: cm.phase as number, st: cm.pred.st as number, alive: cm.alive as number, streamed: !!(window as any).__kr.streamed, x: Math.round(cm.pred.x), z: Math.round(cm.pred.z) } : null; });
+  const read = () => page.evaluate(() => { const cm = (window as any).__kr.game.cm; return cm ? { pan: !!(window as any).__kr.gpuCollector.pan, phase: cm.phase as number, st: cm.pred.st as number, alive: cm.alive as number, streamed: !!(window as any).__kr.streamed, x: Math.round(cm.pred.x), z: Math.round(cm.pred.z) } : null; });
   const m0 = Date.now();
   let tracing = !!TRACE, landedAt = 0, last = "";
   const seen = new Set<string>();
@@ -210,9 +228,9 @@ try {
       if (tag !== last) { last = tag; log(tag + " alive " + s.alive + " streamed " + s.streamed); }
       if (s.st === 4 && !seen.has("plane")) { seen.add("plane"); await sleep(8000); await shot("plane"); }
       if ((s.st === 1 || s.st === 2) && !seen.has("descent")) { seen.add("descent"); await sleep(3000); await shot("descent"); }
-      if (s.phase >= 2 && s.st === 0 && !landedAt) {
+      if (s.pan && !landedAt) {
         landedAt = Date.now(); route.landed = { x: s.x, z: s.z };
-        route.jump = await page.evaluate(() => { const c = (window as any).__kr.gpuCollector; c.pan = true; return c.jumpAt; });
+        route.jump = await page.evaluate(() => (window as any).__kr.gpuCollector.jumpAt);
         log("landed at " + s.x + ", " + s.z + " (jumped at " + JSON.stringify(route.jump) + "): camera pan");
       }
       if (s.st === 3 || s.st === 5) { errors.push("the player died at " + el.toFixed(0) + " s; the ground window may be short"); break; }
@@ -225,7 +243,7 @@ try {
   data = await page.evaluate(() => {
     const c = (window as any).__kr.gpuCollector; c.on = false; c.pan = false;
     const n = c.n, a = (x: ArrayLike<number>) => Array.from(x).slice(0, n);
-    return { n, invalid: c.invalid, disjoints: c.disjoints, timer: c.timer, T: a(c.T), CPU: a(c.CPU), GPU: a(c.GPU), PH: a(c.PH), ST: a(c.ST), SR: a(c.SR) };
+    return { panT0: c.panT0 as number, PN: a(c.PN), n, invalid: c.invalid, disjoints: c.disjoints, timer: c.timer, T: a(c.T), CPU: a(c.CPU), GPU: a(c.GPU), PH: a(c.PH), ST: a(c.ST), SR: a(c.SR) };
   });
   pageInfo.krErrors = await page.evaluate(() => (window as any).__kr.errors.slice(0, 20));
   pageInfo.renderScale = await page.evaluate(() => (window as any).__kr.engine.renderScale);
@@ -236,18 +254,18 @@ try {
   exitCode = 1;
 } finally {
   await browser.close().catch(() => { /* already gone */ });
-  stopServer();
+  await stopServer();
 }
 
 // ---- windows -> cases
 const WINDOW_DEF: Record<string, string> = {
-  "gpu/match/warmup-15s": "first " + WARM_WINDOW_S + " s after inMatch (lobby islet, island streaming)",
+  "gpu/match/warmup-15s": "first " + WARM_WINDOW_S + " s from the first match frame, the one during which inMatch turns true (lobby islet, island streaming)",
   "gpu/match/plane": "player state Plane (chase camera) once the island has finished streaming in",
   "gpu/match/descent": "player state Freefall or Glide",
-  "gpu/match/ground-pan": "player state Ground in phase play, " + PAN_RATE + " rad/s yaw pan, " + PAN_S + " s",
+  "gpu/match/ground-pan": "frames with the scripted " + PAN_RATE + " rad/s yaw pan active (player state Ground in phase play), the first " + PAN_S + " s of them",
 };
 const ms = (v: number[]): Metric => v.length ? { status: "ok", unit: "ms", better: "lower", summary: stats(v) } : { status: "invalid", unit: "ms", reason: "no frames in this window" };
-function caseFor(id: string, idx: number[]): CaseResult {
+function caseFor(id: string, version: number, idx: number[]): CaseResult {
   const d = data!, inWin = new Set(idx);
   const iv: number[] = [], gpu: number[] = [], cpu: number[] = [];
   for (const i of idx) { if (inWin.has(i - 1)) iv.push(d.T[i] - d.T[i - 1]); cpu.push(d.CPU[i]); if (d.GPU[i] >= 0) gpu.push(d.GPU[i]); }
@@ -262,7 +280,7 @@ function caseFor(id: string, idx: number[]): CaseResult {
     framesOver100ms: { status: "ok", unit: "count", better: "lower", value: iv.filter((x) => x > 100).length },
   };
   return {
-    scenario: { id, version: 1, seed: SEED, workload: "real-play" },
+    scenario: { id, version, seed: SEED, workload: "real-play" },
     windows: { seconds: +secs.toFixed(2), frames: idx.length, definition: WINDOW_DEF[id] },
     load: { frames: idx.length, gpuSamples: gpu.length },
     metrics,
@@ -275,10 +293,10 @@ function caseFor(id: string, idx: number[]): CaseResult {
 const cases: CaseResult[] = [];
 if (data && data.n) {
   const d = data, idx = (f: (i: number) => boolean) => { const r: number[] = []; for (let i = 0; i < d.n; i++) if (f(i)) r.push(i); return r; };
-  cases.push(caseFor("gpu/match/warmup-15s", idx((i) => d.T[i] - d.T[0] <= WARM_WINDOW_S * 1000)));
-  cases.push(caseFor("gpu/match/plane", idx((i) => d.ST[i] === 4 && d.SR[i] === 1)));
-  cases.push(caseFor("gpu/match/descent", idx((i) => d.ST[i] === 1 || d.ST[i] === 2)));
-  cases.push(caseFor("gpu/match/ground-pan", idx((i) => d.PH[i] >= 2 && d.ST[i] === 0)));
+  cases.push(caseFor("gpu/match/warmup-15s", 2, idx((i) => d.T[i] - d.T[0] <= WARM_WINDOW_S * 1000)));
+  cases.push(caseFor("gpu/match/plane", 1, idx((i) => d.ST[i] === 4 && d.SR[i] === 1)));
+  cases.push(caseFor("gpu/match/descent", 1, idx((i) => d.ST[i] === 1 || d.ST[i] === 2)));
+  cases.push(caseFor("gpu/match/ground-pan", 2, idx((i) => d.PN[i] === 1 && d.T[i] - d.panT0 <= PAN_S * 1000)));
   const fmt = (m: Metric) => "summary" in m ? "p50 " + m.summary.p50.toFixed(2) + " p95 " + m.summary.p95.toFixed(2) + " p99 " + m.summary.p99.toFixed(2) : m.status;
   for (const c of cases) log(c.scenario.id + ": " + c.windows.seconds + " s, frame " + fmt(c.metrics.frameIntervalMs) + " | gpu " + fmt(c.metrics.gpuFrameMs) + " | " + c.gates.map((x) => x.id + " " + (x.pass ? "ok" : "FAIL")).join(", "));
 }
@@ -297,7 +315,7 @@ const result: RunResult = {
 (result as unknown as Record<string, unknown>).detail = {
   marks, route, page: pageInfo, host: { hostname: os.hostname(), ...winInfo }, timer: data ? { invalid: data.invalid, disjoints: data.disjoints, frames: data.n } : null,
   // the raw per-frame series (ms since the first recorded frame; gpu -1 = no valid sample), for re-windowing later
-  frames: data ? { t: data.T.map((x) => +(x - data!.T[0]).toFixed(2)), cpu: data.CPU.map((x) => +x.toFixed(3)), gpu: data.GPU.map((x) => +x.toFixed(3)), phase: data.PH, st: data.ST, streamed: data.SR } : null,
+  frames: data ? { t: data.T.map((x) => +(x - data!.T[0]).toFixed(2)), cpu: data.CPU.map((x) => +x.toFixed(3)), gpu: data.GPU.map((x) => +x.toFixed(3)), phase: data.PH, st: data.ST, streamed: data.SR, pan: data.PN } : null,
 };
 save(out, result);
 log("wrote " + out);
