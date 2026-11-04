@@ -145,5 +145,5 @@ export class TukFx {
       if (q.life < 1) o.scale.setScalar(Math.max(0.01, q.life));
     }
   }
-  dispose() { this.object.removeFromParent(); this.geo.dispose(); for (const q of this.pieces) q.o.removeFromParent(); this.pieces.length = 0; }
+  dispose() { this.object.removeFromParent(); this.geo.dispose(); this.object.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) (m as THREE.Material).dispose(); }); for (const q of this.pieces) q.o.removeFromParent(); this.pieces.length = 0; }
 }

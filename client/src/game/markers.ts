@@ -7,6 +7,7 @@
 // within ~40 m of the camera, so it never blocks your aim at the spot itself. ≤ MAX beams, two draws each, nothing per
 // frame but a few uniforms; no allocations.
 import * as THREE from "three";
+import type { Scope } from "../engine/res/scope";
 
 export const BEAM_H = 1400;
 const MAX = 4;
@@ -59,10 +60,10 @@ export class MarkerBeams {
   readonly group = new THREE.Group();
   private beams: Beam[] = [];
   private t = 0;
-  constructor(scene: THREE.Scene, private ground: (x: number, z: number) => number) {
+  constructor(scene: THREE.Scene, private ground: (x: number, z: number) => number, res: Scope) {
     this.group.name = "marker-beams";
-    const quad = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
-    const disc = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    const quad = res.geometry("geo.actor", new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0));
+    const disc = res.geometry("geo.actor", new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2));
     for (let i = 0; i < MAX; i++) {
       const bm = new THREE.ShaderMaterial({
         name: "marker-beam", vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG,
@@ -76,11 +77,13 @@ export class MarkerBeams {
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
       });
+      res.material(bm); res.material(rm);
       const beam = new THREE.Mesh(quad, bm), ring = new THREE.Mesh(disc, rm);
       for (const m of [beam, ring]) { m.frustumCulled = false; m.visible = false; m.castShadow = false; m.receiveShadow = false; m.userData.castShadow = false; m.renderOrder = 9; this.group.add(m); }
       this.beams.push({ beam, ring, bm, rm, key: "", k: 0, x: 0, y: 0, z: 0 });
     }
     scene.add(this.group);
+    res.defer(() => this.group.removeFromParent());
   }
   /** this frame's markers (≤ MAX; the first is drawn first) and the camera */
   update(dt: number, cam: THREE.Vector3, list: ReadonlyArray<MarkerSpec>) {
@@ -108,6 +111,5 @@ export class MarkerBeams {
       b.ring.visible = b.rm.uniforms.uA.value > 0.01;
     }
   }
-  dispose() { this.group.removeFromParent(); for (const b of this.beams) { b.bm.dispose(); b.rm.dispose(); } }
 }
 const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
