@@ -14,5 +14,49 @@
       "const zlib = await import(/* @vite-ignore */ [\"node\", \"zlib\"].join(\":\")) as { gunzipSync(b: Uint8Array): Uint8Array };",
       "const fs = await import(/* @vite-ignore */ [\"node\", \"fs\"].join(\":\")) as { readFileSync(p: URL): Uint8Array };"
     ]
+  },
+  "header-comment": {
+    "client/src/engine/exact-index.ts": [
+      "no header comment"
+    ],
+    "client/src/kongbot/receipt.ts": [
+      "no header comment"
+    ],
+    "client/src/settings/bindings.ts": [
+      "no header comment"
+    ],
+    "client/src/ui/coach-observer.ts": [
+      "no header comment"
+    ],
+    "client/src/weapons/guns/types.ts": [
+      "no header comment"
+    ],
+    "client/src/world/pois/lookout-point/keeper-cottage.ts": [
+      "no header comment"
+    ],
+    "client/src/world/pois/lookout-point/keeper-roof-tiles.ts": [
+      "no header comment"
+    ],
+    "server/perf.ts": [
+      "no header comment"
+    ],
+    "tools/buildings/walkgraph.test.mts": [
+      "no header comment"
+    ],
+    "tools/performance/geometry-parity.mts": [
+      "no header comment"
+    ],
+    "tools/performance/matrix-parity.mts": [
+      "no header comment"
+    ],
+    "tools/performance/splat-viewport.mts": [
+      "no header comment"
+    ],
+    "tools/performance/static-http.mts": [
+      "no header comment"
+    ],
+    "tools/performance/wire-parity.mts": [
+      "no header comment"
+    ]
   }
 }

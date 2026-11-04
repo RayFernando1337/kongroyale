@@ -3,7 +3,7 @@
 //   npx tsx tools/lint/check.mts              self-test, then lint the repo against tools/lint/baseline.json
 //   npx tsx tools/lint/check.mts --self-test  only the self-test
 // The baseline lists the violations each file had when a rule arrived, one entry per site: the trimmed text of the
-// flagged line. It only shrinks. A site that isn't listed fails, even when it replaces a fixed one; a listed site that is
+// flagged line, or a fixed key for a rule whose site has no stable line (header-comment). It only shrinks. A site that isn't listed fails, even when it replaces a fixed one; a listed site that is
 // gone fails until its entry is deleted, so a fix stays fixed. Never add an entry to make a change pass; fix the code.
 // The self-test runs every rule over tools/lint/fixtures/<rule>/: a line ending in "// lint-expect" must be flagged and no
 // other line may be, so a rule that silently stops matching fails here before it lets a real violation through.
@@ -19,7 +19,8 @@ const BASELINE = `${LINT_DIR}/baseline.json`;
 const SCAN_DIRS = ["client/src", "shared", "server", "tools"];
 const SOURCE_EXT = /\.(ts|mts|js|mjs)$/;
 
-type Hit = { node: ts.Node; message: string };
+/** key: the site's identity in the baseline, when the flagged line's text isn't a stable one */
+type Hit = { node: ts.Node; message: string; key?: string };
 type Rule = {
   id: string;
   /** which repo files the rule covers (posix path relative to the repo root) */
@@ -143,7 +144,22 @@ const sharedDeterminism: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism];
+// ---- header-comment (AGENTS.md "Code style": every file starts with a comment saying what it owns) ----
+
+const MSG_HEADER = 'start the file with a comment saying what it owns and how it fits in (after a "#!" line if it has one), like the files beside it (AGENTS.md "Code style")';
+
+const headerComment: Rule = {
+  id: "header-comment",
+  applies: () => true,
+  check(sf) {
+    const text = sf.text.replace(/^\uFEFF/, "");
+    const body = text.startsWith("#!") ? text.slice(text.indexOf("\n") + 1) : text;
+    if (/^(\/\/|\/\*)/.test(body)) return [];
+    return [{ node: sf.statements[0] ?? sf.endOfFileToken, message: MSG_HEADER, key: "no header comment" }];
+  },
+};
+
+const RULES: Rule[] = [sharedDeterminism, headerComment];
 
 // ---- engine ----
 
@@ -156,7 +172,7 @@ function runRule(rule: Rule, sf: ts.SourceFile, file: string): Finding[] {
   const lines = sf.text.split(/\r?\n/);
   for (const h of rule.check(sf)) {
     const line = sf.getLineAndCharacterOfPosition(h.node.getStart(sf)).line + 1;
-    if (!byLine.has(line)) byLine.set(line, { rule: rule.id, file, line, key: lines[line - 1].trim(), message: h.message });
+    if (!byLine.has(line)) byLine.set(line, { rule: rule.id, file, line, key: h.key ?? lines[line - 1].trim(), message: h.message });
   }
   return [...byLine.values()];
 }
