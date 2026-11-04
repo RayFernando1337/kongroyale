@@ -12,7 +12,15 @@ import { tint, type Geo } from "./jungle-geo";
 let _env: THREE.Texture | null = null;
 /** the warm contrasty PMREM env for gold (built once per renderer) */
 export function goldEnv(renderer: THREE.WebGLRenderer): THREE.Texture {
-  if (_env) return _env;
+  if (!_env) for (const _ of goldEnvSteps(renderer)) { /* all at once */ }
+  return _env!;
+}
+/** goldEnv time-sliced: a streamed build awaits this before it makes its gold materials (built in one piece, the
+ *  equirect + PMREM held the main thread ~0.4 s in a match's warm-up) */
+export async function prepareGoldEnv(renderer: THREE.WebGLRenderer, yieldFn: () => Promise<void>): Promise<void> {
+  if (!_env) for (const _ of goldEnvSteps(renderer)) await yieldFn();
+}
+function* goldEnvSteps(renderer: THREE.WebGLRenderer): Generator<void> {
   const W = 512, H = 256, data = new Float32Array(W * H * 4);
   // tuned THROUGH the atmos tone curve (PBR-Neutral shoulder desaturates above ~0.76 → white): mid reflections carry the
   // yellow (a warm dome ~0.4), softboxes stay ≤ 4 (light gold, not white), only tiny sparkles go hot
@@ -29,6 +37,7 @@ export function goldEnv(renderer: THREE.WebGLRenderer): THREE.Texture {
   const dirOf = (az: number, el: number) => { const a = az * Math.PI / 180, e = el * Math.PI / 180; return [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)]; };
   const S = spots.map(([az, el, r, I, c]) => ({ d: dirOf(az, el), cr: Math.cos(r * Math.PI / 180), I, c }));
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (x === 0 && y % 16 === 15) yield;
     const el = (0.5 - (y + 0.5) / H) * 180, az = ((x + 0.5) / W) * 360, d = dirOf(az, el);
     const up = Math.max(0, d[1]), dn = Math.max(0, -d[1]);
     // warm dome brightening upward, a broken dark horizon stripe, a dark floor with a faint amber bounce
@@ -43,13 +52,26 @@ export function goldEnv(renderer: THREE.WebGLRenderer): THREE.Texture {
     }
     const i = (y * W + x) * 4; data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 1;
   }
-  const half = new Uint16Array(data.length); for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(data[i]);
-  const tex = new THREE.DataTexture(half, W, H, THREE.RGBAFormat, THREE.HalfFloatType);
+  yield;
+  // (bilinear 2x up to 1024 x 512: the PMREM's cube size is width / 4, and at 256 its filter program is the one the sky
+  // IBL already linked (atmos/env.ts fromScene) — at 128 a second one linked synchronously, ~0.3 s)
+  const W2 = W * 2, H2 = H * 2, half = new Uint16Array(W2 * H2 * 4);
+  for (let y = 0; y < H2; y++) {
+    const fy = Math.min(H - 1, Math.max(0, (y + 0.5) / 2 - 0.5)), y0 = Math.floor(fy), y1 = Math.min(H - 1, y0 + 1), ty = fy - y0;
+    for (let x = 0; x < W2; x++) {
+      const fx = (x + 0.5) / 2 - 0.5, x0 = Math.floor(fx), tx = fx - x0, xa = (x0 + W) % W, xb = (x0 + 1) % W;
+      for (let c = 0; c < 4; c++) {
+        const a = data[(y0 * W + xa) * 4 + c] * (1 - tx) + data[(y0 * W + xb) * 4 + c] * tx, b = data[(y1 * W + xa) * 4 + c] * (1 - tx) + data[(y1 * W + xb) * 4 + c] * tx;
+        half[(y * W2 + x) * 4 + c] = THREE.DataUtils.toHalfFloat(a * (1 - ty) + b * ty);
+      }
+    }
+    if (y % 64 === 63) yield;
+  }
+  const tex = new THREE.DataTexture(half, W2, H2, THREE.RGBAFormat, THREE.HalfFloatType);
   tex.mapping = THREE.EquirectangularReflectionMapping; tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
   const pm = new THREE.PMREMGenerator(renderer);
   _env = pm.fromEquirectangular(tex).texture;
   pm.dispose(); tex.dispose();
-  return _env;
 }
 
 export interface GoldOpts { roughness?: number; color?: THREE.ColorRepresentation; env?: number; emissive?: number; vertexColors?: boolean; /** a fresh instance (to patch further — never .clone(): clones lose onBeforeCompile) */ unique?: boolean }

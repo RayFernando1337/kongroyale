@@ -14,6 +14,7 @@ import { buildPlaza } from "./plaza";
 import { buildCover } from "./cover";
 import { buildDungeon } from "./dungeon";
 import { leafClusterTex } from "../_kit/jungle-mat";
+import { prepareGoldEnv } from "../_kit/jungle-gold";
 import { distanceSwitch, shadowProxy, noCast } from "../_kit/jungle-lod";
 import { templeColliders } from "../../../../../shared/pois/jungle-layout";
 import { merge, boxUVs, tint } from "../_kit/jungle-geo";
@@ -42,6 +43,7 @@ const mod: WorldModule = {
     root.position.set(W.x, W.y, W.z); root.rotation.y = Math.PI; root.updateMatrixWorld(true);
     ctx.scene.add(root);
     // time-sliced: a yield between the big pieces so the streamed build never holds the main thread > 50 ms
+    await prepareGoldEnv(ctx.renderer, () => ctx.yield());
     const mats = templeMaterials(ctx);
     await ctx.yield();
     buildPyramid(ctx, mats, root); await ctx.yield();

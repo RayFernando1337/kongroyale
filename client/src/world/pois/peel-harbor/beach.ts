@@ -12,7 +12,7 @@ import type { VegApi, PlantKind } from "../../veg/api";
 import { hash } from "../_kit/harbor-geo";
 import type { PartCtx } from "./parts";
 
-export function dressBeach(p: PartCtx) {
+export async function dressBeach(p: PartCtx) {
   const { ctx } = p;
   const veg = ctx.shared.get("veg") as VegApi | undefined;
   if (!veg) return;
@@ -90,7 +90,9 @@ export function dressBeach(p: PartCtx) {
     ctx.scene.traverse((o) => { if (/^rocks-/.test(o.name) && (o as THREE.Mesh).isMesh) rocks.push(o); });
     const rc = new THREE.Raycaster(); rc.far = 140;
     const nm = new THREE.Matrix3();
+    // (each ray walks the rock meshes' triangles, ~4 ms: one build slice holds a few, not all 120 — 0.5 s in one task)
     for (let i = 0; i < 120; i++) {
+      await ctx.yield();
       const sx = -1 + hash(i, 91) * 0.46, sy = -1 + hash(i, 92) * 0.95;          // NDC: left 23 % of the frame, lower 48 %
       const dir = f.clone().addScaledVector(r, sx * tx).addScaledVector(u, sy * ty).normalize();
       rc.set(C, dir);

@@ -149,7 +149,7 @@ const mod: WorldModule = {
     if (c1) group.add(c1);
     await ctx.yield();
     performance.mark("peel-harbor:part:beach+c1");
-    if (!only || only.includes("beach")) dressBeach(p);
+    if (!only || only.includes("beach")) await dressBeach(p);
     await ctx.yield();
     // every static caster goes into the far shadow map through ONE force-shown stand-in (LOD / off-screen culling
     // of the live groups can no longer drop parts of the POI from the far map)
