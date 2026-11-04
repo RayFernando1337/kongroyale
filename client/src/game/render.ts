@@ -39,7 +39,7 @@ import type { GliderProps } from "../actors/glider";
 import { outfitFor } from "../actors/outfit-pick";
 import type { LightBalancer } from "./lights";
 import { AmmoBoxes } from "./ammobox";
-import { GlassFx } from "../world/glass-fx";
+import { GlassFx, glassShardPrefab } from "../world/glass-fx";
 import { PG, glassAim } from "../../../shared/sim/glass";
 import { MarkerBeams, type MarkerSpec } from "./markers";
 import { SQUAD_COLOURS } from "../ui/minimap";
@@ -65,8 +65,8 @@ import { UpdraftFx } from "./updraft-fx";
 import { BuffOverlay } from "../ui/buff";
 import { ClimbViews } from "./climb-views";
 import type { WaterApi } from "../world/water/api";
-import { BombFx } from "./bomb";
-import { CoverViews } from "./cover";
+import { BombFx, bombPrefabs } from "./bomb";
+import { CoverViews, coverGhostPrefab } from "./cover";
 import { ANN_ECON, OFFERS, Offer, SOLO_LIFE } from "../../../shared/sim/economy";
 import { ECON, SWIM_FLOAT_Y, UW_EYE, SWIM_EYE, DIVE_MIN_DEPTH } from "../../../shared/sim/const";
 import { bananaStand, tickStands } from "../weapons/stand";
@@ -223,6 +223,7 @@ export class GameRender implements EventSink {
   private readonly streaks: THREE.Mesh;
   private readonly streakU: ReturnType<typeof shared>["streakU"];
   constructor(readonly engine: Engine, readonly cm: ClientMatch, readonly kits: Kits, readonly input: GameInput) {
+    const before = new Set(engine.scene.children);
     this.hud = makeHudState();
     engine.camera.add(kits.viewModel.object);
     engine.scene.add(kits.plane.object);
@@ -248,8 +249,11 @@ export class GameRender implements EventSink {
     // banana bombs: the world copies, the arc preview, the first-person throw
     this.coverViews = new CoverViews(engine.scene, cm.world, kits.fx, (s, x, y, z) => this.play(s === "up" ? "tuk:land" : s === "hit" ? "impact:wood" : s === "break" ? "tuk:crash" : "step:wood", x, y, z, s === "hit" ? 0.5 : 0.9));
     this.bombFx = new BombFx(engine.scene, engine.camera, cm.world, (x, y, z, sp) => this.play("impact:wood", x, y, z, Math.min(0.55, 0.12 + sp * 0.04)));
-    this.bananas = new BananaRounds(engine.scene);
+    this.bananas = new BananaRounds(engine.scene); patchTree(engine, this.bananas.mesh);
     cm.sink = this;
+    // (a POI streaming in meanwhile must not adopt these as its own roots, main.ts moduleRoots: its cull would give the
+    // custom shaders a dissolve, a program the boot prewarm never linked, and fade gameplay effects as scenery)
+    for (const o of engine.scene.children) if (!before.has(o)) o.userData.gameRoot = true;
   }
   readonly glassFx: GlassFx;
   private readonly tukFx: TukFx;
@@ -2747,14 +2751,24 @@ function shared() {
   SHARED = { rocketGeo: new THREE.CapsuleGeometry(0.09, 0.4, 4, 8), rocketMat: new THREE.MeshStandardMaterial({ color: "#f5c531", emissive: "#ffb000", emissiveIntensity: 2.4, roughness: 0.4 }), streakGeo: st.geometry, streakMat: st.material as THREE.Material, streakU };
   return SHARED;
 }
-/** meshes using the per-match materials, for the boot prewarm pass */
+/** meshes using the per-match materials, for the boot prewarm pass. The effects the GameRender constructor makes every
+ *  match (interact highlight, map markers, updraft, tuk debris, banana rounds, ammo boxes, glass shards, the cover
+ *  ghost, the bomb arc and pin) get one session-long copy each here, never disposed: their programs stay linked, so a
+ *  match's first frames link none of them (RAY-16) */
 export function renderPrefabs(): THREE.Object3D[] {
   const s = shared();
   const r = new THREE.Mesh(s.rocketGeo, s.rocketMat); r.castShadow = true;
   const w = new THREE.Mesh(s.streakGeo, s.streakMat); w.frustumCulled = false;
+  const fx = new THREE.Group() as unknown as THREE.Scene;
+  const effects = [new InteractHighlight(fx).group, new MarkerBeams(fx, () => 0).group, new UpdraftFx(fx).group, new TukFx(fx, () => 0).object, new BananaRounds(fx).mesh, new AmmoBoxes().group, glassShardPrefab(), coverGhostPrefab(), ...bombPrefabs()];
+  // (the highlight draws its hull / rim meshes empty until it has a target, then with the target's geometry, and a
+  // program's key reads which attributes the geometry has: a second copy carries a small real mesh)
+  const hl = new InteractHighlight(fx).group, geo = new THREE.PlaneGeometry(0.01, 0.01);
+  hl.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !m.geometry.getAttribute("position")) m.geometry = geo; });
+  effects.push(hl);
   // (a tuk-tuk, fresh and burnt out: its lamps, lightbox and glass compile here, not when the first one drives into view)
   // (the Banana Stand kiosk — its shopkeeper's fur, the thatch, the leaves and the sign compile here too)
-  return [r, w, ...tukPrefabs(), ...heliPrefabs(), bananaStand().root];
+  return [r, w, ...tukPrefabs(), ...heliPrefabs(), bananaStand().root, ...effects];
 }
 /** wind streaks: n thin quads, positions/extrusion entirely in the vertex shader (zero CPU per frame) */
 function buildStreaks(n: number, u: Record<string, THREE.IUniform>): THREE.Mesh {

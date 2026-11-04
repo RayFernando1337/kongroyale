@@ -17,7 +17,7 @@ import { PLANE_ALT } from "../../../shared/sim/const";
 import { createWeaponsKit } from "../weapons/index";
 import type { Fx } from "../weapons/api";
 import { createAudio } from "../audio/index";
-import { createKong } from "../actors/kong";
+import { createKong, kongManager } from "../actors/kong";
 import type { KongActor, KongPose } from "../actors/api";
 import { createPlane } from "../actors/plane";
 import { createGlider } from "../actors/glider";
@@ -996,7 +996,7 @@ async function prewarmMatch(engine: Engine, kits: Kits, title: TitleScene, isBus
     });
     const look = (cam: THREE.PerspectiveCamera) => { cam.position.set(ox, oy, oz); cam.rotation.set(-0.05, 0, 0, "YXZ"); cam.fov = 72; };
     // (perf) the pool's programs (every variant) compile in parallel first: the excursion draws below never compile
-    await engine.compileObjects(made.map((a) => a.object));
+    await engine.compileObjects([...made.map((a) => a.object), (await kongManager(engine)).weaponWarm()]);
     if (isBusy()) { made.forEach((a, k) => kits.releaseKong?.(a, k % 6)); return; }
     // all in ONE task: no real title frame ever draws the pool
     place(); excursion(look, 0.1); excursion(look, 0.1);

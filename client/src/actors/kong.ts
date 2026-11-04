@@ -724,14 +724,29 @@ class KongManager {
     this.wpnGeo.set(id, out);
     console.info(`[kong] weapon LOD ${id}: ${out.map((g) => g.index!.count / 3).join(" / ")} tris in ${(performance.now() - t0).toFixed(0)} ms`);
   }
+  /** the far-weapon batches' one material: kong-patched and atmos-patched when it is made, so no batch ever draws it
+   *  unpatched and the match warm-up (index.ts prewarmMatch, weaponWarm) links its final program before a match */
+  weaponMaterial(): THREE.Material {
+    if (this.wpnMat) return this.wpnMat;
+    const m = this.patchKong(Object.assign(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.05 }), { name: "kong-weapon" }), "weapon");
+    (this.ctx.shared.get("atmos") as { patch?: (m: THREE.Material) => void } | undefined)?.patch?.(m);
+    return this.wpnMat = m;
+  }
+  /** tiny meshes carrying the far-weapon material and its motion-vector material, for the warm-up compile (positions +
+   *  normals, like a weapon batch: the program key reads which attributes the geometry has) */
+  weaponWarm(): THREE.Object3D {
+    const g = new THREE.Group(), geo = new THREE.PlaneGeometry(0.01, 0.01);
+    g.add(new THREE.Mesh(geo, this.weaponMaterial()), new THREE.Mesh(geo, this.velMat(true)));
+    g.traverse((o) => { o.frustumCulled = false; });
+    return g;
+  }
   private weaponBatch(id: WeaponId, t: number): Batch | null {
     const key = `${id}|${t}`;
     let b = this.wpnBatches.get(key);
     if (b) return b;
     const gs = this.wpnGeo.get(id);
     if (!gs) return null;
-    this.wpnMat ??= this.patchKong(Object.assign(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.05 }), { name: "kong-weapon" }), "weapon");
-    b = this.addBatch("weapon", "weapon", gs[t], this.wpnMat, false);
+    b = this.addBatch("weapon", "weapon", gs[t], this.weaponMaterial(), false);
     b.list = [];
     b.mesh.name = `kong-weapon-${id}-${t ? "min" : "lo"}`;
     this.wpnBatches.set(key, b);

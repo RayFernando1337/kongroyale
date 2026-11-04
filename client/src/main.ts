@@ -254,7 +254,7 @@ function moduleRoots(id: string, streamed: boolean): THREE.Object3D[] {
   // streamed while the game runs: only roots that are clearly this module's (not a gameplay object added meanwhile)
   const poi = id.startsWith("poi:") ? POIS.find((p) => `poi:${p.id}` === id) : undefined;
   return roots.filter((o) => {
-    if (GAME_ROOT.test(o.name)) return false;
+    if (GAME_ROOT.test(o.name) || o.userData.gameRoot) return false;
     if (!poi) return true;
     _box.setFromObject(o);
     if (_box.isEmpty()) return true;

@@ -46,6 +46,10 @@ const V = new THREE.Vector3(), HIT = makeHit();
 // ONE structure listener (engine/scene-hooks) — no periodic scene walks
 let live: GlassFx | null = null, hooked = false;
 
+const shardMaterial = () => new THREE.MeshStandardMaterial({ name: "glass:shard", color: "#d9f1f7", roughness: 0.04, metalness: 0.35, envMapIntensity: 2.4, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
+/** the shards' program for the session prewarm (game/render.ts renderPrefabs): every GlassFx makes and disposes its own */
+export function glassShardPrefab(): THREE.Object3D { return new THREE.InstancedMesh(new THREE.PlaneGeometry(0.01, 0.01), shardMaterial(), 1); }
+
 export class GlassFx {
   private readonly meshes: GMesh[] = [];
   private readonly known = new WeakSet<THREE.Object3D>();
@@ -70,7 +74,7 @@ export class GlassFx {
     const p = [0, 0.5, 0.004, -0.32, -0.42, 0.004, 0.38, -0.3, 0.004, 0, 0.5, -0.004, 0.38, -0.3, -0.004, -0.32, -0.42, -0.004];
     g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
     g.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ name: "glass:shard", color: "#d9f1f7", roughness: 0.04, metalness: 0.35, envMapIntensity: 2.4, transparent: true, opacity: 0.82, side: THREE.DoubleSide });
+    const mat = shardMaterial();
     this.shards = new THREE.InstancedMesh(g, mat, SHARDS);
     this.shards.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.shards.frustumCulled = false; this.shards.castShadow = false; this.shards.receiveShadow = false;

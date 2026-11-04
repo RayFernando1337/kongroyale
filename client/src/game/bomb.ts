@@ -32,6 +32,19 @@ export const BOMB_FP = {
   bomb: { p: [-0.03, 0.02, -0.02], r: [0.2, 0.6, 1.25 + Math.PI] },
 };
 
+const arcDotMaterial = () => new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.35, 0.4), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
+const arcRingMaterial = () => new THREE.MeshBasicMaterial({ color: new THREE.Color(1.7, 1.3, 0.3), transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+const pinChromeMaterial = () => new THREE.MeshStandardMaterial({ color: "#d9dde2", metalness: 1, roughness: 0.22 });
+function pinPeelMaterial() {
+  const m = (handMaterials().peel as THREE.MeshPhysicalMaterial).clone(); m.side = THREE.DoubleSide; m.vertexColors = false; m.color.set("#ffffff"); m.emissive.set("#3a2600");
+  return m;
+}
+/** the arc preview's and the pin's programs for the session prewarm (game/render.ts renderPrefabs) */
+export function bombPrefabs(): THREE.Object3D[] {
+  const g = new THREE.PlaneGeometry(0.01, 0.01);
+  return [new THREE.InstancedMesh(g, arcDotMaterial(), 1), new THREE.Mesh(g, arcRingMaterial()), new THREE.Mesh(g, pinChromeMaterial()), new THREE.Mesh(g, pinPeelMaterial())];
+}
+
 export class BombFx {
   readonly views = new Map<number, View>();
   private pool: View[] = [];
@@ -51,10 +64,10 @@ export class BombFx {
   private readonly W3 = new THREE.Vector3(); private readonly W4 = new THREE.Vector3(); private readonly W5 = new THREE.Vector3(); private readonly Q2 = new THREE.Quaternion(); private readonly M2 = new THREE.Matrix4();
   private readonly M = new THREE.Matrix4(); private readonly P = new THREE.Vector3(); private readonly B: BombBody = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rest: false };
   constructor(private readonly scene: THREE.Scene, camera: THREE.Camera, private readonly world: StaticWorld, private readonly bounce: (x: number, y: number, z: number, speed: number) => void) {
-    this.dotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.35, 0.4), transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
+    this.dotMat = arcDotMaterial();
     this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 8, 6), this.dotMat, PREV_N);
     this.dots.name = "bomb-arc"; this.dots.frustumCulled = false; this.dots.count = 0; this.dots.visible = false; this.dots.renderOrder = 6;
-    this.ringMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.7, 1.3, 0.3), transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+    this.ringMat = arcRingMaterial();
     this.ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.55, 40).rotateX(-Math.PI / 2), this.ringMat);
     this.ring.name = "bomb-arc-ring"; this.ring.visible = false; this.ring.renderOrder = 6; this.ring.frustumCulled = false;
     scene.add(this.dots, this.ring);
@@ -81,7 +94,7 @@ export class BombFx {
       home.matrix.makeBasis(s0.dir, side, new THREE.Vector3().crossVectors(s0.dir, side).normalize()).setPosition(rp);
       home.matrix.decompose(home.position, home.quaternion, home.scale); inner.add(home);
       this.pinHome = home;
-      const chrome = new THREE.MeshStandardMaterial({ color: "#d9dde2", metalness: 1, roughness: 0.22 });
+      const chrome = pinChromeMaterial();
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.017, 0.0035, 8, 22), chrome); ring.name = "bomb-pin-ring";
       this.pin.add(ring); this.pin.name = "bomb-pin";
       // the strip's anchor: on the skin at the stem end (pin space), where it peels from
@@ -93,7 +106,7 @@ export class BombFx {
       const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(this.stripPos, 3)); g.setAttribute("normal", new THREE.BufferAttribute(this.stripNrm, 3));
       const uv = new Float32Array((N + 1) * 2 * 2); for (let i = 0; i <= N; i++) { uv[i * 4] = i / N; uv[i * 4 + 1] = 0; uv[i * 4 + 2] = i / N; uv[i * 4 + 3] = 1; } g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
       const idx: number[] = []; for (let i = 0; i < N; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } g.setIndex(idx);
-      const peelM = (handMaterials().peel as THREE.MeshPhysicalMaterial).clone(); peelM.side = THREE.DoubleSide; peelM.vertexColors = false; peelM.color.set("#ffffff"); peelM.emissive.set("#3a2600");
+      const peelM = pinPeelMaterial();
       this.strip = new THREE.Mesh(g, peelM); this.strip.name = "bomb-pin-strip"; this.strip.frustumCulled = false;
       this.pin.add(this.strip);
       this.pin.traverse((q) => { (q as THREE.Mesh).castShadow = false; (q as THREE.Mesh).frustumCulled = false; });

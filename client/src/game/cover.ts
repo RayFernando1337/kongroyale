@@ -11,12 +11,16 @@ import { crateWall } from "../weapons/loot-lane";
 interface View { id: number; obj: THREE.Group; mats: THREE.MeshStandardMaterial[]; base: THREE.Color[]; t: number; state: 0 | 1 | 2; hitT: number; hp: number; seed: number }
 const UP_S = 0.32, END_S = 0.7;
 
+const ghostMaterial = () => new THREE.MeshBasicMaterial({ color: 0x55ff77, transparent: true, opacity: 0.32, depthWrite: false });
+/** the placement ghost's program for the session prewarm (game/render.ts renderPrefabs) */
+export function coverGhostPrefab(): THREE.Object3D { return new THREE.Mesh(new THREE.PlaneGeometry(0.01, 0.01), ghostMaterial()); }
+
 export class CoverViews {
   private readonly views = new Map<number, View>();
   private pool: View[] = [];
   private readonly ghost: THREE.Group; private readonly ghostMat: THREE.MeshBasicMaterial;
   constructor(private readonly scene: THREE.Scene, private readonly world: StaticWorld, private readonly fx: { puff(p: THREE.Vector3, k: "dust"): void }, private readonly sound: (s: "up" | "hit" | "break" | "end", x: number, y: number, z: number) => void) {
-    this.ghostMat = new THREE.MeshBasicMaterial({ color: 0x55ff77, transparent: true, opacity: 0.32, depthWrite: false });
+    this.ghostMat = ghostMaterial();
     this.ghost = crateWall(COVER.w, COVER.h, COVER.t).root;
     this.ghost.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.material = this.ghostMat; m.castShadow = false; m.receiveShadow = false; m.renderOrder = 7; } });
     this.ghost.name = "cover-ghost"; this.ghost.visible = false;
