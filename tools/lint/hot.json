@@ -1,5 +1,4 @@
 {
-  "shared/sim/player.ts": ["stepPlayer"],
   "shared/sim/match.ts": ["Match.simulate", "Match.stepRockets", "Match.autoPickup"],
   "shared/sim/world.ts": ["StaticWorld.resolveCapsule", "StaticWorld.raycast", "StaticWorld.rayBox"],
   "shared/net/host.ts": ["MatchHost.tick", "writeSnapshotFor"]
