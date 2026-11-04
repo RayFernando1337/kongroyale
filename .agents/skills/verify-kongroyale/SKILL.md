@@ -141,6 +141,7 @@ list: commands land over time, and a newer one beats a recipe here.
 | `npm run sim` | a full 50-bot trios match (seed 42): winner, kills, tick cost | no |
 | `npm run netlab` (`-- --kill`) | hit registration under 20-320 ms RTT with the real client and server code | no |
 | `npm run bench:host` / `npm run bench:server` | host tick cost; 50 players over 100 real sockets against a local built server | no |
+| `npx tsx tools/performance/memory.mts run --url http://127.0.0.1:3140` | whole-browser memory per process and what holds it (textures, geometry, audio, JS heap), at the title, in a match and after two matches; see the verify-memory skill | no (`nogpu` is a proxy) |
 | `node tools/shot.mjs <view>` | fixed-camera captures of a POI or biome on the real GPU | yes |
 
 On Windows: `tools/run-tests.mjs` spawns `npm` and `npx` through a shell (#17), and the swimming and walk-graph tests

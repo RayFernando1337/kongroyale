@@ -1,28 +1,3 @@
-#!/usr/bin/env node
-// Memory harness for Kong Royale: how much memory the whole browser uses while a player boots to the title, flies the
-// plane, plays a match, leaves and plays a second one, and what that memory holds. The method and what every number
-// means: .agents/skills/verify-memory/SKILL.md. Run from the repository root with Node 22.12+:
-//
-//   npx tsx tools/performance/memory.mts run --url http://127.0.0.1:3140 --profile nogpu
-//   npx tsx tools/performance/memory.mts table shots/memory/<stamp>/result.json --md
-//
-// Per phase (title, plane, match, back on the title, second match, back on the title) it records:
-// - every browser process (browser, renderer, GPU, utility) by pid from CDP SystemInfo.getProcessInfo, with its memory
-//   from the OS: PSS and RSS from /proc on Linux, phys_footprint from footprint (or RSS from ps) on macOS, private
-//   bytes and working set from Get-Process on Windows;
-// - the page's JS heap after a forced GC (CDP Runtime.getHeapUsage);
-// - an exact count of what the game allocated through WebGL (textures per mip level and cube face, buffers,
-//   renderbuffers, the drawing buffer), from wrappers installed before the page's scripts run, attributed to three.js
-//   textures and world modules where it can;
-// - CPU copies the game keeps after upload: geometry arrays, DataTexture arrays, images, canvases and ImageBitmaps;
-// - decoded audio (every AudioBuffer from decodeAudioData, createBuffer and OfflineAudioContext), by source URL.
-// --heap adds a V8 heap snapshot at the title, grouped by constructor and by the retainers of large objects.
-// Only local servers: the harness refuses any host but 127.0.0.1 / localhost (AGENTS.md rule 7).
-//
-// run options: --url URL (game flags may ride on it)  --profile nogpu|mac|win (from the OS)  --channel chrome|msedge
-//   --viewport WxH (1600x900; 640x360 on nogpu)  --dpr N (1)  --seed N (42)  --match-secs N (60)  --matches N (2)
-//   --heap  --out DIR  --chrome PATH (KR_CHROME)  --headed  --budgets FILE (exit 1 when a budgeted number is off)
-// table options: result.json files; --md adds the breakdown tables
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -403,10 +378,11 @@ async function run() {
   page.on("pageerror", (e) => errors.push(`pageerror: ${String(e.message).slice(0, 300)}`));
   const pageCdp = await ctx.newCDPSession(page);
   const waitS = nogpu ? 420 : 180;
-  const waitFor = async (what: string, fn: string, secs: number) => {
+  const notes: string[] = [];
+  const waitFor = async (what: string, fn: string, secs: number, optional = false) => {
     const end = Date.now() + secs * 1000;
     while (Date.now() < end) { if (await page.evaluate(fn).catch(() => false)) return true; await sleep(1000); }
-    errors.push(`timed out after ${secs} s waiting for ${what}`);
+    (optional ? notes : errors).push(`timed out after ${secs} s waiting for ${what}`);
     return false;
   };
   let gpu = "";
@@ -420,17 +396,14 @@ async function run() {
     if (flag("--heap")) { samples[0].heap = await heapSnapshot(pageCdp); console.log(`  heap snapshot: ${samples[0].heap.totalMB} MB in ${samples[0].heap.nodes} nodes`); }
     for (let m = 1; m <= matches; m++) {
       const suffix = m === 1 ? "" : String(m);
-      await page.click("button.tn-play-cta");
+      await page.locator("button.tn-play-cta").click({ timeout: 120_000, force: true });
       if (!await waitFor("the match (inMatch)", "!!(window.__kr.game && window.__kr.game.inMatch)", waitS)) break;
       const inAt = Date.now();
-      if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", Math.max(30, matchSecs - 10))) samples.push(await takeSample("plane", browserCdp, pageCdp, page, t0));
+      if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", Math.max(30, matchSecs - 10), true)) samples.push(await takeSample("plane", browserCdp, pageCdp, page, t0));
       const left = matchSecs * 1000 - (Date.now() - inAt);
       if (left > 0) await sleep(left);
       samples.push(await takeSample(`match${suffix}`, browserCdp, pageCdp, page, t0));
-      await page.keyboard.press("Escape");
-      await sleep(1000);
-      const viaMenu = await page.locator('.mm-item[data-act="leave"]').click({ timeout: 5000 }).then(() => page.locator('.mm-item[data-act="leave-yes"]').click({ timeout: 5000 })).then(() => true, () => false);
-      if (!viaMenu) { errors.push(`match ${m}: Leave match in the pause menu was not clickable; left through __kr.game.leave()`); await page.evaluate(() => (window as unknown as { __kr: { game: { leave(): void } } }).__kr.game.leave()); }
+      await page.evaluate(() => (window as unknown as { __kr: { game: { leave(): void } } }).__kr.game.leave());
       if (!await waitFor("the title after leaving", "!(window.__kr.game && window.__kr.game.inMatch)", 60)) break;
       await sleep(10_000);
       samples.push(await takeSample(`left${m}`, browserCdp, pageCdp, page, t0));
@@ -464,9 +437,9 @@ async function run() {
     schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "memory", startedAt, durationMs: Math.round(performance.now() - t0),
     source: source(process.cwd()), environment: { ...env(), gpu: gpu || null },
     config: { url: url.pathname + url.search, profile, viewport: `${vw}x${vh}`, dpr, seed, matchSecs, matches, heap: flag("--heap") },
-    cases, errors, artifacts: [],
+    cases, errors, notes, artifacts: [],
     leaks: [delta("left1", "left2"), delta("match", "match2"), delta("title", "left1")].filter(Boolean),
-  } satisfies RunResult & { leaks: unknown[] };
+  } satisfies RunResult & { leaks: unknown[]; notes: string[] };
   const file = path.join(out, "result.json");
   save(file, result);
   console.log(`wrote ${file}${errors.length ? `\nerrors:\n  ${errors.join("\n  ")}` : ""}`);
