@@ -148,7 +148,7 @@ const plan = (hotfixFrom?: string) => {
   const bump = tagged ? "patch" : bumpOf(prs, !!hotfixFrom);
   const sameLine = hotBase ? all.filter((r) => r.version[0] === hotBase.version[0] && r.version[1] === hotBase.version[1]) : [];
   const version = tagged ? tagged.version : nextVersion(sameLine.length ? sameLine[sameLine.length - 1].version : all[all.length - 1]?.version ?? parse(tagPrefix + BASE_VERSION), bump);
-  return { target, tagged, latest: all[all.length - 1], latestInHead: !all.length || isAncestor(all[all.length - 1].sha), from, prs, loose, bump: bump as Bump, version: fmt(version), tag: tagPrefix + fmt(version) };
+  return { target, tagged, latest: all[all.length - 1], missing: all.filter((r) => !isAncestor(r.sha)), from, prs, loose, bump: bump as Bump, version: fmt(version), tag: tagPrefix + fmt(version) };
 };
 
 if (cmd === "plan") {
@@ -167,7 +167,7 @@ if (cmd === "plan") {
   const unl = p.prs.filter((x) => !x.bump || !x.section);
   if (unl.length && !flag("--allow-unlabelled")) die("unlabelled PRs: " + unl.map((x) => "#" + x.number).join(", ") + " (add release: and section: labels, or pass --allow-unlabelled)");
   if (hotfix && !p.from) die("hotfix base missing");
-  if (!hotfix && !p.tagged && !p.latestInHead && !flag("--accept-missing")) die(p.latest.tag + " is not in HEAD, so this release would leave out its changes; merge it into main (a merge commit, not a squash) or pass --accept-missing");
+  if (!hotfix && !p.tagged && p.missing.length && !flag("--accept-missing")) die(p.missing.map((r) => r.tag).join(", ") + " not in HEAD, so this release would leave out their changes; merge it into main (a merge commit, not a squash) or pass --accept-missing");
   const taken = releases().find((r) => r.tag === p.tag);
   if (taken && taken.sha !== p.target) die(p.tag + " already exists at " + taken.sha.slice(0, 7) + ", not " + p.target.slice(0, 7));
   if (hotfix) { git("fetch", "--quiet", "origin", p.from!.sha); try { git("merge-base", "--is-ancestor", p.from!.sha, "HEAD"); } catch { die("HEAD does not descend from " + hotfix + "; branch the hotfix from that tag"); } }
