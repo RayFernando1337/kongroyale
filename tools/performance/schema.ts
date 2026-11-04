@@ -23,6 +23,7 @@ export interface Scenario {
   id: string;
   /** bumped whenever the workload changes, so old and new results never compare silently */
   version: number;
+  /** -1 when the runner can't fix the seed (the server picks one per match); runs then sample different matches */
   seed: number;
   /** "synthetic-*" workloads isolate one cost; only "real-play" claims match coverage */
   workload: "synthetic-warmup" | "synthetic-play" | "real-play" | "socket-load";

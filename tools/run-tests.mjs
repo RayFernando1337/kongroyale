@@ -26,7 +26,13 @@ const failed = [];
 for (const [name, cmd, args] of checks) {
   const t = Date.now();
   console.log(`\n▶ ${name}`);
-  const r = spawnSync(cmd, args, { stdio: "inherit" });
+  // npm and npx are .cmd scripts on Windows, which Node only spawns through a shell. The shell gets one command line
+  // with every argument quoted, because the temp folder in the report paths can contain spaces. The command name stays
+  // bare: cmd.exe starting a quoted "npx" from PATH makes %~dp0 in npx.cmd point at the current folder instead of the
+  // Node install. node is a real executable, so it skips cmd.exe and its %VAR% expansion
+  const r = process.platform === "win32" && cmd !== "node"
+    ? spawnSync([cmd, ...args.map((a) => `"${a}"`)].join(" "), { stdio: "inherit", shell: true })
+    : spawnSync(cmd, args, { stdio: "inherit" });
   const ok = r.status === 0;
   console.log(`${ok ? "✔" : "✘"} ${name} (${((Date.now() - t) / 1000).toFixed(1)} s)`);
   if (!ok) failed.push(name);
