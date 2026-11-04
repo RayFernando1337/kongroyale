@@ -28,6 +28,7 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 | Command | Writes | Notes |
 |---|---|---|
 | `npm run bench:host -- --out <file>` | `kong-perf-result` | Authoritative host and snapshot fan-out, CPU only. `--root <checkout>` measures another checkout, `--scenario combat` runs one scenario, `--ticks N` sets the synthetic window. Each scenario plays the real start, plane and drop untimed, then times the PLAY phase. `real-play` ([scenarios/real-play.mts](scenarios/real-play.mts)) is the representative one: a seeded all-bot trios match, nothing placed, timed for the first 7200 PLAY ticks (about 30 s on a 4-vCPU runner). The other four are synthetic: scripted placement and inputs, humans kept alive. `--trace` also hashes every packet. |
+| `npx tsx tools/performance/alloc.mts --out <file>` | `kong-perf-result` | Bytes allocated per host tick (`allocBytesPerTick`), GC count and GC time over `real-play`'s PLAY window, read from `v8.GCProfiler` with no inspector attached. The same match as `bench:host`'s real-play, with the same state digest. Ten runs on a 4-vCPU runner spread under 3% on bytes and GC count; `gcMs` spreads about 45%, so treat it as a guardrail. `--sample` adds the top allocating functions to `detail.topAllocators` (the sampling heap profiler perturbs the JIT, so sampled runs only compare with sampled runs). `run.mts --runner alloc` interleaves it. |
 | `npx tsx tools/performance/run.mts --base <checkout> --cand <checkout>` | a folder of results plus `comparison.md` | Interleaved repeated `bench:host` runs and the comparison. See below. |
 | `npm run bench:server -- --seconds 60 --out <file>` | `kong-perf-result` | Private server and 50 real WebSocket players, each also on an aux socket. Build first. The match gets a 5 s warm-up and a real plane, so the bench takes about 50 s plus `--seconds`. The timed window starts at the first PLAY snapshot. Linux and macOS only. |
 | `npx tsx tools/performance/gpu-match.mts --out <file>` | `kong-perf-result` | Real GPU, in-match frame timing: a seed-42 trios practice match in Chrome at a pinned video preset (default High, 1920x1080, DPR 1, no dynamic resolution), normal rAF, valid `EXT_disjoint_timer_query_webgl2` samples per frame. Four cases: `warmup-15s`, `plane`, `descent`, `ground-pan`. Build first; `--root` measures another checkout's `dist/`. One timed GPU job per machine. |
@@ -90,7 +91,7 @@ baseline runs came before all candidate runs, because machine drift can then loo
 
 ## Repeated baseline/candidate runs
 
-`run.mts` does the interleaving for you: `--reps` pairs, alternating which side runs first, each run a fresh Node
+`run.mts` does the interleaving for you (`--runner alloc` runs alloc.mts instead of host.mts): `--reps` pairs, alternating which side runs first, each run a fresh Node
 process measuring the checkout you name with `host.mts --root`. Then it checks the state digests and runs
 `compare.mts`.
 

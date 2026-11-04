@@ -45,6 +45,7 @@ import { killWeapon } from "./mythic";
 import { bombLaunch, bombStep, type BombBody } from "./bomb";
 import { COVER, CoverSet, PLACED } from "./cover";
 import { bananaStands, cashStacks, Economy, STAND_ID0, STAND_SIZE, type EconHost } from "./economy";
+import type { ReplayRecorder } from "../net/replay";
 
 /** resurgence ends early once this few squads (trios) / players (solo) are left in the match */
 const RES_END_SQUADS = 7, RES_END_SOLO = 20;
@@ -83,6 +84,9 @@ const vslot = (tick: number) => (((tick % HISTORY_TICKS) + HISTORY_TICKS) % HIST
 const RES = makeShotResult();
 /** where a spawned item comes to rest (settleLoot / tossClear register) */
 const LP = new Float64Array(3);
+/** does p carry this weapon (any rarity)? Kept out of autoPickup's loop: a closure there over the loop's item makes V8
+ * allocate a context for every item visited, picked up or not (about 40 B per item, over half the sim's allocation) */
+const carriesWeapon = (p: Player, id: number) => p.slots.some((s) => s.kind === SK.Weapon && s.id === id);
 const CASH: number[] = [];
 
 /** lab / debug probe: called once per hitscan pellet with the evaluated (rewound) time and the verdict */
@@ -156,6 +160,8 @@ export class Match {
    * Never past the plane time of a full warm-up: warmWall = real seconds since the warm-up began, and no
    * hold once it reaches WARMUP_S — START NOW waits for the stream at most as long as the warm-up would have anyway. */
   holdWarmup: (() => boolean) | null = null; warmHeldS = 0; warmWall = 0;
+  /** replay log (shared/net/replay.ts): every outside call that changes the match is recorded here; null = not recording */
+  rec: ReplayRecorder | null = null;
   /** the tick the plane phase began in (shared/sim/plane.ts: every plane position is a function of it) */
   planeStartTick = 0;
   /** host option: after the results screen the match is OVER (back to the lobby room) instead of looping into warm-up */
@@ -170,7 +176,7 @@ export class Match {
   constructor(o: MatchOpts) {
     this.world = o.world; this.terrain = o.world.terrain; this.mode = o.mode; this.seed = o.seed; this.rng = new Rng(o.seed);
     this.glass = new GlassState(o.world); this.glass.bind();
-    this.vehs = new VehicleSet(o.world); this.vehs.bind();
+    this.vehs = new VehicleSet(o.world); this.vehs.bind(); this.world.cover = this.covers;
     // a tier caps the caller's nerfs; no tier (the server, a client that predates tiers): the nerfs exactly as passed —
     // the classic practice client's 10 % damage is the easy tier, everything else standard
     const tier = o.botDifficulty ? BOT_DIFFICULTY[o.botDifficulty] : null;
@@ -305,6 +311,7 @@ export class Match {
   // ---------------------------------------------------------------- inputs
   /** queue one decoded input for human `id`. Duplicates (redundant sockets) and stale inputs are ignored. */
   pushInput(id: number, i: Input) {
+    this.rec?.input(this.tick, id, i);
     const p = this.players[id]; if (!p || p.bot) return;
     if (!(i.seq > this.lastQueued[id])) return;
     this.lastQueued[id] = i.seq;
@@ -398,7 +405,8 @@ export class Match {
     this.onPhase(this.phase);
   }
   /** host: leave warmup now */
-  startNow() { if (this.phase === Phase.Warmup) this.skipWarmup = true; }
+  startNow() { this.rec?.startNow(this.tick); if (this.phase === Phase.Warmup) this.skipWarmup = true; }
+  private warmupHeld() { const held = !!this.holdWarmup?.(); this.rec?.hold(this.tick, held); return held; }
 
   // ---------------------------------------------------------------- the tick
   step() {
@@ -409,7 +417,7 @@ export class Match {
     if (this.phase === Phase.Plane || this.phase === Phase.Play) this.time += DT;
     if (this.phase === Phase.Warmup) this.warmWall += DT;
     const W = this.warmupS;
-    if (this.phase === Phase.Warmup && (this.phaseT >= W - 3 || this.skipWarmup) && this.warmWall < W && this.holdWarmup?.()) {
+    if (this.phase === Phase.Warmup && (this.phaseT >= W - 3 || this.skipWarmup) && this.warmWall < W && this.warmupHeld()) {
       this.warmHeldS += DT; if (this.phaseT > W - 3) this.phaseT = W - 3;
     } else if (this.phase === Phase.Warmup && (this.phaseT >= W || this.skipWarmup || this.warmWall >= W)) { this.skipWarmup = false; this.enterPlane(); }
     if (this.phase === Phase.Plane) this.stepPlane();
@@ -1214,7 +1222,7 @@ export class Match {
       if (d2 > PICKUP_DIST * PICKUP_DIST || it.y - p.y < -1.3 || it.y - p.y > 1.5) continue;
       if (!this.range && !lootReachable(this.world, p.x, p.y, p.z, it.x, it.y, it.z, !p.bot)) continue;
       // walking over a gun you already carry (same weapon, any rarity) never fills a second slot with it — take it with E
-      if (it.kind === IK.Weapon) { if (p.slots.some((s) => s.kind === SK.Empty) && !p.slots.some((s) => s.kind === SK.Weapon && s.id === it.sub)) this.takeItem(p, it, false); }
+      if (it.kind === IK.Weapon) { if (p.slots.some((s) => s.kind === SK.Empty) && !carriesWeapon(p, it.sub)) this.takeItem(p, it, false); }
       // bots never use bombs / crate walls: they leave them for the humans instead of filling slots with them
       else if (p.bot && it.kind === IK.Consumable && !CONSUMABLE_DEFS[CONSUMABLES[it.sub]].hp && !CONSUMABLE_DEFS[CONSUMABLES[it.sub]].shield) continue;
       else this.takeItem(p, it, false);
@@ -1222,6 +1230,7 @@ export class Match {
   }
   /** the inventory screen (Tab): op 1 = drag slot a onto slot b, op 2 = drop slot a on the ground */
   inventoryOp(pid: number, op: number, a: number, b: number) {
+    this.rec?.inv(this.tick, pid, op, a, b);
     const p = this.players[pid]; if (!p) return;
     if (op === 1) { if (invMove(p, a, b)) this.onInventory(p.id); return; }
     if (op === 3) { if (this.econ && (this.phase === Phase.Play || this.phase === Phase.Warmup)) this.econ.buy(p, a, b); return; }
@@ -1279,6 +1288,7 @@ export class Match {
   // ---------------------------------------------------------------- late joiners / leavers
   /** a human joins mid-lobby: takes over a bot seat (prefers a bot on a squad with room for this human's squad) */
   claimBot(name: string, team: number): number {
+    this.rec?.claim(this.tick, name, team);
     const bots = this.players.filter((p) => p.bot);
     let pick = bots.find((p) => p.team === team) ?? null;
     if (!pick) {
@@ -1294,6 +1304,7 @@ export class Match {
   }
   /** a human leaves: the seat becomes a bot again */
   releaseHuman(id: number) {
+    this.rec?.release(this.tick, id);
     const p = this.players[id]; if (!p || p.bot) return;
     p.bot = true; p.connected = false; p.name = BOT_NAMES[id % BOT_NAMES.length];
     const b = new BotBrain(id, this.rng.next() * 1e9 | 0, this.botDifficulty); this.brains[id] = b;
@@ -1303,6 +1314,7 @@ export class Match {
   /** a human who dropped comes back to the seat that was theirs (the host checks it was): the inverse of
    *  releaseHuman, while the seat still plays — a bot holds it, not dead, not eliminated. false = it can't be had back */
   reclaimHuman(id: number, name: string): boolean {
+    this.rec?.reclaim(this.tick, id, name);
     const p = this.players[id]; if (!p || !p.bot || p.eliminated || !alive(p)) return false;
     p.bot = false; p.connected = true; p.name = name; this.brains[id] = null;
     this.resetInputs(id); p.lastSeq = 0;

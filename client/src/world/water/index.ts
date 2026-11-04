@@ -461,7 +461,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     (mod as unknown as { _obstacles: ObstacleBake })._obstacles = obstacles;
     await brk("end");
   },
-  async afterBuild() {
+  async afterBuild(ctx) {
     // the beach view camera must be solved before main.ts applies the view (right after the afterBuild pass)
     await (mod as unknown as { _beachP?: Promise<void> })._beachP;
     // every POI has built: bake the waterline-intersection foam mask (re-checked for late loads in the update loop)
@@ -469,7 +469,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     const ob = (mod as unknown as { _obstacles?: ObstacleBake })._obstacles;
     const T: Record<string, number> = {}, tt = () => performance.now();
     let t = tt();
-    if (ob && ob.bakes === 0) await ob.warm(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))));
+    if (ob && ob.bakes === 0) await ob.warm(() => ctx.afterPaint());
     T.warm = tt() - t; t = tt();
     ob?.maybeBake(true);
     T.bake = tt() - t;

@@ -1,0 +1,23 @@
+[
+  {
+    "name": "the hold ignores the warm-up's length",
+    "why": "match.ts step: the hold no longer checks warmWall < W, so only holdForStream's 40 s cap ends it",
+    "find": "(pt >= W - Lead \\/ skip) /\\ ww < W /\\ HoldOn",
+    "replace": "(pt >= W - Lead \\/ skip) /\\ HoldOn",
+    "expect": "Invariant WarmupBounded is violated"
+  },
+  {
+    "name": "redeploys never end",
+    "why": "match.ts step: resurgence never switches off, so kongs can redeploy forever",
+    "find": "/\\ Live /\\ res /\\ storm >= 1 /\\ res' = FALSE",
+    "replace": "/\\ FALSE /\\ res' = FALSE",
+    "expect": "Temporal properties were violated"
+  },
+  {
+    "name": "checkEnd ignores the squad count",
+    "why": "match.ts checkEnd: Results no longer waits for one squad or none",
+    "find": "End == phase = \"play\" /\\ SquadsLeft <= 1",
+    "replace": "End == phase = \"play\"",
+    "expect": "Invariant OneWinner is violated"
+  }
+]

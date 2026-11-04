@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { arg, env, save, source, stats } from './common.mts';
+import { arg, env, save, source, stateDigest, stats } from './common.mts';
 import { RESULT_SCHEMA, RESULT_VERSION, type CaseResult, type RunResult } from './schema.ts';
 import { REAL_PLAY } from './scenarios/real-play.mts';
 const root=path.resolve(arg('--root','.')), synthTicks=+arg('--ticks','1800'), synthWarm=240, synthSeed=707, out=arg('--out','reports/performance/host.json'), trace=process.argv.includes('--trace');
@@ -58,8 +58,7 @@ for(const scenario of only.length?only:all){
     if(measure){costs.push(dt);if(m.tick%SNAP_EVERY===0)snaps.push(dt);phaseTicks[Phase[m.phase]]=(phaseTicks[Phase[m.phase]]??0)+1;}
   }
   const used=process.cpuUsage(usage), wallMs=performance.now()-start;
-  const state=createHash('sha256').update(JSON.stringify([m.tick,m.nextItemId,m.items,m.chests,m.rockets,[m.storm.phase,m.storm.r,m.storm.cx,m.storm.cz],
-    m.players.map((p:any)=>[p.x,p.y,p.z,p.yaw,p.hp,p.shield,p.st,p.kills,p.active,p.slots,[...p.ammo]])])).digest('hex');
+  const state=stateDigest(m);
   const c:CaseResult={
     scenario:real?{id:REAL_PLAY.id,version:REAL_PLAY.version,seed,workload:REAL_PLAY.workload}:{id:'host/'+scenario,version:2,seed,workload:'synthetic-play'},
     windows:{untimedMatchSetupTicks:setupTicks,benchWarmupTicks:warm,measuredTicks:ticks,cpuWallAndMemory:'measured ticks only'},

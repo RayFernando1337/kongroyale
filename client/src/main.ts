@@ -35,10 +35,9 @@ import { onStructure, gate, ungate } from "./engine/scene-hooks";
 import { POIS } from "../../shared/world/map";
 import { Display, bootQuality } from "./engine/display";
 import { WARMUP_S } from "../../shared/sim/const";
+import { afterPaint as nextFrame, noFrameWaitCount } from "./engine/frame";
 
 const q = new URLSearchParams(location.search);
-/** a real task boundary after the next paint (the loading screen / title repaint between two long builds) */
-const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 const shot = q.has("shot");
 const errors: string[] = [];
 const report = (where: string, e: unknown) => {
@@ -385,7 +384,18 @@ if (gameMode) {
 const MATCH_ONLY_HOLDS = /^(ui:map|veg-impostors$)/;
 const blocking = () => engine.pendingHolds().filter((h) => !(gameMode && MATCH_ONLY_HOLDS.test(h)));
 kr.settleHolds = engine.pendingHolds();
-while (!kr.bootError && blocking().length && performance.now() - t0 < 90_000) await new Promise((r) => setTimeout(r, 50));
+// the 90 s budget counts only time the browser paints (a frame within the last 5 s): frame hooks release some holds
+// (veg-impostors on view pages), and Safari paints nothing while its window is off screen — the player who comes back should find the
+// load going on, not the reload card. A slow renderer (frames seconds apart) still counts.
+let settling = true, paintedAt = performance.now(), heldMs = 0;
+const watchPaint = () => { paintedAt = performance.now(); if (settling) requestAnimationFrame(watchPaint); };
+requestAnimationFrame(watchPaint);
+while (!kr.bootError && blocking().length && heldMs < 90_000) {
+  const t = performance.now();
+  await new Promise((r) => setTimeout(r, 50));
+  if (performance.now() - paintedAt < 5_000) heldMs += performance.now() - t;
+}
+settling = false;
 if (!kr.bootError && blocking().length) bootFail("ready", `timed out waiting for: ${blocking().join(", ")}`);
 kr.settleHoldsMs = Math.round(performance.now() - t0);
 const settleFrom = engine.frames;
@@ -394,6 +404,7 @@ const settleFrom = engine.frames;
 const SETTLE = gameMode ? 6 : 20;
 while (!kr.bootError && engine.frames - settleFrom < SETTLE) await new Promise((r) => requestAnimationFrame(r));
 kr.programsAtReady = engine.renderer.info.programs?.length;
+kr.noFrameWaits = noFrameWaitCount();
 if (kr.bootError) {
   // a failed boot never becomes a playable "ready" title (the loading screen shows the reload card)
   kr.stage = "failed";

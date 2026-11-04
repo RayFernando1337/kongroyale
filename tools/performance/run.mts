@@ -1,11 +1,14 @@
-// Repeated, interleaved baseline/candidate runs of bench:host, then compare.mts on the result files.
+// Repeated, interleaved baseline/candidate runs of bench:host (or alloc.mts with --runner alloc), then compare.mts on the
+// result files.
 //   npx tsx tools/performance/run.mts --base ../kong-base --cand . --scenario real-play --metrics hostTickMs
+//   npx tsx tools/performance/run.mts --runner alloc --base ../kong-base --cand . --metrics allocBytesPerTick,gcCount
 //   npx tsx tools/performance/run.mts --base .                         (A/A: the same checkout on both sides)
-// Each run is a fresh Node process measuring the checkout given (host.mts --root), so JIT and GC state never carry
+// Each run is a fresh Node process measuring the checkout given (host.mts or alloc.mts --root), so JIT and GC state never carry
 // over. Pairs alternate order (base,cand then cand,base) so machine drift falls on both sides.
 // The match-state digest (and with --trace the packet checksum) must be identical across every run of one side (determinism), and between the sides unless
 // --allow-outcome-change: a performance change should replay the same match.
 // Options: --reps 5, --scenario real-play, --out-dir reports/performance/run-<time>, host.mts's --ticks and --trace,
+// alloc.mts's --sample,
 // and compare.mts's --metrics,
 // --stats, --threshold and --budgets, which are passed through. Exit status: compare.mts's, or 1 on a digest mismatch.
 import fs from "node:fs";
@@ -17,12 +20,16 @@ import { parseResult } from "./schema.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url)), harness = path.resolve(here, "../..");
 const baseRoot = path.resolve(arg("--base", ".")), candRoot = path.resolve(arg("--cand", baseRoot)), aa = candRoot === baseRoot;
-const reps = Number(arg("--reps", "5")), scenario = arg("--scenario", "real-play");
+const reps = Number(arg("--reps", "5")), scenario = arg("--scenario", "real-play"), runner = arg("--runner", "host");
+if (runner !== "host" && runner !== "alloc") throw Error(`--runner is host or alloc, not ${runner}`);
 const outDir = path.resolve(arg("--out-dir", `reports/performance/run-${new Date().toISOString().replace(/[:.]/g, "-")}`));
 if (!(reps >= 1)) throw Error("--reps must be at least 1");
 fs.mkdirSync(outDir, { recursive: true });
 
-const hostArgs = [...(process.argv.includes("--trace") ? ["--trace"] : []), ...(process.argv.includes("--ticks") ? ["--ticks", arg("--ticks", "")] : [])];
+if (runner === "alloc" && (process.argv.includes("--trace") || process.argv.includes("--ticks"))) throw Error("--trace and --ticks are host.mts options; alloc.mts hashes no packets and always times real-play's window");
+const runnerArgs = runner === "alloc"
+  ? (process.argv.includes("--sample") ? ["--sample"] : [])
+  : [...(process.argv.includes("--trace") ? ["--trace"] : []), ...(process.argv.includes("--ticks") ? ["--ticks", arg("--ticks", "")] : [])];
 const tsx = (file: string, args: string[], quiet = false) => spawnSync(process.execPath, ["--import", "tsx", path.join(here, file), ...args], { cwd: harness, stdio: quiet ? "pipe" : "inherit", encoding: "utf8" });
 const files: Record<"base" | "cand", string[]> = { base: [], cand: [] };
 for (let i = 0; i < reps; i++) {
@@ -30,16 +37,16 @@ for (let i = 0; i < reps; i++) {
     const file = path.join(outDir, `${sideName}-${i + 1}.json`);
     console.log(`run ${i + 1}/${reps} ${sideName}${aa ? " (A/A)" : ""}: ${sideName === "base" ? baseRoot : candRoot}`);
     fs.rmSync(file, { force: true });
-    const r = tsx("host.mts", ["--root", sideName === "base" ? baseRoot : candRoot, "--scenario", scenario, "--out", file, ...hostArgs]);
+    const r = tsx(`${runner}.mts`, ["--root", sideName === "base" ? baseRoot : candRoot, "--scenario", scenario, "--out", file, ...runnerArgs]);
     if (r.error) throw r.error;
-    if (!fs.existsSync(file)) throw Error(`host.mts wrote no result (exit ${r.status}); see its output above`);
+    if (!fs.existsSync(file)) throw Error(`${runner}.mts wrote no result (exit ${r.status}); see its output above`);
     files[sideName].push(file);
   }
 }
 
 let digestFailure = false;
 // With --trace the packet checksum must match too: the same final state can hide a different packet stream.
-const digests = (list: string[]) => list.map((f) => Object.fromEntries(parseResult(JSON.parse(fs.readFileSync(f, "utf8")), f).cases.map((c) => [c.scenario.id, String(c.detail?.stateDigest) + (hostArgs.includes("--trace") ? "/" + String(c.detail?.packetChecksum) : "")])));
+const digests = (list: string[]) => list.map((f) => Object.fromEntries(parseResult(JSON.parse(fs.readFileSync(f, "utf8")), f).cases.map((c) => [c.scenario.id, String(c.detail?.stateDigest) + (runnerArgs.includes("--trace") ? "/" + String(c.detail?.packetChecksum) : "")])));
 const base = digests(files.base), cand = digests(files.cand);
 for (const id of Object.keys(base[0])) {
   const b = new Set(base.map((d) => d[id])), c = new Set(cand.map((d) => d[id]));
