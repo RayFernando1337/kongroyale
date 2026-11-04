@@ -41,6 +41,7 @@ pieces fit; read it before changing networking, the simulation or world loading.
 | `npx tsx tools/verify-online-match.mts` | A whole online match over real WebSockets against the real server. |
 | `npx tsx tools/verify-boot.mts` | The production client boots and plays a short match on SwiftShader, no GPU needed. |
 | `node --import tsx tools/verify-assets.mts` | Every file under `public/assets/` has a recorded source or licence. `npm test` runs it with `--baseline tools/verify-assets.baseline.json`, which lists today's unattributed files by name and fails on any file not in it. |
+| `npx tsx tools/check-size.mts` | What a production build makes the browser download: entry, boot JS, workers, lazy chunks. `npm test` runs it with `--budgets tools/size-budgets.json`. |
 | `npm run bench:host`, `bench:server`, `bench:verify` | Host tick cost, a 50-player socket load test against a local server, and the parity checks. See [PERFORMANCE.md](PERFORMANCE.md). |
 | `npm start` | Serve `dist/` and the game server on one port. See [HOSTING.md](HOSTING.md). |
 
@@ -127,6 +128,7 @@ catching it; turn it into a check when the same mistake shows up twice.
 | Constants carry their unit | Lint rule `unit-suffix`, report only: `npm test` prints the count and never fails on it |
 | Tunable numbers live in `shared/sim/const.ts` | Review only |
 | `import type` for type-only imports | Lint rule `import-type` (also flags unused imports) |
+| Download size only goes down | `npm test` (`size` step): gzip bytes for entry, boot, worker and lazy JS against `tools/size-budgets.json`. Over budget fails, and so does more than 5% under until the budget is lowered |
 | Wire ids are `const enum`s | Review only |
 | No new dependencies without discussion | Review only (`package.json` is on the Ask first list) |
 

@@ -37,6 +37,7 @@ const cases: [string, string[], RegExp][] = [
   ["tools/verify-boot.mts", ["--prot", "3027"], /unknown flag --prot/],
   ["tools/verify-boot.mts", ["--mode", "squads"], /--mode must be one of/],
   ["tools/verify-boot.mts", ["--match", "lots"], /finite number/],
+  ["tools/check-size.mts", ["--budgts", "x.json"], /unknown flag --budgts/],
 ];
 for (const [file, args, match] of cases) {
   const r = spawnSync(process.execPath, ["--import", "tsx", path.join(root, file), ...args], { cwd: root, encoding: "utf8" });
