@@ -10,4 +10,6 @@ export const near = (r: number) => ALL.filter((p) => p.x < r); // lint-expect
 export class Mover {
   tick() { return new Float32Array(2); } // lint-expect
   get pair() { return [SCRATCH.x, SCRATCH.z]; } // lint-expect
+  step = () => new Float32Array(3); // lint-expect
 }
+export default (ps: P[]) => ps.slice(1); // lint-expect

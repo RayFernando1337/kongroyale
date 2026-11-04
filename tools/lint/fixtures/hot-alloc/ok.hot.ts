@@ -8,4 +8,6 @@ export function step(ps: P[]) {
 export class Mover {
   n = 0;
   tick() { this.n++; return this.n; }
+  step = () => this.n + 1;
+  readonly scratch = new Float32Array(3);
 }

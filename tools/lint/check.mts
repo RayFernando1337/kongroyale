@@ -163,9 +163,16 @@ function topLevelFunctions(sf: ts.SourceFile): [string, ts.FunctionLikeDeclarati
         if (fn && ts.isIdentifier(d.name)) out.push([d.name.text, fn]);
       }
     }
+    if (ts.isExportAssignment(st)) {
+      const fn = functionOf(st.expression);
+      if (fn) out.push(["default", fn]);
+    }
     if (ts.isClassDeclaration(st)) {
       for (const m of st.members) {
-        if ((ts.isMethodDeclaration(m) || ts.isGetAccessor(m) || ts.isSetAccessor(m)) && m.body) out.push([`${st.name?.text ?? "default"}.${m.name.getText(sf)}`, m]);
+        const owner = `${st.name?.text ?? "default"}.${m.name?.getText(sf)}`;
+        if ((ts.isMethodDeclaration(m) || ts.isGetAccessor(m) || ts.isSetAccessor(m)) && m.body) out.push([owner, m]);
+        const field = ts.isPropertyDeclaration(m) ? functionOf(m.initializer) : undefined;
+        if (field) out.push([owner, field]);
       }
     }
   }
