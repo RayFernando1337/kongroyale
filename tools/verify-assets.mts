@@ -27,12 +27,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { nonEmpty, orExit, parseFlags } from "./gate.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = "public/assets/";
 const SIDECARS = new Set(["LICENSE", "NOTICE", "provenance.json", "SOURCES.json", "tex.json"]);
-const asJson = process.argv.includes("--json");
-const all = process.argv.includes("--all");
+const USAGE = "node --import tsx tools/verify-assets.mts [--json] [--all]";
+const { flags } = orExit("verify-assets", USAGE, () => parseFlags(process.argv.slice(2), { "--json": "bool", "--all": "bool" }));
+const asJson = !!flags["--json"];
+const all = !!flags["--all"];
 
 function walk(dir: string, out: string[]): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -70,7 +73,7 @@ if (fs.existsSync(manifestPath)) {
   }
 }
 
-const files = walk(path.join(root, ASSETS), []);
+const files = orExit("verify-assets", USAGE, () => nonEmpty(fs.existsSync(path.join(root, ASSETS)) ? walk(path.join(root, ASSETS), []) : [], `files under ${ASSETS}`));
 const sidecarDirs = new Set<string>();
 const keyedSidecars = new Map<string, string[]>();
 const layerSidecars = new Map<string, string[]>();

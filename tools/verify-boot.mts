@@ -31,18 +31,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
+import { oneOf, orExit, parseFlags } from "./gate.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const argv = process.argv.slice(2);
-const flag = (k: string) => argv.includes(k);
-const opt = (k: string, d: string) => { const i = argv.indexOf(k); return i >= 0 && argv[i + 1] !== undefined ? argv[i + 1] : d; };
+const USAGE = "npx tsx tools/verify-boot.mts [--no-build] [--port 3027] [--boot-timeout 600] [--match 45] [--mode trios|solo] [--splat] [--chrome PATH] [--shot FILE]";
+const { flags } = orExit("verify-boot", USAGE, () => parseFlags(process.argv.slice(2), {
+  "--no-build": "bool", "--port": "number", "--boot-timeout": "number", "--match": "number", "--mode": "string", "--splat": "bool", "--chrome": "string", "--shot": "string",
+}));
+const flag = (k: "--no-build" | "--splat") => !!flags[k];
 
-const PORT = Number(opt("--port", "3027"));
-const BOOT_TIMEOUT_MS = Number(opt("--boot-timeout", "600")) * 1000;
-const MATCH_S = Number(opt("--match", "45"));
-const MODE = opt("--mode", "trios") === "solo" ? "solo" : "trios";
-const CHROME = opt("--chrome", process.env.KR_CHROME ?? "") || undefined;
-const SHOT = path.resolve(root, opt("--shot", "shots/verify-boot.png"));
+const PORT = flags["--port"] ?? 3027;
+const BOOT_TIMEOUT_MS = (flags["--boot-timeout"] ?? 600) * 1000;
+const MATCH_S = flags["--match"] ?? 45;
+const MODE = orExit("verify-boot", USAGE, () => oneOf(flags["--mode"] ?? "trios", ["trios", "solo"] as const, "--mode"));
+const CHROME = flags["--chrome"] ?? (process.env.KR_CHROME || undefined);
+const SHOT = path.resolve(root, flags["--shot"] ?? "shots/verify-boot.png");
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const URL_PATH = `/?debug&seed=42${flag("--splat") ? "" : "&vegsplat=0"}`;
 const PHASES = ["warmup", "plane", "play", "results"];
