@@ -30,6 +30,7 @@ import { SurfSync, type WaterLike } from "./surf";
 import { Ambience } from "./ambience";
 import { StepCadence, loadFloorMap, loadRoomsMap, stepSurfaceAt, stepSurfaceUnderLive, type RayWorld } from "./steps";
 import { setT } from "./param";
+import { flag } from "../flags";
 import { GameBridge } from "./bridge";
 import { FootDriver, type FootEvent } from "./feet";
 
@@ -349,6 +350,7 @@ class Engine implements KongAudio {
     if (this.uwBed) { this.uwBed.stop(); this.uwBed = null; } this.uwK = 0;
     const t = this.ctx.currentTime;
     for (const v of this.voices) if (v.end > t && !v.group.startsWith("ui/")) this.fadeOut(v, 0.15);
+    if (flag("audioevict")) this.lib.releaseLoaded(prefetchGroup);
   }
   /** endSession() ran and no match update() since: the idle slice starts nothing */
   private sessionOff = false;

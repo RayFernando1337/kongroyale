@@ -312,16 +312,21 @@ export class Library {
 
   /** release lazy groups idle for more than `after` s (their PCM is garbage-collected) */
   evict(t: number, after = 45) {
-    for (const [g, since] of this.idleSince) {
-      if (t - since < after) continue;
-      this.idleSince.delete(g);
-      for (const id of this.groups.get(g) ?? []) {
-        if (this.buffers.delete(id)) this.loaded--;
-        this.pending.delete(id);
-      }
-      this.groupLoads.delete(g);
-      this.lazyEvicted++;
+    for (const [g, since] of this.idleSince) if (t - since >= after) this.release(g);
+  }
+
+  releaseLoaded(keep: (group: string) => boolean) {
+    for (const g of [...this.groupLoads.keys()]) if (!keep(g) && (this.groups.get(g) ?? []).every((id) => this.buffers.has(id))) this.release(g);
+  }
+
+  private release(group: string) {
+    this.idleSince.delete(group);
+    for (const id of this.groups.get(group) ?? []) {
+      if (this.buffers.delete(id)) this.loaded--;
+      this.pending.delete(id);
     }
+    this.groupLoads.delete(group);
+    this.lazyEvicted++;
   }
 
   /** the (lowest) sample rate the group's decoded buffers hold — voices of buffers below the context rate take an
