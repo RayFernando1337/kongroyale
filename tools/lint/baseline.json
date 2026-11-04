@@ -258,7 +258,7 @@
     "client/src/world/atmos/cloud-bake.ts": 17,
     "client/src/world/atmos/cloud-field.ts": 58,
     "client/src/world/atmos/cloud-shapes.ts": 48,
-    "client/src/world/atmos/clouds.ts": 112,
+    "client/src/world/atmos/clouds.ts": 111,
     "client/src/world/atmos/env.ts": 9,
     "client/src/world/atmos/fireflies.ts": 7,
     "client/src/world/atmos/glsl.ts": 64,
