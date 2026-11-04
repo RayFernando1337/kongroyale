@@ -256,10 +256,12 @@ The policy has two stages, and the second replaces the first only when a check p
    the next frame. The engine switches from reload to restore only when the ledger reports no entry without a restore
    path.
 
-What enforces it: an `npm test` step on SwiftShader boots to the title, calls `WEBGL_lose_context.loseContext()` and
-then `restoreContext()`, and requires the page to reach `__kr.ready` again with no `__kr.errors`. In stage 2 it also
-reads a pixel from one baked target and requires it to be non-empty. While the ledger still has entries without a
-restore path, the same step requires that the reload path ran.
+What enforces it: an `npm test` step on SwiftShader calls `WEBGL_lose_context.loseContext()` and then
+`restoreContext()` twice: once at the title, and once in the warm-up of a practice match, when the match scope holds its
+own bakes. Both times the page must reach `__kr.ready` again with no `__kr.errors`. While the ledger still has entries
+without a restore path, the step requires that the reload path ran. In stage 2 it also reads a pixel from one baked
+target in the app scope and one in the match scope and requires both to be non-empty, and the ledger check that gates
+the switch counts the entries that existed at the moment of loss, so match-only resources are covered.
 
 ## Rules and what enforces them
 
@@ -274,7 +276,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | A match leaves nothing behind | CI on SwiftShader: two matches back to back. The ledger's bytes per category after the second equal those after the first, within a small tolerance, and the match scope is empty after leaving |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
 | Only the cache frees what it lends | Development builds throw on `dispose()` of a cached resource from outside the cache |
-| The game survives a WebGL context loss | `npm test` step on SwiftShader: `loseContext()` then `restoreContext()` at the title, and the page must reach `__kr.ready` again with no errors, by reload until every ledger entry has a restore path and by restoring in place after (see [Context loss](#context-loss)) |
+| The game survives a WebGL context loss | `npm test` step on SwiftShader: `loseContext()` then `restoreContext()` at the title and again in a match's warm-up, and the page must reach `__kr.ready` again with no errors, by reload until every ledger entry has a restore path and by restoring in place after (see [Context loss](#context-loss)) |
 
 Geometry constructors are not in the lint rule. Most of the roughly 1,400 `new THREE.*Geometry` calls build temporary
 inputs that are merged and never reach the GPU, so a lint would mostly flag harmless code. The "no unowned resource"
