@@ -43,10 +43,10 @@ function scanEvents() {
   const blastBy: number[] = [];
   for (let i = 0; i < n; i++) {
     const k = r.u8(); const start = r.o;
+    if (k !== EV.Hit && k !== EV.Kill && k !== EV.Veh && k !== EV.VehHit && k !== EV.Explosion && k !== EV.CoverHit && k !== EV.CoverEnd) blastBy.length = 0;
     if (k === EV.Kill) { r.u8(); const vic = r.u8(); const vp = m.players[vic]; if (vp) ps(poiAt(vp.x, vp.z)).kills++; const w = r.u8(); const f = r.u8(); const c = w === 255 ? "storm" : w === 254 ? "fall" : "weapon" + w; causes[c] = (causes[c] ?? 0) + 1; if (f) finals++; else knocks++; }
     else if (k === EV.Hit) { const a = r.u8(), b = r.u8(); if (a !== 255 && a !== b && m.players[a]?.team === m.players[b]?.team && !blastBy.includes(a)) ff++; hits++; }
     else if (k === EV.Veh) { const id = r.u8(); if (r.u8() === VK.Boom) blastBy.push(m.vehs.list[id].lastBy); }
-    else if (k !== EV.Kill && k !== EV.VehHit && k !== EV.Explosion) blastBy.length = 0;
     else if (k === EV.Rocket) rocketsFired++;
     else if (k === EV.Announce) { const c = r.u8(); if (c === ANN.ResurgenceOff) resOffAt = m.time; }
     const len = EV_BYTES[k]; if (len === undefined) return; r.o = start + len;
