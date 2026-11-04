@@ -26,8 +26,11 @@ const failed = [];
 for (const [name, cmd, args] of checks) {
   const t = Date.now();
   console.log(`\n▶ ${name}`);
-  // (npm and npx are .cmd scripts on Windows, which Node only spawns through a shell)
-  const r = spawnSync(cmd, args, { stdio: "inherit", shell: process.platform === "win32" });
+  // npm and npx are .cmd scripts on Windows, which Node only spawns through a shell. The shell gets one command line
+  // with every argument quoted, because the temp folder in the report paths can contain spaces
+  const r = process.platform === "win32"
+    ? spawnSync([cmd, ...args].map((a) => `"${a}"`).join(" "), { stdio: "inherit", shell: true })
+    : spawnSync(cmd, args, { stdio: "inherit" });
   const ok = r.status === 0;
   console.log(`${ok ? "✔" : "✘"} ${name} (${((Date.now() - t) / 1000).toFixed(1)} s)`);
   if (!ok) failed.push(name);
