@@ -1,7 +1,7 @@
 import type { Match } from "../sim/match";
 import { PS, alive } from "../sim/player";
 import { BULLET_RANGE, SNAP_EVERY } from "../sim/const";
-import { Writer, writePlayer, writeSelf, writeSnapHeader, writeVehicle } from "./proto";
+import { type Writer, writePlayer, writeSelf, writeSnapHeader, writeVehicle } from "./proto";
 import { VF, VS } from "../sim/vehicle";
 import type { SnapshotBatch } from "./host";
 
