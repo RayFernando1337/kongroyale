@@ -1,5 +1,5 @@
 // Fork release tooling: plan, cut, promote and rollback for kong-vX.Y.Z releases on the fork. Zero dependencies; it shells
-// out to git, gh and npm. Every command takes --dry-run and is safe to re-run: a command that has nothing left to do says
+// out to git, gh and npm. A cut checks the release commit's CI, rebuilds it and publishes; run npm test yourself first. Every command takes --dry-run and is safe to re-run: a command that has nothing left to do says
 // so and exits 0. See docs/RELEASING.md for the workflow and the design behind the bump rules.
 //   npx tsx tools/release.mts plan                          merged PRs since the last release, next version, notes
 //   npx tsx tools/release.mts cut [--hotfix-from <tag>]     test, tag, build, publish a prerelease, move "next"
@@ -80,7 +80,8 @@ const prInfo = (n: number): Pr => {
   const names = p.labels.map((l) => l.name);
   const bumps = names.filter((l) => l.startsWith("release:")).map((l) => l.slice(8)) as Bump[];
   const bump = bumps.length ? BUMPS[Math.max(...bumps.map((b) => BUMPS.indexOf(b)))] : undefined;
-  const section = names.find((l) => l.startsWith("section:"))?.slice(8);
+  const found = names.find((l) => l.startsWith("section:"))?.slice(8);
+  const section = SECTIONS.some(([k]) => k === found) ? found : undefined;
   return { number: p.number, title: p.title, bump, section };
 };
 
@@ -88,7 +89,8 @@ const prInfo = (n: number): Pr => {
 const collect = (base: Rel | undefined, target: string): { prs: Pr[]; loose: string[] } => {
   if (!base) {
     const merged = ghJson("pr", "list", "--state", "merged", "--base", "main", "--limit", "500", "--json", "number,mergedAt") as { number: number; mergedAt: string }[];
-    return { prs: merged.filter((p) => p.mergedAt > BASE_AFTER).map((p) => p.number).sort((a, b) => a - b).map(prInfo), loose: [] };
+    const until = git("log", "-1", "--format=%cI", target);
+    return { prs: merged.filter((p) => p.mergedAt > BASE_AFTER && new Date(p.mergedAt) <= new Date(until)).map((p) => p.number).sort((a, b) => a - b).map(prInfo), loose: [] };
   }
   git("fetch", "--quiet", "origin", base.sha);
   const nums = new Set<number>(), loose: string[] = [];
@@ -142,14 +144,16 @@ const ciGreen = (sha: string) => {
 
 const plan = (hotfixFrom?: string) => {
   const all = releases();
-  const base = hotfixFrom ? all.find((r) => r.tag === hotfixFrom) ?? die("unknown release " + hotfixFrom) : all[all.length - 1];
   const target = git("rev-parse", "HEAD");
+  const isAncestor = (sha: string) => { try { git("fetch", "--quiet", "origin", sha); git("merge-base", "--is-ancestor", sha, target); return true; } catch { return false; } };
+  const hotBase = hotfixFrom ? all.find((r) => r.tag === hotfixFrom) ?? die("unknown release " + hotfixFrom) : undefined;
   const tagged = all.find((r) => r.sha === target);
-  const from = tagged ? all[all.indexOf(tagged) - 1] : base;
+  const from = tagged ? all[all.indexOf(tagged) - 1] : hotBase ?? [...all].reverse().find((r) => isAncestor(r.sha));
   const { prs, loose } = collect(from, target);
   const bump = tagged ? "patch" : bumpOf(prs, !!hotfixFrom);
-  const version = tagged ? tagged.version : nextVersion(from?.version ?? parse(tagPrefix + BASE_VERSION), bump);
-  return { target, tagged, from, prs, loose, bump: bump as Bump, version: fmt(version), tag: tagPrefix + fmt(version) };
+  const sameLine = hotBase ? all.filter((r) => r.version[0] === hotBase.version[0] && r.version[1] === hotBase.version[1]) : [];
+  const version = tagged ? tagged.version : nextVersion(sameLine.length ? sameLine[sameLine.length - 1].version : from?.version ?? parse(tagPrefix + BASE_VERSION), bump);
+  return { target, tagged, latest: all[all.length - 1], from, prs, loose, bump: bump as Bump, version: fmt(version), tag: tagPrefix + fmt(version) };
 };
 
 if (cmd === "plan") {
@@ -163,15 +167,17 @@ if (cmd === "plan") {
 } else if (cmd === "cut") {
   const hotfix = opt("--hotfix-from");
   const p = plan(hotfix);
-  if (p.tagged && releaseExists(p.tagged.tag)) { say(p.tagged.tag + " is already released; nothing to do"); moveTag(channel("next"), p.target); process.exit(0); }
+  if (p.tagged && releaseExists(p.tagged.tag)) { say(p.tagged.tag + " is already released; nothing to do"); if (p.latest.tag === p.tagged.tag) moveTag(channel("next"), p.target); process.exit(0); }
   if (!p.tagged && !p.prs.length && !p.loose.length) { say("nothing unreleased; nothing to do"); process.exit(0); }
   const unl = p.prs.filter((x) => !x.bump || !x.section);
   if (unl.length && !flag("--allow-unlabelled")) die("unlabelled PRs: " + unl.map((x) => "#" + x.number).join(", ") + " (add release: and section: labels, or pass --allow-unlabelled)");
   if (hotfix && !p.from) die("hotfix base missing");
+  const taken = releases().find((r) => r.tag === p.tag);
+  if (taken && taken.sha !== p.target) die(p.tag + " already exists at " + taken.sha.slice(0, 7) + ", not " + p.target.slice(0, 7));
   if (hotfix) { git("fetch", "--quiet", "origin", p.from!.sha); try { git("merge-base", "--is-ancestor", p.from!.sha, "HEAD"); } catch { die("HEAD does not descend from " + hotfix + "; branch the hotfix from that tag"); } }
   if (!run("git", ["branch", "-r", "--contains", p.target], { allowFail: true })) die("HEAD " + p.target.slice(0, 7) + " is not on any pushed branch");
   if (!hotfix && prefix === "kong") { git("fetch", "--quiet", "origin", "main"); if (git("rev-parse", "origin/main") !== p.target) die("HEAD is not origin/main; check out main at its tip (or use --hotfix-from)"); }
-  if (git("status", "--porcelain", "--untracked-files=no")) die("working tree is not clean");
+  if (git("status", "--porcelain")) die("working tree is not clean (the build would include uncommitted or untracked files)");
   const body = notes(p.tag, hotfix ? "patch" : p.bump, p.prs, p.loose, p.from?.tag ?? "v" + BASE_VERSION);
   checkNotes(body);
   say("release " + p.tag + " at " + p.target.slice(0, 7) + " (" + p.bump + ", " + p.prs.length + " PRs)");
