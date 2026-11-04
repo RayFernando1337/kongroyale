@@ -581,9 +581,12 @@ function weakestWeaponSlot(p: Player): number {
   for (let i = 0; i < p.slots.length; i++) { const s = p.slots[i]; if (s.kind === SK.Weapon) { const v = weaponValue(s.id, s.rarity); if (v < wv) { wv = v; wi = i; } } }
   return wi;
 }
+function hasEmptySlot(p: Player): boolean { for (const s of p.slots) if (s.kind === SK.Empty) return true; return false; }
+function firstEmptySlot(p: Player): number { for (let i = 0; i < p.slots.length; i++) if (p.slots[i].kind === SK.Empty) return i; return -1; }
+function holdsWeapon(p: Player, sub: number): boolean { for (const s of p.slots) if (s.kind === SK.Weapon && s.id === sub) return true; return false; }
 /** is floor weapon (sub, rarity) worth walking to: an empty slot, or better than the weakest gun held */
 function wantsWeapon(p: Player, sub: number, rarity: number): boolean {
-  if (p.slots.some((s) => s.kind === SK.Empty)) return true;
+  if (hasEmptySlot(p)) return true;
   const wi = weakestWeaponSlot(p);
   let nW = 0; for (const s of p.slots) if (s.kind === SK.Weapon) nW++;
   if (wi < 0 || nW < 2) return true;                                           // swap a consumable slot
@@ -594,7 +597,7 @@ function wantsWeapon(p: Player, sub: number, rarity: number): boolean {
  * (Item.loaded is set by the loot-conservation drops; without it every floor gun counts as loaded, as pickup refills it.) */
 function recoveryWeaponSlot(p: Player, it: Item): number {
   if ((it.loaded ?? WEAPON_DEFS[WEAPONS[it.sub]].mag) <= 0) return -1;
-  const empty = p.slots.findIndex((s) => s.kind === SK.Empty);
+  const empty = firstEmptySlot(p);
   if (empty >= 0) return empty;
   // Recover a spent counterpart without a rarity downgrade or consuming a heal slot.
   for (let i = 0; i < p.slots.length; i++) {
@@ -605,7 +608,7 @@ function recoveryWeaponSlot(p: Player, it: Item): number {
   let give = weakestWeaponSlot(p), nW = 0; for (const s of p.slots) if (s.kind === SK.Weapon) nW++;
   if (nW < 2) {
     // A rejected lower-rarity counterpart must not fall through to sacrificing a consumable for the duplicate.
-    if (p.slots.some((s) => s.kind === SK.Weapon && s.id === it.sub)) return -1;
+    if (holdsWeapon(p, it.sub)) return -1;
     for (let i = p.slots.length - 1; i >= 0; i--) if (p.slots[i].kind === SK.Consumable) { give = i; break; }
   }
   return give;
@@ -701,7 +704,7 @@ function loot(m: Match, p: Player, b: BotBrain, inp: Input, dt: number) {
   if (b.lootChest < 0 && b.lootItem < 0) {
     // nearest useful target, weighted: an unarmed bot runs for a weapon; chests are always attractive
     // "armed" = a real gun: everyone drops with the NUB sidearm and should still run for something better first
-    const armed = !exhausted && bestWeaponValue(p) >= 2, full = !p.slots.some((s) => s.kind === SK.Empty);
+    const armed = !exhausted && bestWeaponValue(p) >= 2, full = !hasEmptySlot(p);
     const heldAmmo = weaponDef(p)?.ammo;
     // (the nearest gun can be 100 m+ away — an unarmed bot keeps going for one)
     let bc = -1, bi = -1, bestCost = armed ? 130 : 320;
@@ -749,7 +752,7 @@ function loot(m: Match, p: Player, b: BotBrain, inp: Input, dt: number) {
   if (b.pathKey !== key) {
     b.pathKey = key; b.pathI = 0; b.pathN = 0; b.bestD = Infinity; b.progT = 0; b.blockedT = 0;
     const nav = lootSpots(m.world).nav, tc = navCellAt(nav, gx, gy, gz);
-    if (tc >= 0) { b.pathN = navPath(nav, p.x, p.y, p.z, tc, b.path, (x, z) => m.world.terrain.height(x, z)); if (!b.pathN) { giveUp(b, "noPath"); return; } }
+    if (tc >= 0) { b.pathN = navPath(nav, p.x, p.y, p.z, tc, b.path, m.world.terrain); if (!b.pathN) { giveUp(b, "noPath"); return; } }
   }
   const d = Math.hypot(tx - p.x, tz - p.z), dg = Math.hypot(gx - p.x, gz - p.z);
   const close = (d < 1.9 || dg < 0.7) && Math.abs(ty - p.y) < 1.4 && lootReachable(m.world, p.x, p.y, p.z, tx, ty, tz);
@@ -774,14 +777,14 @@ function loot(m: Match, p: Player, b: BotBrain, inp: Input, dt: number) {
     if (it && it.kind === IK.Weapon && exhausted) {
       const give = recoveryWeaponSlot(p, it);
       if (give < 0) { giveUp(b); return; }
-      const duplicate = p.slots.some((s) => s.kind === SK.Weapon && s.id === it.sub);
+      const duplicate = holdsWeapon(p, it.sub);
       // Nonduplicates with space retain auto-pickup. Only exhaustion recovery enables E for an empty-slot duplicate.
-      if (!p.slots.some((s) => s.kind === SK.Empty) || duplicate) {
+      if (!hasEmptySlot(p) || duplicate) {
         if (nearestRecoveryWeapon(m, p) === it) {
           inp.slot = give;
           if (p.active === give && p.swapT <= 0 && ((m.tick / 3) | 0) % 3 === 0) {
             inp.buttons |= B.USE;
-            if (!p.slots.some((s) => s.kind === SK.Empty) && p.slots[give].kind === SK.Weapon && p.slots[give].mag === 0) {
+            if (!hasEmptySlot(p) && p.slots[give].kind === SK.Weapon && p.slots[give].mag === 0) {
               b.recoverySwapItem = it.id; b.recoverySwapSlot = give; b.recoverySwapSub = p.slots[give].id;
               b.recoverySwapRarity = p.slots[give].rarity; b.recoverySwapAt = m.time; b.recoverySwapStart = m.items.length;
             }
@@ -790,7 +793,7 @@ function loot(m: Match, p: Player, b: BotBrain, inp: Input, dt: number) {
       }
     } else {
       // full hands: hold the slot to give up (the weakest gun, or a consumable while carrying < 2 guns), then take it
-      if (it && it.kind === IK.Weapon && !p.slots.some((s) => s.kind === SK.Empty)) {
+      if (it && it.kind === IK.Weapon && !hasEmptySlot(p)) {
         if (!wantsWeapon(p, it.sub, it.rarity)) b.lootItem = -1;
         else {
           let give = weakestWeaponSlot(p), nW = 0; for (const q of p.slots) if (q.kind === SK.Weapon) nW++;
@@ -858,12 +861,11 @@ function roam(m: Match, p: Player, b: BotBrain, inp: Input, dt: number) {
   }
   if (b.roamT <= 0 || d < 6) {
     // next: a POI inside the next safe circle (people are there), else a point toward the centre
-    const inside = (x: number, z: number) => Math.hypot(x - m.storm.tx, z - m.storm.tz) < m.storm.tr * 0.85;
     let ok = false;
     for (let k = 0; k < 8 && !ok; k++) {
       if (b.rng.next() < 0.6) { const q = POIS[b.rng.int(POIS.length - 1)]; b.tx = q.x + (b.rng.next() - 0.5) * q.r; b.tz = q.z + (b.rng.next() - 0.5) * q.r; }
       else { const a = b.rng.next() * Math.PI * 2, r = 50 + b.rng.next() * 140; b.tx = p.x + Math.cos(a) * r; b.tz = p.z + Math.sin(a) * r; }
-      ok = inside(b.tx, b.tz) && m.world.ground(b.tx, b.tz) > 1;
+      ok = Math.hypot(b.tx - m.storm.tx, b.tz - m.storm.tz) < m.storm.tr * 0.85 && m.world.ground(b.tx, b.tz) > 1;
     }
     if (!ok) { b.tx = m.storm.tx; b.tz = m.storm.tz; }
     b.roamT = 10 + b.rng.next() * 12;
@@ -881,6 +883,7 @@ function moveToward(p: Player, inp: Input, tx: number, tz: number, sprint: boole
   if (sprint && inp.mz > 0.5) inp.buttons |= B.SPRINT;
 }
 /** steer toward (tx, tz): probe for walls/water, sidestep, jump small obstacles */
+const SHORE_R = [8, 20, 45, 90];
 function moveTo(m: Match, p: Player, b: BotBrain, inp: Input, tx: number, tz: number, sprint: boolean) {
   // Hunting / rotating from a building must use its authored doors and stairs, just like indoor looting.
   // Outdoor wall probes cannot find an upstairs exit and would pin final-circle survivors for minutes.
@@ -911,7 +914,7 @@ function moveTo(m: Match, p: Player, b: BotBrain, inp: Input, tx: number, tz: nu
     let best = -1, bs = Infinity;
     for (let k = 0; k < 16; k++) {
       const a = k / 16 * Math.PI * 2, fx = Math.cos(a), fz = Math.sin(a);
-      for (const r of [8, 20, 45, 90]) if (m.world.ground(p.x + fx * r, p.z + fz * r) > 0.5) { const sc = r - 6 * (fx * dx + fz * dz) / dist; if (sc < bs) { bs = sc; best = k; } break; }
+      for (const r of SHORE_R) if (m.world.ground(p.x + fx * r, p.z + fz * r) > 0.5) { const sc = r - 6 * (fx * dx + fz * dz) / dist; if (sc < bs) { bs = sc; best = k; } break; }
     }
     if (best >= 0) { const a = best / 16 * Math.PI * 2; dx = Math.cos(a); dz = Math.sin(a); inp.yaw = Math.atan2(-dx, -dz); inp.pitch = 0; inp.mz = 1; inp.mx = 0; inp.buttons |= B.SPRINT; return; }
   }
