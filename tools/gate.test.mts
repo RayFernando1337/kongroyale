@@ -10,6 +10,8 @@ const rejects = (argv: string[], match: RegExp) => assert.throws(() => parseFlag
 
 assert.deepEqual(parseFlags(["--json", "--port", "3027", "--mode=solo", "--base", "a.json", "b.json"], spec).flags, { "--json": true, "--port": 3027, "--mode": "solo", "--base": ["a.json", "b.json"] });
 assert.deepEqual(parseFlags([], spec).flags, {});
+assert.deepEqual(parseFlags(["--base=a.json", "b.json"], spec).flags, { "--base": ["a.json", "b.json"] });
+rejects(["--mode=solo", "extra"], /unexpected argument "extra"/);
 rejects(["--jsn"], /unknown flag --jsn/);
 rejects(["--port"], /--port needs a value/);
 rejects(["--port", "--json"], /--port needs a value/);

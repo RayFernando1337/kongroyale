@@ -24,7 +24,7 @@ export function parseFlags<S extends Record<string, FlagKind>>(argv: string[], s
       continue;
     }
     const values: string[] = inline !== undefined ? [inline] : [];
-    if (inline === undefined) while (i + 1 < argv.length && !argv[i + 1].startsWith("--") && (kind === "list" || values.length === 0)) values.push(argv[++i]);
+    while (i + 1 < argv.length && !argv[i + 1].startsWith("--") && (kind === "list" || (inline === undefined && values.length === 0))) values.push(argv[++i]);
     if (values.length === 0 || values.some((v) => v === "")) throw new GateError(`${name} needs a value`);
     if (kind === "number") {
       const n = Number(values[0]);
