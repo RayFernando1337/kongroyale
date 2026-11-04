@@ -17,7 +17,8 @@ import { decodeTerrainFile } from "../shared/world/terrain-gen";
 import { buildStaticWorld } from "../shared/sim/static-world";
 import { Match, Phase } from "../shared/sim/match";
 import { alive, SK } from "../shared/sim/player";
-import { Reader, EV, EV_BYTES } from "../shared/net/proto";
+import { Reader, EV, EV_BYTES, KILL_BOMB, KILL_GUN, KILL_HELI, KILL_TUK } from "../shared/net/proto";
+import { KILL_MYTHIC, MYTHICS } from "../shared/sim/mythic";
 import { WEAPONS } from "../shared/world/map";
 import type { BotDifficulty } from "../shared/sim/const";
 
@@ -35,7 +36,10 @@ const TTK_GAP_S = 10, CURVE_STEP_S = 30;
 const b = fs.readFileSync(new URL("../public/assets/terrain/island.bin", import.meta.url));
 const td = decodeTerrainFile(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
 const { world } = await buildStaticWorld(new Terrain(td.heights, td.biome), td);
-const cause = (w: number) => w === 255 ? "storm" : w === 254 ? "fall" : WEAPONS[w] ?? `code${w}`;
+const CAUSES: Record<number, string> = { 255: "storm", 254: "fall", [KILL_TUK]: "tuk-tuk", [KILL_BOMB]: "bomb", [KILL_GUN]: "door gun", [KILL_HELI]: "helicopter" };
+/** the gun behind an EV.Kill weapon byte (a mythic is a named variant of a gun), or null for every other cause */
+const gunOf = (w: number) => w < WEAPONS.length ? WEAPONS[w] : MYTHICS[w - KILL_MYTHIC]?.weapon ?? null;
+const cause = (w: number) => CAUSES[w] ?? (w < WEAPONS.length ? WEAPONS[w] : MYTHICS[w - KILL_MYTHIC] ? `${gunOf(w)} (mythic)` : `code ${w}`);
 
 interface WeaponStats { damage: number; hits: number; respawns: number; eliminations: number; ttkS: number[] }
 interface MatchResult {
@@ -75,8 +79,9 @@ function play(seed: number, mode: "solo" | "trios", difficulty: BotDifficulty): 
       } else if (k === EV.Kill) {
         const killer = rd.u8(), v = rd.u8(), w = rd.u8(), final = rd.u8() === 1, c = cause(w);
         const by = final ? r.eliminationsByCause : r.respawnsByCause; by[c] = (by[c] ?? 0) + 1;
-        if (w < WEAPONS.length) {
-          const st = ws(c); if (final) st.eliminations++; else st.respawns++;
+        const gun = gunOf(w);
+        if (gun) {
+          const st = ws(gun); if (final) st.eliminations++; else st.respawns++;
           const j = killer * n + v;
           if (killer < n && firstHit[j] >= 0) st.ttkS.push(m.time - firstHit[j]);
           if (killer < n) firstHit[j] = -1;
