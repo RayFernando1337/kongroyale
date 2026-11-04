@@ -10,7 +10,7 @@ const opt = (n: string) => { const i = argv.indexOf(n); return i < 0 ? undefined
 const channel = argv[0];
 if (channel !== "stable" && channel !== "next") { console.error(USAGE); process.exit(1); }
 const port = Number(opt("--port") ?? (channel === "stable" ? 3020 : 3030));
-if (!Number.isInteger(port) || port <= 0) { console.error("serve-channel: --port must be a port number"); process.exit(1); }
+if (!Number.isInteger(port) || port <= 0 || port > 65535) { console.error("serve-channel: --port must be a port number"); process.exit(1); }
 const root = path.resolve(import.meta.dirname, "..");
 const dir = path.resolve(opt("--dir") ?? path.join(os.homedir(), ".kongroyale", channel));
 const win = process.platform === "win32";
@@ -28,9 +28,12 @@ if (!fs.existsSync(path.join(dir, ".git"))) {
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   say(`adding a worktree at ${dir}`);
   git(root, "worktree", "add", "--detach", dir, sha);
-} else if (git(dir, "rev-parse", "HEAD") !== sha) {
-  say(`moving ${dir} to ${label} (${sha.slice(0, 7)})`);
-  git(dir, "checkout", "--quiet", "--detach", sha);
+} else {
+  if (git(dir, "status", "--porcelain")) { console.error(`serve-channel: ${dir} has local changes; it serves released code only, so clean it or pass another --dir`); process.exit(1); }
+  if (git(dir, "rev-parse", "HEAD") !== sha) {
+    say(`moving ${dir} to ${label} (${sha.slice(0, 7)})`);
+    git(dir, "checkout", "--quiet", "--detach", sha);
+  }
 }
 
 const stamp = path.join(dir, "node_modules", ".serve-channel-lock");
@@ -42,10 +45,11 @@ if (!fs.existsSync(stamp) || fs.readFileSync(stamp, "utf8") !== lockHash) {
 }
 
 const built = path.join(dir, "dist", ".serve-channel-build");
-if (!fs.existsSync(built) || fs.readFileSync(built, "utf8") !== sha) {
+const buildKey = `${channel} ${sha}`;
+if (!fs.existsSync(built) || fs.readFileSync(built, "utf8") !== buildKey) {
   say(`building ${label} as ${channel}`);
   npm(dir, ["run", "build"], { ...process.env, KR_CHANNEL: channel });
-  fs.writeFileSync(built, sha);
+  fs.writeFileSync(built, buildKey);
 }
 
 if (argv.includes("--no-serve")) { say(`built ${label} in ${dir}`); process.exit(0); }
