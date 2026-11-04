@@ -30,6 +30,7 @@ const checks = [
   { id: "solver", name: "path solver", slow: true, cmd: "npx", args: ["tsx", "tools/play/solver-tests.mts", "--json", tmp("solver-tests.json")] },
   { id: "glass", name: "glass", slow: true, cmd: "npx", args: ["tsx", "tools/glass/test.mts"] },
   { id: "raycast", name: "raycast ties", cmd: "npx", args: ["tsx", "tools/world/raycast-test.mts"] },
+  { id: "res", name: "resource scopes", cmd: "npx", args: ["tsx", "tools/res/test.mts"] },
   { id: "parity", name: "wire / matrix / geometry / http / splat parity", slow: true, cmd: "npm", args: ["run", "bench:verify"] },
   { id: "sim", name: "headless match (seed 42)", slow: true, cmd: "npx", args: ["tsx", "tools/sim-smoke.mts", "trios", "42", "--check"] },
   { id: "redteam", name: "admin lobby red team", slow: true, cmd: "node", args: ["tools/admin-lobby/redteam.mjs", "--md", tmp("redteam.md")] },
