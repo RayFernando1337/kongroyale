@@ -50,10 +50,11 @@ if (process.argv.includes("--write")) fs.writeFileSync(process.argv[process.argv
 const bad = viaJson(log);
 const e = bad.events.find((x) => x[1] === RE.Input && (x[0] as number) > 2000 && x[4] !== 0)!;
 e[4] = -(e[4] as number);
-let tampered = "";
-try { tampered = stateHash(replayMatch(bad, world)); } catch (err) { tampered = String(err); }
-console.log(`one input flipped: ${tampered}`);
-if (tampered === want) fail.push("a log with one input changed replayed to the same hash: the hash does not see inputs");
+try {
+  const tampered = stateHash(replayMatch(bad, world));
+  console.log(`one input flipped: ${tampered}`);
+  if (tampered === want) fail.push("a log with one input changed replayed to the same hash: the hash does not see inputs");
+} catch (err) { fail.push(`a log with one input changed does not replay: ${err}`); }
 
 const o2: ReplayOpts = { seed: 3, mode: "solo", humans: [{ id: 0, name: "A", team: 0 }] };
 const m2 = new Match({ ...o2, world });
