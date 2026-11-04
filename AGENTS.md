@@ -40,7 +40,7 @@ pieces fit; read it before changing networking, the simulation or world loading.
 | `npm run netlab` | Hit registration under simulated latency, using the real client and server code. Add `-- --check` to fail on a regression. |
 | `npx tsx tools/verify-online-match.mts` | A whole online match over real WebSockets against the real server. |
 | `npx tsx tools/verify-boot.mts` | The production client boots and plays a short match on SwiftShader, no GPU needed. |
-| `node --import tsx tools/verify-assets.mts` | Every file under `public/assets/` has a recorded source or licence. `npm test` runs it with `--baseline tools/verify-assets.baseline.json`, which allows today's unattributed folders and fails on any new one. |
+| `node --import tsx tools/verify-assets.mts` | Every file under `public/assets/` has a recorded source or licence. `npm test` runs it with `--baseline tools/verify-assets.baseline.json`, which lists today's unattributed files by name and fails on any file not in it. |
 | `npm run bench:host`, `bench:server`, `bench:verify` | Host tick cost, a 50-player socket load test against a local server, and the parity checks. See [PERFORMANCE.md](PERFORMANCE.md). |
 | `npm start` | Serve `dist/` and the game server on one port. See [HOSTING.md](HOSTING.md). |
 
