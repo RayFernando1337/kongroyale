@@ -6,6 +6,8 @@
 // --seeds takes single seeds and ranges: 42, 1-10, 3,7,42. Each match runs to RESULTS or --max-ticks (default 20 min).
 // The output is deterministic: the same seeds give the same numbers and the same JSON on every run on this Node, so two
 // checkouts can be diffed. Wall time goes to stderr only. About 20 s per match on a 4-vCPU runner.
+// Easy and standard bots differ only against humans (damage dealt to them, aim range), so in these all-bot matches the
+// two replay the same match; hard bots aim, react and push differently.
 // Per weapon: damage is every EV.Hit, credited to the shooter's held weapon on that tick (a rocket that lands after
 // its shooter switched weapons is credited to the new one). Time-to-kill runs from the killer's first hit on the
 // victim to the death, so a victim someone else had already hurt dies faster; a gap of more than TTK_GAP_S between
@@ -24,13 +26,17 @@ import type { BotDifficulty } from "../shared/sim/const";
 
 const argv = process.argv.slice(2);
 const opt = (name: string, fallback: string) => { const i = argv.indexOf(name); return i < 0 ? fallback : argv[i + 1]; };
-const seeds = opt("--seeds", "1-5").split(",").flatMap((s) => { const [a, b] = s.split("-").map(Number); return b === undefined ? [a] : Array.from({ length: b - a + 1 }, (_, i) => a + i); });
+const seeds = opt("--seeds", "1-5").split(",").flatMap((s) => {
+  const m = /^(-?\d+)(?:-(-?\d+))?$/.exec(s.trim());
+  if (!m || (m[2] !== undefined && Number(m[2]) < Number(m[1]))) throw Error(`--seeds takes seeds and ascending ranges, e.g. 42, 1-10, -3--1 or 3,7,42; not "${s}"`);
+  const a = Number(m[1]), b = m[2] === undefined ? a : Number(m[2]);
+  return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+});
 const modes = opt("--modes", "trios").split(",") as Array<"solo" | "trios">;
 const difficulties = opt("--difficulty", "standard").split(",") as BotDifficulty[];
 const maxTicks = Number(opt("--max-ticks", String(60 * 60 * 20))), out = opt("--out", "");
 for (const m of modes) if (m !== "solo" && m !== "trios") throw Error(`--modes takes solo,trios, not ${m}`);
 for (const d of difficulties) if (!["easy", "standard", "hard"].includes(d)) throw Error(`--difficulty takes easy,standard,hard, not ${d}`);
-if (!seeds.length || seeds.some((s) => !Number.isInteger(s))) throw Error("--seeds takes seeds and ranges, e.g. 42 or 1-10 or 3,7,42");
 
 const TTK_GAP_S = 10, CURVE_STEP_S = 30;
 const b = fs.readFileSync(new URL("../public/assets/terrain/island.bin", import.meta.url));
@@ -39,7 +45,7 @@ const { world } = await buildStaticWorld(new Terrain(td.heights, td.biome), td);
 const CAUSES: Record<number, string> = { 255: "storm", 254: "fall", [KILL_TUK]: "tuk-tuk", [KILL_BOMB]: "bomb", [KILL_GUN]: "door gun", [KILL_HELI]: "helicopter" };
 /** the gun behind an EV.Kill weapon byte (a mythic is a named variant of a gun), or null for every other cause */
 const gunOf = (w: number) => w < WEAPONS.length ? WEAPONS[w] : MYTHICS[w - KILL_MYTHIC]?.weapon ?? null;
-const cause = (w: number) => CAUSES[w] ?? (w < WEAPONS.length ? WEAPONS[w] : MYTHICS[w - KILL_MYTHIC] ? `${gunOf(w)} (mythic)` : `code ${w}`);
+const cause = (w: number) => CAUSES[w] ?? (w < WEAPONS.length ? WEAPONS[w] : MYTHICS[w - KILL_MYTHIC] ? `${MYTHICS[w - KILL_MYTHIC].name} (${gunOf(w)})` : `code ${w}`);
 
 interface WeaponStats { damage: number; hits: number; respawns: number; eliminations: number; ttkS: number[] }
 interface MatchResult {
