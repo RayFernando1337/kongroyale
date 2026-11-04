@@ -16,6 +16,7 @@ import { Match, Phase } from "../shared/sim/match";
 import { alive, B, makeInput, PS, SK } from "../shared/sim/player";
 import { footDist, VS } from "../shared/sim/vehicle";
 import { Reader, EV, EV_BYTES, ANN, VK } from "../shared/net/proto";
+import { stateHash as matchHash } from "./state-hash.mts";
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--")), check = process.argv.includes("--check");
 const ridersArg = process.argv.find((a) => a.startsWith("--riders"));
@@ -146,15 +147,10 @@ for (const c of m.chests) if (c.opened) ps(c.poi >= 0 ? POIS[c.poi].id : "open")
 console.log("per POI (first landing / kills in it / chests opened):");
 for (const q of [...POIS.map((p) => p.id), "open"]) { const v = poiStats[q]; if (v) console.log(`  ${q.padEnd(15)} landed ${String(v.landed).padStart(2)}  kills ${String(v.kills).padStart(3)}  chests ${String(v.chests).padStart(3)}`); else console.log(`  ${q.padEnd(15)} —`); }
 
-// FNV-1a over the final tick, the winner and every player's position, kills and damage (exact float bits)
-const hashBuf = new DataView(new ArrayBuffer(8));
-let h = 0x811c9dc5;
-const mix = (v: number) => { hashBuf.setFloat64(0, v); for (let i = 0; i < 8; i++) h = Math.imul(h ^ hashBuf.getUint8(i), 0x01000193) >>> 0; };
-mix(m.tick); mix(m.winnerTeam); for (const p of m.players) { mix(p.x); mix(p.z); mix(p.kills); mix(p.damage); }
-const stateHash = h.toString(16).padStart(8, "0");
+const stateHash = matchHash(m);
 if (check) {
   console.log(`state hash: ${stateHash}`);
-  const SIM_HASH_TRIOS_42 = "c8f3110c";
+  const SIM_HASH_TRIOS_42 = "888d3a01";
   const MAX_AVG_TICK_MS = 3, MAX_TICK_MS = 100, MIN_ARMED_PCT = 90;
   const fail: string[] = [];
   if (m.phase !== Phase.Results || m.winnerTeam < 0) fail.push(`no winner (phase ${Phase[m.phase]}, winnerTeam ${m.winnerTeam}, ticks ${m.tick})`);
