@@ -11,6 +11,13 @@ export const el = () => document.createElement("canvas"); // lint-expect
 export const raf = (f: () => void) => requestAnimationFrame(f); // lint-expect
 export const buf = () => Buffer.alloc(4); // lint-expect
 export const lazy = () => import("node:os"); // lint-expect
+export const hidden = () => import(["node", "zlib"].join(":")); // lint-expect
+export const viaGlobal = () => globalThis.Math.random(); // lint-expect
+export const clockViaGlobal = () => globalThis.performance.now(); // lint-expect
+export const envViaGlobal = () => globalThis.process; // lint-expect
 declare const global: { gc?: () => void };
 export const gc = () => global.gc?.(); // lint-expect
+// a parameter named like a global hides it only inside its own function
+export function local(process: number) { return process; }
+export const stillGlobal = () => process.exitCode; // lint-expect
 export { fs, join };

@@ -1,7 +1,18 @@
 {
   "shared-determinism": {
-    "shared/pois/canopy-line-ground.ts": 1,
-    "shared/pois/jungle-layout.ts": 2,
-    "shared/sim/loot-spots.ts": 1
+    "shared/pois/canopy-line-ground.ts": [
+      "const bin = typeof atob === \"function\" ? atob(B64) : Buffer.from(B64, \"base64\").toString(\"binary\");"
+    ],
+    "shared/pois/jungle-layout.ts": [
+      "const ROOM_SEEDS: Record<string, number> = JSON.parse(typeof process !== \"undefined\" && process.env?.JSEEDS_OVERRIDE || '{\"temple-hall-w\":8212,\"temple-gal-w\":8222,\"temple-hall-e\":7405,\"temple-gal-e\":8223,\"temple-shrine\":8232}');",
+      "const DBG = typeof process !== \"undefined\" && !!process.env?.JDBG;"
+    ],
+    "shared/sim/loot-spots.ts": [
+      "const now = () => typeof performance !== \"undefined\" ? performance.now() : Date.now();"
+    ],
+    "shared/world/veg-scatter.ts": [
+      "const zlib = await import(/* @vite-ignore */ [\"node\", \"zlib\"].join(\":\")) as { gunzipSync(b: Uint8Array): Uint8Array };",
+      "const fs = await import(/* @vite-ignore */ [\"node\", \"fs\"].join(\":\")) as { readFileSync(p: URL): Uint8Array };"
+    ]
   }
 }
