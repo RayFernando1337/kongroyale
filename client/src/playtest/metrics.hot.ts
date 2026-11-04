@@ -9,7 +9,7 @@ export const cursor = { rows: 0 };
 const BINS = 256, BIN_MS = 0.5, STALL_MS = 50, HITCH_MS = 100;
 const hist = new Uint16Array(BINS);
 const second = { frames: 0, sumMs: 0, maxMs: 0, over50: 0, over100: 0 };
-const clock = { skip: false };
+const clock = { skip: true };
 
 interface KrMatch { phase: number; ping: number; jitter: number }
 interface KrHandle { __kr?: { game?: { inMatch?: boolean; cm?: KrMatch | null } } }
