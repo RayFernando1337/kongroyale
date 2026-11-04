@@ -93,8 +93,8 @@ const resources: Ledger;
 Rules the module enforces:
 
 - An object has one owner. Handing the same object to a second scope throws, and names both scopes.
-- `dispose()` frees children first, then what the scope owns in reverse order of creation, then runs its `defer`
-  callbacks in the same reverse order. A resource that fails to free does not stop the others; the scope throws one
+- `dispose()` frees children first, then walks what the scope owns and its `defer` callbacks together, newest first,
+  so a finalizer registered after a resource runs before that resource is freed. A resource that fails to free does not stop the others; the scope throws one
   `AggregateError` at the end.
 - A disposed scope refuses new resources.
 - `resources.report()` gives count and bytes per category and per scope, and how many owned geometries and textures have
