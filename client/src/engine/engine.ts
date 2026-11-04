@@ -12,6 +12,8 @@ import { onStructure, ownVisible, activeGates, type Gate } from "./scene-hooks";
 import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
 import { afterPaint } from "./frame";
+import { flag } from "../flags";
+const STREAM_SLICE: readonly number[] = flag("streamslice") ?? [];
 
 // engine fades dissolve instead of scaling — three's shared chunks are patched before the first compile
 installDitherChunks();
@@ -127,24 +129,23 @@ export class Engine implements WorldCtx {
     // ?dpr=N overrides the device pixel ratio (A/B of the fill-rate share). The canvas backing store is the
     // screen's NATIVE pixels (devicePixelRatio, e.g. 1.5 on a 150 %-scaled 4K monitor, 2 on a Retina MacBook; capped at
     // 2 for phones); the "3D resolution" setting scales the scene inside the post chain (TAAU), never the canvas
-    const dprQ = Number(new URLSearchParams(location.search).get("dpr"));
+    const dprQ = flag("dpr");
     this.dprBase = opts.shotMode ? 1 : dprQ > 0 ? Math.min(dprQ, 2) : Math.min(devicePixelRatio || 1, 2);
     this.renderer.setPixelRatio(this.dprBase);
     this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 12000);
     this.scene.add(this.camera);
     this.assets = new Assets(this.renderer, (l) => this.hold(l));
-    const q = new URLSearchParams(location.search);
-    this.statics = new StaticCache(!q.has("nofreeze"));
+    this.statics = new StaticCache(!flag("nofreeze"));
     this.statics.skipHiddenRoots(this.scene);
     this.cheapCameraUpdates();
-    this.far = new FarMerge(this, !q.has("nohlod") && !opts.shotMode);
-    this.cull = new DetailCull(!q.has("nocull") && !opts.shotMode);
+    this.far = new FarMerge(this, !flag("nohlod") && !opts.shotMode);
+    this.cull = new DetailCull(!flag("nocull") && !opts.shotMode);
     { const props = () => this.renderer.properties as unknown as { get(o: object): { programs?: unknown; currentProgram?: unknown } };
       this.cull.compiled = (m) => { const p = props().get(m); return p.programs !== undefined || p.currentProgram !== undefined; }; }
-    this.occlusion = new PoiOcclusion(!q.has("noocc") && !opts.shotMode, this.scene, () => this.terrain);
+    this.occlusion = new PoiOcclusion(!flag("noocc") && !opts.shotMode, this.scene, () => this.terrain);
     onStructure((parent) => { this.structGen++; this.cull.touched(parent); });
     if (this.far.enabled) installShaderRecorder(this.renderer.getContext() as WebGL2RenderingContext);
-    if (q.has("texprof")) this.installTexProf();
+    if (flag("texprof")) this.installTexProf();
     // point lights that join the live scene (a streamed POI's braziers) are reported before the next frame renders, so
     // the game's light balancer keeps the light count — part of every lit program's key — constant (no recompiles)
     onStructure((parent, child, added) => {
@@ -169,7 +170,7 @@ export class Engine implements WorldCtx {
    */
   private inSceneWalk = false;
   /** runtime A/B switch (tools) for the camera-only update above */
-  cheapCam = !new URLSearchParams(location.search).has("fullcam");
+  cheapCam = !flag("fullcam");
   private cheapCameraUpdates() {
     const self = this, cam = this.camera as THREE.PerspectiveCamera & { __krKidsStale?: boolean };
     const camUMW = cam.updateMatrixWorld;
@@ -222,7 +223,7 @@ export class Engine implements WorldCtx {
   dprBase = 1;
   resize() {
     // a monitor change (window dragged to another screen / browser zoom) changes devicePixelRatio: follow it
-    const dprQ = Number(new URLSearchParams(location.search).get("dpr"));
+    const dprQ = flag("dpr");
     if (!this.shotMode && !(dprQ > 0)) {
       const d = Math.min(devicePixelRatio || 1, 2);
       if (d !== this.dprBase) { this.dprBase = d; this.applyPixelRatio(); }
@@ -267,7 +268,7 @@ export class Engine implements WorldCtx {
    * ?streamslice=title,warm,match overrides (A/B).
    */
   streamSlice(inMatch: boolean, phase: number, workLeftMs = 0, warmLeftMs = 0) {
-    const o = (new URLSearchParams(location.search).get("streamslice") ?? "").split(",").map(Number);
+    const o = STREAM_SLICE;
     // (the title gets 14 ms — the island must be complete before a match starts: every ms of stream left at PRACTICE
     // lands in warm-up / plane frames. The title is a menu over the islet: ~45 fps there while it streams.)
     if (!inMatch) return o[0] > 0 ? o[0] : 14;
@@ -502,7 +503,7 @@ export class Engine implements WorldCtx {
     if (kr) kr.depthVariants = { programs: (r.info.programs?.length ?? 0) - before, ms: Math.round(performance.now() - t0) };
   }
   /** warmDraw also draws the roots' shadow-depth programs (?nowarmshadow = off, A/B) */
-  warmShadowOn = !new URLSearchParams(location.search).has("nowarmshadow");
+  warmShadowOn = !flag("nowarmshadow");
   private excursionTarget: THREE.WebGLRenderTarget | null = null;
   /**
    * EXCURSION: an invisible frame from another viewpoint. `setup` moves the main camera; every update hook runs once for
@@ -691,9 +692,9 @@ export class Engine implements WorldCtx {
   resBase = 1;
   /** frame budget the dynamic-resolution controller aims for (ms) */
   get frameBudgetMs() { return this.capMs > 0 ? this.capMs : 1000 / (this.refreshHz || 60); }
-  private dynOn = new URLSearchParams(location.search).get("dynres") === "1";
-  private dynForcedOff = new URLSearchParams(location.search).get("dynres") === "0";
-  private dynPin = Number(new URLSearchParams(location.search).get("scale")) || 0;
+  private dynOn = flag("dynres") === "1";
+  private dynForcedOff = flag("dynres") === "0";
+  private dynPin = flag("scale") || 0;
   get dynamicRes() { return this.dynOn; }
   setDynamicRes(on: boolean) {
     this.dynOn = on && !this.dynForcedOff;

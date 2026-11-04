@@ -8,16 +8,32 @@ const text: Kind<string | null> = { type: "string", default: null, parse: (v) =>
 const list: Kind<readonly string[]> = { type: "comma list", default: [], parse: (v) => v.split(",").filter(Boolean) };
 const numbers: Kind<readonly number[] | undefined> = { type: "comma numbers", default: undefined, parse: (v) => v.split(",").map(Number) };
 
-type Owner = "boot" | "veg";
+type Owner = "boot" | "engine" | "veg";
 type Flag = { readonly kind: Kind<unknown>; readonly owner: Owner; readonly purpose: string };
 
 const FLAGS = {
   bananatint: { kind: on, owner: "veg", purpose: "per-plant tint variation on banana leaves" },
+  cullfov: { kind: on, owner: "engine", purpose: "detail cull distances scale with the camera's field of view" },
+  dither: { kind: on, owner: "engine", purpose: "LOD fades dither; =0 scales instead (always off under Node)" },
+  dpr: { kind: num(0), owner: "engine", purpose: "device pixel ratio instead of the screen's (capped at 2); 0 = the screen's" },
+  dynres: { kind: text, owner: "engine", purpose: "dynamic resolution: =1 on, =0 forced off, absent = the setting" },
+  fullcam: { kind: present, owner: "engine", purpose: "full scene-graph camera updates instead of the camera-only walk" },
+  gpu: { kind: text, owner: "engine", purpose: "renderer string to classify instead of the real GPU's" },
   impblend: { kind: on, owner: "veg", purpose: "impostors crossfade between their baked views" },
   impcull: { kind: on, owner: "veg", purpose: "cull impostor cells outside the view; =0 draws every impostor every frame" },
   impgrade: { kind: numbers, owner: "veg", purpose: "four numbers that replace the impostor colour grade uImpGrade" },
   impshadow: { kind: on, owner: "veg", purpose: "impostor quads cast the island-wide canopy shadows into the static far map" },
   impsplit: { kind: numbers, owner: "veg", purpose: "four numbers that replace the impostor shade/sun split uImpSplit" },
+  lodv: { kind: on, owner: "engine", purpose: "view-dependent LOD distances for terrain, rocks, HLOD and detail culling" },
+  nocull: { kind: present, owner: "engine", purpose: "turn off detail culling and draw everything near" },
+  nofreeze: { kind: present, owner: "engine", purpose: "turn off the static matrix cache" },
+  nohlod: { kind: present, owner: "engine", purpose: "turn off the far HLOD merge" },
+  nolootworker: { kind: present, owner: "engine", purpose: "compute loot spots on the main thread instead of a worker" },
+  noocc: { kind: present, owner: "engine", purpose: "turn off POI occlusion culling" },
+  notimer: { kind: present, owner: "engine", purpose: "act as a browser without GPU timer queries" },
+  nowarmshadow: { kind: present, owner: "engine", purpose: "warm draws skip the roots' shadow-depth programs" },
+  offinstant: { kind: on, owner: "engine", purpose: "culled detail switches off at once instead of fading out" },
+  scale: { kind: num(0), owner: "engine", purpose: "pin the 3D resolution scale; 0 = not pinned" },
   splasync: { kind: one, owner: "veg", purpose: "read splat captures back from the GPU asynchronously" },
   splcache: { kind: on, owner: "veg", purpose: "keep baked splats in the browser cache; =0 bakes on every load" },
   splcut: { kind: num(1), owner: "veg", purpose: "splat opacity cut-off gain" },
@@ -38,6 +54,8 @@ const FLAGS = {
   splspread: { kind: num(1.25), owner: "veg", purpose: "splat capture spread" },
   splsz: { kind: num(1), owner: "veg", purpose: "splat size gain" },
   splthick: { kind: num(0.22), owner: "veg", purpose: "splat capture thickness" },
+  streamslice: { kind: numbers, owner: "engine", purpose: "stream budget per frame in ms: title,warm,match" },
+  texprof: { kind: present, owner: "engine", purpose: "profile texture uploads" },
   vegcol: { kind: one, owner: "veg", purpose: "debug colours for the veg colliders" },
   vegdbg: { kind: list, owner: "veg", purpose: "veg perf attribution switches: noshadow, noimp, nolod0, nolod1, nodetail" },
   vegpre: { kind: one, owner: "veg", purpose: "depth pre-pass for alpha-tested foliage (measured slower, so off)" },
@@ -50,6 +68,7 @@ const FLAGS = {
   vegwarm: { kind: on, owner: "veg", purpose: "compile every veg shadow program at load" },
   vegxfade: { kind: on, owner: "veg", purpose: "foliage LOD tiers crossfade" },
   view: { kind: text, owner: "boot", purpose: "boot into a fixed dev view (a POI, biome or studio) instead of the game" },
+  visfade: { kind: on, owner: "engine", purpose: "detail fades in and out at the cull edge (always off under Node)" },
 } as const satisfies Record<string, Flag>;
 
 export type FlagName = keyof typeof FLAGS;
