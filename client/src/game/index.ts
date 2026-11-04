@@ -55,6 +55,7 @@ import { createGpuWarmer } from "./warm";
 import { createBlimp } from "./blimp";
 import { createCasterApp, type CasterApp } from "../caster/app";
 import { createSquadVoice, type SquadVoice } from "../voice/squad";
+import { flag } from "../flags";
 
 export interface GameBoot { views: Record<string, CamSpec>; modules: WorldModule[] }
 
@@ -805,7 +806,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   // program info logs: getProgramInfoLog is a synchronous GPU-process round trip that waits for the (parallel) compile
   // and the lazily built ANGLE/Metal pipeline — 90-430 ms main-thread stalls at match start / plane entry.
   // A late shader error still reaches the console (the driver logs it). ?shadercheck=1 keeps them.
-  if (!new URLSearchParams(location.search).has("shadercheck")) engine.renderer.debug.checkShaderErrors = false;
+  if (!flag("shadercheck")) engine.renderer.debug.checkShaderErrors = false;
   gameStage("done", 1);
   releaseBoot();
   // (perf) the prefabs every match spawns: made + warmed in the title's idle time, never behind the loading screen
@@ -857,7 +858,7 @@ function gameStage(name: string, p: number) {
 }
 /** perf: chests / loot / held weapons / glider / render prefabs are prewarmed after the title is ready
  * (prewarmPrefabs) — ?prewarm=full builds them all before ready instead */
-const DEFER_PREFABS = new URLSearchParams(location.search).get("prewarm") !== "full";
+const DEFER_PREFABS = flag("prewarm") !== "full";
 
 /** after the title is ready: make every spawnable prefab (chests of every rarity, opened; every weapon × rarity as loot
  * and held; consumables; ammo; glider; render prefabs) one at a time, then compile them in parallel and draw them ONCE

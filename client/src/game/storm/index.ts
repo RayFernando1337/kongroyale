@@ -17,6 +17,7 @@ import type { StormCircle, StormVisual } from "./api";
 import { createNoiseTexture } from "./noise";
 import * as SH from "./shaders";
 import { createStormVolume } from "./volume";
+import { flag } from "../../flags";
 
 const WALL_H = 650;                 // metres, top of the front face of the tallest (widest) wall
 /** the wall scales with its circle: a towering front around the first big circles, a low ring (seen from the plane as
@@ -40,7 +41,7 @@ function knobColor(k: KnobC, cur: THREE.Color, target: THREE.Color, amt: number)
   k.last.copy(cur);
 }
 const K_FOG = mkKnob(), K_FOGSTART = mkKnob(), K_GLARE = mkKnob(), K_FOGM = mkKnob(), K_FOGH = mkKnob(), K_FOGC = mkKnobC();
-const HIDE: Set<string> | null = (() => { try { const v = new URLSearchParams(location.search).get("stormhide"); return v ? new Set(v.split(",")) : null; } catch { return null; } })();             // half-width of the soft band at the wall
+const HIDE: Set<string> | null = (() => { const v = flag("stormhide"); return v ? new Set(v.split(",")) : null; })();             // half-width of the soft band at the wall
 const COL = {
   dust: new THREE.Color("#f0c878"),
   bolt: new THREE.Color("#ffc21a"),

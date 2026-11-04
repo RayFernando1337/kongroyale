@@ -203,7 +203,7 @@
     "client/src/ui/shop.ts": 13,
     "client/src/ui/spectate.ts": 8,
     "client/src/ui/styles.ts": 16,
-    "client/src/ui/title-flags.ts": 10,
+    "client/src/ui/title-flags.ts": 9,
     "client/src/ui/toon.ts": 16,
     "client/src/ui/weapon-prompts.ts": 12,
     "client/src/ui/weapon-tokens.ts": 19,

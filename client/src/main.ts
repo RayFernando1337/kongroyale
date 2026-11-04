@@ -36,16 +36,16 @@ import { POIS } from "../../shared/world/map";
 import { Display, bootQuality } from "./engine/display";
 import { WARMUP_S } from "../../shared/sim/const";
 import { afterPaint as nextFrame, noFrameWaitCount } from "./engine/frame";
+import { flag } from "./flags";
 
-const q = new URLSearchParams(location.search);
-const shot = q.has("shot");
+const shot = flag("shot");
 const errors: string[] = [];
 const report = (where: string, e: unknown) => {
   const msg = `[${where}] ${e instanceof Error ? e.stack || e.message : String(e)}`;
   errors.push(msg);
   console.error(msg);
   // players get the loading screen's reload card for a genuine boot failure (bootFail), not a raw stack: ?debug shows it
-  if (!shot && q.has("debug")) showError(msg);
+  if (!shot && flag("debug")) showError(msg);
 };
 addEventListener("error", (e) => report("window", e.error ?? e.message));
 addEventListener("unhandledrejection", (e) => report("promise", e.reason));
@@ -61,10 +61,10 @@ let bootReady = false;
  *  throwing, a shader warning) is only reported. View-camera pages (?view / ?cam) keep going. */
 const bootFail = (where: string, e: unknown) => { report(where, e); if (gameMode && !bootReady) kr.bootError = true; };
 
-const viewId = q.get("view"), camArg = q.get("cam");
+const viewId = flag("view"), camArg = flag("cam");
 const gameMode = !viewId && !camArg;
-const streamOn = gameMode && !q.has("nostream");
-const only = q.get("modules")?.split(",").filter(Boolean);
+const streamOn = gameMode && !flag("nostream");
+const only = flag("modules");
 const entries = MODULES.filter(([id]) => !only || only.some((o) => id === o || id.startsWith(o)));
 
 // ---- t = 0: start every fetch at once (module code, the game code, the static collision world in a worker)
@@ -81,9 +81,9 @@ if (gameMode) { startStaticWorld(); startLootSpotsWorker(); } // (perf: the loot
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 // the game page builds at the tier of the player's video preset (?q= wins; view-camera pages ignore it)
-const videoQ = gameMode && !shot && !q.has("q") ? bootQuality() : null;
+const videoQ = gameMode && !shot && flag("q") === null ? bootQuality() : null;
 const engine = (() => {
-  try { return new Engine(canvas, { quality: (q.get("q") as Quality) || videoQ || "ultra", shotMode: shot, time: Number(q.get("t") ?? 12) }); }
+  try { return new Engine(canvas, { quality: (flag("q") as Quality) || videoQ || "ultra", shotMode: shot, time: flag("t") }); }
   catch (e) { bootFail("engine", e); throw e; }
 })();
 kr.engine = engine;
@@ -97,7 +97,7 @@ if (streamOn) engine.lightReserve(7);
 // 2× getShaderInfoLog + LINK_STATUS per program = a GPU-process round trip each, 3.5 s of the boot for ~440 programs).
 // Link failures are still reported: engine.auditShaders() checks every program once it has finished compiling, in idle
 // frames (never blocking). ?shadercheck keeps three's own synchronous checks. View-camera pages keep them too.
-if (gameMode && !q.has("shadercheck")) { engine.renderer.debug.checkShaderErrors = false; engine.addIdle(() => engine.auditShaders(report, () => !kr.ready || !!(kr.game as { inMatch?: boolean } | undefined)?.inMatch)); }
+if (gameMode && !flag("shadercheck")) { engine.renderer.debug.checkShaderErrors = false; engine.addIdle(() => engine.auditShaders(report, () => !kr.ready || !!(kr.game as { inMatch?: boolean } | undefined)?.inMatch)); }
 // ?shadercheck / view-camera pages: three's synchronous check reports a failed program into __kr.errors too
 // (the preset audit must catch every compile / link failure, not only a console line)
 engine.renderer.debug.onShaderError = (gl, program, vs, fs) => {
@@ -136,7 +136,7 @@ const est = (id: string) => EXPECT[id] ?? EST[id] ?? 700;
  */
 // (25 s — with the corrected EXPECT table the planner now really lands ready near 25 s instead of 29 s;
 // a lower target moved too much of the island into the match: POIs were still integrating in the skydive)
-const READY_BY = Number(q.get("readyby") ?? 25000);
+const READY_BY = flag("readyby");
 const titleIds = entries.map(([id]) => id).filter((id) => !streamOn || TITLE_MODULES.has(id));
 const steps: Array<[string, number]> = [["boot", EXPECT.boot], ...titleIds.map((id): [string, number] => [id, est(id)]), ["afterBuild", EXPECT.afterBuild]];
 if (gameMode) steps.push(["game", EXPECT.game]);
@@ -212,7 +212,7 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   // gameplay pumping the match — add their own objects inside step)
   const adds: THREE.Object3D[] = [];
   buildAdds = adds;
-  if (streamed && !q.has("nobuildgate")) { buildGate = { active: true }; buildGates.set(id, { gate: buildGate, adds }); }
+  if (streamed && !flag("nobuildgate")) { buildGate = { active: true }; buildGates.set(id, { gate: buildGate, adds }); }
   engine.beginSlice();
   const t0 = performance.now();
   let m: WorldModule | null = null;
@@ -352,7 +352,7 @@ if (!gameMode) {
       applyView(engine.camera, spec, engine.terrain);
     } else await setView(viewId!);
   } catch (e) { report("view", e); }
-  if (q.has("fly")) enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn));
+  if (flag("fly")) enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn));
   engine.start();
 } else {
   kr.stage = "game";
@@ -418,9 +418,9 @@ if (kr.bootError) {
 }
 // DEV VIEW: ?dev=annotate opens it, ?dev alone waits for F8. Without ?dev nothing of it
 // is fetched or run (a dynamic import behind the flag).
-if (bootReady && q.has("dev")) {
+if (bootReady && flag("dev") !== null) {
   const go = () => import("./dev/annotate").then((m) => m.startDevView(kr as unknown as Parameters<typeof m.startDevView>[0])).catch((e) => report("devview", e));
-  if (q.get("dev") === "annotate") void go();
+  if (flag("dev") === "annotate") void go();
   else addEventListener("keydown", function f8(e) { if (e.code !== "F8") return; removeEventListener("keydown", f8); void go(); });
 }
 if (display && bootReady) void import("./ui/settings").then(({ createVideoMenu, mountVideoUi }) => {
@@ -431,8 +431,8 @@ if (display && bootReady) void import("./ui/settings").then(({ createVideoMenu, 
   const first = display.firstVisit;
   // (automated tools — navigator.webdriver — get no toasts over their captures unless ?announce / ?guard asks for them)
   const bot = !!navigator.webdriver;
-  void display.firstVisitBench().then(() => { if (first && !q.has("noannounce") && (!bot || q.has("announce"))) ui.announceAuto(); }).catch((e) => report("display-bench", e));
-  if (!bot || q.has("guard")) display.startGuard(inMatch);
+  void display.firstVisitBench().then(() => { if (first && !flag("noannounce") && (!bot || flag("announce"))) ui.announceAuto(); }).catch((e) => report("display-bench", e));
+  if (!bot || flag("guard")) display.startGuard(inMatch);
 }).catch((e) => report("settings-ui", e));
 
 // ---- stream the rest of the island in (game page)
@@ -440,7 +440,7 @@ let urgent = false;
 /** a streamed module whose build (est, ms) is this long is built behind the PRACTICE card, never in the warm-up */
 // (default: none — the match starts at once; a module that ignores the ctx.yield() contract then stalls warm-up frames,
 // which the POI modules should fix. ?heavyms=1500 = build the heavy ones behind the card.)
-const HEAVY_MS = Number(q.get("heavyms") ?? Infinity);
+const HEAVY_MS = flag("heavyms");
 let streamNow: string | null = null;
 /** while PRACTICE waits only for the game's prefab warm-up, the island stream holds between modules — the
  *  measured 5.5 s click → match was 2.7 s of prefab warm-up + a 2.2 s module build the card sat through */
@@ -462,7 +462,7 @@ kr.prepare = () => {
   // largest first, plus the game's prefab warm-up; the light rest streams in during the warm-up, time-sliced. The
   // offline host's warm-up clock is held until the island is complete, so the plane never flies over an unbuilt POI;
   // online, the plane phase switches the stream to back to back. ?prepare=full = build everything behind the card.
-  if (q.get("prepare") !== "full") {
+  if (flag("prepare") !== "full") {
     holdWarmupUntilStreamed();
     const heavyLeft = () => !kr.streamed && (streamList.some((id) => est(id) >= HEAVY_MS) || (streamNow !== null && est(streamNow) >= HEAVY_MS));
     if (!heavyLeft() && (!prefabs || kr.warmDone === true)) return Promise.resolve();
@@ -563,7 +563,7 @@ async function stream(): Promise<void> {
   // a grace of 2.5 s after ready before the first module build — several streamed POIs still build in single
   // 1-3 s tasks, and a PRACTICE click right at ready sat through one (measured 5.5-6.3 s click → match with a
   // 1.7-1.8 s card). A click in the grace holds the stream until the match is in; otherwise it starts 2.5 s later.
-  { const graceUntil = performance.now() + Number(q.get("streamgrace") ?? 2500);
+  { const graceUntil = performance.now() + flag("streamgrace");
     while (!urgent && !inMatch() && performance.now() < graceUntil) await new Promise((r) => setTimeout(r, 50)); }
   while (streamList.length) {
     const id = streamList.shift()!;
