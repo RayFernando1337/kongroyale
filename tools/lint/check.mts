@@ -3,8 +3,9 @@
 //   npx tsx tools/lint/check.mts              self-test, then lint the repo against tools/lint/baseline.json
 //   npx tsx tools/lint/check.mts --self-test  only the self-test
 // The baseline lists the violations each file had when a rule arrived, one entry per site: the trimmed text of the
-// flagged line, or a fixed key for a rule whose site has no stable line (header-comment). It only shrinks. A site that isn't listed fails, even when it replaces a fixed one; a listed site that is
-// gone fails until its entry is deleted, so a fix stays fixed. Never add an entry to make a change pass; fix the code.
+// flagged line, or a fixed key for a rule whose site has no stable line (header-comment). It only shrinks. A site that
+// isn't listed fails, even when it replaces a fixed one; a listed site that is gone fails until its entry is deleted, so
+// a fix stays fixed. Never add an entry to make a change pass; fix the code.
 // The self-test runs every rule over tools/lint/fixtures/<rule>/: a line ending in "// lint-expect" must be flagged and no
 // other line may be, so a rule that silently stops matching fails here before it lets a real violation through.
 import ts from "typescript";
