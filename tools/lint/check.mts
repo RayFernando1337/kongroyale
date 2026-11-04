@@ -372,7 +372,7 @@ const unitSuffix: Rule = {
 };
 
 const FLAG_REGISTRY = "client/src/flags.ts";
-const RAW_QUERY_EXEMPT = new Set([FLAG_REGISTRY, "client/src/kongbot/context.ts"]);
+const outsideRegistry = (rel: string) => rel.startsWith("client/src/") && rel !== FLAG_REGISTRY;
 const QUERY_WRITES = new Set(["set", "append", "delete", "sort"]);
 
 function isLocation(e: ts.Expression): boolean {
@@ -388,26 +388,12 @@ function isPageHref(e: ts.Expression): boolean {
 const urlFlags: Rule = {
   id: "url-flags",
   counted: true,
-  applies: (rel) => rel.startsWith("client/src/") && !RAW_QUERY_EXEMPT.has(rel),
-  check(parsed) {
-    const program = parsed.text.includes("searchParams") ? ts.createProgram({ rootNames: [parsed.fileName], options: { noResolve: true, noLib: true, types: [], noEmit: true } }) : undefined;
-    const sf = program?.getSourceFile(parsed.fileName) ?? parsed, checker = program?.getTypeChecker();
-    const isPageUrl = (e: ts.Expression): boolean => {
-      if (ts.isParenthesizedExpression(e)) return isPageUrl(e.expression);
-      if (ts.isIdentifier(e)) {
-        const decl = checker?.getSymbolAtLocation(e)?.valueDeclaration;
-        return !!decl && ts.isVariableDeclaration(decl) && !!(ts.getCombinedNodeFlags(decl) & ts.NodeFlags.Const) && !!decl.initializer && isPageUrl(decl.initializer);
-      }
-      return ts.isNewExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "URL" && !!e.arguments?.length && isPageHref(e.arguments[0]);
-    };
+  applies: outsideRegistry,
+  check(sf) {
     const hits: Hit[] = [];
     const visit = (n: ts.Node): void => {
       if (ts.isPropertyAccessExpression(n) && n.name.text === "search" && isLocation(n.expression)) {
-        hits.push({ node: n, line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, message: `a raw location.search read: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
-      }
-      if (ts.isPropertyAccessExpression(n) && n.name.text === "searchParams" && isPageUrl(n.expression)) {
-        const write = ts.isPropertyAccessExpression(n.parent) && QUERY_WRITES.has(n.parent.name.text) && ts.isCallExpression(n.parent.parent);
-        if (!write) hits.push({ node: n, line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, message: `a raw read of the page URL's searchParams: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
+        hits.push({ node: n, message: `a raw location.search read: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
       }
       ts.forEachChild(n, visit);
     };
@@ -416,7 +402,36 @@ const urlFlags: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags];
+const urlParams: Rule = {
+  id: "url-params",
+  counted: true,
+  applies: outsideRegistry,
+  check(parsed) {
+    if (!parsed.text.includes("searchParams")) return [];
+    const program = ts.createProgram({ rootNames: [parsed.fileName], options: { noResolve: true, noLib: true, types: [], noEmit: true } });
+    const sf = program.getSourceFile(parsed.fileName)!, checker = program.getTypeChecker();
+    const isPageUrl = (e: ts.Expression): boolean => {
+      if (ts.isParenthesizedExpression(e)) return isPageUrl(e.expression);
+      if (ts.isIdentifier(e)) {
+        const decl = checker.getSymbolAtLocation(e)?.valueDeclaration;
+        return !!decl && ts.isVariableDeclaration(decl) && !!(ts.getCombinedNodeFlags(decl) & ts.NodeFlags.Const) && !!decl.initializer && isPageUrl(decl.initializer);
+      }
+      return ts.isNewExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "URL" && !!e.arguments?.length && isPageHref(e.arguments[0]);
+    };
+    const hits: Hit[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(n) && n.name.text === "searchParams" && isPageUrl(n.expression)) {
+        const write = ts.isPropertyAccessExpression(n.parent) && QUERY_WRITES.has(n.parent.name.text) && ts.isCallExpression(n.parent.parent);
+        if (!write) hits.push({ node: n, line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, message: `a raw read of the page URL's searchParams: read it with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return hits;
+  },
+};
+
+const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags, urlParams];
 
 // ---- engine ----
 

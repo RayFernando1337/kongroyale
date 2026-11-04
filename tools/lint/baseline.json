@@ -767,10 +767,6 @@
       "import { Biome, WORLD } from \"./map\";"
     ]
   },
-  "url-flags": {
-    "client/src/caster/app.ts": 1,
-    "client/src/game/index.ts": 4,
-    "client/src/ui/event-lobby.ts": 1,
-    "client/src/ui/lobby-status.ts": 1
-  }
+  "url-flags": {},
+  "url-params": {}
 }
