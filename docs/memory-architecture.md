@@ -110,22 +110,22 @@ it undoes:
 ```ts
 import { resources, type Scope } from "../engine/res/scope";
 
-const match: Scope = resources.root.child("match");
-const geo = match.geometry("geo.actor", new THREE.CapsuleGeometry(0.09, 0.4, 4, 8));
-const mat = match.material(new THREE.MeshStandardMaterial({ color: "#f5c531" }));
+const matchScope: Scope = resources.root.child("match");
+const geo = matchScope.geometry("geo.actor", new THREE.CapsuleGeometry(0.09, 0.4, 4, 8));
+const mat = matchScope.material(new THREE.MeshStandardMaterial({ color: "#f5c531" }));
 const rocket = new THREE.Mesh(geo, mat);
 scene.add(rocket);
-match.defer(() => rocket.removeFromParent());
-match.defer(() => overlay.remove());
+matchScope.defer(() => rocket.removeFromParent());
+matchScope.defer(() => overlay.remove());
 
-match.dispose();
+matchScope.dispose();
 ```
 
 A bake frees its target even when it throws:
 
 ```ts
-await withScope(resources.root, "bake:impostor", async (s) => {
-  const rt = s.target(new THREE.WebGLRenderTarget(size, size));
+await withScope(resources.root, "bake:impostor", async (scope) => {
+  const rt = scope.target(new THREE.WebGLRenderTarget(size, size));
   renderBake(rt);
 });
 ```
@@ -234,7 +234,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 
 | rule | enforced by |
 |---|---|
-| GPU resources are created only through a scope or the cache | Lint rule `resource-owner`: no `new THREE.*Texture`, `*RenderTarget`, `new Worker`, `TextureLoader` or `GLTFLoader` outside `client/src/engine/res/`. Today's sites go in `tools/lint/baseline.json`, which only shrinks |
+| GPU resources are created only through a scope or the cache | Lint rule `resource-owner`: outside `client/src/engine/res/`, every `new THREE.*Texture`, `*RenderTarget` and `new Worker` is handed straight to a scope (`scope.texture`, `scope.target`, `scope.worker`) through a binding named `scope`, `res`, `<name>Scope` or `resources.root`, and `new *Loader` appears only in `client/src/engine/assets.ts`. Today's sites go in `tools/lint/baseline.json`, which only shrinks |
 | The renderer holds no unowned resource | `npm test` memory step: after boot and a match on SwiftShader, every geometry, texture and render target the renderer holds belongs to a scope. The harness observes the renderer's own registration (three.js counts a geometry once in `renderer.info.memory` however many attributes it has, counts render-target attachments as textures, and drops both on `dispose()`) and compares it with the ledger's owned set. Attribute-upload callbacks are not used for this: two geometries sharing one attribute would both look uploaded, and a render target's attachments never fire `texture.onUpdate`. Bytes and categories come from the ledger, never from `renderer.info`. Programs and VAOs are outside the check; they are small |
 | Each category stays inside its budget | `npm test` memory step on KONG-43's harness: bytes per category against `tools/memory-budgets.json`. Over budget fails, and more than 5% under fails until the budget is lowered, as `tools/size-budgets.json` works today |
 | A match leaves nothing behind | CI on SwiftShader: two matches back to back. The ledger's bytes per category after the second equal those after the first, within a small tolerance, and the match scope is empty after leaving |

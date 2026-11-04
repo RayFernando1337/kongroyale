@@ -827,12 +827,6 @@
       "const depthRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: true });",
       "const countRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.UnsignedByteType, depthBuffer: false });"
     ],
-    "client/src/engine/assets.ts": [
-      "private gltf = new GLTFLoader();",
-      "private tex = new THREE.TextureLoader();",
-      "const draco = new DRACOLoader().setDecoderPath(assetUrl(\"assets/decoders/draco/\"));",
-      "const ktx2 = new KTX2Loader().setTranscoderPath(\"https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/libs/basis/\").detectSupport(renderer);"
-    ],
     "client/src/engine/engine.ts": [
       "const rt = this.compileTarget ??= new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });",
       "const rt = this.warmTarget ??= new THREE.WebGLRenderTarget(64, 64, { type: THREE.HalfFloatType });",
