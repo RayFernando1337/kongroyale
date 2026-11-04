@@ -40,7 +40,7 @@ pieces fit; read it before changing networking, the simulation or world loading.
 | `npm run netlab` | Hit registration under simulated latency, using the real client and server code. Add `-- --check` to fail on a regression. |
 | `npx tsx tools/verify-online-match.mts` | A whole online match over real WebSockets against the real server. |
 | `npx tsx tools/verify-boot.mts` | The production client boots and plays a short match on SwiftShader, no GPU needed. |
-| `node --import tsx tools/verify-assets.mts` | Every file under `public/assets/` has a recorded source or licence. |
+| `node --import tsx tools/verify-assets.mts` | Every file under `public/assets/` has a recorded source or licence. `npm test` runs it with `--baseline tools/verify-assets.baseline.json`, which allows today's unattributed folders and fails on any new one. |
 | `npm run bench:host`, `bench:server`, `bench:verify` | Host tick cost, a 50-player socket load test against a local server, and the parity checks. See [PERFORMANCE.md](PERFORMANCE.md). |
 | `npm start` | Serve `dist/` and the game server on one port. See [HOSTING.md](HOSTING.md). |
 
@@ -119,7 +119,7 @@ catching it; turn it into a check when the same mistake shows up twice.
 | 2. `shared/` is deterministic: no `Math.random`, wall-clock time, Node or DOM APIs | Lint rule `shared-determinism`; the `sim` step of `npm test` fails when the headless match's state hash changes |
 | 2. Hot paths don't allocate | Lint rule `hot-alloc` over `*.hot.ts` and `tools/lint/hot.json` |
 | 3. Never commit secrets | CI job "no secrets" (key and env file check, gitleaks) |
-| 4. Every asset needs a source and a licence | `npx tsx tools/verify-assets.mts`, run by hand |
+| 4. Every asset needs a source and a licence | `npm test` (`assets` step): no new unattributed asset beyond `tools/verify-assets.baseline.json`, which only shrinks |
 | 5. One change per pull request | Review only |
 | 6. Build and test before the pull request | CI job "build and test" runs `npm run build` and `npm test` |
 | 7. Only test against servers you run | Review only |

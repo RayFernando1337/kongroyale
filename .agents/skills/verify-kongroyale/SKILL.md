@@ -127,12 +127,12 @@ list: commands land over time, and a newer one beats a recipe here.
 
 | Command | Proves | GPU |
 |---|---|---|
-| `npm run build && npm test` | types, lint (shared/ determinism, hot-path allocation, no new comments), movement, swimming, actors, walk graph, solver, glass, wire/matrix/geometry/http/splat parity, a headless seed-42 match with `--check` (winner, no friendly fire, bots arm, tick budget, pinned state hash), admin lobby red team | no |
+| `npm run build && npm test` | types, lint (shared/ determinism, hot-path allocation, no new comments), verifier gates, no new unattributed asset, movement, swimming, actors, walk graph, solver, glass, wire/matrix/geometry/http/splat parity, a headless seed-42 match with `--check` (winner, no friendly fire, bots arm, tick budget, pinned state hash), admin lobby red team | no |
 | `npm test -- --list`, `--only lint,sim`, `--fast` | list the check ids, run some of them, or skip the slow ones (about 30 s); run them all before a PR | no |
 | `npx tsx tools/netlab.mts --check` | fails when hit registration regresses at RTTs up to 250 ms | no |
 | `npx tsx tools/verify-online-match.mts` | a whole online match over real WebSockets against the real server, with the real client network code | no |
 | `npx tsx tools/verify-boot.mts` | the production client boots to a playable title and plays a short practice match on SwiftShader | no |
-| `node --import tsx tools/verify-assets.mts` | every file under `public/assets/` has a recorded source or licence | no |
+| `node --import tsx tools/verify-assets.mts` | every file under `public/assets/` has a recorded source or licence; `npm test` runs it against `tools/verify-assets.baseline.json` | no |
 | `npm run sim` | a full 50-bot trios match (seed 42): winner, kills, tick cost | no |
 | `npm run netlab` (`-- --kill`) | hit registration under 20-320 ms RTT with the real client and server code | no |
 | `npm run bench:host` / `npm run bench:server` | host tick cost; 50 players over 100 real sockets against a local built server | no |

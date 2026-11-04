@@ -27,13 +27,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { nonEmpty, orExit, parseFlags } from "./gate.mts";
+import { GateError, nonEmpty, orExit, parseFlags } from "./gate.mts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = "public/assets/";
 const SIDECARS = new Set(["LICENSE", "NOTICE", "provenance.json", "SOURCES.json", "tex.json"]);
-const USAGE = "node --import tsx tools/verify-assets.mts [--json] [--all]";
-const { flags } = orExit("verify-assets", USAGE, () => parseFlags(process.argv.slice(2), { "--json": "bool", "--all": "bool" }));
+const USAGE = "node --import tsx tools/verify-assets.mts [--json] [--all] [--baseline FILE]";
+const { flags } = orExit("verify-assets", USAGE, () => parseFlags(process.argv.slice(2), { "--json": "bool", "--all": "bool", "--baseline": "string" }));
+const baselineFile = flags["--baseline"];
+const baseline: Record<string, number> = baselineFile ? orExit("verify-assets", USAGE, () => {
+  const file = path.resolve(root, baselineFile);
+  if (!fs.existsSync(file)) throw new GateError(`${baselineFile} does not exist`);
+  const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new GateError(`${baselineFile} must be an object of folder -> unattributed file count`);
+  for (const [d, n] of Object.entries(parsed)) if (!Number.isInteger(n) || (n as number) < 1) throw new GateError(`${baselineFile}: ${d} must have a positive count, got ${JSON.stringify(n)}`);
+  return parsed as Record<string, number>;
+}) : {};
 const asJson = !!flags["--json"];
 const all = !!flags["--all"];
 
@@ -124,7 +133,13 @@ for (const f of unattributed) {
   const d = path.posix.dirname(f);
   byDir.set(d, [...(byDir.get(d) ?? []), f]);
 }
-const ok = unattributed.length === 0 && problems.length === 0 && stale.filter((s) => s.startsWith("manifest")).length === 0;
+const ratchet: string[] = [];
+for (const d of new Set([...byDir.keys(), ...Object.keys(baseline)])) {
+  const n = byDir.get(d)?.length ?? 0, allowed = baseline[d] ?? 0;
+  if (n > allowed) ratchet.push(`${d}/ has ${n} unattributed file(s), the baseline allows ${allowed}: credit the new asset (CREDITS.md, a sidecar or the manifest)`);
+  if (n < allowed) ratchet.push(`${d}/ has ${n} unattributed file(s), fewer than the baseline's ${allowed}: ${n ? `lower its count in ${baselineFile} to ${n}` : `delete its entry from ${baselineFile}`} so it stays credited`);
+}
+const ok = (baselineFile ? ratchet.length === 0 : unattributed.length === 0) && problems.length === 0 && stale.filter((s) => s.startsWith("manifest")).length === 0;
 
 if (asJson) {
   console.log(JSON.stringify({ files: files.length, skipped, attributed: Object.fromEntries(counts), unattributed, stale, problems }, null, 2));
@@ -135,6 +150,7 @@ if (asJson) {
   console.log(`\nUnattributed: ${unattributed.length} files in ${byDir.size} folders`);
   for (const [d, fs_] of [...byDir].sort()) console.log(`  ${String(fs_.length).padStart(5)}  ${d}/  e.g. ${path.posix.basename(fs_[0])}`);
   for (const s of [...stale, ...problems]) console.log("note: " + s);
-  console.log(ok ? "\nOK: every asset has a source." : "\nFAIL: add credits (CREDITS.md) or manifest entries for the folders above.");
+  if (baselineFile) console.log(ratchet.length ? `\nAgainst ${baselineFile}:\n  ${ratchet.join("\n  ")}` : `\nEvery unattributed folder matches ${baselineFile}; no new unattributed asset.`);
+  console.log(ok ? (baselineFile ? "\nOK: no asset beyond the baseline lacks a source." : "\nOK: every asset has a source.") : baselineFile ? `\nFAIL: fix the folders listed against ${baselineFile}.` : "\nFAIL: add credits (CREDITS.md) or manifest entries for the folders above.");
 }
 process.exit(ok ? 0 : 1);
