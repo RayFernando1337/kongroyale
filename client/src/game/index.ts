@@ -269,6 +269,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     clearSessionTimers();
     if (l.offline) { voice?.dispose(); voice = null; voiceLink = null; }
     else if (voiceLink !== l) { voice?.dispose(); voice = createSquadVoice(l, ui); voiceLink = l; }
+    render?.dispose();
     cm = new ClientMatch(world, l);
     render = new GameRender(engine, cm, kits, input);
     render.myName = lobby.name; render.fovBase = currentFov();
