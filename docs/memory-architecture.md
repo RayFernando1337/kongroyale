@@ -205,7 +205,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | rule | enforced by |
 |---|---|
 | GPU resources are created only through a scope or the cache | Lint rule `resource-owner`: no `new THREE.*Texture`, `*RenderTarget`, `new Worker`, `TextureLoader` or `GLTFLoader` outside `client/src/engine/res/`. Today's sites go in `tools/lint/baseline.json`, which only shrinks |
-| The renderer holds no unowned resource | `npm test` memory step: after boot and a match on SwiftShader, the number of geometries and textures three.js has uploaded (`renderer.info.memory`) equals the number the ledger saw upload. The ledger counts an upload from `attribute.onUpload` and `texture.onUpdate`, so equal counts mean every uploaded geometry and texture has an owner. Bytes and categories come from the ledger, never from `renderer.info`. Render buffers, programs and VAOs are outside this check: render targets cover the first, and the second two are small |
+| The renderer holds no unowned resource | `npm test` memory step: after boot and a match on SwiftShader, the number of geometries and textures three.js has uploaded (`renderer.info.memory`) equals the number the ledger saw upload. The ledger marks an owned geometry uploaded on the first upload of any of its buffers (`onUpload` on each attribute or interleaved buffer, so a geometry with three attributes still counts once) and an owned texture on `texture.onUpdate`, and stops counting either when its scope frees it, as `renderer.info` does on `dispose()`. Equal counts therefore mean every uploaded geometry and texture has an owner. Bytes and categories come from the ledger, never from `renderer.info`. Render buffers, programs and VAOs are outside this check: render targets cover the first, and the second two are small |
 | Each category stays inside its budget | `npm test` memory step on KONG-43's harness: bytes per category against `tools/memory-budgets.json`. Over budget fails, and more than 5% under fails until the budget is lowered, as `tools/size-budgets.json` works today |
 | A match leaves nothing behind | CI on SwiftShader: two matches back to back. The ledger's bytes per category after the second equal those after the first, within a small tolerance, and the match scope is empty after leaving |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
@@ -230,7 +230,9 @@ ships dark behind a registry flag where it changes behaviour.
    Budgets only go down.
 6. **The CPU-copy policy for textures**, behind a flag, applied first to loads that go through `Assets`. This is the
    largest single saving that needs no visual change.
-7. **One asset cache**: reference counts and one loader of each kind. Then each bypass site, one PR each, by the lane that
+7. **One asset cache**, as [One asset cache](#one-asset-cache) defines it: keys by what the resource is, a reference per
+   acquiring scope dropped when that scope is disposed, least-recently-used eviction of unreferenced entries only when
+   their category is over budget, and one loader of each kind. Then each bypass site, one PR each, by the lane that
    owns that code.
 8. **Region scopes**: `ctx.res` for world modules, with per-POI accounting and `rebuild` callbacks for their geometry.
 9. **Residency**: `far` regions free their sources' GPU buffers (with RAY-106), then `cold` for the lobby islet.
