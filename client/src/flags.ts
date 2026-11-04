@@ -8,10 +8,12 @@ const text: Kind<string | null> = { type: "string", default: null, parse: (v) =>
 const list: Kind<readonly string[]> = { type: "comma list", default: [], parse: (v) => v.split(",").filter(Boolean) };
 const numbers: Kind<readonly number[] | undefined> = { type: "comma numbers", default: undefined, parse: (v) => v.split(",").map(Number) };
 
-type Owner = "boot" | "engine" | "veg";
+type Owner = "atmos" | "boot" | "engine" | "terrain" | "veg" | "water";
 type Flag = { readonly kind: Kind<unknown>; readonly owner: Owner; readonly purpose: string };
 
 const FLAGS = {
+  atmos: { kind: list, owner: "atmos", purpose: "atmosphere debug switches: noao, nogr, nobloom, nosmaa, nosharpen, noshadow, noclouds, nopost, nofog, nocloudshadow, cloudmarch" },
+  atmosp: { kind: text, owner: "atmos", purpose: "override preset fields as key:value,key:value (hex colours as c0ffee)" },
   bananatint: { kind: on, owner: "veg", purpose: "per-plant tint variation on banana leaves" },
   cullfov: { kind: on, owner: "engine", purpose: "detail cull distances scale with the camera's field of view" },
   dither: { kind: on, owner: "engine", purpose: "LOD fades dither; =0 scales instead (always off under Node)" },
@@ -24,7 +26,7 @@ const FLAGS = {
   impgrade: { kind: numbers, owner: "veg", purpose: "four numbers that replace the impostor colour grade uImpGrade" },
   impshadow: { kind: on, owner: "veg", purpose: "impostor quads cast the island-wide canopy shadows into the static far map" },
   impsplit: { kind: numbers, owner: "veg", purpose: "four numbers that replace the impostor shade/sun split uImpSplit" },
-  lodv: { kind: on, owner: "engine", purpose: "view-dependent LOD distances for terrain, rocks, HLOD and detail culling" },
+  lodv: { kind: on, owner: "engine", purpose: "the anti-pop LOD path: terrain geomorph, rock and HLOD crossfades, view-dependent detail culling" },
   nocull: { kind: present, owner: "engine", purpose: "turn off detail culling and draw everything near" },
   nofreeze: { kind: present, owner: "engine", purpose: "turn off the static matrix cache" },
   nohlod: { kind: present, owner: "engine", purpose: "turn off the far HLOD merge" },
@@ -33,6 +35,7 @@ const FLAGS = {
   notimer: { kind: present, owner: "engine", purpose: "act as a browser without GPU timer queries" },
   nowarmshadow: { kind: present, owner: "engine", purpose: "warm draws skip the roots' shadow-depth programs" },
   offinstant: { kind: on, owner: "engine", purpose: "culled detail switches off at once instead of fading out" },
+  rocks: { kind: on, owner: "terrain", purpose: "draw the terrain rocks" },
   scale: { kind: num(0), owner: "engine", purpose: "pin the 3D resolution scale; 0 = not pinned" },
   splasync: { kind: one, owner: "veg", purpose: "read splat captures back from the GPU asynchronously" },
   splcache: { kind: on, owner: "veg", purpose: "keep baked splats in the browser cache; =0 bakes on every load" },
@@ -54,8 +57,11 @@ const FLAGS = {
   splspread: { kind: num(1.25), owner: "veg", purpose: "splat capture spread" },
   splsz: { kind: num(1), owner: "veg", purpose: "splat size gain" },
   splthick: { kind: num(0.22), owner: "veg", purpose: "splat capture thickness" },
+  steam: { kind: on, owner: "terrain", purpose: "lava steam vents in the badlands" },
   streamslice: { kind: numbers, owner: "engine", purpose: "stream budget per frame in ms: title,warm,match" },
+  sun: { kind: numbers, owner: "atmos", purpose: "sun elevation,azimuth in degrees instead of the preset's" },
   texprof: { kind: present, owner: "engine", purpose: "profile texture uploads" },
+  tfar: { kind: on, owner: "terrain", purpose: "far terrain material beyond 350 m" },
   vegcol: { kind: one, owner: "veg", purpose: "debug colours for the veg colliders" },
   vegdbg: { kind: list, owner: "veg", purpose: "veg perf attribution switches: noshadow, noimp, nolod0, nolod1, nodetail" },
   vegpre: { kind: one, owner: "veg", purpose: "depth pre-pass for alpha-tested foliage (measured slower, so off)" },
@@ -69,6 +75,18 @@ const FLAGS = {
   vegxfade: { kind: on, owner: "veg", purpose: "foliage LOD tiers crossfade" },
   view: { kind: text, owner: "boot", purpose: "boot into a fixed dev view (a POI, biome or studio) instead of the game" },
   visfade: { kind: on, owner: "engine", purpose: "detail fades in and out at the cull edge (always off under Node)" },
+  waniso: { kind: num(0), owner: "water", purpose: "anisotropy of the water normal and ripple textures; 0 = the default (4, ripples 8)" },
+  wbase: { kind: num(0), owner: "water", purpose: "water clipmap base cell size (m); 0 = 1 m" },
+  wcells: { kind: num(0), owner: "water", purpose: "water clipmap cells per level; 0 = by quality (48 low, else 64)" },
+  wfoampass: { kind: present, owner: "water", purpose: "draw foam in its own pass instead of the main water pass" },
+  wfoamtest: { kind: present, owner: "water", purpose: "paint demo foam shapes" },
+  wlevels: { kind: num(0), owner: "water", purpose: "water clipmap levels; 0 = 8" },
+  wnodual: { kind: present, owner: "water", purpose: "turn off dual-source blending for water" },
+  wnoscene: { kind: present, owner: "water", purpose: "turn off the scene grab behind water (refraction)" },
+  wnovshadow: { kind: present, owner: "water", purpose: "turn off the water's per-vertex sun shadow lookup" },
+  wphys: { kind: present, owner: "water", purpose: "physical water: full sun glitter, no artistic reflection lifts" },
+  wprepass: { kind: present, owner: "water", purpose: "depth pre-pass for water" },
+  wripple: { kind: present, owner: "water", purpose: "demo ripples" },
 } as const satisfies Record<string, Flag>;
 
 export type FlagName = keyof typeof FLAGS;

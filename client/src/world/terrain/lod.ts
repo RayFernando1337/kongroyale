@@ -19,10 +19,11 @@
 import * as THREE from "three";
 import { WORLD } from "../../../../shared/world/map";
 import type { TerrainData } from "../../../../shared/world/terrain-gen";
+import { flag } from "../../flags";
 
 /** the anti-sparkle + anti-pop terrain path (mipmapped 2 m
  * data, faded detail normals, specular AA, geomorphed LOD). ?lodv=0 = off (A/B, baselines). */
-export const TERRAIN_LODV = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("lodv") !== "0";
+export const TERRAIN_LODV = flag("lodv");
 const G = 75;                 // cells per node side
 const MAX_LEVEL = 4;
 /** split while one grid step covers more than this many pixels (lower = more triangles) */

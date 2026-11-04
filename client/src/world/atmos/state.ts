@@ -3,6 +3,7 @@
 // radiance values (HDR) that land on the target art's sRGB values after Neutral tone mapping + grade.
 import * as THREE from "three";
 import type { GradeParams } from "./grade";
+import { flag } from "../../flags";
 
 export type PresetId = "midday" | "dawn" | "night" | "rain" | "jungle";
 
@@ -343,10 +344,10 @@ export class AtmosState {
   apply(p: AtmosPreset) {
     // dev: ?sun=elev,az overrides the preset's sun (lighting experiments / comparing alternatives)
     try {
-      const o = new URLSearchParams(location.search).get("sun")?.split(",").map(Number);
+      const o = flag("sun");
       if (o && o.length === 2 && o.every(Number.isFinite)) p = { ...p, sunElev: o[0], sunAz: o[1] };
       // dev: ?atmosp=key:value,key:value overrides preset fields (tuning sheets without code edits; hex colours as 'c0ffee')
-      const ov = new URLSearchParams(location.search).get("atmosp");
+      const ov = flag("atmosp");
       if (ov) {
         const q: Record<string, unknown> = { ...p };
         for (const kv of ov.split(",")) {
@@ -367,5 +368,5 @@ export class AtmosState {
 
 /** debug toggles: ?atmos=noao,nogr,nobloom,nosmaa,nosharpen,noshadow,noclouds,nopost,nofog,nocloudshadow */
 export function atmosFlags(): Set<string> {
-  try { return new Set((new URLSearchParams(location.search).get("atmos") || "").split(",").filter(Boolean)); } catch { return new Set(); }
+  return new Set(flag("atmos"));
 }
