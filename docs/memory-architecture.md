@@ -1,8 +1,9 @@
 # Memory architecture: one resource layer
 
 This is the design for how the client creates, owns, caches and frees GPU and CPU resources. It exists because the
-browser holds 4.5 GB at the title and 6.5-7.5 GB in a match at 640x360 on SwiftShader (RAY-104, PSS), and players on
-16 GB machines swap. The target is a browser under 4 GB in a match at 1080p, and no growth from one match to the next.
+browser holds 10 GB at the title and 12.3-12.5 GB from the plane onward on an M4 Mac mini with 16 GB (Chrome on Metal,
+whole-browser footprint; every run swapped), and 4.5-7.5 GB on SwiftShader at 640x360 (RAY-104, PSS), which understates
+the GPU process. The target is a browser under 4 GB in a match at 1080p, and no growth from one match to the next.
 
 The design has five parts: scopes with explicit lifetimes, one asset cache, a CPU-copy policy, per-category budgets
 with residency, and checks that fail the build when a rule breaks. Each part lands as its own small PR, in the order
@@ -94,11 +95,11 @@ Rules the module enforces:
 
 - An object has one owner. Handing the same object to a second scope throws, and names both scopes.
 - `dispose()` frees children first, then walks what the scope owns and its `defer` callbacks together, newest first,
-  so a finalizer registered after a resource runs before that resource is freed. A resource that fails to free does not stop the others; the scope throws one
-  `AggregateError` at the end.
-- A disposed scope refuses new resources.
-- `resources.report()` gives count and bytes per category and per scope, and how many owned geometries and textures have
-  uploaded. Bytes are measured when the report is read, so a texture whose image arrives later, or a render target that
+  so a finalizer registered after a resource runs before that resource is freed. A child or resource that fails to free
+  does not stop the others; the scope finishes, closes, and throws one `AggregateError` with every failure.
+- A disposed scope refuses new resources, and live siblings have unique names.
+- `resources.report()` gives count and bytes per category and per scope. Geometry bytes count each GPU buffer once (a
+  `BufferAttribute` or an `InterleavedBuffer`), and a cube map counts all six faces. Bytes are measured when the report is read, so a texture whose image arrives later, or a render target that
   is resized, is counted at its current size.
 
 ## Usage
@@ -219,7 +220,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | rule | enforced by |
 |---|---|
 | GPU resources are created only through a scope or the cache | Lint rule `resource-owner`: no `new THREE.*Texture`, `*RenderTarget`, `new Worker`, `TextureLoader` or `GLTFLoader` outside `client/src/engine/res/`. Today's sites go in `tools/lint/baseline.json`, which only shrinks |
-| The renderer holds no unowned resource | `npm test` memory step: after boot and a match on SwiftShader, the number of geometries and textures three.js has uploaded (`renderer.info.memory`) equals the number the ledger saw upload. The ledger marks an owned geometry uploaded on the first upload of any of its buffers (`onUpload` on each attribute or interleaved buffer, so a geometry with three attributes still counts once) and an owned texture on `texture.onUpdate`, and stops counting either when its scope frees it, as `renderer.info` does on `dispose()`. Equal counts therefore mean every uploaded geometry and texture has an owner. Bytes and categories come from the ledger, never from `renderer.info`. Render buffers, programs and VAOs are outside this check: render targets cover the first, and the second two are small |
+| The renderer holds no unowned resource | `npm test` memory step: after boot and a match on SwiftShader, every geometry, texture and render target the renderer holds belongs to a scope. The harness observes the renderer's own registration (three.js counts a geometry once in `renderer.info.memory` however many attributes it has, counts render-target attachments as textures, and drops both on `dispose()`) and compares it with the ledger's owned set. Attribute-upload callbacks are not used for this: two geometries sharing one attribute would both look uploaded, and a render target's attachments never fire `texture.onUpdate`. Bytes and categories come from the ledger, never from `renderer.info`. Programs and VAOs are outside the check; they are small |
 | Each category stays inside its budget | `npm test` memory step on KONG-43's harness: bytes per category against `tools/memory-budgets.json`. Over budget fails, and more than 5% under fails until the budget is lowered, as `tools/size-budgets.json` works today |
 | A match leaves nothing behind | CI on SwiftShader: two matches back to back. The ledger's bytes per category after the second equal those after the first, within a small tolerance, and the match scope is empty after leaving |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
