@@ -269,6 +269,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     clearSessionTimers();
     if (l.offline) { voice?.dispose(); voice = null; voiceLink = null; }
     else if (voiceLink !== l) { voice?.dispose(); voice = createSquadVoice(l, ui); voiceLink = l; }
+    render?.dispose();
     cm = new ClientMatch(world, l);
     render = new GameRender(engine, cm, kits, input);
     render.myName = lobby.name; render.fovBase = currentFov();
@@ -1097,6 +1098,7 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
   let compiled: Promise<unknown> = Promise.resolve();
   try { compiled = engine.renderer.compileAsync(engine.scene, cam); } catch { /* unsupported: the frames below compile */ }
   engine.renderer.setRenderTarget(prevRT);
+  compiled = Promise.all([compiled, kits.storm.compile(engine.renderer)]);
   // (perf: textures upload on first draw behind the loading screen — the frames below — and the rest one per frame in
   // the title (warmer.tick); the synchronous upload of every scene texture here cost 2.2 s of texSubImage2D)
   // shadow DEPTH programs (alpha-tested foliage, skinned kongs, instanced props): compileAsync never makes them and the

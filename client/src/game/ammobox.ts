@@ -3,6 +3,7 @@
 // glow, no hum), so a house holds one or two without looking like a chest room. Drawn as three InstancedMeshes (body,
 // lid, interior) holding only the boxes within BOX_R of the camera; the lid of a box that opens swings back in 0.35 s.
 import * as THREE from "three";
+import type { Scope } from "../engine/res/scope";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Chest } from "../../../shared/sim/loot";
@@ -98,15 +99,17 @@ export class AmmoBoxes {
   /** chest id → instance slot; lid angle (0 closed … OPEN_A) */
   private slot = new Map<number, number>(); private ang = new Map<number, number>(); private sc = new Map<number, number>();
   private animating = new Set<number>();
-  constructor() {
+  constructor(res: Scope) {
     const g = buildGeos();
-    const mat = new THREE.MeshStandardMaterial({ map: sideTex(), vertexColors: true, roughness: 0.58, metalness: 0.28 });
-    const imat = new THREE.MeshStandardMaterial({ map: innerTex(), roughness: 0.45, metalness: 0.5 });
+    for (const geo of [g.base, g.lid, g.inner]) res.geometry("geo.world", geo);
+    const mat = res.material(new THREE.MeshStandardMaterial({ map: res.texture("tex.world", sideTex()), vertexColors: true, roughness: 0.58, metalness: 0.28 }));
+    const imat = res.material(new THREE.MeshStandardMaterial({ map: res.texture("tex.world", innerTex()), roughness: 0.45, metalness: 0.5 }));
     const mk = (geo: THREE.BufferGeometry, m: THREE.Material, name: string, shadow: boolean) => {
       const x = new THREE.InstancedMesh(geo, m, MAX); x.name = name; x.count = 0; x.castShadow = shadow; x.receiveShadow = true; x.frustumCulled = false; this.group.add(x); return x;
     };
     this.base = mk(g.base, mat, "ammobox-body", true); this.lid = mk(g.lid, mat, "ammobox-lid", true); this.inner = mk(g.inner, imat, "ammobox-inner", false);
     this.group.name = "ammo-boxes";
+    res.defer(() => this.group.removeFromParent());
   }
   /** the boxes within BOX_R of (cx, cz), nearest first (the loot cull tick, ≤ 2.5 Hz) */
   sync(chests: Chest[], cx: number, cz: number) {

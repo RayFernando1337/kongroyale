@@ -15,7 +15,7 @@
 // Only local servers: the proxy refuses any host but 127.0.0.1 / localhost (AGENTS.md rule 7).
 //
 // run options: --url [label=]URL (repeat it for A/B; the URL may carry game flags)  --browsers chrome,edge,safari,webkit
-//   --runs N (3)  --starts cold,warm  --match-secs N (15) | --no-match  --no-trace (Chrome, Edge)  --no-gl (no WebGL probe)
+//   --runs N (3)  --starts cold,warm  --match-secs N (15; 30 or more also snapshots memory and assets in plane and 30 s in) | --no-match  --no-trace (Chrome, Edge)  --no-gl (no WebGL probe)
 //   --inspect (Safari: Web Inspector Timelines recording)  --headed  --viewport 1600x900  --dpr 2  --seed 42
 //   --net MBPS,RTT_MS (shape the proxy's link)  --cooldown S (10)  --out DIR  --root CHECKOUT  --safaridriver-port 4471
 // table options: --metrics a,b (default: the headline metrics)
@@ -42,7 +42,9 @@ type Browser = (typeof BROWSERS)[number];
 type Start = "cold" | "warm";
 /** the scenario version: bump it when what a load does (flags, the match drive, the windows) changes */
 const SCENARIO_VERSION = 1;
-const READY_TIMEOUT_MS = 240_000, MATCH_TIMEOUT_MS = 120_000;
+const READY_TIMEOUT_MS = 240_000, MATCH_TIMEOUT_MS = 120_000, MATCH_SNAP_MS = 30_000, PLANE_PHASE = 1;
+const SNAP_POINTS = ["title", "plane", "match30"] as const;
+type SnapPoint = (typeof SNAP_POINTS)[number];
 /** a main-thread block at least this long counts as a long task (the web's long-task threshold) */
 const LONG_MS = 50;
 const SAFARIDRIVER = ["/System/Cryptexes/App/usr/bin/safaridriver", "/usr/bin/safaridriver"].find((p) => fs.existsSync(p)) ?? "safaridriver";
@@ -115,7 +117,17 @@ const PROBE = `(function () {
         return [Math.round(s.duration), String(s.invoker || "").slice(0, 80), String(s.sourceFunctionName || ""), String(s.sourceURL || "").replace(location.origin, "").slice(0, 120)]; })]); }); }).observe({ type: "long-animation-frame", buffered: true });
   } catch (e) {}
 })();`;
-const STATUS = `JSON.stringify({ ready: !!(window.__kr && window.__kr.ready), stage: window.__kr ? String(window.__kr.stage) : "none", inMatch: !!(window.__kr && window.__kr.game && window.__kr.game.inMatch), probe: !!window.__krProbe })`;
+const STATUS = `JSON.stringify({ ready: !!(window.__kr && window.__kr.ready), stage: window.__kr ? String(window.__kr.stage) : "none", inMatch: !!(window.__kr && window.__kr.game && window.__kr.game.inMatch), phase: window.__kr && window.__kr.game && window.__kr.game.cm ? window.__kr.game.cm.phase : -1, probe: !!window.__krProbe })`;
+const snapExpr = (point: SnapPoint) => `(function (point) {
+  var k = window.__kr || {}, s = { point: point, at: performance.now(), jsHeapMB: null, uaWhy: null, info: null };
+  if (performance.memory) s.jsHeapMB = performance.memory.usedJSHeapSize / 1e6;
+  var M = window.__krMem = window.__krMem || {};
+  if (!window.crossOriginIsolated) s.uaWhy = "performance.measureUserAgentSpecificMemory needs a cross-origin isolated page (COOP and COEP headers)";
+  else if (typeof performance.measureUserAgentSpecificMemory !== "function") s.uaWhy = "performance.measureUserAgentSpecificMemory is not available in this browser";
+  else { M[point] = { pending: true }; performance.measureUserAgentSpecificMemory().then(function (r) { M[point] = { bytes: r.bytes }; }, function (e) { M[point] = { error: String(e) }; }); }
+  try { var r = k.engine && k.engine.renderer; if (r && r.info) s.info = { geometries: r.info.memory.geometries, textures: r.info.memory.textures, programs: r.info.programs ? r.info.programs.length : null }; } catch (e) {}
+  return JSON.stringify(s);
+})(${JSON.stringify(point)})`;
 const COLLECT = `(function () {
   var k = window.__kr || {}, P = window.__krProbe || null, n = performance.getEntriesByType("navigation")[0];
   var nav = n ? { requestStart: n.requestStart, responseStart: n.responseStart, responseEnd: n.responseEnd, domInteractive: n.domInteractive, dcl: n.domContentLoadedEventEnd, load: n.loadEventEnd } : null;
@@ -126,7 +138,7 @@ const COLLECT = `(function () {
       timerQuery: !!c.getExtension("EXT_disjoint_timer_query_webgl2"), pixelRatio: r.getPixelRatio(), buffer: [c.drawingBufferWidth, c.drawingBufferHeight] }; } } catch (e) {}
   var pick = {}; @FIELDS.forEach(function (f) { try { var v = k[f]; if (v !== undefined && typeof v !== "function") pick[f] = JSON.parse(JSON.stringify(v)); } catch (e) {} });
   var splat = null; try { splat = JSON.parse(JSON.stringify(k.veg.splats.stats)); } catch (e) {}
-  return JSON.stringify({ now: performance.now(), nav: nav, res: res, kr: pick, errors: (k.errors || []).slice(0, 20).map(function (s) { return String(s).slice(0, 400); }), probe: P, gl: gl, splat: splat,
+  return JSON.stringify({ now: performance.now(), nav: nav, res: res, kr: pick, mem: window.__krMem || null, errors: (k.errors || []).slice(0, 20).map(function (s) { return String(s).slice(0, 400); }), probe: P, gl: gl, splat: splat,
     dpr: devicePixelRatio, inner: [innerWidth, innerHeight], ua: navigator.userAgent });
 })()`.replace("@FIELDS", JSON.stringify(KR_FIELDS));
 
@@ -215,7 +227,7 @@ async function playwrightDriver(kind: "chrome" | "edge" | "webkit", o: Opts): Pr
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kr-load-profile-"));
   const common = { headless: !o.headed, viewport: { width: o.viewport[0], height: o.viewport[1] }, deviceScaleFactor: o.dpr, timeout: 120_000 };
   const ctx = kind !== "webkit"
-    ? await pw.chromium.launchPersistentContext(dir, { ...common, channel: kind === "edge" ? "msedge" : "chrome", args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required"] })
+    ? await pw.chromium.launchPersistentContext(dir, { ...common, channel: kind === "edge" ? "msedge" : "chrome", args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required", "--enable-precise-memory-info"] })
     : await pw.webkit.launchPersistentContext(dir, common);
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   const ua = String(await page.evaluate("navigator.userAgent"));
@@ -294,11 +306,13 @@ const screenLocked = () => process.platform === "darwin" && /CGSSessionScreenIsL
 const LOCKED = "the screen is locked: a headed Safari window renders no frames then, so its load stalls. Unlock the Mac and keep it unlocked for the run (the run keeps the display awake with caffeinate)";
 
 // ---------------------------------------------------------------- one load
-interface Snap { now: number; nav: Record<string, number> | null; res: Array<[string, number, number, number, number, number]>; kr: Record<string, any>; errors: string[]; probe: Probe | null; gl: Record<string, any> | null; splat: unknown; dpr: number; inner: number[]; ua: string }
+interface Snap { now: number; nav: Record<string, number> | null; res: Array<[string, number, number, number, number, number]>; kr: Record<string, any>; mem: Record<string, { pending?: boolean; bytes?: number; error?: string }> | null; errors: string[]; probe: Probe | null; gl: Record<string, any> | null; splat: unknown; dpr: number; inner: number[]; ua: string }
 interface Probe { at: number; set: Array<[number, string, string]>; gaps: Array<[number, number]>; frames: number[]; gl: Record<string, [number, number, number]>; glSlow: Array<[number, string, number]>; marks: Record<string, number>; longtasks: Array<[number, number]>; loaf: unknown[]; hidden: number; entryTypes: string[] }
-interface Load { start: Start; boot: Snap; fin: Snap; hits: Hit[]; trace: TraceSummary | null; artifacts: string[]; failure?: string }
+interface PointSnap { point: SnapPoint; at: number; jsHeapMB: number | null; uaWhy: string | null; info: { geometries: number; textures: number; programs: number | null } | null }
+interface Load { start: Start; boot: Snap; fin: Snap; points: PointSnap[]; hits: Hit[]; trace: TraceSummary | null; artifacts: string[]; failure?: string }
 
-async function poll(d: Driver, until: (s: { ready: boolean; stage: string; inMatch: boolean }) => boolean, ms: number) {
+interface Status { ready: boolean; stage: string; inMatch: boolean; phase: number }
+async function poll(d: Driver, until: (s: Status) => boolean, ms: number): Promise<Status> {
   const t0 = Date.now();
   for (;;) {
     const s = JSON.parse(await d.run(STATUS));
@@ -315,6 +329,9 @@ async function loadOnce(d: Driver, start: Start, url: string, out: string, proxy
   let trace: Buffer | null = null, failure: string | undefined;
   await d.open(url);
   const s = await poll(d, (x) => x.ready || x.stage === "failed", READY_TIMEOUT_MS);
+  const points: PointSnap[] = [];
+  const snap = async (p: SnapPoint) => { points.push(JSON.parse(await d.run(snapExpr(p)))); };
+  if (s.ready) await snap("title");
   artifacts.push(await d.shot(path.join(out, "title-" + start)));
   const boot: Snap = JSON.parse(await d.run(COLLECT));
   if (!s.ready) failure = "the title never became ready (stage " + s.stage + ")";
@@ -322,7 +339,15 @@ async function loadOnce(d: Driver, start: Start, url: string, out: string, proxy
     await d.click("button.tn-play-cta");
     const m = await poll(d, (x) => x.inMatch, MATCH_TIMEOUT_MS);
     if (!m.inMatch) failure = "the practice match did not start within " + MATCH_TIMEOUT_MS / 1000 + " s";
-    else await sleep(matchSecs * 1000 + 300);
+    else {
+      const t0 = Date.now();
+      while (Date.now() - t0 < matchSecs * 1000 + 300) {
+        const x: Status = JSON.parse(await d.run(STATUS));
+        if (x.phase === PLANE_PHASE && !points.some((p) => p.point === "plane")) await snap("plane");
+        if (Date.now() - t0 >= MATCH_SNAP_MS && !points.some((p) => p.point === "match30")) await snap("match30");
+        await sleep(250);
+      }
+    }
     artifacts.push(await d.shot(path.join(out, "match-" + start)));
   }
   const fin: Snap = JSON.parse(await d.run(COLLECT));
@@ -333,7 +358,7 @@ async function loadOnce(d: Driver, start: Start, url: string, out: string, proxy
     fs.writeFileSync(tracePath, zlib.gzipSync(trace)); artifacts.push(tracePath);
     try { summary = analyzeTrace(trace, fin, matchSecs, cpuPath); artifacts.push(cpuPath); } catch (e) { summary = { error: String((e as Error).message ?? e) } as TraceSummary; }
   }
-  return { start, boot, fin, hits: proxy.hits.slice(before), trace: summary, artifacts, failure };
+  return { start, boot, fin, points, hits: proxy.hits.slice(before), trace: summary, artifacts, failure };
 }
 
 // ---------------------------------------------------------------- Chrome trace analysis
@@ -455,7 +480,8 @@ const CLASSES: Array<[string, RegExp]> = [["html", /\.html?$|^\/$/], ["js", /\.(
 const classify = (u: string) => { const p = u.split("?")[0]; return CLASSES.find(([, re]) => re.test(p))?.[0] ?? "other"; };
 const ms = (v: unknown): Metric => (typeof v === "number" && Number.isFinite(v) ? { status: "ok", unit: "ms", better: "lower", value: Math.round(v) } : { status: "invalid", unit: "ms", reason: "not reached in this run" });
 const num = (v: number, unit: "count" | "MB"): Metric => ({ status: "ok", unit, better: "lower", value: unit === "MB" ? Math.round(v * 100) / 100 : v });
-const unsupported = (unit: "ms" | "count", reason: string): Metric => ({ status: "unsupported", unit, reason });
+const unsupported = (unit: "ms" | "count" | "MB", reason: string): Metric => ({ status: "unsupported", unit, reason });
+const notReached = (unit: "count" | "MB", reason: string): Metric => ({ status: "invalid", unit, reason });
 
 /** the label of the boot step running at page time t, from the probe's stage timeline */
 function labeller(set: Array<[number, string, string]>, marks: Record<string, number>) {
@@ -524,6 +550,32 @@ function toCase(L: Load, seed: number, matchSecs: number): CaseResult {
   const rtPre = fin.res.filter((r) => r[1] < end && !r[0].startsWith("data:") && !/^(blob:|https?:)/.test(r[0]));
   metrics["net.fromBrowserCache"] = num(Math.max(0, rtPre.length - pre.length), "count");
 
+  const pointDetail: Record<string, unknown> = {};
+  for (const p of SNAP_POINTS) {
+    const s = L.points.find((x) => x.point === p);
+    if (p !== "title" && !s && matchSecs * 1000 < MATCH_SNAP_MS) continue;
+    const why = p === "title" ? "the title never became ready" : "not reached in this run";
+    const ua = fin.mem?.[p];
+    metrics["mem." + p + ".uaMB"] = !s ? notReached("MB", why) : typeof ua?.bytes === "number" ? num(ua.bytes / 1e6, "MB") : unsupported("MB", s.uaWhy ?? ua?.error ?? "the measurement had not resolved when the load ended");
+    metrics["mem." + p + ".jsHeapMB"] = !s ? notReached("MB", why) : s.jsHeapMB !== null ? num(s.jsHeapMB, "MB") : unsupported("MB", "performance.memory is Chrome and Edge only");
+    for (const k of ["geometries", "textures", "programs"] as const) {
+      const v = s?.info?.[k];
+      metrics["three." + p + "." + k] = !s ? notReached("count", why) : typeof v === "number" ? num(v, "count") : unsupported("count", "window.__kr.engine.renderer.info is not exposed by this build");
+    }
+    const rt = s ? fin.res.filter((r) => r[2] <= s.at && !r[0].startsWith("data:") && !/^(blob:|https?:)/.test(r[0])) : [];
+    const sized = rt.every((r) => r[3] >= 0);
+    const byType: Record<string, { requests: number; MB: number }> = {};
+    for (const r of rt) { const c = byType[classify(r[0])] ??= { requests: 0, MB: 0 }; c.requests++; c.MB += Math.max(0, r[3]) / 1e6; }
+    const bytesMetric = (MB: number) => !s ? notReached("MB", why) : sized ? num(MB, "MB") : unsupported("MB", "Resource Timing transferSize is not exposed by this browser");
+    metrics["assets." + p + ".requests"] = !s ? notReached("count", why) : num(rt.length, "count");
+    metrics["assets." + p + ".MB"] = bytesMetric(rt.reduce((a, r) => a + Math.max(0, r[3]), 0) / 1e6);
+    for (const [c] of CLASSES) {
+      metrics["assets." + p + "." + c + ".requests"] = !s ? notReached("count", why) : num(byType[c]?.requests ?? 0, "count");
+      metrics["assets." + p + "." + c + ".MB"] = bytesMetric(byType[c]?.MB ?? 0);
+    }
+    pointDetail[p] = s ? { atMs: Math.round(s.at), sinceMatchS: p !== "title" && P.marks.inMatch !== undefined ? +((s.at - P.marks.inMatch) / 1000).toFixed(1) : null, byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, { requests: v.requests, MB: +v.MB.toFixed(2) }])) } : null;
+  }
+
   // ---- main thread before ready: the probe's timer gaps (the same measure in every browser)
   const blocks = P.gaps.filter(([t, d]) => d >= LONG_MS && t < end);
   metrics["main.longTasks"] = num(blocks.length, "count");
@@ -573,6 +625,7 @@ function toCase(L: Load, seed: number, matchSecs: number): CaseResult {
     load: { requests: pre.length, resourceEntries: rtPre.length },
     metrics, gates,
     detail: {
+      points: pointDetail,
       gl: fin.gl, frames: { beforeReady: P.frames.filter((t) => t < end).length, total: P.frames.length }, dpr: fin.dpr, viewport: fin.inner, ua: fin.ua, entryTypes: P.entryTypes, phases: Object.fromEntries(Object.entries(phases).map(([k, v]) => [k, Math.round(v)])), blockedByPhase: Object.fromEntries(Object.entries(blockedBy).map(([k, v]) => [k, Math.round(v)])),
       topBlocks, glSlow, glBuckets, httpStatus: pre.reduce((a, h) => ({ ...a, [h.status]: (a[h.status] ?? 0) + 1 }), {} as Record<number, number>), netByClass: Object.fromEntries(Object.entries(byClass).map(([k, v]) => [k, { n: v.n, MB: +v.MB.toFixed(2), lastByteMs: Math.round(v.lastByteMs) }])), biggest,
       nav: fin.nav, stageTimeline: P.set, nativeLongTasks: P.longtasks.slice(0, 200), loaf: [...P.loaf as Array<[number, number]>].sort((a, b) => b[1] - a[1]).slice(0, 30), kr: boot.kr, krAtEnd: { streamedAt: fin.kr.streamedAt, prepareMs: fin.kr.prepareMs, streamMs: fin.kr.streamMs }, splat: fin.splat, trace: L.trace, errors: fin.errors, failure: L.failure,

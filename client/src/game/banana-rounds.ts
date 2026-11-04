@@ -2,6 +2,7 @@
 // Cosmetic only (the round itself is hitscan, shared/sim/heli.ts): each one flies from the barrels to where its round
 // stopped at SPEED m/s and vanishes there. One instanced mesh, a fixed pool, zero allocations per frame.
 import * as THREE from "three";
+import type { Scope } from "../engine/res/scope";
 
 const MAX = 48;
 /** m/s: fast enough to read as gunfire, slow enough to see the fruit */
@@ -46,12 +47,13 @@ export class BananaRounds {
   private next = 0;
   private readonly M = new THREE.Matrix4(); private readonly Q = new THREE.Quaternion(); private readonly Q2 = new THREE.Quaternion();
   private readonly P = new THREE.Vector3(); private readonly S = new THREE.Vector3(1, 1, 1); private readonly Z = new THREE.Vector3(0, 0, 1); private readonly X = new THREE.Vector3(1, 0, 0); private readonly D = new THREE.Vector3();
-  constructor(scene: THREE.Scene) {
-    const mat = new THREE.MeshStandardMaterial({ name: "banana-round", vertexColors: true, roughness: 0.45, metalness: 0, emissive: 0x3a2a00, emissiveIntensity: 0.6 });
-    this.mesh = new THREE.InstancedMesh(bananaGeometry(), mat, MAX);
+  constructor(scene: THREE.Scene, res: Scope) {
+    const mat = res.material(new THREE.MeshStandardMaterial({ name: "banana-round", vertexColors: true, roughness: 0.45, metalness: 0, emissive: 0x3a2a00, emissiveIntensity: 0.6 }));
+    this.mesh = res.own("geo.actor", new THREE.InstancedMesh(res.geometry("geo.actor", bananaGeometry()), mat, MAX), () => this.mesh.instanceMatrix.array.byteLength);
     this.mesh.name = "banana-rounds"; this.mesh.count = 0; this.mesh.frustumCulled = false; this.mesh.castShadow = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(this.mesh);
+    res.defer(() => this.mesh.removeFromParent());
   }
   /** a banana from the barrels (a) toward where the round stopped (b) */
   spawn(a: THREE.Vector3, b: THREE.Vector3) {

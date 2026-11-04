@@ -13,6 +13,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { assetUrl } from "../engine/assets";
+import { releaseAfterUpload } from "../engine/texture-release";
 import type { TukDraw, TukView } from "./tuktuk";
 import { VF, VS } from "../../../shared/sim/vehicle";
 
@@ -84,6 +85,7 @@ function dress(scene: THREE.Group, burnt: Map<THREE.Material, THREE.Material>, g
     m.castShadow = true; m.receiveShadow = true; m.userData.farShadow = false;
     if (m.name === "glass" || (m.material as THREE.Material).name === "glass") { m.material = glass; m.castShadow = false; m.renderOrder = 3; return; }
     const src = m.material as THREE.MeshStandardMaterial;
+    for (const t of [src.map, src.normalMap, src.roughnessMap, src.metalnessMap, src.aoMap, src.emissiveMap]) if (t) releaseAfterUpload(t);
     if (src.name === "fin_decal") {
       // the BANANA CO logo on the fin: an overlay 4 mm proud of the paint (no polygon offset: it pulled the far side's
       // logo through the fin), blended, never writing depth
@@ -311,6 +313,7 @@ export function createHeli(late?: (o: THREE.Object3D) => void): TukView & { muzz
   return view;
 }
 
+let PANEL: { geo: THREE.BoxGeometry; mat: THREE.MeshStandardMaterial } | null = null;
 /** loose pieces for the bang: the rotor's blades, the tail fan, the door gun, a panel — fresh objects, the caller owns
  * them (client/src/game/tuk-fx.ts throws them about). Empty until the model has loaded. */
 export function heliDebris(): THREE.Object3D[] {
@@ -323,7 +326,8 @@ export function heliDebris(): THREE.Object3D[] {
     g.add(c); out.push(g);
   };
   piece("rotor_blades"); piece("tailfan"); piece("gun_pitch");
-  const panel = new THREE.Group(); panel.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 1.6), new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.8 }))); out.push(panel);
+  PANEL ??= { geo: new THREE.BoxGeometry(0.7, 0.6, 1.6), mat: new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.8 }) };
+  const panel = new THREE.Group(); panel.add(new THREE.Mesh(PANEL.geo, PANEL.mat)); out.push(panel);
   return out;
 }
 /** one of each (fresh + wreck) for the prewarm compile — empty if the model has not landed yet (then it compiles on

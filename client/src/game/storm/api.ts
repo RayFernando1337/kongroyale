@@ -23,5 +23,6 @@ export interface StormVisual {
   /** force a lightning flash now (server event) */
   flash(strength?: number): void;
   setVisible(v: boolean): void;
+  compile(renderer: THREE.WebGLRenderer): Promise<unknown>;
   dispose(): void;
 }

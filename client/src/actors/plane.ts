@@ -13,6 +13,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import type { WorldCtx } from "../engine/engine";
 import type { CamSpec } from "../engine/views";
+import { shareGeometries } from "../engine/geo-share";
 import { actorLook } from "./look";
 import { createKong, type KongActorEx } from "./kong";
 import { KongAnimator } from "./kong-rig";
@@ -1448,6 +1449,7 @@ export async function createPlane(ctx: WorldCtx, opts: { crew?: boolean } = {}):
     redM.emissiveIntensity = blink;
   };
   void gearDown;
+  shareGeometries("plane", object);
   // ---- the crew: seated, harnessed kongs along both walls
   const crew = opts.crew === false ? null : await buildCrew(ctx, object, bayB.seats, bay);
   const update2 = (dt: number, t: number) => { update(dt, t); crew?.pose(dt); };

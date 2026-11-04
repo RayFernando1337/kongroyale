@@ -5,6 +5,7 @@
 //   tNrm: rgb = tangent normal (GL, +Y up), a = roughness
 import * as THREE from "three";
 import { assetUrl } from "../../engine/assets";
+import { releaseAfterUpload } from "../../engine/texture-release";
 
 import { LAYERS } from "./layers";
 export { LAYERS, LAYER_COUNT, layerIndex, type Layer } from "./layers";
@@ -53,7 +54,7 @@ export function layerArraysFrom(alb: Uint8Array | null, nor: Uint8Array | null, 
     // (perf: 4, not 8 — measured −0.1 ms at the volcanic view; beyond ~280 m the baked far albedo takes over anyway)
     t.generateMipmaps = true; t.anisotropy = Math.min(4, maxAniso);
     if (data) t.needsUpdate = true;
-    return t;
+    return releaseAfterUpload(t);
   };
   return { albedo: mk(alb, true), normal: mk(nor, false) };
 }

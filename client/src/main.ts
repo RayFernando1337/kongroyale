@@ -112,6 +112,7 @@ kr.fps = () => engine.liveFps();
 kr.info = () => ({ ...engine.renderer.info.render, geometries: engine.renderer.info.memory.geometries, textures: engine.renderer.info.memory.textures, programs: engine.renderer.info.programs?.length });
 // bug reports: `/` → /kongbot <message> (screenshot + context → the server)
 if (gameMode && !shot) installKongbot(engine);
+if (!shot) void import("./playtest").then((m) => m.installPlaytest(engine, gameMode), (e) => report("playtest", e));
 
 // ---- loading progress, weighted by measured cost (ms on an RTX 4080 desktop, cold dev loads). The loading
 // screen (index.html) reads __kr.progress (the percentage) and the current step's time estimate as a line
