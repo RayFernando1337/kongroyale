@@ -10,6 +10,7 @@ import type { WorldCtx } from "../engine/engine";
 import type { CamSpec } from "../engine/views";
 import { createKong } from "./kong";
 import type { KongPose } from "./api";
+import { flag } from "../flags";
 
 const V = (pos: CamSpec["pos"], target: CamSpec["target"], o: Partial<CamSpec> = {}): CamSpec => ({ pos, target, fov: 50, ...o });
 
@@ -77,7 +78,7 @@ export const views: Record<string, CamSpec> = {
   "wip-anim-pb": V([ANIM_X(8.5), 1.7, -258.5], [ANIM_X(8.5), 1.6, -250], { fov: 50, rel: true, stage: "anim-profile" }),
 };
 
-const OUTFITS = (() => { try { const q = new URLSearchParams(location.search); return q.has("outfits") ? Number(q.get("outfits") || 1) : null; } catch { return null; } })();
+const OUTFITS = (() => { try { const v = flag("outfits"); return v === null ? null : Number(v || 1); } catch { return null; } })();
 const staged = new Set<string>();
 export async function stage(ctx: WorldCtx, s: string) {
   if (staged.has(s)) return; staged.add(s);

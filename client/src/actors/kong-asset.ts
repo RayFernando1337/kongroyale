@@ -11,6 +11,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { actorLook } from "./look";
+import { flag } from "../flags";
 
 export type AssetMat = "kbody" | "khead" | "kgear" | "kshoe" | "keye" | "kmin";
 export interface KongAsset {
@@ -21,16 +22,15 @@ export interface KongAsset {
   materials(tier: 0 | 1 | 2): Record<AssetMat, THREE.Material>;
 }
 
-const QS = (() => { try { return new URLSearchParams(location.search); } catch { return new URLSearchParams(); } })();
 /** ?kongv=1 → the procedural kong (A/B) */
-export const USE_ASSET = QS.get("kongv") !== "1";
+export const USE_ASSET = !flag("kongv");
 /** which kong asset draws: ?kong=v1 (the Blender sculpt) / ?kong=v2 (the Tripo kong), else KONG_DEFAULT */
 export const KONG_DEFAULT: "v1" | "v2" = "v2";
 /** ?kong=alt — an IP-distance variant of v2, away from a famous ape mascot's look (heart-shaped
  *  tan face, forelock tuft, warm-brown fur): the same asset with darker, cooler fur, a dark face with only the muzzle
  *  tan, and the forelock tuft pressed flat (kong.ts ALT_GLSL / ALT_TUFT). Not the default. */
-export const KONG_ALT = QS.get("kong") === "alt";
-export const KONG_VER: "v1" | "v2" = QS.get("kong") === "v1" ? "v1" : QS.get("kong") === "v2" || KONG_ALT ? "v2" : KONG_DEFAULT;
+export const KONG_ALT = flag("kong") === "alt";
+export const KONG_VER: "v1" | "v2" = flag("kong") === "v1" ? "v1" : flag("kong") === "v2" || KONG_ALT ? "v2" : KONG_DEFAULT;
 /** the deploy base (vite `base`, e.g. "/kong/"): public/ files live under it */
 export const PUBLIC_BASE: string = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
 const BASE = PUBLIC_BASE + (KONG_VER === "v2" ? "assets/actors/kong2/" : "assets/actors/kong/");

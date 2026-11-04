@@ -10,12 +10,14 @@
 // is added so players behind home routers find each other (no TURN: a strict NAT pair stays silent, the rest of the
 // game is unaffected). ?ice=stun:host:port overrides in dev builds only (in production a crafted link could send a
 // player's browser to someone else's server and reveal their address).
+import { flag } from "../flags";
+
 
 export interface VoiceSignal { kind: "offer" | "answer" | "ice"; id: string; sdp?: string; cand?: RTCIceCandidateInit | null }
 
 function iceServers(): RTCIceServer[] {
   try {
-    const q = import.meta.env.DEV ? new URLSearchParams(location.search).get("ice") : null;
+    const q = import.meta.env.DEV ? flag("ice") : null;
     if (q) return q.split(",").filter(Boolean).map((urls) => ({ urls }));
     const h = location.hostname;
     const local = h === "localhost" || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)

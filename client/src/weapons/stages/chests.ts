@@ -6,6 +6,7 @@ import { RARITIES } from "../../../../shared/world/map";
 import { createChestView } from "../chest";
 import { createWeaponsKit } from "../index";
 import { CRATE_LIGHT, CRATE1_LIGHT, stageCam, type StageDef, type StageFile } from "../studio";
+import { flag } from "../../flags";
 
 const stages: Record<string, StageDef> = {
   "loot-closed": {
@@ -50,7 +51,7 @@ const stages: Record<string, StageDef> = {
       const kit = createWeaponsKit(ctx);
       const y = (x: number, z: number) => ctx.terrain.height(root.position.x + x, root.position.z + z);
       const views: Array<{ open(): void; object: THREE.Object3D }> = [];
-      const autoOpen = !new URLSearchParams(location.search).has("noopen");
+      const autoOpen = !flag("noopen");
       for (let i = 0; i < 12; i++) {
         const v = await kit.createChest(RARITIES[i % 5]);
         const x = ((i % 5) - 2) * 2.2 + (i >= 5 ? 1.1 : 0), z = -3 - Math.floor(i / 5) * 3.2 - (i % 2) * 0.6;
@@ -67,19 +68,18 @@ const stages: Record<string, StageDef> = {
   "stress": {
     origin: new THREE.Vector3(-452, 0, 30),
     async build(ctx, root) {
-      if (new URLSearchParams(location.search).has("nostress")) return;
+      if (flag("nostress")) return;
       const kit = createWeaponsKit(ctx);
       const y = (x: number, z: number) => ctx.terrain.height(root.position.x + x, root.position.z + z);
       let s = 7; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
       const items = ["pistol", "smg", "ar", "shotgun", "sniper", "rocket", "leaf-bundle", "smoothie", "golden-banana", "ammo"] as const;
-      const q = new URLSearchParams(location.search);
-      for (let i = 0; i < (q.has("nochests") ? 0 : 60); i++) {
+      for (let i = 0; i < (flag("nochests") ? 0 : 60); i++) {
         const a = rnd() * Math.PI * 2, d = 4 + Math.pow(rnd(), 1.4) * 106, x = Math.cos(a) * d, z = Math.sin(a) * d - 20;
         const v = await kit.createChest(RARITIES[i % 5]);
         v.object.position.set(x, y(x, z), z); v.object.rotation.y = rnd() * 6.28; root.add(v.object);
         if (i === 3) v.open();
       }
-      for (let i = 0; i < (q.has("noloot") ? 0 : 80); i++) {
+      for (let i = 0; i < (flag("noloot") ? 0 : 80); i++) {
         const a = rnd() * Math.PI * 2, d = 3 + Math.pow(rnd(), 1.4) * 107, x = Math.cos(a) * d, z = Math.sin(a) * d - 20;
         const v = await kit.createLoot(items[i % items.length], RARITIES[i % 5]);
         v.object.position.set(x, y(x, z), z); root.add(v.object);

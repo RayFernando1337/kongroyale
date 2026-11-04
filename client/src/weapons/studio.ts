@@ -6,6 +6,7 @@ import type { WorldCtx } from "../engine/engine";
 import type { CamSpec } from "../engine/views";
 import { toonMaterial } from "./lib/toon";
 import { GLINT } from "./lib/mats";
+import { flag } from "../flags";
 
 /** studio origin (world). Sky above the lobby islet: nothing else is up here. */
 export const STUDIO = new THREE.Vector3(0, 900, 1020);
@@ -81,7 +82,7 @@ export function applyStudioLight(ctx: WorldCtx, light: Partial<StudioLight> = {}
   ctx.camera.far = 60 * STUDIO_SCALE * 1.3; ctx.camera.updateProjectionMatrix();
   const L = { ...STUDIO_LIGHT, ...light };
   // dev: ?studio=sunIntensity:3,envIntensity:0.3,sunElev:50 overrides (light tuning without a rebuild)
-  try { const q = new URLSearchParams(location.search).get("studio"); if (q) for (const kv of q.split(",")) { const [k, v] = kv.split(":"); (L as Record<string, unknown>)[k] = isNaN(+v) ? v : +v; } } catch { /* no location */ }
+  try { const q = flag("studio"); if (q) for (const kv of q.split(",")) { const [k, v] = kv.split(":"); (L as Record<string, unknown>)[k] = isNaN(+v) ? v : +v; } } catch { /* no location */ }
   if (atmos) atmos.state.apply({ ...atmos.state.preset, sunElev: L.sunElev, sunAz: L.sunAz, sunColor: L.sunColor, sunIntensity: L.sunIntensity,
     envZenith: L.envZenith, envHorizon: L.envHorizon, groundHorizon: L.groundHorizon, groundNadir: L.groundNadir, envIntensity: L.envIntensity, envGlow: L.envGlow,
     bloom: L.bloom, vignette: 0, saturation: L.saturation, contrast: 1.1, warmth: 0.0, shadeWarmth: 0.0, exposure: 1.0, cloudShadow: 0, hazeDensity: 0, fogDensity: 0, rimLight: 0.35, ao: 0.85, toe: 0,

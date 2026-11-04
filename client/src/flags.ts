@@ -6,15 +6,18 @@ const one: Kind<boolean> = { type: "on when =1", default: false, parse: (v) => v
 const num = (d: number): Kind<number> => ({ type: "number", default: d, parse: Number });
 const text: Kind<string | null> = { type: "string", default: null, parse: (v) => v };
 const list: Kind<readonly string[]> = { type: "comma list", default: [], parse: (v) => v.split(",").filter(Boolean) };
+const maybeNum: Kind<number | null> = { type: "number or absent", default: null, parse: Number };
 const finite = (d: number): Kind<number> => ({ type: "finite number", default: d, parse: (v) => (Number.isFinite(Number(v)) ? Number(v) : d) });
 const subset: Kind<readonly string[] | undefined> = { type: "comma list, absent = all", default: undefined, parse: (v) => v.split(",").filter(Boolean) };
 const numbers: Kind<readonly number[] | undefined> = { type: "comma numbers", default: undefined, parse: (v) => v.split(",").map(Number) };
 
-type Owner = "atmos" | "boot" | "engine" | "game" | "pois" | "terrain" | "ui" | "veg" | "water";
+type Owner = "actors" | "atmos" | "audio" | "boot" | "engine" | "game" | "pois" | "terrain" | "ui" | "veg" | "voice" | "water" | "weapons";
 type Flag = { readonly kind: Kind<unknown>; readonly owner: Owner; readonly purpose: string };
 
 const FLAGS = {
   announce: { kind: present, owner: "boot", purpose: "show the display-preset toasts to automated browsers too" },
+  arms: { kind: text, owner: "weapons", purpose: "first-person arms: =2 the v2 arms, =1 the current ones; absent = localStorage kr.arms" },
+  armsab: { kind: present, owner: "weapons", purpose: "keep every hand mesh so a bench can swap v1 and v2 arms live" },
   atmos: { kind: list, owner: "atmos", purpose: "atmosphere debug switches: noao, nogr, nobloom, nosmaa, nosharpen, noshadow, noclouds, nopost, nofog, nocloudshadow, cloudmarch" },
   atmosp: { kind: text, owner: "atmos", purpose: "override preset fields as key:value,key:value (hex colours as c0ffee)" },
   aux: { kind: on, owner: "game", purpose: "open the auxiliary socket next to the match socket" },
@@ -38,13 +41,22 @@ const FLAGS = {
   dynres: { kind: text, owner: "engine", purpose: "dynamic resolution: =1 on, =0 forced off, absent = the setting" },
   elevlod: { kind: on, owner: "pois", purpose: "elevation-aware LOD distances in the POIs; =0 = the old switches" },
   fly: { kind: present, owner: "boot", purpose: "free-fly camera on top of a view" },
+  fp3: { kind: on, owner: "weapons", purpose: "tucked first-person arms and item hold; =0 = the older outstretched arms" },
   fullcam: { kind: present, owner: "engine", purpose: "full scene-graph camera updates instead of the camera-only walk" },
+  fxlive: { kind: present, owner: "weapons", purpose: "weapon stages play effects live instead of frozen" },
+  fxt: { kind: text, owner: "weapons", purpose: "time (s) the fx stage freezes at; default 0.2" },
   gpu: { kind: text, owner: "engine", purpose: "renderer string to classify instead of the real GPU's" },
   guard: { kind: present, owner: "boot", purpose: "run the display frame-rate guard in automated browsers too" },
+  gunat: { kind: text, owner: "weapons", purpose: "chest stage hero gun position x,y,z" },
+  gunid: { kind: text, owner: "weapons", purpose: "chest stage hero gun weapon id; default rocket" },
+  gunpose: { kind: text, owner: "weapons", purpose: "chest stage hero gun scale,pitch,roll" },
+  gunrev: { kind: text, owner: "weapons", purpose: "chest stage hero gun muzzle side: =1 up-right, else down-left; absent = up-right" },
   harborhyst: { kind: on, owner: "pois", purpose: "hysteresis on Peel Harbor LOD switches" },
   harborNoCull: { kind: present, owner: "pois", purpose: "turn off Peel Harbor's LOD culling" },
   harborOnly: { kind: subset, owner: "pois", purpose: "build only these Peel Harbor parts (plus the apron)" },
+  headless: { kind: present, owner: "audio", purpose: "audition page without its buttons (scripted runs)" },
   heavyms: { kind: num(Infinity), owner: "boot", purpose: "modules that take longer than this (ms) build behind the match card" },
+  ice: { kind: text, owner: "voice", purpose: "dev builds: ICE server URLs for voice, comma list" },
   impblend: { kind: on, owner: "veg", purpose: "impostors crossfade between their baked views" },
   impcull: { kind: on, owner: "veg", purpose: "cull impostor cells outside the view; =0 draws every impostor every frame" },
   impgrade: { kind: numbers, owner: "veg", purpose: "four numbers that replace the impostor colour grade uImpGrade" },
@@ -53,6 +65,12 @@ const FLAGS = {
   jdbgNoRocks: { kind: present, owner: "pois", purpose: "Mist Falls water without its rocks" },
   jungleCheck: { kind: present, owner: "pois", purpose: "check the baked jungle layout still matches the terrain" },
   jungleNoVeg: { kind: present, owner: "pois", purpose: "jungle POIs plant no vegetation" },
+  kong: { kind: text, owner: "actors", purpose: "kong asset: v1, v2 or alt; absent = v2" },
+  kongproxy: { kind: maybeNum, owner: "actors", purpose: "kong shadow proxy shrink (cm); 0 = no kong shadows" },
+  kongtier: { kind: text, owner: "actors", purpose: "force every kong into LOD tier 0, 1 or 2" },
+  kongv: { kind: one, owner: "actors", purpose: "the procedural kong instead of the asset" },
+  kysat: { kind: num(1.12), owner: "actors", purpose: "v2 kong ripe-yellow chroma" },
+  kyval: { kind: num(0.97), owner: "actors", purpose: "v2 kong ripe-yellow value" },
   labhide: { kind: list, owner: "pois", purpose: "CNVS Lab perf A/B: hide shell, near, interior, glass, rocks, vines, falls, gravel, rooms" },
   lodv: { kind: on, owner: "engine", purpose: "the anti-pop LOD path: terrain geomorph, rock and HLOD crossfades, view-dependent detail culling" },
   map: { kind: one, owner: "ui", purpose: "open the full-screen map (view-camera captures)" },
@@ -62,15 +80,21 @@ const FLAGS = {
   murkoff: { kind: list, owner: "pois", purpose: "The Murk: skip building decks, huts or int" },
   noannounce: { kind: present, owner: "boot", purpose: "never show the display-preset toasts" },
   nobuildgate: { kind: present, owner: "boot", purpose: "streamed POIs draw before their build gate releases" },
+  nochests: { kind: present, owner: "weapons", purpose: "chest stress stage without chests" },
   nocull: { kind: present, owner: "engine", purpose: "turn off detail, POI and harbor culling: draw everything at full detail" },
   nofreeze: { kind: present, owner: "engine", purpose: "turn off the static matrix cache" },
   nohlod: { kind: present, owner: "engine", purpose: "turn off the far HLOD merge" },
+  nolight: { kind: present, owner: "weapons", purpose: "chest studio without the chest's own light" },
+  noloot: { kind: present, owner: "weapons", purpose: "chest stress stage without loot" },
   nolootworker: { kind: present, owner: "engine", purpose: "compute loot spots on the main thread instead of a worker" },
   noocc: { kind: present, owner: "engine", purpose: "turn off POI occlusion culling" },
+  noopen: { kind: present, owner: "weapons", purpose: "chest stage chests stay closed" },
   nostream: { kind: present, owner: "boot", purpose: "build every module before the title instead of streaming" },
+  nostress: { kind: present, owner: "weapons", purpose: "chest stage without the stress field" },
   notimer: { kind: present, owner: "engine", purpose: "act as a browser without GPU timer queries" },
   nowarmshadow: { kind: present, owner: "engine", purpose: "warm draws skip the roots' shadow-depth programs" },
   offinstant: { kind: on, owner: "engine", purpose: "culled detail switches off at once instead of fading out" },
+  outfits: { kind: text, owner: "actors", purpose: "kong outfit dev view (=N picks the count; empty = 1)" },
   painttex: { kind: present, owner: "pois", purpose: "paint coast textures at load instead of loading the baked ones" },
   playtest: { kind: text, owner: "ui", purpose: "playtest title with one Play button: present or =1 on, =0 off" },
   prepare: { kind: text, owner: "boot", purpose: "=full builds everything behind the match card instead of streaming" },
@@ -109,6 +133,7 @@ const FLAGS = {
   stormhide: { kind: text, owner: "game", purpose: "hide these storm parts (comma list)" },
   streamgrace: { kind: num(2500), owner: "boot", purpose: "grace (ms) after ready before streaming resumes, for a quick Play click" },
   streamslice: { kind: numbers, owner: "engine", purpose: "stream budget per frame in ms: title,warm,match" },
+  studio: { kind: text, owner: "weapons", purpose: "weapon studio light overrides as key:value,key:value" },
   sun: { kind: numbers, owner: "atmos", purpose: "sun elevation,azimuth in degrees instead of the preset's" },
   t: { kind: num(12), owner: "boot", purpose: "time of day (hours) for views and captures" },
   texprof: { kind: present, owner: "engine", purpose: "profile texture uploads" },
@@ -128,6 +153,7 @@ const FLAGS = {
   veneerSplit: { kind: on, owner: "pois", purpose: "Mist Falls rock veneer splits into near and far parts" },
   view: { kind: text, owner: "boot", purpose: "boot into a fixed dev view (a POI, biome or studio) instead of the game" },
   visfade: { kind: on, owner: "engine", purpose: "detail fades in and out at the cull edge (always off under Node)" },
+  vmu: { kind: text, owner: "weapons", purpose: "viewmodel stage reload frozen at this fraction; default 0.33" },
   waniso: { kind: num(0), owner: "water", purpose: "anisotropy of the water normal and ripple textures; 0 = the default (4, ripples 8)" },
   wbase: { kind: num(0), owner: "water", purpose: "water clipmap base cell size (m); 0 = 1 m" },
   wcells: { kind: num(0), owner: "water", purpose: "water clipmap cells per level; 0 = by quality (48 low, else 64)" },

@@ -13,11 +13,12 @@ import type { Surface } from "../../../../shared/world/colliders";
 import { createWeaponsKit, type FxEx } from "../index";
 import { gunSpec } from "../guns/index";
 import type { StageDef, StageFile, OnUpdate } from "../studio";
+import { flag } from "../../flags";
 
 // the Peel Strip road became jungle (palms + ferns blocked the dev cameras): an open sand beach on the south coast,
 // jungle behind, the camera standing at the water line
 const O = new THREE.Vector3(150, 0, 524);
-const live = () => { try { return new URLSearchParams(location.search).has("fxlive"); } catch { return false; } };
+const live = () => { try { return flag("fxlive"); } catch { return false; } };
 
 async function fxOf(ctx: WorldCtx): Promise<FxEx> {
   const kit = createWeaponsKit(ctx);
@@ -109,7 +110,7 @@ const stages: Record<string, StageDef> = {
         }
         fx.explosion(P.clone().add(new THREE.Vector3(3.5, 0, 0)), 3.5);
         // ?fxt=0.7 freezes later in the timeline (fire → soot → smoke column)
-        step((() => { try { return parseFloat(new URLSearchParams(location.search).get("fxt") ?? "0.2"); } catch { return 0.2; } })());
+        step((() => { try { return parseFloat(flag("fxt") ?? "0.2"); } catch { return 0.2; } })());
       }, 3);
     },
   },

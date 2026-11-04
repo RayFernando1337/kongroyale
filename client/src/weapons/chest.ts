@@ -20,6 +20,7 @@ import { bananaPath } from "./lib/mats";
 import { gunInstance } from "./guns/index";
 import type { ChestView } from "./api";
 import { CHEST_CRATE } from "../../../shared/sim/crate";
+import { flag } from "../flags";
 
 export interface ChestOpts { studio?: boolean; dressed?: boolean; tall?: boolean; style?: CrateStyle; /** keep the burst lit (staging) */ hold?: boolean; /** studio: ground aura + outer halo (loot-03); off for loot-01 (plain white sheet) */ aura?: boolean }
 
@@ -661,7 +662,7 @@ export function createChestView(ctx: WorldCtx, rarity: Rarity, opts: ChestOpts =
         if (burst.light && sys?.lightOwner === burst) burst.light.intensity = 7 * bk;
       }
       // studio: the golden light pouring out lights the lid underside + the heap from inside (world units × scale²)
-      if (ownLight) ownLight.intensity = (location.search.includes("nolight") ? 0 : 1.6) * bk * worldScale() * worldScale();
+      if (ownLight) ownLight.intensity = (flag("nolight") ? 0 : 1.6) * bk * worldScale() * worldScale();
       if (loot) { const L = Math.min(1, Math.max(0, (openT - 0.1) / 0.45)); loot.position.y = g.shape.skid + 0.05 + (1 - Math.pow(1 - L, 3)) * 0.06; }
       // settled: release the burst, hand the crate to the opened batch
       if (!hold && openT > 2.4 && !settled) {
@@ -745,11 +746,11 @@ function ammoTex(): THREE.CanvasTexture {
  *  behind the shield. Every piece rests on the straw, a box or the rim (crate-local, y = 0 at the crate floor + 5 cm,
  *  `top` = the rim). */
 /** loot-02 gun centre (crate-local x / z, y above the straw) — dev: ?gunat=x,y,z */
-const GUN_AT = (() => { try { const q = new URLSearchParams(location.search).get("gunat"); if (q) { const [x, y, z] = q.split(",").map(Number); return new THREE.Vector3(x, y, z); } } catch { /* */ } return new THREE.Vector3(0.02, 0.42, -0.08); })();
-const GUN_ID = (() => { try { return (new URLSearchParams(location.search).get("gunid") as WeaponId | null) ?? "rocket"; } catch { return "rocket" as WeaponId; } })();
-const GUN_POSE = (() => { const d = { s: 0.9, pitch: 0.5, roll: 0.0 }; /* the hero gun presented higher, muzzle up to the lid corner */ try { const q = new URLSearchParams(location.search).get("gunpose"); if (q) { const [s, p, r] = q.split(",").map(Number); return { s, pitch: p, roll: r }; } } catch { /* */ } return d; })();
+const GUN_AT = (() => { try { const q = flag("gunat"); if (q) { const [x, y, z] = q.split(",").map(Number); return new THREE.Vector3(x, y, z); } } catch { /* */ } return new THREE.Vector3(0.02, 0.42, -0.08); })();
+const GUN_ID = (() => { try { return (flag("gunid") as WeaponId | null) ?? "rocket"; } catch { return "rocket" as WeaponId; } })();
+const GUN_POSE = (() => { const d = { s: 0.9, pitch: 0.5, roll: 0.0 }; /* the hero gun presented higher, muzzle up to the lid corner */ try { const q = flag("gunpose"); if (q) { const [s, p, r] = q.split(",").map(Number); return { s, pitch: p, roll: r }; } } catch { /* */ } return d; })();
 /** muzzle direction sign along crate x: +1 = muzzle up to the right, −1 = muzzle down to the left (dev: ?gunrev=1) */
-const GUN_REV = (() => { try { const q = new URLSearchParams(location.search).get("gunrev"); if (q !== null) return q === "1"; } catch { /* */ } return true; })();
+const GUN_REV = (() => { try { const q = flag("gunrev"); if (q !== null) return q === "1"; } catch { /* */ } return true; })();
 function dressing(tall: boolean): THREE.Group {
   const g = new THREE.Group(); g.name = "chest-loot";
   const b = new PartBuilder();
