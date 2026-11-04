@@ -13,7 +13,7 @@ export function timeline(): Timeline {
   return { fields: FIELDS, rows, dropped: cursor.rows - kept };
 }
 
-const CSS = `.kr-perfhud { position: fixed; left: 8px; top: 8px; z-index: 99998; pointer-events: none; user-select: none;
+const CSS = `.kr-perfhud { position: fixed; left: 8px; top: 30vh; z-index: 99998; pointer-events: none; user-select: none;
   font: 600 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #fbf3c9; background: rgba(10,30,46,0.72);
   border: 1px solid rgba(255,212,0,0.45); border-radius: 4px; padding: 4px 7px; white-space: pre; font-variant-numeric: tabular-nums; }
 .kr-perfhud b { font-weight: 700; color: #ffd400; }
