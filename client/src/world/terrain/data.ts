@@ -10,6 +10,7 @@ import { Biome, POIS, WORLD } from "../../../../shared/world/map";
 import { Simplex2, smoothstep } from "../../../../shared/world/noise";
 import { HARBOR_APRON, MURK, RIVER, VOLCANO, cliffSkins, poiGroundAt, badlandsAt, kipukaAt, groundWarp, lagoonShoreAt, lavaChannels, padWeight, pathLines, plantationAt, reefPatch, type LavaLine, type TerrainData } from "../../../../shared/world/terrain-gen";
 import type { TerrainGpuData } from "./material";
+import { releaseAfterUpload } from "../../engine/texture-release";
 import { layerIndex } from "./layers";
 import { TERRAIN_LODV } from "./lod";
 
@@ -72,7 +73,7 @@ export function gpuDataFromArrays(a: TerrainGpuArrays): TerrainGpuData {
     // pixel covers more than one of them — from the plane every pixel does, and the lit relief shimmered frame to frame
     if (TERRAIN_LODV) { tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true; tex.anisotropy = 8; }
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.needsUpdate = true;
-    return tex;
+    return releaseAfterUpload(tex);
   };
   return { dat: mk(a.dat, 4), w: mk(a.w, 3), res: a.res };
 }

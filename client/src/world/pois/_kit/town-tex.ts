@@ -10,6 +10,7 @@
 // (boards, slabs, ribs, courses, bundles) so they read as designed, then layered macro mottle → mid wear → fine grain.
 // Orientation: image row y ↔ v = y / n. On walls (box sides, v up) row 0 is the BOTTOM, so drips run toward row 0.
 import * as THREE from "three";
+import { releaseAfterUpload } from "../../../engine/texture-release";
 
 export interface TexSet { map: THREE.Texture; normalMap: THREE.Texture; orm: THREE.Texture }
 
@@ -226,7 +227,7 @@ function tex(im: Img, srgb: boolean, aniso: number, repeat = true): THREE.DataTe
   t.wrapS = t.wrapT = repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
   t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
   t.anisotropy = aniso; t.flipY = false; t.needsUpdate = true;
-  return t;
+  return releaseAfterUpload(t);
 }
 function ormImg(w: number, h: number, ao: Float32Array | number, rough: Float32Array | number, metal: Float32Array | number = 0): Img {
   const out = img(w, h);

@@ -13,6 +13,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { assetUrl } from "../engine/assets";
+import { releaseAfterUpload } from "../engine/texture-release";
 import type { TukDraw, TukView } from "./tuktuk";
 import { VF, VS } from "../../../shared/sim/vehicle";
 
@@ -84,6 +85,7 @@ function dress(scene: THREE.Group, burnt: Map<THREE.Material, THREE.Material>, g
     m.castShadow = true; m.receiveShadow = true; m.userData.farShadow = false;
     if (m.name === "glass" || (m.material as THREE.Material).name === "glass") { m.material = glass; m.castShadow = false; m.renderOrder = 3; return; }
     const src = m.material as THREE.MeshStandardMaterial;
+    for (const t of [src.map, src.normalMap, src.roughnessMap, src.metalnessMap, src.aoMap, src.emissiveMap]) if (t) releaseAfterUpload(t);
     if (src.name === "fin_decal") {
       // the BANANA CO logo on the fin: an overlay 4 mm proud of the paint (no polygon offset: it pulled the far side's
       // logo through the fin), blended, never writing depth
