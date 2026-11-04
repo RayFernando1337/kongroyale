@@ -8,12 +8,13 @@ import * as THREE from "three";
 import type { Species } from "./species/types";
 import { VEG_UNIFORMS, VEG_LIGHT, VEG_GLSL, VEG_FADE_T, bakeMaterial, vegUniforms } from "./foliage-material";
 import { crownFootprint } from "../../../../shared/world/veg-scatter";
+import { flag } from "../../flags";
 
 /** view blending: each pixel shows one of the 4 baked
  *  views around the true view direction (dithered by weight, a crossfade only across a narrow band at a view cell's edge)
  *  on a quad facing the TRUE view — instead of the nearest view on a quad facing it, which jumped to the next baked view
  *  every ~11° of bearing / ~22° of elevation. ?impblend=0 = the old nearest-view impostors (A/B). */
-export const IMP_BLEND = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("impblend") !== "0";
+export const IMP_BLEND = flag("impblend");
 /** half-width of the crossfade band at a view cell's edge (fraction of the cell: 0.15 → pure views over the middle 70 %) */
 const IMP_BAND = 0.15;
 
@@ -560,9 +561,8 @@ export const IMP_GRADE = {
   uImpLit: { value: new THREE.Vector2(0.05, 0.15) },
 };
 {
-  const sp = new URLSearchParams(location.search);
-  const q = sp.get("impgrade")?.split(",").map(Number); if (q && q.length === 4 && q.every(Number.isFinite)) IMP_GRADE.uImpGrade.value.set(q[0], q[1], q[2], q[3]);
-  const k = sp.get("impsplit")?.split(",").map(Number); if (k && k.length === 4 && k.every(Number.isFinite)) IMP_GRADE.uImpSplit.value.set(k[0], k[1], k[2], k[3]);
+  const q = flag("impgrade"); if (q && q.length === 4 && q.every(Number.isFinite)) IMP_GRADE.uImpGrade.value.set(q[0], q[1], q[2], q[3]);
+  const k = flag("impsplit"); if (k && k.length === 4 && k.every(Number.isFinite)) IMP_GRADE.uImpSplit.value.set(k[0], k[1], k[2], k[3]);
 }
 
 /** measure the scene environment's diffuse response (white Standard material, normals up / side / down) */

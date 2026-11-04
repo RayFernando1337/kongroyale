@@ -18,27 +18,28 @@ import { ImpostorBank, impostorQuad, IMP_BLEND } from "./impostor";
 import { noFadeMaterial, prepassMaterial, equalMaterial, liteMaterial, VEG_FADE_T } from "./foliage-material";
 import { writeMatrix } from "./detail-gen";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { flag } from "../../flags";
 
 const CELL = 32;
 const GRID_HALF = 1760;                         // covers the island and the dev studio (x = z = 1500)
 const GRID_N = Math.ceil((2 * GRID_HALF) / CELL);
 /** impostor quads cast the island-wide canopy shadows into atmos' static far map — ?impshadow=0 turns off */
-export const IMPOSTOR_SHADOWS = new URLSearchParams(location.search).get("impshadow") !== "0";
+export const IMPOSTOR_SHADOWS = flag("impshadow");
 /** alpha-tested foliage: depth pre-pass + EQUAL colour pass — OFF by default (?vegpre=1 turns it on, A/B): measured
  * with GPU timer queries (p10 of 20 interleaved frames) on an M5-class tile-based GPU, the pre-pass COSTS 0.6–2.2 ms at
  * the jungle / meadow cameras (the doubled vertex + tiling work outweighs the saved shading) */
-export const VEG_PREPASS = new URLSearchParams(location.search).get("vegpre") === "1";
+export const VEG_PREPASS = flag("vegpre");
 /** LOD1 of the casting impostor species (jungle trees, palms, mangroves, bamboo; bushes and bananas where the video
  *  tier lets them cast — High / Epic) casts into the dynamic cascades too, for the instances nearer than SHADOW1_D.
  *  With only LOD0 casting, a tree crossing its LOD0 distance (22 m on Medium, 11 m for a palm) would lose its whole
  *  canopy shadow on the ground at once (the static far map only fills in from 1.2 × the cascade-0 split, fully from
  *  ~2.2 ×) and get it back on approach. Beyond SHADOW1_D the far map's impostor shadows cover. ?vegshadow1=0: off */
-export const SHADOW_LOD1 = new URLSearchParams(location.search).get("vegshadow1") !== "0";
+export const SHADOW_LOD1 = flag("vegshadow1");
 const SHADOW1_D = 58;   // (the end of foliage-material uVegShadowBand — casting dissolves from 42 m)
 /** opaque LOD0 parts crossfade with their tier (?vegsolidfade=0 = the old no-discard LOD0 bark) */
-export const SOLID_FADE = new URLSearchParams(location.search).get("vegsolidfade") !== "0";
+export const SOLID_FADE = flag("vegsolidfade");
 /** ?vegdbg=noshadow,noimp,nolod0,nolod1,nodetail — perf attribution switches */
-export const VEG_DBG = new Set((new URLSearchParams(location.search).get("vegdbg") ?? "").split(",").filter(Boolean));
+export const VEG_DBG = new Set(flag("vegdbg"));
 const box = new THREE.Box3();
 
 export interface PoolStats { n: number; lod0: number; lod1: number }
@@ -583,7 +584,7 @@ export class ImpostorSet {
   /** impostors crossfade between their baked views */
   readonly blend = IMP_BLEND;
   /** ?impcull=0 draws every impostor every frame (A/B) */
-  cullOn = new URLSearchParams(location.search).get("impcull") !== "0";
+  cullOn = flag("impcull");
   private cullCam = new THREE.PerspectiveCamera();
   private visCells: number[] = [];
   private frustum = new THREE.Frustum();

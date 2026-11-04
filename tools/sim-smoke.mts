@@ -4,7 +4,8 @@
 //   --riders[=N]: N (default 8) of the seats, one per squad, are scripted humans that hop into the nearest vehicle, drive it
 //            around and climb out again, so the vehicle seat code runs (bots only ride when a human squadmate drives).
 //   --check: also fail (exit 1) on a regression: no winner, friendly-fire hits, bots not arming up, tick cost over budget, a
-//            vehicle seat and its rider disagreeing after any tick (with --riders, also nobody riding at all), or
+//            vehicle seat and its rider disagreeing after any tick (with --riders, also nobody riding at all), a phase change
+//            other than Warmup → Plane → Play → Results, or
 //            (trios seed 42 only) a different final-state hash than SIM_HASH_TRIOS_42 (the match is deterministic within Node).
 //            Without --check the output and exit code are unchanged. Run: npx tsx tools/sim-smoke.mts trios 42 --check
 import { Terrain } from "../shared/world/terrain";
@@ -15,6 +16,7 @@ import { Match, Phase } from "../shared/sim/match";
 import { alive, B, makeInput, PS, SK } from "../shared/sim/player";
 import { footDist, VS } from "../shared/sim/vehicle";
 import { Reader, EV, EV_BYTES, ANN, VK } from "../shared/net/proto";
+import { stateHash as matchHash } from "./state-hash.mts";
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith("--")), check = process.argv.includes("--check");
 const ridersArg = process.argv.find((a) => a.startsWith("--riders"));
@@ -27,6 +29,16 @@ const td = (() => { try { const b = fsTd.readFileSync(new URL("../public/assets/
 const terrain = new Terrain(td.heights, td.biome);
 const { world } = await buildStaticWorld(terrain, td);
 const m = new Match({ seed, mode, world, humans: Array.from({ length: riders }, (_, id) => ({ id, name: "Rider" + id, team: id })) });
+// phase order (--check): Warmup → Plane → Play → Results (→ Warmup for the next round), recorded at every enter* so two
+// phase changes inside one tick are both seen. The constructor has already entered Warmup.
+const PHASE_NEXT: Record<number, Phase> = { [Phase.Warmup]: Phase.Plane, [Phase.Plane]: Phase.Play, [Phase.Play]: Phase.Results, [Phase.Results]: Phase.Warmup };
+const phasePath = [Phase[m.phase]];
+let phaseFrom = m.phase, phaseBad = "";
+m.onPhase = (ph) => {
+  phasePath.push(Phase[ph]);
+  if (!phaseBad && (m.phase !== ph || PHASE_NEXT[phaseFrom] !== ph)) phaseBad = `tick ${m.tick}: ${Phase[phaseFrom]} → ${Phase[ph]}`;
+  phaseFrom = ph;
+};
 m.startNow();
 let rocketsFired = 0, lastPhase = -1, maxMs = 0, total = 0, events = 0, knocks = 0, finals = 0, ff = 0, hits = 0, resOffAt = -1;
 const causes: Record<string, number> = {};
@@ -135,15 +147,10 @@ for (const c of m.chests) if (c.opened) ps(c.poi >= 0 ? POIS[c.poi].id : "open")
 console.log("per POI (first landing / kills in it / chests opened):");
 for (const q of [...POIS.map((p) => p.id), "open"]) { const v = poiStats[q]; if (v) console.log(`  ${q.padEnd(15)} landed ${String(v.landed).padStart(2)}  kills ${String(v.kills).padStart(3)}  chests ${String(v.chests).padStart(3)}`); else console.log(`  ${q.padEnd(15)} —`); }
 
-// FNV-1a over the final tick, the winner and every player's position, kills and damage (exact float bits)
-const hashBuf = new DataView(new ArrayBuffer(8));
-let h = 0x811c9dc5;
-const mix = (v: number) => { hashBuf.setFloat64(0, v); for (let i = 0; i < 8; i++) h = Math.imul(h ^ hashBuf.getUint8(i), 0x01000193) >>> 0; };
-mix(m.tick); mix(m.winnerTeam); for (const p of m.players) { mix(p.x); mix(p.z); mix(p.kills); mix(p.damage); }
-const stateHash = h.toString(16).padStart(8, "0");
+const stateHash = matchHash(m);
 if (check) {
   console.log(`state hash: ${stateHash}`);
-  const SIM_HASH_TRIOS_42 = "c8f3110c";
+  const SIM_HASH_TRIOS_42 = "888d3a01";
   const MAX_AVG_TICK_MS = 3, MAX_TICK_MS = 100, MIN_ARMED_PCT = 90;
   const fail: string[] = [];
   if (m.phase !== Phase.Results || m.winnerTeam < 0) fail.push(`no winner (phase ${Phase[m.phase]}, winnerTeam ${m.winnerTeam}, ticks ${m.tick})`);
@@ -151,6 +158,9 @@ if (check) {
   if (checked.length === 0 || (armed / checked.length) * 100 < MIN_ARMED_PCT) fail.push(`only ${armed}/${checked.length} bots armed 30 s after landing (need ${MIN_ARMED_PCT}%)`);
   if (total / m.tick > MAX_AVG_TICK_MS) fail.push(`average tick ${(total / m.tick).toFixed(3)} ms over budget ${MAX_AVG_TICK_MS} ms`);
   if (maxMs > MAX_TICK_MS) fail.push(`max tick ${maxMs.toFixed(2)} ms over budget ${MAX_TICK_MS} ms`);
+  console.log(`phases: ${phasePath.join(" → ")}`);
+  if (phaseBad) fail.push(`illegal phase change (${mode} seed ${seed}) at ${phaseBad}`);
+  else if (phasePath.join() !== "Warmup,Plane,Play,Results") fail.push(`phases ran ${phasePath.join(" → ")}, expected Warmup → Plane → Play → Results`);
   console.log(`seat invariant: ${rideTicks} rider-ticks checked`);
   if (seatBad) fail.push(`seat invariant broken (${mode} seed ${seed}) at ${seatBad}`);
   if (riders > 0 && rideTicks === 0) fail.push("seat invariant checked no riders (nobody rode a vehicle, so the check proved nothing)");
