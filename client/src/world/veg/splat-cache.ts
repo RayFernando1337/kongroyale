@@ -6,11 +6,12 @@ import * as THREE from "three";
 import type { Species } from "./species/types";
 import type { SplatBuildOutput } from "./splat-build";
 import { VEG_DRY_V } from "./foliage-material";
+import { flag } from "../../flags";
 
 // v6: captures use physical atlas texels at every DPR. Discard v5 bakes corrupted on scaled displays.
 export const SPLAT_BAKE_VERSION = 6;
 const DB = "kr-veg-splats", STORE = "bake";
-const OFF = typeof location !== "undefined" && new URLSearchParams(location.search).get("splcache") === "0";
+const OFF = !flag("splcache");
 
 let dbp: Promise<IDBDatabase | null> | null = null;
 function db(): Promise<IDBDatabase | null> {

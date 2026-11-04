@@ -7,6 +7,7 @@ import { detailCell, VARIANTS, jungleTreeShape, palmShape, type VegKind, type Ve
 import type { Terrain } from "../../../../shared/world/terrain";
 import { Simplex2 } from "../../../../shared/world/noise";
 import { Biome, WORLD } from "../../../../shared/world/map";
+import { flag } from "../../flags";
 
 /** column-major world matrix for (position, yaw about +Y, uniform scale) — three.js makeRotationY convention */
 export function writeMatrix(out: Float32Array, o: number, x: number, y: number, z: number, yaw: number, s: number) {
@@ -39,7 +40,7 @@ const TINT_AMP: Partial<Record<VegKind, [number, number]>> = {
 
 /** per-plant banana tint families + the leaves' dry-edge ramp
  * (foliage-material VEG_SENESCE). `?bananatint=0` = the previous look (A/B) */
-export const BANANA_TINT = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("bananatint") !== "0";
+export const BANANA_TINT = flag("bananatint");
 
 export class Tinter {
   private hue = new Simplex2(WORLD.SEED + 202);

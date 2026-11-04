@@ -27,6 +27,7 @@ import { terrainRocks, type RockInstance } from "../../../../shared/world/terrai
 import { terrainData } from "../terrain/load";
 import { allClearings, allColliders } from "../../../../shared/pois/index";
 import { Biome } from "../../../../shared/world/map";
+import { flag } from "../../flags";
 
 const DETAIL_RANGE = 62;
 /** max detail cells in flight to the worker */
@@ -375,7 +376,7 @@ class VegSystem implements VegApi {
     } catch (e) { console.warn("veg: terrain data / rocks unavailable, scattering without them", e); }
     this.stats.rocksMs = Math.round(performance.now() - t0);
     const sync = () => scatterVegetation(this.ctx.terrain, this.clearings, undefined, this.env.rocks);
-    if (typeof Worker === "undefined" || new URLSearchParams(location.search).has("vegsyncscatter")) { this.scatterJob = loadSpawnMask().then(sync); return; }
+    if (typeof Worker === "undefined" || flag("vegsyncscatter")) { this.scatterJob = loadSpawnMask().then(sync); return; }
     this.scatterJob = loadSpawnMask().then(() => new Promise<VegInstance[]>((res) => {
       let w: Worker;
       try { w = new Worker(new URL("./scatter-worker.ts", import.meta.url), { type: "module" }); }
@@ -428,7 +429,7 @@ class VegSystem implements VegApi {
    * client-only is exact) in front of the live camera so the view never loses its foreground.
    */
   async beachDressing() {
-    if (new URLSearchParams(location.search).get("view") !== "biome-01-beach") return;
+    if (flag("view") !== "biome-01-beach") return;
     try {
       const water = (await import("../water/index")).default as { views?: Record<string, CamSpec> };
       const v = water.views?.["biome-01-beach"];
@@ -751,7 +752,7 @@ class VegSystem implements VegApi {
 const TMP3 = new Float32Array(3);
 const BOX = new THREE.Box3();
 const M4 = new THREE.Matrix4();
-const VEG_COL_DBG = new URLSearchParams(location.search).get("vegcol") === "1";
+const VEG_COL_DBG = flag("vegcol");
 
 const views: Record<string, CamSpec> = {
   ...STUDIO_VIEWS,
@@ -871,12 +872,12 @@ const mod: WorldModule = {
     const scattered = system.scatter().then(() => system!.beachDressing()).catch((e) => console.error("veg: scatter failed", e)).finally(releaseScatter);
     if (ctx.shotMode) await scattered;
     // dev studio (stable species inspection stage out at sea) — only when a veg-* view is requested
-    if (/^veg-/.test(new URLSearchParams(location.search).get("view") ?? "")) {
+    if (/^veg-/.test(flag("view") ?? "")) {
       buildStudio(ctx.scene, (k, v) => system!.getSpecies(k, v), (k, v, x, y, z, yaw, sc) => system!.pool(k, v).add(x, y, z, yaw, sc, 1, 1, 1));
     }
     // quality tier: ?vegq= overrides, else the engine's quality (ultra → epic)
     {
-      const qq = new URLSearchParams(location.search).get("vegq") as VegQuality | null;
+      const qq = flag("vegq") as VegQuality | null;
       const map: Record<string, VegQuality> = { ultra: "epic", high: "high", medium: "medium", low: "low" };
       system.setQuality(qq && ["low", "medium", "high", "epic"].includes(qq) ? qq : map[ctx.quality] ?? "high");
     }
@@ -901,7 +902,7 @@ const mod: WorldModule = {
     // linear render target, a different program key ("srgb → srgb-linear"). Compile against an
     // offscreen target, like the game's boot prewarm; + the shadow-depth programs of every caster (warmShadows).)
     try { await compileVeg(ctx, list); } catch (e) { console.warn("veg: program precompile failed", e); }
-    if (!/[?&]vegwarm=0/.test(location.search)) try { const n = warmShadows(ctx, list); if (system) system.stats.shadowWarmPrograms = n; } catch (e) { console.warn("veg: shadow program warm-up failed", e); }
+    if (flag("vegwarm")) try { const n = warmShadows(ctx, list); if (system) system.stats.shadowWarmPrograms = n; } catch (e) { console.warn("veg: shadow program warm-up failed", e); }
     if (system) system.stats.compileMs = Math.round(performance.now() - t0);
   },
 };
