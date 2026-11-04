@@ -76,7 +76,6 @@ for (const [id, load] of entries) {
 }
 const gameImport = gameMode ? import("./game/index") : null;
 let postBuild = null as typeof import("./post-build") | null;
-const lowMemImport = import("./low-mem");
 const postBuildImport = import("./post-build").then((m) => (postBuild = m), (e) => { report("post-build", e); return null; });
 gameImport?.catch(() => { /* reported by the game stage */ });
 if (gameMode) { startStaticWorld(); startLootSpotsWorker(); } // (perf: the loot spots off the main thread too)
@@ -305,8 +304,7 @@ if (streamOn) {
     if (pr === "title") { streamList.splice(streamList.indexOf(id), 1); await buildOne(id, false); }
   }
 }
-const lowMemMod = await lowMemImport;
-const LOW_MEM = lowMemMod.lowMemoryDevice();
+const LOW_MEM = (await postBuildImport)?.lowMemoryDevice(flag("lowmem"), flag("prepare") === "full");
 // ---- pre-ready stream (READY_BY above): largest first, each only while the predicted ready time still fits
 if (streamOn && READY_BY > 0 && !LOW_MEM) {
   const done = titleIds.filter((id) => buildMs[id] !== undefined);
@@ -478,7 +476,7 @@ kr.prepare = () => {
   // online, the plane phase switches the stream to back to back. ?prepare=full = build everything behind the card.
   if (flag("prepare") !== "full") {
     holdWarmupUntilStreamed();
-    const heavyLeft = () => !LOW_MEM && !kr.streamed && (streamList.some((id) => est(id) >= HEAVY_MS) || (streamNow !== null && est(streamNow) >= HEAVY_MS));
+    const heavyLeft = () => !kr.streamed && (streamList.some((id) => est(id) >= HEAVY_MS) || (streamNow !== null && est(streamNow) >= HEAVY_MS));
     if (!heavyLeft() && (!prefabs || kr.warmDone === true)) return Promise.resolve();
     return (preparing ??= (async () => {
       const card = prepareCard(); const tick = setInterval(() => card.set(), 100);
@@ -580,7 +578,7 @@ async function stream(): Promise<void> {
   { const graceUntil = performance.now() + flag("streamgrace");
     while (!urgent && !inMatch() && performance.now() < graceUntil) await new Promise((r) => setTimeout(r, 50)); }
   while (streamList.length) {
-    const id = await lowMemMod.nextModule(streamList, engine.camera);
+    const id = LOW_MEM ? await postBuild!.nextNearModule(streamList, engine.camera, POIS, flag("lowmemr")) : streamList.shift()!;
     streamNow = id;
     // in the title / lobby: one module per idle gap at the title's slice budget. In a match (warm-up) the plane must
     // not see an unbuilt POI: go flat out, and once the plane phase starts build the rest back to back.
