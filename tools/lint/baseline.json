@@ -14,5 +14,14 @@
       "const zlib = await import(/* @vite-ignore */ [\"node\", \"zlib\"].join(\":\")) as { gunzipSync(b: Uint8Array): Uint8Array };",
       "const fs = await import(/* @vite-ignore */ [\"node\", \"fs\"].join(\":\")) as { readFileSync(p: URL): Uint8Array };"
     ]
+  },
+  "hot-alloc": {
+    "shared/net/host.ts": [
+      "const summary = JSON.stringify([state.outcomeTime, state.placement, state.totalSquads, state.kills, state.damage, state.winner, state.squadOut]);"
+    ],
+    "shared/sim/match.ts": [
+      "this.explode(bx, by, bz, w.splashR, weaponDamage({ dmg: w.splashDmg }, r.rarity), r.owner, killWeapon(5, r.rarity));",
+      "if (it.kind === IK.Weapon) { if (p.slots.some((s) => s.kind === SK.Empty) && !p.slots.some((s) => s.kind === SK.Weapon && s.id === it.sub)) this.takeItem(p, it, false); }"
+    ]
   }
 }

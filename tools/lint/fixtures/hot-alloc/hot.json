@@ -1,0 +1,4 @@
+{
+  "tools/lint/fixtures/hot-alloc/bad.ts": ["stepThing", "Sim.tick", "arrowStep", "restStep"],
+  "tools/lint/fixtures/hot-alloc/ok.ts": ["stepThing", "Sim.tick"]
+}

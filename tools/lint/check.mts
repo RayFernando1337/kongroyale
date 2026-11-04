@@ -24,7 +24,7 @@ type Rule = {
   id: string;
   /** which repo files the rule covers (posix path relative to the repo root) */
   applies: (rel: string) => boolean;
-  check: (sf: ts.SourceFile) => Hit[];
+  check: (sf: ts.SourceFile, rel: string) => Hit[];
 };
 /** key = the site's identity in the baseline: the trimmed text of the flagged line */
 type Finding = { rule: string; file: string; line: number; key: string; message: string };
@@ -143,18 +143,98 @@ const sharedDeterminism: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism];
+const HOT_JSON = `${LINT_DIR}/hot.json`, HOT_FIXTURE_JSON = `${LINT_DIR}/fixtures/hot-alloc/hot.json`;
+const HOT: Record<string, string[]> = Object.assign({}, ...[HOT_JSON, HOT_FIXTURE_JSON].map((p) => JSON.parse(fs.readFileSync(path.join(ROOT, p), "utf8"))));
+const isHotFile = (rel: string) => rel.endsWith(".hot.ts");
+const ALLOC_METHODS = new Set(["map", "filter", "flatMap", "flat", "slice", "concat", "splice", "toSorted", "toReversed", "toSpliced"]);
+const HOT_RULE = `(AGENTS.md rule 2: per-tick code lives in *.hot.ts files and must not allocate; ${HOT_JSON} lists the hot functions not yet moved into one)`;
+
+function functionOf(e: ts.Expression | undefined): ts.FunctionLikeDeclaration | undefined {
+  return e && (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) ? e : undefined;
+}
+
+function topLevelFunctions(sf: ts.SourceFile): [string, ts.FunctionLikeDeclaration][] {
+  const out: [string, ts.FunctionLikeDeclaration][] = [];
+  for (const st of sf.statements) {
+    if (ts.isFunctionDeclaration(st) && st.body) out.push([st.name?.text ?? "default", st]);
+    if (ts.isVariableStatement(st)) {
+      for (const d of st.declarationList.declarations) {
+        const fn = functionOf(d.initializer);
+        if (fn && ts.isIdentifier(d.name)) out.push([d.name.text, fn]);
+      }
+    }
+    if (ts.isClassDeclaration(st)) {
+      for (const m of st.members) {
+        if ((ts.isMethodDeclaration(m) || ts.isGetAccessor(m) || ts.isSetAccessor(m)) && m.body) out.push([`${st.name?.text ?? "default"}.${m.name.getText(sf)}`, m]);
+      }
+    }
+  }
+  return out;
+}
+
+const findHot = (sf: ts.SourceFile, name: string) => topLevelFunctions(sf).find(([n]) => n === name)?.[1];
+
+function allocation(n: ts.Node, sf: ts.SourceFile): string | undefined {
+  if (ts.isNewExpression(n)) return `new ${n.expression.getText(sf)} allocates: create it once (module scope or a field) and reuse it`;
+  if (ts.isObjectLiteralExpression(n)) return "an object literal allocates: reuse a preallocated scratch object (like the module-level H = makeHit() in shared/sim/loot-spots.ts)";
+  if (ts.isArrayLiteralExpression(n)) return "an array literal allocates: reuse a preallocated array or typed array";
+  if (ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isFunctionDeclaration(n)) return "a closure allocates: hoist the function to module scope or a method, and loop with an indexed for";
+  if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && ALLOC_METHODS.has(n.expression.name.text)) return `.${n.expression.name.text}() returns a new array: loop with an indexed for over the original`;
+  if (ts.isSpreadElement(n) || ts.isSpreadAssignment(n)) return "a spread copies into a new array or object: copy the fields into a reused one";
+  if ((ts.isBindingElement(n) || ts.isParameter(n)) && n.dotDotDotToken) return "a rest binding copies into a new array or object: read the fields or indices you need";
+  return undefined;
+}
+
+const hotAlloc: Rule = {
+  id: "hot-alloc",
+  applies: (rel) => rel in HOT || isHotFile(rel),
+  check(sf, rel) {
+    const hits: Hit[] = [];
+    const hot = isHotFile(rel) ? topLevelFunctions(sf) : (HOT[rel] ?? []).flatMap((name): [string, ts.FunctionLikeDeclaration][] => {
+      const fn = findHot(sf, name);
+      return fn ? [[name, fn]] : [];
+    });
+    for (const [name, fn] of hot) {
+      const visit = (n: ts.Node): void => {
+        const what = allocation(n, sf);
+        if (what) hits.push({ node: n, message: `${name} is a hot function and ${what} ${HOT_RULE}` });
+        ts.forEachChild(n, visit);
+      };
+      fn.parameters.forEach(visit);
+      if (fn.body && ts.isBlock(fn.body)) ts.forEachChild(fn.body, visit);
+      else if (fn.body) visit(fn.body);
+    }
+    return hits;
+  },
+};
+
+function hotListErrors(list: unknown, from: string, readable: (rel: string) => ts.SourceFile | undefined): string[] {
+  if (!list || typeof list !== "object" || Array.isArray(list)) return [`${from} must be an object of file -> function names`];
+  const errors: string[] = [];
+  for (const [file, names] of Object.entries(list)) {
+    if (!Array.isArray(names) || names.length === 0 || !names.every((x) => typeof x === "string" && x)) { errors.push(`${from}: ${file} must list at least one function name`); continue; }
+    if (isHotFile(file)) { errors.push(`${from}: ${file} is a *.hot.ts file, so every function in it is already hot: remove its entry`); continue; }
+    const sf = readable(file);
+    if (!sf) { errors.push(`${from}: ${file} is not a source file the lint scans (under ${SCAN_DIRS.join(", ")}, outside the fixtures): fix the path or remove the entry`); continue; }
+    for (const name of names) if (!findHot(sf, name)) errors.push(`${from}: ${file} has no function ${name} (a top-level function, a const arrow, or Class.method): fix the name or remove it`);
+  }
+  return errors;
+}
+
+const RULES: Rule[] = [sharedDeterminism, hotAlloc];
 
 // ---- engine ----
 
 const toPosix = (p: string) => p.split(path.sep).join("/");
 const parse = (abs: string) => ts.createSourceFile(abs, fs.readFileSync(abs, "utf8"), ts.ScriptTarget.Latest, true);
+const readJson = (rel: string): unknown => JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf8"));
+const readSource = (rel: string) => (fs.existsSync(path.join(ROOT, rel)) ? parse(path.join(ROOT, rel)) : undefined);
 
 /** one finding per rule and line: two hits on one line are one site to fix */
 function runRule(rule: Rule, sf: ts.SourceFile, file: string): Finding[] {
   const byLine = new Map<number, Finding>();
   const lines = sf.text.split(/\r?\n/);
-  for (const h of rule.check(sf)) {
+  for (const h of rule.check(sf, file)) {
     const line = sf.getLineAndCharacterOfPosition(h.node.getStart(sf)).line + 1;
     if (!byLine.has(line)) byLine.set(line, { rule: rule.id, file, line, key: lines[line - 1].trim(), message: h.message });
   }
@@ -238,6 +318,20 @@ function selfTest(): string[] {
   for (const [name, found, base, pass] of cases) {
     if ((compareBaseline(found, base as Baseline, ["r"], exists).errors.length === 0) !== pass) errors.push(`baseline ratchet: case "${name}" should ${pass ? "pass" : "fail"}`);
   }
+  errors.push(...hotListErrors(readJson(HOT_FIXTURE_JSON), HOT_FIXTURE_JSON, readSource));
+  const hotSf = ts.createSourceFile("h.ts", "export function f() {}\nexport const g = () => 0;\nexport class C { m() {} }\n", ts.ScriptTarget.Latest, true);
+  const hotCases: [string, unknown, boolean][] = [
+    ["every kind of name", { "h.ts": ["f", "g", "C.m"] }, true],
+    ["missing function", { "h.ts": ["f", "stepPlayr"] }, false],
+    ["missing method", { "h.ts": ["C.tick"] }, false],
+    ["missing file", { "gone.ts": ["f"] }, false],
+    ["empty list", { "h.ts": [] }, false],
+    ["not an object", ["h.ts"], false],
+    ["a *.hot.ts file", { "x.hot.ts": ["f"] }, false],
+  ];
+  for (const [name, list, pass] of hotCases) {
+    if ((hotListErrors(list, "hot.json", (rel) => (rel === "h.ts" ? hotSf : undefined)).length === 0) !== pass) errors.push(`hot list: case "${name}" should ${pass ? "pass" : "fail"}`);
+  }
   return errors;
 }
 
@@ -253,6 +347,8 @@ if (flags.includes("--self-test")) process.exit(0);
 
 const files = sourceFiles();
 if (files.length === 0) { console.error(`lint: found no source files under ${SCAN_DIRS.join(", ")}`); process.exit(1); }
+const hotErrors = hotListErrors(readJson(HOT_JSON), HOT_JSON, (rel) => (files.includes(rel) ? readSource(rel) : undefined));
+if (hotErrors.length) { console.error(`lint FAILED:\n  ${hotErrors.join("\n  ")}`); process.exit(1); }
 const findings: Finding[] = [];
 for (const file of files) {
   const rules = RULES.filter((r) => r.applies(file));
