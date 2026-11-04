@@ -55,23 +55,9 @@ const FLAGS = {
 export type FlagName = keyof typeof FLAGS;
 export type FlagValue<K extends FlagName> = (typeof FLAGS)[K]["kind"] extends Kind<infer T> ? T : never;
 
-const STORAGE_KEY = "kr.flags";
-
-function query(): URLSearchParams {
-  const url = new URLSearchParams(globalThis.location?.search ?? "");
-  if (typeof document === "undefined") return url;
-  let stored: string | null;
-  try { stored = localStorage.getItem(STORAGE_KEY); } catch { return url; }
-  if (!stored) return url;
-  const merged = new URLSearchParams(stored);
-  for (const k of url.keys()) merged.delete(k);
-  for (const [k, v] of url) merged.append(k, v);
-  return merged;
-}
-
 const values: Record<string, unknown> = {};
 {
-  const q = query();
+  const q = new URLSearchParams(globalThis.location?.search ?? "");
   for (const [name, { kind }] of Object.entries(FLAGS as Record<string, Flag>)) {
     const v = q.get(name);
     values[name] = v === null ? kind.default : kind.parse(v);
