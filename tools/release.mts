@@ -89,8 +89,9 @@ const prInfo = (n: number): Pr => {
 const collect = (base: Rel | undefined, target: string): { prs: Pr[]; loose: string[] } => {
   if (!base) {
     const merged = ghJson("pr", "list", "--state", "merged", "--base", "main", "--limit", "500", "--json", "number,mergedAt") as { number: number; mergedAt: string }[];
+    // GitHub stamps mergedAt a little after the merge commit's own time, so the bound has slack
     const until = git("log", "-1", "--format=%cI", target);
-    return { prs: merged.filter((p) => p.mergedAt > BASE_AFTER && new Date(p.mergedAt) <= new Date(until)).map((p) => p.number).sort((a, b) => a - b).map(prInfo), loose: [] };
+    return { prs: merged.filter((p) => p.mergedAt > BASE_AFTER && new Date(p.mergedAt).getTime() <= new Date(until).getTime() + 10 * 60_000).map((p) => p.number).sort((a, b) => a - b).map(prInfo), loose: [] };
   }
   git("fetch", "--quiet", "origin", base.sha);
   const nums = new Set<number>(), loose: string[] = [];
