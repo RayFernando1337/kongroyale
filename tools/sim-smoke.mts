@@ -7,7 +7,7 @@
 //            vehicle seat and its rider disagreeing after any tick (with --riders, also nobody riding at all), a phase change
 //            other than Warmup → Plane → Play → Results, or
 //            a final-state hash other than the golden one in SIM_HASH for that mode, seed and riders count (the match is
-//            deterministic within Node; runs with no golden hash and runs cut short by maxTicks skip that comparison).
+//            deterministic within Node; runs with no golden hash and runs that stop before Results skip that comparison).
 //            Without --check the output and exit code are unchanged. Run: npx tsx tools/sim-smoke.mts trios 42 --check
 import { Terrain } from "../shared/world/terrain";
 import { decodeTerrainFile, generateTerrain } from "../shared/world/terrain-gen";
@@ -152,7 +152,7 @@ const stateHash = matchHash(m);
 if (check) {
   console.log(`state hash: ${stateHash}`);
   const SIM_HASH: Record<string, string> = { "trios 42 riders 0": "888d3a01", "solo 1 riders 0": "35793e5f", "trios 7 riders 0": "df98eec3", "trios 7 riders 8": "2ca1c7c6" };
-  const golden = args[2] === undefined ? SIM_HASH[`${mode} ${seed} riders ${riders}`] : undefined;
+  const golden = m.phase === Phase.Results ? SIM_HASH[`${mode} ${seed} riders ${riders}`] : undefined;
   const MAX_AVG_TICK_MS = 3, MAX_TICK_MS = 100, MIN_ARMED_PCT = 90;
   const fail: string[] = [];
   if (m.phase !== Phase.Results || m.winnerTeam < 0) fail.push(`no winner (phase ${Phase[m.phase]}, winnerTeam ${m.winnerTeam}, ticks ${m.tick})`);
