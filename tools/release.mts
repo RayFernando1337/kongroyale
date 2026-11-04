@@ -147,7 +147,7 @@ const plan = (hotfixFrom?: string) => {
   const { prs, loose } = collect(from, target);
   const bump = tagged ? "patch" : bumpOf(prs, !!hotfixFrom);
   const sameLine = hotBase ? all.filter((r) => r.version[0] === hotBase.version[0] && r.version[1] === hotBase.version[1]) : [];
-  const version = tagged ? tagged.version : nextVersion(sameLine.length ? sameLine[sameLine.length - 1].version : from?.version ?? parse(tagPrefix + BASE_VERSION), bump);
+  const version = tagged ? tagged.version : nextVersion(sameLine.length ? sameLine[sameLine.length - 1].version : all[all.length - 1]?.version ?? parse(tagPrefix + BASE_VERSION), bump);
   return { target, tagged, latest: all[all.length - 1], from, prs, loose, bump: bump as Bump, version: fmt(version), tag: tagPrefix + fmt(version) };
 };
 
