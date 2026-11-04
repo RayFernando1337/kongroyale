@@ -1,0 +1,24 @@
+# Line endings: text files are stored with LF in the repository and checked out with LF on every platform,
+# matching .editorconfig. Git detects binary files itself; the extensions below are listed so it never guesses.
+* text=auto eol=lf
+
+*.bin binary
+*.glb binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.ktx2 binary
+*.m4a binary
+*.flac binary
+*.mp3 binary
+*.wasm binary
+*.ogg binary
+*.wav binary
+*.woff binary
+*.woff2 binary
+*.gz binary
+*.br binary
+*.ply binary
+*.splat binary
