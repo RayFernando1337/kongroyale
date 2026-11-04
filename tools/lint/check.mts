@@ -290,7 +290,8 @@ function inTypePosition(n: ts.Node): boolean {
     if (ts.isHeritageClause(p)) return p.token === ts.SyntaxKind.ImplementsKeyword || ts.isInterfaceDeclaration(p.parent);
     if (ts.isExpressionWithTypeArguments(p)) continue;
     if (ts.isTypeNode(p)) return true;
-    if (ts.isExpression(p) || ts.isStatement(p) || ts.isExportSpecifier(p) || ts.isShorthandPropertyAssignment(p)) return false;
+    if (ts.isExportSpecifier(p)) return p.isTypeOnly || p.parent.parent.isTypeOnly;
+    if (ts.isExpression(p) || ts.isStatement(p) || ts.isShorthandPropertyAssignment(p)) return false;
   }
   return false;
 }
@@ -298,19 +299,10 @@ function inTypePosition(n: ts.Node): boolean {
 const importType: Rule = {
   id: "import-type",
   applies: (rel) => /\.m?ts$/.test(rel),
-  check(sf) {
-    const hits: Hit[] = [];
-    const uses = new Map<string, { value: boolean; type: boolean }>();
-    const visit = (n: ts.Node): void => {
-      if (ts.isImportDeclaration(n)) return;
-      if (ts.isIdentifier(n) && !(ts.isPropertyAccessExpression(n.parent) && n.parent.name === n) && !(ts.isQualifiedName(n.parent) && n.parent.right === n)) {
-        const u = uses.get(n.text) ?? { value: false, type: false };
-        if (inTypePosition(n)) u.type = true; else u.value = true;
-        uses.set(n.text, u);
-      }
-      ts.forEachChild(n, visit);
-    };
-    visit(sf);
+  check(parsed) {
+    const program = ts.createProgram({ rootNames: [parsed.fileName], options: { noResolve: true, noLib: true, types: [], noEmit: true } });
+    const sf = program.getSourceFile(parsed.fileName)!, checker = program.getTypeChecker();
+    const imports = new Map<ts.Symbol, { id: ts.Identifier; value: boolean; type: boolean }>();
     for (const st of sf.statements) {
       if (!ts.isImportDeclaration(st) || !st.importClause || st.importClause.isTypeOnly) continue;
       const c = st.importClause, names: ts.Identifier[] = [];
@@ -318,10 +310,30 @@ const importType: Rule = {
       if (c.namedBindings && ts.isNamespaceImport(c.namedBindings)) names.push(c.namedBindings.name);
       if (c.namedBindings && ts.isNamedImports(c.namedBindings)) for (const e of c.namedBindings.elements) if (!e.isTypeOnly) names.push(e.name);
       for (const id of names) {
-        const u = uses.get(id.text);
-        if (!u) hits.push({ node: id, message: `${id.text} is imported but never used: delete it` });
-        else if (!u.value) hits.push({ node: id, message: `${id.text} is only used as a type: import it with \`import type\` so the bundler never loads its module for it (AGENTS.md "Code style")` });
+        const sym = checker.getSymbolAtLocation(id);
+        if (sym) imports.set(sym, { id, value: false, type: false });
       }
+    }
+    const symbolOf = (n: ts.Identifier): ts.Symbol | undefined => {
+      const p = n.parent;
+      if (ts.isShorthandPropertyAssignment(p) && p.name === n) return checker.getShorthandAssignmentValueSymbol(p);
+      if (ts.isExportSpecifier(p)) return (p.propertyName ?? p.name) === n ? checker.getExportSpecifierLocalTargetSymbol(p) : undefined;
+      return checker.getSymbolAtLocation(n);
+    };
+    const visit = (n: ts.Node): void => {
+      if (ts.isImportDeclaration(n)) return;
+      if (ts.isIdentifier(n)) {
+        const sym = symbolOf(n), u = sym && imports.get(sym);
+        if (u) { if (inTypePosition(n)) u.type = true; else u.value = true; }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    const hits: Hit[] = [];
+    for (const { id, value, type } of imports.values()) {
+      const line = sf.getLineAndCharacterOfPosition(id.getStart(sf)).line + 1;
+      if (!value && !type) hits.push({ node: id, line, message: `${id.text} is imported but never used: delete it` });
+      else if (!value) hits.push({ node: id, line, message: `${id.text} is only used as a type: import it with \`import type\` so the bundler never loads its module for it (AGENTS.md "Code style")` });
     }
     return hits;
   },
