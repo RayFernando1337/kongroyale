@@ -342,11 +342,14 @@ const importType: Rule = {
 
 const UNIT_SUFFIXES = ["S", "MS", "M", "R", "MPS", "DEG", "RAD", "HZ", "PX", "TICKS", "N", "PCT", "KB", "MB", "BYTES"];
 
+const NUMERIC_OPERATORS = new Set([ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken, ts.SyntaxKind.AsteriskAsteriskToken,
+  ts.SyntaxKind.AmpersandToken, ts.SyntaxKind.BarToken, ts.SyntaxKind.CaretToken, ts.SyntaxKind.LessThanLessThanToken, ts.SyntaxKind.GreaterThanGreaterThanToken, ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken]);
+
 function isNumeric(e: ts.Expression): boolean {
   if (ts.isNumericLiteral(e)) return true;
   if (ts.isParenthesizedExpression(e)) return isNumeric(e.expression);
-  if (ts.isPrefixUnaryExpression(e)) return isNumeric(e.operand);
-  if (ts.isBinaryExpression(e)) return isNumeric(e.left) && isNumeric(e.right);
+  if (ts.isPrefixUnaryExpression(e)) return e.operator !== ts.SyntaxKind.ExclamationToken && isNumeric(e.operand);
+  if (ts.isBinaryExpression(e)) return NUMERIC_OPERATORS.has(e.operatorToken.kind) && isNumeric(e.left) && isNumeric(e.right);
   return false;
 }
 

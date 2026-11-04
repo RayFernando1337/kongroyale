@@ -6,3 +6,6 @@ export const NAME = "kong";
 export const AREA = WARMUP_S * NEAR_R;
 export let COUNTER = 0;
 export const camelCase = 3;
+export const FEATURE_ENABLED = !0;
+export const IS_READY = 1 === 1;
+export const EITHER = 0 || 1;
