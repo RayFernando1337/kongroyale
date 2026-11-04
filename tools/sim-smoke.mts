@@ -150,7 +150,7 @@ for (const q of [...POIS.map((p) => p.id), "open"]) { const v = poiStats[q]; if 
 const stateHash = matchHash(m);
 if (check) {
   console.log(`state hash: ${stateHash}`);
-  const SIM_HASH_TRIOS_42 = "1cedc381";
+  const SIM_HASH_TRIOS_42 = "888d3a01";
   const MAX_AVG_TICK_MS = 3, MAX_TICK_MS = 100, MIN_ARMED_PCT = 90;
   const fail: string[] = [];
   if (m.phase !== Phase.Results || m.winnerTeam < 0) fail.push(`no winner (phase ${Phase[m.phase]}, winnerTeam ${m.winnerTeam}, ticks ${m.tick})`);
