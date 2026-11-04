@@ -552,8 +552,8 @@ function toCase(L: Load, seed: number, matchSecs: number): CaseResult {
 
   const pointDetail: Record<string, unknown> = {};
   for (const p of SNAP_POINTS) {
-    if (p !== "title" && matchSecs * 1000 < MATCH_SNAP_MS) continue;
     const s = L.points.find((x) => x.point === p);
+    if (p !== "title" && !s && matchSecs * 1000 < MATCH_SNAP_MS) continue;
     const why = p === "title" ? "the title never became ready" : "not reached in this run";
     const ua = fin.mem?.[p];
     metrics["mem." + p + ".uaMB"] = !s ? notReached("MB", why) : typeof ua?.bytes === "number" ? num(ua.bytes / 1e6, "MB") : unsupported("MB", s.uaWhy ?? ua?.error ?? "the measurement had not resolved when the load ended");
