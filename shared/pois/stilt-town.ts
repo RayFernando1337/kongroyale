@@ -613,15 +613,24 @@ function genLayout(): StiltLayout {
         }
       }
       const placed: StiltStair[] = [];
+      const wx = Float64Array.from(water, (w) => w[0]), wz = Float64Array.from(water, (w) => w[1]);
       for (let it = 0; it < 40; it++) {
-        if (!dist.some((d) => d > 11)) break;
+        // (only the water still > 11 m out can gain: summing over just those, in the same order, is the same gain
+        // without ~1 s of Math.hypot at import)
+        const far: number[] = [];
+        for (let i = 0; i < water.length; i++) if (dist[i] > 11) far.push(i);
+        if (!far.length) break;
         let best: { c: Cand; st: StiltStair; gain: number } | null = null;
         for (const cd of cands) {
           const n = Math.max(2, Math.ceil((cd.dk.y - WATER_FOOT) / 0.19)), st: StiltStair = { x: cd.x, z: cd.z, dirX: cd.dx, dirZ: cd.dz, width: 1.05, yTop: cd.dk.y, yBottom: WATER_FOOT, steps: n, rise: (cd.dk.y - WATER_FOOT) / n, tread: 0.3 };
           const [fx, fz] = foot(st);
           if (gridH(G, fx, fz) > -0.3) continue;
           let gain = 0;
-          for (let i = 0; i < water.length; i++) { const d = Math.hypot(water[i][0] - fx, water[i][1] - fz); if (dist[i] > 11 && d < dist[i]) gain += Math.min(dist[i], 30) - d; }
+          for (const i of far) {
+            const dx = wx[i] - fx, dz = wz[i] - fz, D = dist[i];
+            if (dx * dx + dz * dz >= D * D * 1.000001) continue;   // (surely no nearer: skip the exact hypot)
+            const d = Math.hypot(dx, dz); if (d < D) gain += Math.min(D, 30) - d;
+          }
           if (gain <= (best?.gain ?? 20)) continue;
           const P = stairRect(st);
           if (obst.some((ob) => ob.o !== cd.dk && overlap(P, ob.p)) || [...keep.map((k) => k.st), ...placed].some((k) => overlap(P, stairRect(k)))) continue;

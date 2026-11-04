@@ -1143,11 +1143,12 @@ export function polyGap(P: Vec2[], Q: Vec2[]): number {
 }
 /** a growing set of footprints + street segments with a 16 m spatial hash: gap and street-clearance queries */
 export class TownSite {
-  private G = 16; private fh = new Map<string, number[]>(); private sh = new Map<string, Array<[Vec2, Vec2, number, number]>>();
+  private G = 16; private fh = new Map<number, number[]>(); private sh = new Map<number, Array<[Vec2, Vec2, number, number]>>();
   readonly polys: Vec2[][] = [];
   readonly streets: TownStreet[] = [];
-  private key(a: number, b: number) { return `${a},${b}`; }
-  private cells(x0: number, z0: number, x1: number, z1: number, f: (k: string) => void) { for (let a = Math.floor(x0 / this.G); a <= Math.floor(x1 / this.G); a++) for (let b = Math.floor(z0 / this.G); b <= Math.floor(z1 / this.G); b++) f(this.key(a, b)); }
+  // (a numeric cell key: the maps are only looked up, never iterated; a string key per cell visit cost ~0.15 s at import)
+  private key(a: number, b: number) { return (a + 32768) * 65536 + (b + 32768); }
+  private cells(x0: number, z0: number, x1: number, z1: number, f: (k: number) => void) { for (let a = Math.floor(x0 / this.G); a <= Math.floor(x1 / this.G); a++) for (let b = Math.floor(z0 / this.G); b <= Math.floor(z1 / this.G); b++) f(this.key(a, b)); }
   addStreet(s: TownStreet) {
     const i = this.streets.length; this.streets.push(s);
     for (let k = 1; k < s.pts.length; k++) { const a = s.pts[k - 1], b = s.pts[k], r = s.w / 2 + 2; this.cells(Math.min(a[0], b[0]) - r, Math.min(a[1], b[1]) - r, Math.max(a[0], b[0]) + r, Math.max(a[1], b[1]) + r, (q) => { (this.sh.get(q) ?? this.sh.set(q, []).get(q)!).push([a, b, s.w, i]); }); }
