@@ -47,6 +47,7 @@ function summary(r: KongbotDoc): string {
   L.push("", ...r.message.split("\n").map((s) => `> ${s}`), "");
   L.push(`- **Reporter:** ${r.reporter?.name ?? "?"} (client ${r.reporter?.clientId?.slice(0, 8) ?? "?"}, session ${r.reporter?.sessionId?.slice(0, 8) ?? "?"})`);
   L.push(`- **Build:** ${r.build ? `${r.build.branch}@${r.build.sha.slice(0, 9)} (+${r.build.dirtyFiles} uncommitted files) "${r.build.subject}"` : "unknown"}`);
+  if (c.build) L.push(`- **Client build:** ${c.build.channel} · ${c.build.describe ?? "no kong-v tag"} · ${c.build.sha}`);
   if (p) {
     L.push(`- **Where:** ${p.poi ? `${p.poi.name} (${p.poi.inside ? "inside" : "outside"}, ${p.poi.dist} m from its centre)` : "?"} · pos ${fmt(p.pos)} · ${p.state}${p.grounded ? " grounded" : ""}${p.crouch ? " crouched" : ""}${p.swim ? " swimming" : ""}${p.slope ? " on a slope" : ""} on ${p.surface} · speed ${p.speed} m/s`);
     L.push(`- **Player:** hp ${p.hp} / shield ${p.shield} · kills ${p.kills} · holding slot ${p.active + 1} · ${(p.slots ?? []).map((s: unknown, i: number) => `${i + 1}: ${typeof s === "string" ? s : JSON.stringify(s)}`).join(" · ")}`);

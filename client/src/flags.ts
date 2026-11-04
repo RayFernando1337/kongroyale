@@ -23,6 +23,7 @@ const FLAGS = {
   atmos: { kind: list, owner: "atmos", purpose: "atmosphere debug switches: noao, nogr, nobloom, nosmaa, nosharpen, noshadow, noclouds, nopost, nofog, nocloudshadow, cloudmarch" },
   atmosp: { kind: text, owner: "atmos", purpose: "override preset fields as key:value,key:value (hex colours as c0ffee)" },
   aux: { kind: on, owner: "game", purpose: "open the auxiliary socket next to the match socket" },
+  badge: { kind: on, owner: "ui", purpose: "the build badge (channel, kong-v tag, commit) on next and dev builds; =0 hides it" },
   bananatint: { kind: on, owner: "veg", purpose: "per-plant tint variation on banana leaves" },
   cam: { kind: text, owner: "boot", purpose: "ad-hoc camera x,y,z,tx,ty,tz[,fov] instead of the game" },
   canopyOff: { kind: list, owner: "pois", purpose: "Canopy Line perf probe: hide crowns, det, main or cast" },

@@ -10,6 +10,7 @@ import { makeHit, surfaceById, type StaticWorld } from "../../../shared/sim/worl
 import { weaponId, consumableId, rarityOf } from "../../../shared/sim/player";
 import { frameStats } from "./capture";
 import { flagQuery } from "../flags";
+import { BUILD } from "../build";
 
 const ST = ["ground", "freefall", "glide", "dead", "plane", "spectate", "zip"];
 const PHASE = ["warmup", "plane", "play", "results"];
@@ -99,6 +100,7 @@ export function gatherContext(engine: Engine) {
 
   return {
     capturedAt: new Date().toISOString(),
+    build: BUILD,
     page: { url: location.href, query: flagQuery, visibility: document.visibilityState, focused: document.hasFocus(), fullscreen: !!document.fullscreenElement, pointerLock: !!document.pointerLockElement, uptimeS: Math.round(performance.now() / 1000) },
     env: {
       ua: navigator.userAgent, uaData: nav.userAgentData ? { brands: nav.userAgentData.brands, platform: nav.userAgentData.platform, mobile: nav.userAgentData.mobile } : null,
