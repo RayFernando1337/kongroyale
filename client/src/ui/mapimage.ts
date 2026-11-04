@@ -6,6 +6,8 @@ import { DEEP_SEA_CSS, paintMap, type MapPaintInput } from "./mappaint";
 import { terrainData } from "../world/terrain/load";
 import { uiAsset } from "./styles";
 import { FALLS } from "../../../shared/pois/jungle-falls";
+import { paintRender, type MapRenderWater } from "./maprender";
+import type { MapRenderRequest } from "./maprenderworker";
 
 export interface PaintedMap extends MapImage {
   /** increments when the painting lands */
@@ -41,55 +43,43 @@ export const createMapImage: CreateMapImage = (terrain, sizePx): PaintedMap => {
   // buildings, the jungle, reefs and the game's own sun, shadows and clouds, straight down) — the procedural painting
   // below is only the fallback while it downloads / if it is missing. Whichever lands last never overwrites the render.
   let rendered = false;
-  const land = (src: CanvasImageSource, isRender = false) => {
-    if (rendered && !isRender) return;
-    if (isRender) rendered = true;
+  const land = (src: CanvasImageSource) => {
+    if (rendered) return;
     g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
     g.drawImage(src, 0, 0, sizePx, sizePx); map.version++;
   };
-  /** the Mist Falls plunge pool and its river, which the top-down bake shows as a dry beige bed (the
-   * river water is not drawn from 6 km up): painted blue over the render from poi-jungle's own centreline */
-  const paintWater = () => {
-    const P = (x: number, z: number): [number, number] => [(x + half) * s, (z + half) * s];
-    const pts = FALLS.river.map(([x, z]) => P(x, z));
-    g.save(); g.lineCap = "round"; g.lineJoin = "round";
-    const stroke = (w: number, c: string) => { g.strokeStyle = c; g.lineWidth = w * s; g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (const [x, y] of pts.slice(1)) g.lineTo(x, y); g.stroke(); };
-    stroke(17, "rgba(226,214,168,0.9)"); stroke(12, "#2a8fc4"); stroke(5, "rgba(120,214,240,0.75)");
-    const [px, py] = P(FALLS.pool.x, FALLS.pool.z);
-    g.fillStyle = "rgba(226,214,168,0.9)"; g.beginPath(); g.ellipse(px, py, (FALLS.pool.rx + 3) * s, (FALLS.pool.rz + 3) * s, 0, 0, Math.PI * 2); g.fill();
-    const gr = g.createRadialGradient(px, py, 0, px, py, FALLS.pool.rz * s);
-    gr.addColorStop(0, "#1c6fa8"); gr.addColorStop(1, "#3cb6dc");
-    g.fillStyle = gr; g.beginPath(); g.ellipse(px, py, FALLS.pool.rx * s, FALLS.pool.rz * s, 0, 0, Math.PI * 2); g.fill();
-    g.restore();
-  };
-  const renderReady = new Promise<void>((resolve) => {
+  const water: MapRenderWater = { river: FALLS.river, pool: FALLS.pool };
+  const url = uiAsset("map-render.webp");
+  const landRender = (seaCss: string | null) => { if (seaCss) map.seaCss = seaCss; rendered = true; map.version++; };
+  /** the main-thread path (no worker / OffscreenCanvas / createImageBitmap, or the worker failed): decode with an
+   *  <img> and paint here, as before the worker existed */
+  const renderHere = (resolve: () => void) => {
     if (typeof Image === "undefined") { resolve(); return; }
     const img = new Image(); img.decoding = "async";
     img.onload = () => {
-      land(img, true);
-      // the open sea beyond the rendered square: the render's own edge colour (no seam at the map's border)
-      try {
-        const c = document.createElement("canvas"); c.width = c.height = 8; const cg = c.getContext("2d")!;
-        // all four borders, not just the top: the east edge of the render is a different blue
-        let r = 0, gg = 0, b = 0, n = 0;
-        for (const [sx, sy, sw, sh] of [[0, 0, img.width, 16], [0, img.height - 16, img.width, 16], [0, 0, 16, img.height], [img.width - 16, 0, 16, img.height]]) {
-          cg.clearRect(0, 0, 8, 8); cg.drawImage(img, sx, sy, sw, sh, 0, 0, 8, 8); const d = cg.getImageData(0, 0, 8, 8).data;
-          for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; }
-        }
-        map.seaCss = `rgb(${Math.round(r / n)},${Math.round(gg / n)},${Math.round(b / n)})`;
-        // …and the render's borders melt into that sea over 7 % of the map (no straight seam where the square ends)
-        const f = sizePx * 0.07, rgb = map.seaCss.slice(4, -1);
-        for (const [x0, y0, x1, y1, rx, ry, rw, rh] of [[0, 0, f, 0, 0, 0, f, sizePx], [sizePx, 0, sizePx - f, 0, sizePx - f, 0, f, sizePx], [0, 0, 0, f, 0, 0, sizePx, f], [0, sizePx, 0, sizePx - f, 0, sizePx - f, sizePx, f]]) {
-          const gr = g.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(1, `rgba(${rgb},0)`);
-          g.fillStyle = gr; g.fillRect(rx, ry, rw, rh);
-        }
-        paintWater();
-        map.version++;
-      } catch { /* keep the painted sea colour */ }
+      landRender(paintRender(g, img, sizePx, half, water, (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }));
       resolve();
     };
     img.onerror = () => resolve();
-    img.src = uiAsset("map-render.webp");
+    img.src = url;
+  };
+  // (perf: the 4096² render's decode and scale ran on the main thread in onload, ~0.7 s; a worker now decodes it with
+  // createImageBitmap, paints the finished map on an OffscreenCanvas and hands back a map-sized bitmap to copy)
+  const renderReady = new Promise<void>((resolve) => {
+    if (typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") { renderHere(resolve); return; }
+    try {
+      const w = new Worker(new URL("./maprenderworker.ts", import.meta.url), { type: "module" });
+      w.onmessage = (e: MessageEvent<{ ok: boolean; bmp?: ImageBitmap; seaCss?: string | null; error?: string }>) => {
+        w.terminate();
+        if (!e.data.ok || !e.data.bmp) { console.warn("[ui] map render worker failed, decoding on the main thread:", e.data.error); renderHere(resolve); return; }
+        g.drawImage(e.data.bmp, 0, 0); e.data.bmp.close();
+        landRender(e.data.seaCss ?? null);
+        resolve();
+      };
+      w.onerror = (ev) => { console.warn("[ui] map render worker error", ev.message); w.terminate(); renderHere(resolve); };
+      const req: MapRenderRequest = { url: new URL(url, location.href).href, sizePx, half, water };
+      w.postMessage(req);
+    } catch { renderHere(resolve); }
   });
   const mainThread = async () => {
     const [{ scatterVegetation }, { allClearings, allColliders }, { Terrain }] = await Promise.all([
