@@ -1,7 +1,7 @@
 // Compares repeated benchmark runs (kong-perf-result files, schema.ts) at the run level and sets an exit status.
 //   npx tsx tools/performance/compare.mts --base base-{1..5}.json --cand cand-{1..5}.json --metrics hostTickMs
 //   npx tsx tools/performance/compare.mts --base base-{1..5}.json                  (noise floor of one side only)
-// Options: --stats p50,p95,p99 (which per-run statistic to compare), --threshold 5 (% change that counts),
+// Options: --stats p50,p95,p99 or --stats p50 p95 p99 (which per-run statistics to compare), --threshold 5 (% change that counts),
 // --metrics hostTickMs,simulationMs (default: every metric), --out comparison.json, --budgets budgets.json (per
 // scenario/metric/statistic thresholds that replace --threshold where set).
 // Each run contributes ONE value per metric and statistic; frames/ticks inside a run are correlated and never pooled.
@@ -21,7 +21,7 @@ const argv = process.argv.slice(2);
 const list = (flag: string) => { const i = argv.indexOf(flag); if (i < 0) return []; const out: string[] = []; for (let j = i + 1; j < argv.length && !argv[j].startsWith("--"); j++) out.push(argv[j]); return out; };
 const opt = (flag: string, fallback: string) => list(flag)[0] ?? fallback;
 const baseFiles = list("--base"), candFiles = list("--cand");
-const statNames = opt("--stats", "p50,p95,p99").split(",") as Array<keyof Summary>;
+const statNames = (list("--stats").length ? list("--stats") : ["p50,p95,p99"]).flatMap((s) => s.split(",")).filter(Boolean) as Array<keyof Summary>;
 const threshold = Number(opt("--threshold", "5")), onlyMetrics = list("--metrics").flatMap((m) => m.split(",")), out = list("--out")[0], budgetFile = list("--budgets")[0];
 for (const s of statNames) if (!["n", "mean", "p50", "p95", "p99", "max"].includes(s)) fail(`unknown statistic ${s}`);
 if (!baseFiles.length) fail("pass at least one --base result file");
