@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Asset source check: every file under public/assets/ must have a recorded source or licence, or this exits 1.
-// Not wired into `npm test` or CI; run it by hand:  node --import tsx tools/verify-assets.mts [--json] [--all]
+// npm test runs it with --baseline tools/verify-assets.baseline.json:  node --import tsx tools/verify-assets.mts [--json] [--all | --baseline FILE]
 //
 // A file counts as attributed when any of these covers it, checked in this order:
 //   1. credits  - a path or glob in backticks in CREDITS.md that starts with public/assets/ ("*" = within a folder,
@@ -32,9 +32,10 @@ import { GateError, nonEmpty, orExit, parseFlags } from "./gate.mts";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = "public/assets/";
 const SIDECARS = new Set(["LICENSE", "NOTICE", "provenance.json", "SOURCES.json", "tex.json"]);
-const USAGE = "node --import tsx tools/verify-assets.mts [--json] [--all] [--baseline FILE]";
+const USAGE = "node --import tsx tools/verify-assets.mts [--json] [--all | --baseline FILE]";
 const { flags } = orExit("verify-assets", USAGE, () => parseFlags(process.argv.slice(2), { "--json": "bool", "--all": "bool", "--baseline": "string" }));
 const baselineFile = flags["--baseline"];
+if (baselineFile && flags["--all"]) orExit("verify-assets", USAGE, () => { throw new GateError("--baseline lists the default scan, which skips .json data files; drop --all"); });
 const baseline: Record<string, string[]> = baselineFile ? orExit("verify-assets", USAGE, () => {
   const file = path.resolve(root, baselineFile);
   if (!fs.existsSync(file)) throw new GateError(`${baselineFile} does not exist`);

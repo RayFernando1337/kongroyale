@@ -33,6 +33,7 @@ const cases: [string, string[], RegExp][] = [
   ["tools/performance/compare.mts", ["--base", "a.json", "--threshold", "five"], /finite number/],
   ["tools/performance/compare.mts", [], /pass at least one --base/],
   ["tools/verify-assets.mts", ["--jsn"], /unknown flag --jsn/],
+  ["tools/verify-assets.mts", ["--all", "--baseline", "tools/verify-assets.baseline.json"], /drop --all/],
   ["tools/verify-boot.mts", ["--prot", "3027"], /unknown flag --prot/],
   ["tools/verify-boot.mts", ["--mode", "squads"], /--mode must be one of/],
   ["tools/verify-boot.mts", ["--match", "lots"], /finite number/],
