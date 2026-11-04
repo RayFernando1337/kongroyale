@@ -1,6 +1,8 @@
 // Cross-engine probe: plays the same headless match (tools/sim-smoke.mts) under Node (V8) and Bun (JavaScriptCore) and
 // prints both final-state hashes. They differ today because the engines' sin, cos, atan2, exp and pow differ in the last
-// bits, the same split as a V8 server predicting a Safari client. Informational: exit 0 whether or not they match.
+// bits, the same split as a V8 server predicting a Safari client. A hash counts only from a match that reached its results
+// with a winner (the --check verdict itself is ignored: Bun's hash never equals Node's pinned one). Informational: exit 0
+// whether or not they match.
 //   npx tsx tools/engine-probe.mts [solo|trios] [seed] [--require-match]
 //   --require-match: exit 1 unless both engines ran and gave the same hash
 import { spawn } from "node:child_process";
@@ -19,8 +21,9 @@ const run = ([name, cmd, a]: [string, string, string[]]) => new Promise<{ name: 
   p.stdout.on("data", (d) => (out += d)); p.stderr.on("data", (d) => (out += d));
   p.on("error", (e) => done({ name, version: "", hash: null, note: `could not start: ${e.message}` }));
   p.on("close", () => {
-    const hash = /state hash: ([0-9a-f]{8})/.exec(out)?.[1] ?? null;
-    done({ name, version: "", hash, note: hash ? "" : `no state hash in its output: ${out.trim().split("\n").slice(-3).join(" | ")}` });
+    const found = /state hash: ([0-9a-f]{8})/.exec(out)?.[1] ?? null, won = /RESULTS winner team \d+/.test(out);
+    const hash = found && won ? found : null;
+    done({ name, version: "", hash, note: hash ? "" : `${found ? "the match ended without a winner" : "no state hash in its output"}: ${out.trim().split("\n").slice(-3).join(" | ")}` });
   });
 });
 const version = (cmd: string) => new Promise<string>((done) => { let o = ""; const p = spawn(cmd, ["--version"], { shell }); p.stdout.on("data", (d) => (o += d)); p.on("error", () => done("missing")); p.on("close", () => done(o.trim() || "missing")); });
