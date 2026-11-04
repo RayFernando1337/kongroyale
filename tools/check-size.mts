@@ -24,7 +24,7 @@ const budgets = budgetsFile ? orExit("check-size", USAGE, () => {
   const b = parsed?.gzBytes;
   if (!b || typeof b !== "object") throw new GateError(`${budgetsFile} must have a gzBytes object`);
   for (const k of Object.keys(b)) if (!(BUDGET_KEYS as readonly string[]).includes(k)) throw new GateError(`${budgetsFile}: unknown budget ${k}; use ${BUDGET_KEYS.join(", ")}`);
-  for (const k of BUDGET_KEYS) if (!Number.isInteger(b[k]) || (b[k] as number) < 1) throw new GateError(`${budgetsFile}: gzBytes.${k} must be a positive whole number of bytes, got ${JSON.stringify(b[k])}`);
+  for (const k of BUDGET_KEYS) if (!Number.isInteger(b[k]) || (b[k] as number) < 0) throw new GateError(`${budgetsFile}: gzBytes.${k} must be a whole number of bytes, 0 or more, got ${JSON.stringify(b[k])}`);
   return b as Record<(typeof BUDGET_KEYS)[number], number>;
 }) : undefined;
 const indexFile = path.join(dist, "index.html");
