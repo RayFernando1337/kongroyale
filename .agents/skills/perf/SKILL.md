@@ -81,12 +81,14 @@ Adapted from the pstack benchmark checklist. Answer each one from a run, not fro
 2. **Is it tuned like production?** Node 22, no inspector attached, no `--trace-*` flags in timed runs. The inspector
    (`--sample`, heap profiling) changes what V8 optimizes. Use it only to attribute, never in a run you report.
 3. **Did it break a limit?** A speedup larger than the share of time the changed code took measured something else.
-4. **Did it error?** Gates in each result (`measuredInPlay`, `hostP99Within60Hz`) must pass. A run with fewer players
+4. **Did it error?** Gates in each result (`measuredInPlay`, `hostP99Within60Hz`) must pass. real-play gates nothing
+   on load, so compare each side's `load` (`aliveAtEnd`, `kills`, `pellets`) yourself: a side with fewer players
    alive or fewer pellets did less work.
 5. **Does it reproduce?** Five runs a side minimum, interleaved. A gap smaller than the A/A spread is no difference.
 6. **Does it matter?** Put a micro result next to `hostTickMs` on real-play. An allocation cut that leaves the tick
    unchanged is still worth shipping when it cuts GC count, but claim the allocation cut only.
-7. **Did the work happen?** The digest and the gates prove the same match ran. A code path the scenario never
+7. **Did the work happen?** The digest checks the final state and the gates check the phase; with equal `load`
+   numbers they show the same match ran. A code path the scenario never
    reaches (humans, vehicles) is not measured by real-play: say so instead of claiming it.
 
 Lead the report with the verdict, then one primary number with run count and range, for example "allocBytesPerTick
