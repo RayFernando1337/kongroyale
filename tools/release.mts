@@ -42,7 +42,12 @@ const run = (c: string, a: string[], o: { allowFail?: boolean; cwd?: string } = 
   catch (e: any) { if (o.allowFail) return ""; throw new Error(c + " " + a.join(" ") + ": " + (e.stderr || e.message)); }
 };
 const git = (...a: string[]) => run("git", a);
-const gh = (...a: string[]) => run("gh", a);
+const gh = (...a: string[]): string => {
+  for (let i = 1; ; i++) {
+    try { return run("gh", a); }
+    catch (e: any) { if (i >= 3 || !/HTTP 5\d\d/.test(e.message)) throw e; execFileSync("sleep", ["2"]); }
+  }
+};
 const ghJson = (...a: string[]) => JSON.parse(gh(...a) || "null");
 const say = (m: string) => console.log((dry ? "[dry-run] " : "") + m);
 
@@ -211,7 +216,7 @@ if (cmd === "plan") {
   const cur = all.find((r) => r.sha === stableSha) ?? die("stable does not point at a release");
   const to = opt("--to") ? all.find((r) => r.tag === opt("--to")) ?? die("no such release " + opt("--to")) : [...all.slice(0, all.indexOf(cur))].reverse().find((r) => !isPre(r.tag)) ?? die("no promoted release before " + cur.tag);
   console.log("rolling stable back " + cur.tag + " -> " + to.tag);
-  if (to.sha !== cur.sha) { git("fetch", "--quiet", "origin", to.sha, cur.sha); console.log(git("log", "--format=  removed: %h %s", to.sha + ".." + cur.sha)); }
+  if (to.sha !== cur.sha) { git("fetch", "--quiet", "origin", to.sha, cur.sha); console.log("removed:\n" + git("log", "--format=  %h %s", to.sha + ".." + cur.sha)); }
   moveTag(channel("stable"), to.sha);
   if (!dry) { gh("release", "edit", cur.tag, "--prerelease=true", "--latest=false"); gh("release", "edit", to.tag, "--prerelease=false", "--latest=" + (prefix === "kong")); }
   say("fix forward: merge the fix, then cut the next patch");
