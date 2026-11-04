@@ -14,6 +14,7 @@ type Data = {
   upstreamAuthor: string;
   baseTag: string;
   baseCommit: string;
+  tagPrefix: string;
   hide: string;
   areas: Area[];
   areaRules: { area: string; match: string }[];
@@ -28,7 +29,6 @@ type Data = {
 };
 type Pr = { number: number; title: string; state: string; labels: { name: string }[]; mergedAt: string | null; createdAt: string; url: string };
 type Release = { tagName: string; name: string; isPrerelease: boolean; publishedAt: string; url: string; body: string };
-type Ref = { ref: string; object: { sha: string } };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -86,19 +86,25 @@ function main(): void {
   const now = new Date(arg("--now") ?? new Date().toISOString());
   if (Number.isNaN(now.getTime())) throw new Error("--now is not a date");
   const dayAgo = now.getTime() - DAY_MS;
+  const inDay = (iso: string | null) => !!iso && Date.parse(iso) >= dayAgo && Date.parse(iso) <= now.getTime();
   const hide = new RegExp(data.hide, "i");
   const shown = (title: string) => !hide.test(title);
 
-  const prs = ghJson<Pr[]>(["pr", "list", "-R", data.repo, "--state", "all", "--limit", "1000", "--json", "number,title,state,labels,mergedAt,createdAt,url"]);
+  const prs = ghJson<Pr[]>(["pr", "list", "-R", data.repo, "--base", "main", "--state", "all", "--limit", "100000", "--json", "number,title,state,labels,mergedAt,createdAt,url"]);
   if (prs.length === 0) throw new Error("gh returned no pull requests for " + data.repo);
-  const upstream = ghJson<Pr[]>(["pr", "list", "-R", data.upstreamRepo, "--author", data.upstreamAuthor, "--state", "all", "--limit", "1000", "--json", "number,title,state,labels,mergedAt,createdAt,url"]);
+  const upstream = ghJson<Pr[]>(["pr", "list", "-R", data.upstreamRepo, "--author", data.upstreamAuthor, "--state", "all", "--limit", "100000", "--json", "number,title,state,labels,mergedAt,createdAt,url"]);
   const totalCommits = Number(gh(["api", "repos/" + data.repo + "/compare/" + data.baseCommit + "...main", "--jq", ".total_commits"]).trim());
   if (!Number.isFinite(totalCommits)) throw new Error("could not count commits since " + data.baseCommit);
-  const dayCommits = gh(["api", "--paginate", "repos/" + data.repo + "/commits?sha=main&per_page=100&since=" + new Date(dayAgo).toISOString(), "--jq", "length"]).trim().split("\n").filter(Boolean).reduce((a, b) => a + Number(b), 0);
-  const releaseTags = ghJson<{ tagName: string }[]>(["release", "list", "-R", data.repo, "--limit", "100", "--json", "tagName"]);
+  const dayCommits = gh(["api", "--paginate", "repos/" + data.repo + "/commits?sha=main&per_page=100&since=" + new Date(dayAgo).toISOString() + "&until=" + now.toISOString(), "--jq", "length"]).trim().split("\n").filter(Boolean).reduce((a, b) => a + Number(b), 0);
+  const releaseTags = ghJson<{ tagName: string }[]>(["release", "list", "-R", data.repo, "--limit", "100000", "--json", "tagName"]).filter((r) => r.tagName.startsWith(data.tagPrefix));
   const releases = releaseTags.map((r) => ghJson<Release>(["release", "view", r.tagName, "-R", data.repo, "--json", "tagName,name,isPrerelease,publishedAt,url,body"]));
-  const refs = ghJson<Ref[]>(["api", "repos/" + data.repo + "/git/matching-refs/tags/"]);
-  const shaOf = (tag: string) => refs.find((r) => r.ref === "refs/tags/" + tag)?.object.sha;
+  const refs = new Map<string, string>();
+  for (const line of gh(["api", "--paginate", "repos/" + data.repo + "/git/matching-refs/tags/", "--jq", ".[] | [.ref, .object.type, .object.sha] | @tsv"]).trim().split("\n")) {
+    const [ref, type, sha] = line.split("\t");
+    if (!ref) continue;
+    refs.set(ref.slice("refs/tags/".length), type === "tag" ? gh(["api", "repos/" + data.repo + "/git/tags/" + sha, "--jq", ".object.sha"]).trim() : sha);
+  }
+  const shaOf = (tag: string) => refs.get(tag);
   const channelOf = (name: string) => {
     const sha = shaOf(name);
     return sha ? releases.find((r) => shaOf(r.tagName) === sha)?.tagName : undefined;
@@ -110,7 +116,7 @@ function main(): void {
   const open = prs.filter((p) => p.state === "OPEN");
   const upOpen = upstream.filter((p) => p.state === "OPEN");
   const upMerged = upstream.filter((p) => p.state === "MERGED");
-  const merged24 = merged.filter((p) => p.mergedAt && Date.parse(p.mergedAt) >= dayAgo);
+  const merged24 = merged.filter((p) => inDay(p.mergedAt));
   const released = new Set<number>();
   for (const r of releases) for (const m of r.body.matchAll(/^- #(\d+)/gm)) released.add(Number(m[1]));
   const unreleased = merged.filter((p) => !released.has(p.number));
@@ -133,7 +139,7 @@ function main(): void {
     return '<li><details><summary><span class="plain">' + esc(plain) + "</span>" + when + '</summary><p class="tech">' + esc(cleanTitle(p.title)) + " " + prLink(p.number) + "</p></details></li>";
   };
 
-  const stat = (n: number | string, label: string, note: string) => '<div class="stat"><div class="big">' + n + '</div><div class="label">' + label + '</div><div class="note">' + note + "</div></div>";
+  const stat = (n: number | string, label: string, note: string) => '<div class="stat"><div class="big">' + esc(String(n)) + '</div><div class="label">' + esc(label) + '</div><div class="note">' + esc(note) + "</div></div>";
 
   const bars = (p: PerfItem) => {
     const max = Math.max(p.before, p.after) || 1;
@@ -145,7 +151,7 @@ function main(): void {
       "<details><summary>How we measured it</summary><p class=\"tech\">" + esc(p.metric) + ". Measured on " + esc(p.machine) + ". Changes: " + p.prs.map(prLink).join(", ") + ".</p></details></div>";
   };
 
-  const perfRecent = data.perf.filter((p) => Date.parse(p.date) >= dayAgo);
+  const perfRecent = data.perf.filter((p) => inDay(p.date));
   const headline = ["server-tick", "first-frame-cpu", "warmup-worst", "ready-chrome"].map((id) => data.perf.find((p) => p.id === id)).filter((p): p is PerfItem => !!p);
 
   const areaCounts = data.areas.map((a) => ({ a, n: merged24.filter((p) => shown(p.title) && areaOf(p) === a.id).length })).filter((x) => x.n > 0);
@@ -222,7 +228,7 @@ function main(): void {
   const summary =
     '<div class="hero"><p class="eyebrow">Executive summary</p><h1>' + esc(data.summary.plain) + "</h1></div>" +
     '<div class="stats">' +
-    stat(merged.length, "changes shipped", totalCommits + " commits since " + data.baseTag) +
+    stat(merged.length, "changes merged", totalCommits + " commits since " + data.baseTag) +
     stat(stableTag ?? nextTag ?? "none", stableTag ? "live on stable" : "newest release", stableTag ? "what players get today" : "being tested") +
     stat(Math.trunc((allDone / allTotal) * 100) + "%", "of the plan done", allDone + " of " + allTotal + " items") +
     stat(measured + " of " + data.play.items.length, "play experiences measured", "the rest say \"not measured yet\"") +

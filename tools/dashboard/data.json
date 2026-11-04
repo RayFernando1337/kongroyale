@@ -5,6 +5,7 @@
   "upstreamAuthor": "RayFernando1337",
   "baseTag": "v0.2.0",
   "baseCommit": "f000fd1",
+  "tagPrefix": "kong-v",
   "hide": "lobby|security|advisor|ghsa|\\broom|\\brole|rate limit",
   "areas": [
     {
