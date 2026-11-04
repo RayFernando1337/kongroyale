@@ -55,7 +55,7 @@ function scopeNames(s: ts.Node): string[] {
     }
   };
   if (ts.isSourceFile(s) || ts.isBlock(s) || ts.isModuleBlock(s)) statements(s.statements);
-  else if (ts.isCaseClause(s) || ts.isDefaultClause(s)) statements(s.statements);
+  else if (ts.isCaseBlock(s)) for (const c of s.clauses) statements(c.statements);
   else if (ts.isFunctionLike(s)) {
     for (const p of s.parameters) bindingNames(p.name, out);
     if ((ts.isFunctionExpression(s)) && s.name) out.push(s.name.text);

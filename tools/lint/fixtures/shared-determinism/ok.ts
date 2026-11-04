@@ -13,3 +13,9 @@ export const top = (x: number) => screen(x)[1];
 export function moveTo(history: number[]) { return history.length; }
 export function walk(list: number[]) { let s = 0; for (const performance of list) s += performance; return s; }
 export const mod = () => import("./ok-other");
+export function fall(n: number) {
+  switch (n) {
+    case 0: const process = { value: 1 };
+    case 1: return process.value;
+  }
+}
