@@ -389,26 +389,25 @@ const urlFlags: Rule = {
   id: "url-flags",
   counted: true,
   applies: (rel) => rel.startsWith("client/src/") && !RAW_QUERY_EXEMPT.has(rel),
-  check(sf) {
-    const pageUrlNames = new Set<string>();
+  check(parsed) {
+    const program = parsed.text.includes("searchParams") ? ts.createProgram({ rootNames: [parsed.fileName], options: { noResolve: true, noLib: true, types: [], noEmit: true } }) : undefined;
+    const sf = program?.getSourceFile(parsed.fileName) ?? parsed, checker = program?.getTypeChecker();
     const isPageUrl = (e: ts.Expression): boolean => {
       if (ts.isParenthesizedExpression(e)) return isPageUrl(e.expression);
-      if (ts.isIdentifier(e)) return pageUrlNames.has(e.text);
-      return ts.isNewExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "URL" && e.arguments?.length === 1 && isPageHref(e.arguments[0]);
+      if (ts.isIdentifier(e)) {
+        const decl = checker?.getSymbolAtLocation(e)?.valueDeclaration;
+        return !!decl && ts.isVariableDeclaration(decl) && !!(ts.getCombinedNodeFlags(decl) & ts.NodeFlags.Const) && !!decl.initializer && isPageUrl(decl.initializer);
+      }
+      return ts.isNewExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "URL" && !!e.arguments?.length && isPageHref(e.arguments[0]);
     };
-    const collect = (n: ts.Node): void => {
-      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && isPageUrl(n.initializer)) pageUrlNames.add(n.name.text);
-      ts.forEachChild(n, collect);
-    };
-    collect(sf);
     const hits: Hit[] = [];
     const visit = (n: ts.Node): void => {
       if (ts.isPropertyAccessExpression(n) && n.name.text === "search" && isLocation(n.expression)) {
-        hits.push({ node: n, message: `a raw location.search read: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
+        hits.push({ node: n, line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, message: `a raw location.search read: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
       }
       if (ts.isPropertyAccessExpression(n) && n.name.text === "searchParams" && isPageUrl(n.expression)) {
         const write = ts.isPropertyAccessExpression(n.parent) && QUERY_WRITES.has(n.parent.name.text) && ts.isCallExpression(n.parent.parent);
-        if (!write) hits.push({ node: n, message: `a raw read of the page URL's searchParams: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
+        if (!write) hits.push({ node: n, line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1, message: `a raw read of the page URL's searchParams: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
       }
       ts.forEachChild(n, visit);
     };
