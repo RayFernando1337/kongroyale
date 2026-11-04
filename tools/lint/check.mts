@@ -247,14 +247,14 @@ function hotListErrors(list: unknown, from: string, readable: (rel: string) => t
   return errors;
 }
 
-const DIRECTIVES = ["@ts-expect-error", "@ts-ignore", "@ts-nocheck", "@vite-ignore", "lint-expect"];
+const LINE_DIRECTIVES = ["@ts-expect-error", "@ts-ignore", "@ts-nocheck", "lint-expect"], BLOCK_DIRECTIVES = ["@vite-ignore"];
 const MSG_COMMENT = "no comments (plan decision 2, after Lauren Tan): say it with a name, a type or a test instead; the pstack no-comments skill turns one comment at a time into one of those. Tool directives (@ts-expect-error, @vite-ignore, /// <reference>) are allowed";
 
 function isDirective(text: string): boolean {
   if (text.startsWith("/// <reference")) return true;
-  const body = text.startsWith("//") ? text.slice(2) : text.slice(2, -2).replace(/^\s*\*+/, "");
-  const word = body.trim().split(/\s/, 1)[0];
-  return DIRECTIVES.includes(word);
+  const line = text.startsWith("//");
+  const word = (line ? text.slice(2) : text.slice(2, -2)).trim().split(/\s/, 1)[0];
+  return (line ? LINE_DIRECTIVES : BLOCK_DIRECTIVES).includes(word);
 }
 
 function comments(sf: ts.SourceFile): ts.CommentRange[] {
@@ -262,9 +262,8 @@ function comments(sf: ts.SourceFile): ts.CommentRange[] {
   const add = (ranges: ts.CommentRange[] | undefined) => { for (const r of ranges ?? []) seen.set(r.pos, r); };
   const walk = (n: ts.Node): void => {
     if (ts.isJSDoc(n)) return;
-    const children = n.getChildren(sf);
-    if (children.length === 0) { add(ts.getLeadingCommentRanges(sf.text, n.pos)); add(ts.getTrailingCommentRanges(sf.text, n.end)); }
-    children.forEach(walk);
+    if (n.kind < ts.SyntaxKind.FirstNode) { add(ts.getLeadingCommentRanges(sf.text, n.pos)); add(ts.getTrailingCommentRanges(sf.text, n.end)); }
+    n.getChildren(sf).forEach(walk);
   };
   walk(sf);
   return [...seen.values()];
