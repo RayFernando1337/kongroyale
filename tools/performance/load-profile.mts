@@ -214,7 +214,6 @@ async function playwrightDriver(kind: "chrome" | "edge" | "webkit", o: Opts): Pr
   // incognito-style context keeps only a small in-memory cache, which a returning player does not have)
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kr-load-profile-"));
   const common = { headless: !o.headed, viewport: { width: o.viewport[0], height: o.viewport[1] }, deviceScaleFactor: o.dpr, timeout: 120_000 };
-  // (Edge is Chromium: same flags, same ANGLE backend, its own installed channel; Edge is the Windows default browser)
   const ctx = kind !== "webkit"
     ? await pw.chromium.launchPersistentContext(dir, { ...common, channel: kind === "edge" ? "msedge" : "chrome", args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required"] })
     : await pw.webkit.launchPersistentContext(dir, common);
