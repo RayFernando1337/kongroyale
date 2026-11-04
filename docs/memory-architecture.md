@@ -200,18 +200,19 @@ geometry and lifecycle lanes (RAY-105, RAY-106, RAY-107) refine them.
 Budgets scale with the quality tier, and with `navigator.deviceMemory` where the browser reports it.
 
 **Render targets are sized from capped internal pixels, not display pixels.** Today the canvas follows
-`devicePixelRatio` up to 2 (`engine/engine.ts`), so a 4K display at DPR 2 renders 8.3 million pixels. The post chain's
-half-float targets then grow with the display, not with the quality setting. Safari on a 16 GB M4 Mac mini killed the
-page (`ExceededMemoryLimit`) as a match loaded, at or just after the switch to fullscreen on such a display, in 5 of 5
-runs (RAY-104). So:
+`devicePixelRatio` up to 2 (`engine/engine.ts`), so a 4K display at DPR 2 (a 1920x1080 CSS viewport) renders 8.3
+million pixels, and the post chain's half-float targets grow with the display, not with the quality setting. Safari on a
+16 GB M4 Mac mini killed the page (`ExceededMemoryLimit`) as a match loaded, at or just after the switch to fullscreen on
+such a display, in 5 of 5 runs (RAY-104). So:
 
 - Each quality tier sets a maximum number of internal pixels (for example 2.1 million, 1080p, on high). Every
-  screen-sized target is created from `min(display pixels, cap)`, and the final pass upscales to the canvas.
-  `renderScale` and dynamic resolution keep working below the cap.
+  screen-sized target is created from `min(display pixels, cap)`, and only the final blit writes the canvas at display
+  size. That includes the TAA history targets, which `AtmosFinalPass.setSizes` (`world/atmos/post.ts`) sizes to the
+  output today, not to the internal resolution. `renderScale` and dynamic resolution keep working below the cap.
 - The `target` budget is set at the cap, so it is a fixed number per tier, the same on a 1080p laptop and a 4K monitor.
-- A resize or fullscreen switch that would cross the cap changes the upscale factor, never the target sizes, so
-  switching to fullscreen allocates nothing.
-- The budget step checks `target` bytes at the cap, with the page at DPR 2 on a 4K viewport.
+- A resize or a fullscreen switch can still reallocate targets when the aspect ratio changes, but never past the cap's
+  bytes, so going fullscreen on a large display costs no more than on a small one.
+- The budget step checks `target` bytes at the cap, with the page at DPR 2 on a 1920x1080 CSS viewport (a 4K display).
 
 **Residency.** A region is in one of three states:
 
