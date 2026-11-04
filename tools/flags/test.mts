@@ -47,6 +47,25 @@ async function load(env: Env): Promise<typeof Flags> {
 }
 
 {
+  const { flag, flagQuery } = await load({ search: "?join=URLCODE", stored: "ws=wss://evil.example/ws&join=STORED&e=EVT&cast=ABC&caster=exhibit&program&mode=trios&splres=128", document: true });
+  assert.equal(flag("ws"), null);
+  assert.equal(flag("join"), "URLCODE");
+  assert.equal(flag("e"), null);
+  assert.equal(flag("cast"), null);
+  assert.equal(flag("caster"), null);
+  assert.equal(flag("program"), false);
+  assert.equal(flag("mode"), null);
+  assert.equal(flag("splres"), 128);
+  assert.deepEqual(flagQuery, { splres: "128", join: "URLCODE" });
+}
+
+{
+  const { flag } = await load({ search: "?ws=ws://localhost:3020/ws&e=AB12", document: true, stored: null });
+  assert.equal(flag("ws"), "ws://localhost:3020/ws");
+  assert.equal(flag("e"), "AB12");
+}
+
+{
   const { flag } = await load({ search: "", stored: "splres=128", document: false });
   assert.equal(flag("splres"), 256);
 }

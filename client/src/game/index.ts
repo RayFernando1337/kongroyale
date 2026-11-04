@@ -148,10 +148,10 @@ export async function startGame(engine: Engine, boot: GameBoot) {
 
   // ---- lobby state
   const url = new URL(location.href);
-  const joinCode = (url.searchParams.get("join") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || null;
+  const joinCode = (flag("join") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || null;
   // (admin lobby) a player link `?e=CODE`: the event lobby screen instead of the title lobby ("" = not a valid code: the
   // screen says the lobby isn't open)
-  const eventRaw = url.searchParams.get(EVENT_PARAM);
+  const eventRaw = flag(EVENT_PARAM);
   const eventCode = eventRaw === null ? null : EVENT_CODE_RE.test(eventRaw.trim().toUpperCase()) ? eventRaw.trim().toUpperCase() : "";
   // this browser's player session token (sent with every join; an event lobby knows a returning / kicked player by it)
   const playerTok = (() => {
@@ -176,7 +176,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   function nextSessionGeneration() { return ++sessionGeneration; }
   function clearSessionTimers() { clearTimeout(victoryTimer); clearInterval(streamTimer); victoryTimer = 0; streamTimer = 0; }
   // ?ws=ws://host:port/ws (tools): a private game server instead of the page's own /ws
-  const wsParam = url.searchParams.get("ws");
+  const wsParam = flag("ws");
   const wsUrl = wsParam && /^wss?:\/\/[^\s]+$/.test(wsParam) ? wsParam : (url.protocol === "https:" ? "wss://" : "ws://") + url.host + ((import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/") + "ws";
 
   // first-session controls coach (warm-up / firing range; F1 skips) and what it observes
@@ -212,7 +212,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   const blimp = createBlimp(); engine.scene.add(blimp.object);
   // (caster) ?caster / ?cast=CODE: this tab is a commentator seat (client/src/caster) — its own lobby card instead of the
   // player's, its own camera / desk / autopilot once a match runs
-  const casterMode = url.searchParams.has("caster") || url.searchParams.has("cast");
+  const casterMode = flag("caster") !== null || flag("cast") !== null;
   let caster: CasterApp | null = null;
   if (casterMode) {
     lobby.setVisible(false); lobby.el.style.display = "none";

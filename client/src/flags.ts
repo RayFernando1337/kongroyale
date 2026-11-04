@@ -1,3 +1,5 @@
+import { EVENT_PARAM } from "../../shared/net/event";
+
 type Kind<T> = { readonly type: string; readonly default: T; readonly parse: (value: string) => T };
 
 const on: Kind<boolean> = { type: "on unless =0", default: true, parse: (v) => v !== "0" };
@@ -11,8 +13,8 @@ const finite = (d: number): Kind<number> => ({ type: "finite number", default: d
 const subset: Kind<readonly string[] | undefined> = { type: "comma list, absent = all", default: undefined, parse: (v) => v.split(",").filter(Boolean) };
 const numbers: Kind<readonly number[] | undefined> = { type: "comma numbers", default: undefined, parse: (v) => v.split(",").map(Number) };
 
-type Owner = "actors" | "atmos" | "audio" | "boot" | "engine" | "game" | "pois" | "terrain" | "ui" | "veg" | "voice" | "water" | "weapons";
-type Flag = { readonly kind: Kind<unknown>; readonly owner: Owner; readonly purpose: string };
+type Owner = "actors" | "atmos" | "audio" | "boot" | "caster" | "engine" | "game" | "pois" | "terrain" | "ui" | "veg" | "voice" | "water" | "weapons";
+type Flag = { readonly kind: Kind<unknown>; readonly owner: Owner; readonly purpose: string; readonly routing?: true };
 
 const FLAGS = {
   announce: { kind: present, owner: "boot", purpose: "show the display-preset toasts to automated browsers too" },
@@ -24,6 +26,8 @@ const FLAGS = {
   bananatint: { kind: on, owner: "veg", purpose: "per-plant tint variation on banana leaves" },
   cam: { kind: text, owner: "boot", purpose: "ad-hoc camera x,y,z,tx,ty,tz[,fov] instead of the game" },
   canopyOff: { kind: list, owner: "pois", purpose: "Canopy Line perf probe: hide crowns, det, main or cast" },
+  cast: { kind: text, owner: "caster", routing: true, purpose: "open as a caster seat on this lobby code" },
+  caster: { kind: text, owner: "caster", routing: true, purpose: "open as a caster seat (=exhibit starts an exhibition)" },
   cavesAmb: { kind: finite(0.36), owner: "pois", purpose: "Coco Caves remaining sky ambient deep inside" },
   cavesHide: { kind: list, owner: "pois", purpose: "Coco Caves ablation: hide parts whose names contain these" },
   cavesLamp: { kind: finite(0.7), owner: "pois", purpose: "Coco Caves lamp irradiance gain" },
@@ -39,6 +43,7 @@ const FLAGS = {
   dpr: { kind: num(0), owner: "engine", purpose: "device pixel ratio instead of the screen's (capped at 2); 0 = the screen's" },
   dside: { kind: present, owner: "pois", purpose: "Mist Falls materials render double-sided" },
   dynres: { kind: text, owner: "engine", purpose: "dynamic resolution: =1 on, =0 forced off, absent = the setting" },
+  [EVENT_PARAM]: { kind: text, owner: "game", routing: true, purpose: "event lobby code from an admin's player link" },
   elevlod: { kind: on, owner: "pois", purpose: "elevation-aware LOD distances in the POIs; =0 = the old switches" },
   fly: { kind: present, owner: "boot", purpose: "free-fly camera on top of a view" },
   fp3: { kind: on, owner: "weapons", purpose: "tucked first-person arms and item hold; =0 = the older outstretched arms" },
@@ -63,6 +68,7 @@ const FLAGS = {
   impshadow: { kind: on, owner: "veg", purpose: "impostor quads cast the island-wide canopy shadows into the static far map" },
   impsplit: { kind: numbers, owner: "veg", purpose: "four numbers that replace the impostor shade/sun split uImpSplit" },
   jdbgNoRocks: { kind: present, owner: "pois", purpose: "Mist Falls water without its rocks" },
+  join: { kind: text, owner: "game", routing: true, purpose: "join this private lobby code" },
   jungleCheck: { kind: present, owner: "pois", purpose: "check the baked jungle layout still matches the terrain" },
   jungleNoVeg: { kind: present, owner: "pois", purpose: "jungle POIs plant no vegetation" },
   kong: { kind: text, owner: "actors", purpose: "kong asset: v1, v2 or alt; absent = v2" },
@@ -73,7 +79,9 @@ const FLAGS = {
   kyval: { kind: num(0.97), owner: "actors", purpose: "v2 kong ripe-yellow value" },
   labhide: { kind: list, owner: "pois", purpose: "CNVS Lab perf A/B: hide shell, near, interior, glass, rocks, vines, falls, gravel, rooms" },
   lodv: { kind: on, owner: "engine", purpose: "the anti-pop LOD path: terrain geomorph, rock and HLOD crossfades, view-dependent detail culling" },
+  manual: { kind: present, owner: "caster", purpose: "caster camera starts in manual instead of autopilot" },
   map: { kind: one, owner: "ui", purpose: "open the full-screen map (view-camera captures)" },
+  mode: { kind: text, owner: "caster", routing: true, purpose: "mode of the lobby a caster creates: trios, else solo" },
   modules: { kind: subset, owner: "boot", purpose: "build only these modules (ids or prefixes)" },
   murkdbg: { kind: num(0), owner: "pois", purpose: "The Murk water debug mode" },
   murknoscene: { kind: present, owner: "pois", purpose: "The Murk water without its scene grab" },
@@ -99,6 +107,7 @@ const FLAGS = {
   playtest: { kind: text, owner: "ui", purpose: "playtest title with one Play button: present or =1 on, =0 off" },
   prepare: { kind: text, owner: "boot", purpose: "=full builds everything behind the match card instead of streaming" },
   prewarm: { kind: text, owner: "game", purpose: "=full prewarms every prefab before ready instead of after" },
+  program: { kind: present, owner: "caster", routing: true, purpose: "this caster window is the program output (OBS feed)" },
   q: { kind: text, owner: "boot", purpose: "build quality ultra, high, medium or low instead of the video preset's" },
   readyby: { kind: num(25000), owner: "boot", purpose: "target time (ms) for the title to be ready; the stream planner works back from it" },
   rockMerge: { kind: on, owner: "pois", purpose: "Mist Falls merges its near rock sets into meshes; =0 = the old instanced sets" },
@@ -166,6 +175,7 @@ const FLAGS = {
   wphys: { kind: present, owner: "water", purpose: "physical water: full sun glitter, no artistic reflection lifts" },
   wprepass: { kind: present, owner: "water", purpose: "depth pre-pass for water" },
   wripple: { kind: present, owner: "water", purpose: "demo ripples" },
+  ws: { kind: text, owner: "game", routing: true, purpose: "game server socket URL (ws:// or wss://) instead of the page's own" },
 } as const satisfies Record<string, Flag>;
 
 export type FlagName = keyof typeof FLAGS;
@@ -180,6 +190,7 @@ function readQuery(): URLSearchParams {
   try { stored = localStorage.getItem(STORAGE_KEY); } catch { return url; }
   if (!stored) return url;
   const merged = new URLSearchParams(stored);
+  for (const [name, f] of Object.entries(FLAGS as Record<string, Flag>)) if (f.routing) merged.delete(name);
   for (const k of url.keys()) merged.delete(k);
   for (const [k, v] of url) merged.append(k, v);
   return merged;
