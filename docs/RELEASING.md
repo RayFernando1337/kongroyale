@@ -42,7 +42,7 @@ git push origin kong-vA.B.C:refs/heads/hotfix-base/kong-vA.B.C
 npx tsx tools/release.mts cut --hotfix-from kong-vA.B.C
 ```
 
-A hotfix is always a patch in the base's line (`A.B`). Land the fix on `main` as well.
+A hotfix is always a patch in the base's line (`A.B`). Delete the `hotfix-base/*` branch, and land the fix on `main` as well.
 
 ## Promote
 
