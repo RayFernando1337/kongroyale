@@ -170,7 +170,7 @@ export class Match {
   constructor(o: MatchOpts) {
     this.world = o.world; this.terrain = o.world.terrain; this.mode = o.mode; this.seed = o.seed; this.rng = new Rng(o.seed);
     this.glass = new GlassState(o.world); this.glass.bind();
-    this.vehs = new VehicleSet(o.world); this.vehs.bind();
+    this.vehs = new VehicleSet(o.world); this.vehs.bind(); this.world.cover = this.covers;
     // a tier caps the caller's nerfs; no tier (the server, a client that predates tiers): the nerfs exactly as passed —
     // the classic practice client's 10 % damage is the easy tier, everything else standard
     const tier = o.botDifficulty ? BOT_DIFFICULTY[o.botDifficulty] : null;
