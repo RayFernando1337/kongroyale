@@ -278,7 +278,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | A match leaves nothing behind | CI on SwiftShader: two matches back to back. The ledger's bytes per category after the second equal those after the first, within a small tolerance, and the match scope is empty after leaving |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
 | Only the cache frees what it lends | Development builds throw on `dispose()` of a cached resource from outside the cache |
-| The game survives a WebGL context loss | `npm test` step on SwiftShader: `loseContext()` then `restoreContext()` at the title and again in a match's warm-up, and the page must reach `__kr.ready` again with no errors, by reload until every ledger entry has a restore path and by restoring in place after (see [Context loss](#context-loss)) |
+| The game survives a WebGL context loss | `npm test` step on SwiftShader: `loseContext()` then `restoreContext()` at the title and again in a match's warm-up, with no `__kr.errors` after: a new document while some ledger entry lacks a restore path, and a higher `__kr.restores` count with non-empty baked pixels once every entry has one (see [Context loss](#context-loss)) |
 
 Geometry constructors are not in the lint rule. Most of the roughly 1,400 `new THREE.*Geometry` calls build temporary
 inputs that are merged and never reach the GPU, so a lint would mostly flag harmless code. The "no unowned resource"
