@@ -332,7 +332,7 @@ function compareBaseline(findings: Finding[], baseline: Baseline, rules: Pick<Ru
         if (listed !== undefined && !fileExists(file)) { errors.push(`${rule}: ${file} is in ${BASELINE} but does not exist: remove its entry`); continue; }
         const allowed = listed ?? 0, n = found.length;
         if (n > allowed && allowed === 0) fresh.push(...found);
-        if (n > allowed) errors.push(`${rule}: ${file} has ${n} flagged line(s), the baseline allows ${allowed}: remove the new one(s)${allowed ? " (git diff shows yours)" : " (see above)"}`);
+        if (n > allowed) errors.push(`${rule}: ${file} has ${n} flagged line(s), the baseline allows ${allowed}: remove the new one(s)${allowed ? " (git diff shows yours)" : ` (see above), or, if this code moved here from another file, move that file's count to this entry in ${BASELINE}: a move may transfer counts, but the total must not grow`}`);
         if (n < allowed) errors.push(`${rule}: ${file} has ${n} flagged line(s), fewer than the baseline's ${allowed}: ${n ? `lower its count in ${BASELINE} to ${n}` : `delete its entry from ${BASELINE}`} so it stays that way`);
         continue;
       }
@@ -345,7 +345,7 @@ function compareBaseline(findings: Finding[], baseline: Baseline, rules: Pick<Ru
       for (const f of found) {
         const i = left.indexOf(f.key);
         if (i >= 0) left.splice(i, 1);
-        else { fresh.push(f); errors.push(`${rule}: ${file}:${f.line} is a new violation: fix it (see above)`); }
+        else { fresh.push(f); errors.push(`${rule}: ${file}:${f.line} is a new violation: fix it (see above), or, if the line moved here unchanged from another file, move its entry in ${BASELINE} with it`); }
       }
       for (const k of left) errors.push(`${rule}: ${file} no longer has the baselined site ${JSON.stringify(k)}: delete it from ${BASELINE} so the fix stays fixed (if you only edited that line, the violation is still there: fix it)`);
     }

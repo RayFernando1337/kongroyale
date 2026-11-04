@@ -123,6 +123,10 @@ catching it; turn it into a check when the same mistake shows up twice.
 | Wire ids are `const enum`s | Review only |
 | No new dependencies without discussion | Review only (`package.json` is on the Ask first list) |
 
+The baselines in `tools/lint/baseline.json` only shrink: never add an entry to make a change pass. The one exception is a
+pure move: code moved to another file (into a `*.hot.ts` file, for example) may take its baselined sites or counts
+with it to the new file's entry, as long as no rule's total grows. Lint names this when a new file has findings.
+
 Run one check on its own with `npm test -- --only lint` (`--list` shows every id, `--fast` skips the slow ones).
 
 ## Ask first
