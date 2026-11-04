@@ -768,5 +768,407 @@
     ]
   },
   "url-flags": {},
-  "url-params": {}
+  "url-params": {},
+  "resource-owner": {
+    "client/src/actors/firefight-set.ts": [
+      "const t = new THREE.CanvasTexture(el);"
+    ],
+    "client/src/actors/glider.ts": [
+      "const t = new THREE.CanvasTexture(c);",
+      "const t = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);"
+    ],
+    "client/src/actors/heli-tripo.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;",
+      "const L = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);"
+    ],
+    "client/src/actors/helipad.ts": [
+      "tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;"
+    ],
+    "client/src/actors/kong-asset.ts": [
+      "const tl = new THREE.TextureLoader();",
+      "new GLTFLoader().loadAsync(BASE + \"kong.glb\"),"
+    ],
+    "client/src/actors/kong.ts": [
+      "this.texs = this.datas.map((d) => { const t = new THREE.DataTexture(d, ROW, MAX_KONGS, THREE.RGBAFormat, THREE.FloatType); t.minFilter = t.magFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true; return t; });",
+      "const t = new THREE.WebGLRenderTarget(img.width, img.height, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, stencilBuffer: false, generateMipmaps: false });",
+      "const tex = new THREE.DataTexture(data, 1, MAX_KONGS, THREE.RGBAFormat, THREE.FloatType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;"
+    ],
+    "client/src/actors/outfits.ts": [
+      "function tex(c: HTMLCanvasElement, rep = 1, srgb = true) { const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep); t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; }",
+      "const gltf = await new GLTFLoader().loadAsync(GBASE + \"outfits.glb\");",
+      "const tl = new THREE.TextureLoader();",
+      "const gltf = await new GLTFLoader().loadAsync(PUBLIC_BASE + \"assets/actors/kong2/outfits.glb\");",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;"
+    ],
+    "client/src/actors/paint.ts": [
+      "const t = new THREE.CanvasTexture(el);"
+    ],
+    "client/src/actors/plane.ts": [
+      "const map = new THREE.CanvasTexture(this.cc); map.colorSpace = THREE.SRGBColorSpace;",
+      "const normal = new THREE.CanvasTexture(heightToNormal(this.hc, normalStrength)); normal.colorSpace = THREE.NoColorSpace;",
+      "const rough = new THREE.CanvasTexture(this.rc); rough.colorSpace = THREE.NoColorSpace;",
+      "const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;"
+    ],
+    "client/src/actors/tp-hamlet-tex.ts": [
+      "const t = new THREE.DataTexture(data, w, h, THREE.RGBAFormat, THREE.UnsignedByteType);",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;"
+    ],
+    "client/src/actors/tp-set.ts": [
+      "const t = new THREE.CanvasTexture(cv);"
+    ],
+    "client/src/actors/tuktuk.ts": [
+      "signTex = new THREE.CanvasTexture(c); signTex.colorSpace = THREE.SRGBColorSpace; signTex.anisotropy = 8;"
+    ],
+    "client/src/dev/annotate.ts": [
+      "const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;",
+      "const depthRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: true });",
+      "const countRT = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.UnsignedByteType, depthBuffer: false });"
+    ],
+    "client/src/engine/assets.ts": [
+      "private gltf = new GLTFLoader();",
+      "private tex = new THREE.TextureLoader();",
+      "const draco = new DRACOLoader().setDecoderPath(assetUrl(\"assets/decoders/draco/\"));",
+      "const ktx2 = new KTX2Loader().setTranscoderPath(\"https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/libs/basis/\").detectSupport(renderer);"
+    ],
+    "client/src/engine/engine.ts": [
+      "const rt = this.compileTarget ??= new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });",
+      "const rt = this.warmTarget ??= new THREE.WebGLRenderTarget(64, 64, { type: THREE.HalfFloatType });",
+      "const tex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1); tex.needsUpdate = true;",
+      "const rt = this.excursionTarget ??= new THREE.WebGLRenderTarget(320, 180, { type: THREE.HalfFloatType });"
+    ],
+    "client/src/engine/hlod.ts": [
+      "const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });"
+    ],
+    "client/src/engine/lootspots.ts": [
+      "const w = new Worker(new URL(\"./lootspots.worker.ts\", import.meta.url), { type: \"module\" });"
+    ],
+    "client/src/engine/static-world.ts": [
+      "const w = new Worker(new URL(\"./static-world.worker.ts\", import.meta.url), { type: \"module\" });"
+    ],
+    "client/src/game/ammobox.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;"
+    ],
+    "client/src/game/blimp.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/game/index.ts": [
+      "const rt = new THREE.WebGLRenderTarget(256, 256, { type: THREE.HalfFloatType });",
+      "const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });"
+    ],
+    "client/src/game/range.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;",
+      "const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;"
+    ],
+    "client/src/game/storm/noise.ts": [
+      "const tex = new THREE.DataTexture(data, SIZE, SIZE, THREE.RGBAFormat);"
+    ],
+    "client/src/game/storm/volume.ts": [
+      "const tex = new THREE.Data3DTexture(half, N, N, N);",
+      "const groundTex = new THREE.DataTexture(gh, GN, GN, THREE.RedFormat, THREE.HalfFloatType);",
+      "rt = new THREE.WebGLRenderTarget(w, h, TRACE_TARGET);",
+      "const t = new THREE.WebGLRenderTarget(4, 4, TRACE_TARGET), prev = renderer.getRenderTarget();"
+    ],
+    "client/src/game/title.ts": [
+      "new THREE.TextureLoader().load(`${base}assets/ui/title/${F.art}`, (tex) => {"
+    ],
+    "client/src/ui/mapimage.ts": [
+      "const w = new Worker(new URL(\"./maprenderworker.ts\", import.meta.url), { type: \"module\" });",
+      "const w = new Worker(new URL(\"./mapworker.ts\", import.meta.url), { type: \"module\" });"
+    ],
+    "client/src/weapons/chest-tex.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/weapons/chest.ts": [
+      "seamT = new THREE.CanvasTexture(c); seamT.colorSpace = THREE.SRGBColorSpace;",
+      "haloT = new THREE.CanvasTexture(c); haloT.colorSpace = THREE.SRGBColorSpace;",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;",
+      "shieldTex = new THREE.CanvasTexture(c); shieldTex.colorSpace = THREE.SRGBColorSpace; shieldTex.anisotropy = 8;",
+      "strawT = new THREE.CanvasTexture(c); strawT.colorSpace = THREE.SRGBColorSpace; strawT.wrapS = strawT.wrapT = THREE.RepeatWrapping; strawT.repeat.set(3, 3);",
+      "ammoT = new THREE.CanvasTexture(c); ammoT.colorSpace = THREE.SRGBColorSpace; ammoT.anisotropy = 8;"
+    ],
+    "client/src/weapons/guns/rocket.ts": [
+      "tubeTex = new THREE.CanvasTexture(c); tubeTex.colorSpace = THREE.SRGBColorSpace; tubeTex.anisotropy = 8; tubeTex.wrapS = THREE.RepeatWrapping;"
+    ],
+    "client/src/weapons/hands.ts": [
+      "const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;",
+      "const map = new THREE.CanvasTexture(c); map.colorSpace = THREE.SRGBColorSpace; map.wrapS = map.wrapT = THREE.RepeatWrapping; map.anisotropy = 8;",
+      "const bump = new THREE.CanvasTexture(b); bump.wrapS = bump.wrapT = THREE.RepeatWrapping; bump.anisotropy = 4;",
+      "const map = new THREE.CanvasTexture(c); map.colorSpace = THREE.SRGBColorSpace; map.wrapS = map.wrapT = THREE.RepeatWrapping; map.anisotropy = 8;",
+      "const bump = new THREE.CanvasTexture(b); bump.wrapS = bump.wrapT = THREE.RepeatWrapping; bump.anisotropy = 8;"
+    ],
+    "client/src/weapons/heals.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 8;",
+      "goldEnv = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.HalfFloatType);"
+    ],
+    "client/src/weapons/hut-tex.ts": [
+      "const t = new THREE.CanvasTexture(c);",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;"
+    ],
+    "client/src/weapons/hut.ts": [
+      "leafTexCache = new THREE.CanvasTexture(c); leafTexCache.colorSpace = THREE.SRGBColorSpace; leafTexCache.anisotropy = 8;",
+      "const shaftTex = (() => { const cv = document.createElement(\"canvas\"); cv.width = 64; cv.height = 256; const x = cv.getContext(\"2d\")!; const g = x.createLinearGradient(0, 0, 64, 0); g.addColorStop(0, \"rgba(255,255,255,0)\"); g.addColorStop(0.5, \"rgba(255,255,255,1)\"); g.addColorStop(1, \"rgba(255,255,255,0)\"); x.fillStyle = g; x.fillRect(0, 0, 64, 256); x.globalCompositeOperation = \"destination-in\"; const v = x.createLinearGradient(0, 0, 0, 256); v.addColorStop(0, \"rgba(0,0,0,0)\"); v.addColorStop(0.2, \"rgba(0,0,0,1)\"); v.addColorStop(0.8, \"rgba(0,0,0,.7)\"); v.addColorStop(1, \"rgba(0,0,0,0)\"); x.fillStyle = v; x.fillRect(0, 0, 64, 256); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })();",
+      "const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;"
+    ],
+    "client/src/weapons/lib/mats.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/weapons/stand.ts": [
+      "const map = new THREE.CanvasTexture(c); map.colorSpace = THREE.SRGBColorSpace; map.wrapS = map.wrapT = THREE.RepeatWrapping; map.anisotropy = 8;",
+      "signTex = new THREE.CanvasTexture(c); signTex.colorSpace = THREE.SRGBColorSpace; signTex.anisotropy = 8;"
+    ],
+    "client/src/weapons/supply.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8;"
+    ],
+    "client/src/weapons/viewmodel.ts": [
+      "const mk = (w: number, h: number, draw: (g: CanvasRenderingContext2D) => void) => { const c = document.createElement(\"canvas\"); c.width = w; c.height = h; draw(c.getContext(\"2d\")!); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };",
+      "const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1, 6);"
+    ],
+    "client/src/world/atmos/cloud-bake.ts": [
+      "const target = new THREE.WebGL3DRenderTarget(nx, ny, nz, { type: THREE.HalfFloatType, format: THREE.RedFormat, depthBuffer: false, stencilBuffer: false });",
+      "const sphTex = new THREE.DataTexture(data, n, 2, THREE.RGBAFormat, THREE.FloatType);",
+      "const t = new THREE.Data3DTexture(data, size, size, size);"
+    ],
+    "client/src/world/atmos/clouds.ts": [
+      "this.shadowTex = new THREE.DataTexture(new Uint8Array(SHADOW_RES * SHADOW_RES).fill(255), SHADOW_RES, SHADOW_RES, THREE.RedFormat, THREE.UnsignedByteType);",
+      "tile = new THREE.WebGLRenderTarget(r16(W), r16(Hh), { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });"
+    ],
+    "client/src/world/atmos/interior.ts": [
+      "const t = new THREE.Data3DTexture(new Uint8Array(nx * ny * nz), nx, ny, nz);",
+      "this.worker = new Worker(new URL(\"./interior.worker.ts\", import.meta.url), { type: \"module\" });"
+    ],
+    "client/src/world/atmos/post.ts": [
+      "const t = new THREE.WebGLRenderTarget(Math.max(1, w), Math.max(1, h), { format, type, minFilter: filter, magFilter: filter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false });",
+      "const t = new THREE.WebGLRenderTarget(1, 1, { count: 2, format: THREE.RGBAFormat, type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false });",
+      "const t = new THREE.WebGLRenderTarget(1, 1, { count: 2, format: THREE.RGBAFormat, type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false });",
+      "const NO_VEL = (() => { const t = new THREE.DataTexture(new Uint8Array(4), 1, 1); t.needsUpdate = true; return t; })();",
+      "const t = new THREE.Data3DTexture(new Uint16Array(LUT_N ** 3 * 4), LUT_N, LUT_N, LUT_N);",
+      "this.pre = new THREE.WebGLRenderTarget(1, 1, { format: THREE.RGBAFormat, type: THREE.HalfFloatType, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: bloom });",
+      "const t = new THREE.WebGLRenderTarget(1, 1, { count: 2, type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false });",
+      "this.vmRT = new THREE.WebGLRenderTarget(this.fullW, this.fullH, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, stencilBuffer: false, generateMipmaps: false });"
+    ],
+    "client/src/world/atmos/shadows.ts": [
+      "const rt = new THREE.WebGLRenderTarget(w, h, { format: THREE.RedFormat, type: THREE.UnsignedByteType, generateMipmaps: false, depthBuffer: true });",
+      "const d = new THREE.DepthTexture(w, h, depthType);"
+    ],
+    "client/src/world/atmos/sky.ts": [
+      "const t = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.UnsignedByteType);",
+      "this.bakeRT = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false });",
+      "const t = new THREE.DataTexture(new Uint16Array(128 * 4), 128, 1, THREE.RGBAFormat, THREE.HalfFloatType);"
+    ],
+    "client/src/world/pois/_kit/coast-kit.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;"
+    ],
+    "client/src/world/pois/_kit/coast-sign.ts": [
+      "const t = new THREE.CanvasTexture(c);",
+      "const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;"
+    ],
+    "client/src/world/pois/_kit/coast-tex.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/pois/_kit/containers-tex.ts": [
+      "const t = new THREE.Texture(c as unknown as HTMLImageElement);",
+      "const pool = workerPool(() => new Worker(new URL(\"./harbor-tex.worker.ts\", import.meta.url), { type: \"module\" }), 3);"
+    ],
+    "client/src/world/pois/_kit/containers.ts": [
+      "tableCache = new THREE.DataTexture(data, cols, rows, THREE.RGBAFormat, THREE.FloatType);"
+    ],
+    "client/src/world/pois/_kit/harbor-bananas.ts": [
+      "const rt = new THREE.WebGLRenderTarget(R, R, { depthBuffer: true, type: THREE.UnsignedByteType, format: THREE.RGBAFormat });"
+    ],
+    "client/src/world/pois/_kit/harbor-batch.ts": [
+      "this.loMask = new THREE.DataTexture(new Uint8Array(MASK_W * rows), MASK_W, rows, THREE.RedFormat, THREE.UnsignedByteType);"
+    ],
+    "client/src/world/pois/_kit/harbor-materials.ts": [
+      "const t = new THREE.Texture(bm as unknown as HTMLImageElement);",
+      "const pool = workerPool(() => new Worker(new URL(\"./harbor-tex.worker.ts\", import.meta.url), { type: \"module\" }), 4);"
+    ],
+    "client/src/world/pois/_kit/harbor-paint.ts": [
+      "const t = new THREE.CanvasTexture(el);"
+    ],
+    "client/src/world/pois/_kit/interior-tex.ts": [
+      "const t = new THREE.CanvasTexture(el);"
+    ],
+    "client/src/world/pois/_kit/jungle-gold.ts": [
+      "const tex = new THREE.DataTexture(half, W2, H2, THREE.RGBAFormat, THREE.HalfFloatType);"
+    ],
+    "client/src/world/pois/_kit/jungle-mat.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;",
+      "_jnoise = new THREE.DataTexture(d, N, N, THREE.RGBAFormat);",
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/pois/_kit/jungle-water.ts": [
+      "_wtex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);",
+      "const t = new THREE.DataTexture(data, W, H, THREE.RedFormat, THREE.UnsignedByteType);",
+      "const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;"
+    ],
+    "client/src/world/pois/_kit/town-fountain.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/pois/_kit/town-hotel.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/pois/_kit/town-materials.ts": [
+      "const t = new THREE.DataTexture(data, W, H, THREE.RGBAFormat);"
+    ],
+    "client/src/world/pois/_kit/town-resort.ts": [
+      "const t = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);"
+    ],
+    "client/src/world/pois/_kit/town-tex.ts": [
+      "const t = new THREE.DataTexture(im.data, im.w, im.h, THREE.RGBAFormat, THREE.UnsignedByteType);",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t;",
+      "const w = new Worker(new URL(\"./town-tex.worker.ts\", import.meta.url), { type: \"module\" });"
+    ],
+    "client/src/world/pois/canopy-line/kit.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;"
+    ],
+    "client/src/world/pois/cnvs-lab/tex.ts": [
+      "const t = bitmap ? new THREE.Texture(img as ImageBitmap) : new THREE.CanvasTexture(img as HTMLCanvasElement);",
+      "const w = new Worker(new URL(\"./paint.worker.ts\", import.meta.url), { type: \"module\" });"
+    ],
+    "client/src/world/pois/coco-caves/ground.ts": [
+      "const tex = new THREE.DataTexture(data, W, H, THREE.RedFormat, THREE.UnsignedByteType);"
+    ],
+    "client/src/world/pois/coco-caves/light.ts": [
+      "const vol = new THREE.Data3DTexture(new Uint8Array(buf, a[0], a[1]), V.nx, V.ny, V.nz);",
+      "const sun = new THREE.Data3DTexture(new Uint8Array(buf, b[0], b[1]), V.nx, V.ny, V.nz);"
+    ],
+    "client/src/world/pois/coco-caves/timber.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); t.anisotropy = 4; return t;",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 0.6, 1 / 0.6); t.anisotropy = 4; return t;",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;"
+    ],
+    "client/src/world/pois/lobby-islet/atlas.ts": [
+      "ktx2 ??= new KTX2Loader().setTranscoderPath(assetUrl(\"assets/actors/basis/\")).setWorkerLimit(4).detectSupport(renderer);"
+    ],
+    "client/src/world/pois/lobby-islet/paint.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/pois/lookout-point/index.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;"
+    ],
+    "client/src/world/pois/mist-falls/water.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();"
+    ],
+    "client/src/world/pois/peel-harbor/apron-detail.ts": [
+      "const mk = (d: Uint8Array) => { const t = new THREE.DataTexture(d, TS, TS, THREE.RGBAFormat, THREE.UnsignedByteType); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; t.anisotropy = 8; t.colorSpace = THREE.NoColorSpace; t.needsUpdate = true; return t; };"
+    ],
+    "client/src/world/pois/peel-harbor/index.ts": [
+      "const fp = workerPool(() => new Worker(new URL(\"../_kit/harbor-tex.worker.ts\", import.meta.url), { type: \"module\" }), 1);"
+    ],
+    "client/src/world/pois/the-murk/fx.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/pois/the-murk/water.ts": [
+      "const t = new THREE.DataTexture(d, W, Hh, THREE.RGBAFormat);",
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;",
+      "const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;"
+    ],
+    "client/src/world/pois/the-wreck/freighter.ts": [
+      "shaftM ??= (() => { const c = document.createElement(\"canvas\"); c.width = 8; c.height = 128; const g = c.getContext(\"2d\")!, gr = g.createLinearGradient(0, 0, 0, 128); gr.addColorStop(0, \"rgba(255,236,190,0.0)\"); gr.addColorStop(0.08, \"rgba(255,236,190,0.75)\"); gr.addColorStop(0.6, \"rgba(255,226,170,0.35)\"); gr.addColorStop(1, \"rgba(255,220,160,0)\"); g.fillStyle = gr; g.fillRect(0, 0, 8, 128); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, name: \"wreck-hold-shaft\" }); })();",
+      "poolM ??= (() => { const c = document.createElement(\"canvas\"); c.width = c.height = 128; const g = c.getContext(\"2d\")!; const gr = g.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, \"rgba(255,240,200,0.9)\"); gr.addColorStop(1, \"rgba(255,230,180,0)\"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); g.globalCompositeOperation = \"destination-out\"; for (let i = 0; i < 60; i++) { g.strokeStyle = `rgba(0,0,0,${0.3 + (i % 3) * 0.2})`; g.lineWidth = 3; g.beginPath(); g.arc(20 + ((i * 37) % 90), 20 + ((i * 53) % 90), 6 + (i % 5) * 3, 0, 5); g.stroke(); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, name: \"wreck-hold-pool\" }); })();"
+    ],
+    "client/src/world/pois/wreck-bay/mats.ts": [
+      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso;"
+    ],
+    "client/src/world/terrain/data.ts": [
+      "const tex = new THREE.DataArrayTexture(arr, a.res, a.res, layers);"
+    ],
+    "client/src/world/terrain/index.ts": [
+      "const rt = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, depthBuffer: true });"
+    ],
+    "client/src/world/terrain/jobs.ts": [
+      "try { fin = new Worker(new URL(\"./terrain.worker.ts\", import.meta.url), { type: \"module\" }); } catch (e) { console.warn(\"[terrain] no worker:\", e); return null; }",
+      "const w = new Worker(new URL(\"./terrain.worker.ts\", import.meta.url), { type: \"module\" });"
+    ],
+    "client/src/world/terrain/lod.ts": [
+      "this.heightTex = new THREE.DataTexture(atlas, W, rows, THREE.RedFormat, THREE.FloatType);"
+    ],
+    "client/src/world/terrain/material.ts": [
+      "const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat, THREE.UnsignedByteType);",
+      "const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat, THREE.UnsignedByteType);"
+    ],
+    "client/src/world/terrain/steam.ts": [
+      "const hTex = new THREE.DataTexture(hd, HT.res, HT.res, THREE.RedFormat, THREE.HalfFloatType);"
+    ],
+    "client/src/world/terrain/textures.ts": [
+      "const t = new THREE.DataArrayTexture(data, SIZE, SIZE, n);"
+    ],
+    "client/src/world/veg/impostor.ts": [
+      "const t = new THREE.DataTexture(data, frames * frames, 1, THREE.RGBAFormat, THREE.FloatType);",
+      "const rt = new THREE.WebGLRenderTarget(sz, sz, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: true, colorSpace: THREE.NoColorSpace });",
+      "const mk = () => new THREE.WebGLRenderTarget(sz, sz, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType, generateMipmaps: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, colorSpace: THREE.NoColorSpace });",
+      "const rt = new THREE.WebGLRenderTarget(3, 1, { type: THREE.FloatType, depthBuffer: false });",
+      "const rt = new THREE.WebGLArrayRenderTarget(size, size, maxLayers, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, colorSpace: THREE.NoColorSpace });",
+      "this.params = new THREE.DataTexture(new Float32Array(5 * maxLayers * 4), 5, maxLayers, THREE.RGBAFormat, THREE.FloatType);",
+      "this.rects = new THREE.DataTexture(new Float32Array(frames * frames * maxLayers * 4), frames * frames, maxLayers, THREE.RGBAFormat, THREE.FloatType);"
+    ],
+    "client/src/world/veg/index.ts": [
+      "try { w = new Worker(new URL(\"./scatter-worker.ts\", import.meta.url), { type: \"module\" }); }",
+      "const w = new Worker(new URL(\"./detail-worker.ts\", import.meta.url), { type: \"module\" });",
+      "const R = ctx.renderer, rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }), prev = R.getRenderTarget();",
+      "const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });"
+    ],
+    "client/src/world/veg/paint.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/veg/splat-bake.ts": [
+      "const depthTex = new THREE.DepthTexture(W, H, THREE.UnsignedIntType);",
+      "const rtA = new THREE.WebGLRenderTarget(W, H, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: true, depthTexture: depthTex, colorSpace: THREE.NoColorSpace });",
+      "const rtN = new THREE.WebGLRenderTarget(W, H, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: true, colorSpace: THREE.NoColorSpace });",
+      "const rtP = new THREE.WebGLRenderTarget(W, H, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: false, colorSpace: THREE.NoColorSpace });"
+    ],
+    "client/src/world/veg/splat.ts": [
+      "try { for (let i = 0; i < nW; i++) workers.push(new Worker(new URL(\"./splat-worker.ts\", import.meta.url), { type: \"module\" })); }",
+      "this.dataTex = new THREE.DataTexture(data, SPLAT_W, h, THREE.RGBAIntegerFormat, THREE.UnsignedIntType);",
+      "this.fadeTex = new THREE.DataTexture(g.F, FADE_W, fh, THREE.RGFormat, THREE.FloatType);"
+    ],
+    "client/src/world/veg/tex.ts": [
+      "t = new THREE.Texture();"
+    ],
+    "client/src/world/veg/textures.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/water/bakeclient.ts": [
+      "w = new Worker(new URL(\"./bake.worker.ts\", import.meta.url), { type: \"module\" });"
+    ],
+    "client/src/world/water/fields.ts": [
+      "const texture = new THREE.DataTexture(new Uint16Array(n * 4), res, res, THREE.RGBAFormat, THREE.HalfFloatType);",
+      "const texture2 = new THREE.DataTexture(new Uint8Array(n * 4).fill(128), res, res, THREE.RGBAFormat, THREE.UnsignedByteType);",
+      "const texture3 = new THREE.DataTexture(new Uint16Array(n * 4), res, res, THREE.RGBAFormat, THREE.HalfFloatType);",
+      "this.texture = new THREE.DataTexture(this.data, this.size, this.size, THREE.RedFormat, THREE.UnsignedByteType);"
+    ],
+    "client/src/world/water/flotsam.ts": [
+      "const t = new THREE.CanvasTexture(c);"
+    ],
+    "client/src/world/water/grab.ts": [
+      "if (!this.texture) { this.texture = new THREE.ExternalTexture(tex); this.texture.name = \"water-scene-grab\"; }",
+      "if (!this.depth) { this.depth = new THREE.ExternalTexture(tex); this.depth.name = \"water-scene-depth\"; }"
+    ],
+    "client/src/world/water/interact.ts": [
+      "this.rts = [new THREE.WebGLRenderTarget(N, N, opts), new THREE.WebGLRenderTarget(N, N, opts)];"
+    ],
+    "client/src/world/water/obstacles.ts": [
+      "this.rtA = new THREE.WebGLRenderTarget(size, size, { ...opts, format: THREE.RGFormat });",
+      "this.rtP = new THREE.WebGLRenderTarget(size, size, opts);",
+      "this.rtB = new THREE.WebGLRenderTarget(blurSize, blurSize, opts);",
+      "this.rtC = new THREE.WebGLRenderTarget(blurSize, blurSize, { ...opts, format: THREE.RGFormat });",
+      "this.rtW1 = new THREE.WebGLRenderTarget(WS, WS, opts);",
+      "this.rtW2 = new THREE.WebGLRenderTarget(WS, WS, opts);"
+    ],
+    "client/src/world/water/skyirr.ts": [
+      "private rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, depthBuffer: false, stencilBuffer: false, generateMipmaps: false });"
+    ],
+    "client/src/world/water/textures.ts": [
+      "const t = new THREE.DataArrayTexture(arr, size, size, 3);"
+    ],
+    "client/src/world/water/wavetile.ts": [
+      "this.tile = new THREE.WebGLRenderTarget(res, res, {",
+      "this.caustics = new THREE.WebGLRenderTarget(causRes, causRes, {",
+      "this.causTmp = new THREE.WebGLRenderTarget(causRes, causRes, {"
+    ]
+  }
 }

@@ -431,7 +431,33 @@ const urlParams: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags, urlParams];
+const RESOURCE_LAYER = "client/src/engine/res/";
+const OWNED_CTOR = /^(\w*Texture|\w*RenderTarget|Worker|SharedWorker|TextureLoader|ImageBitmapLoader|GLTFLoader|KTX2Loader|DRACOLoader)$/;
+const SCOPE_TAKES = new Set(["texture", "target", "worker", "own"]);
+
+const resourceOwner: Rule = {
+  id: "resource-owner",
+  applies: (rel) => rel.startsWith("client/src/") && !rel.startsWith(RESOURCE_LAYER),
+  check(sf) {
+    const hits: Hit[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isNewExpression(n)) {
+        const e = n.expression;
+        const name = ts.isIdentifier(e) ? e.text : ts.isPropertyAccessExpression(e) ? e.name.text : "";
+        const p = n.parent;
+        const handed = ts.isCallExpression(p) && p.arguments.includes(n) && ts.isPropertyAccessExpression(p.expression) && SCOPE_TAKES.has(p.expression.name.text);
+        if (OWNED_CTOR.test(name) && !handed) {
+          hits.push({ node: n, message: `new ${name} without an owner: hand it to a resource scope as you create it (scope.texture(cat, new ...), scope.target(new ...), scope.worker(new Worker(...)), scope.own(cat, loader)) from ${RESOURCE_LAYER}scope.ts, so it is counted and freed with its scope (docs/memory-architecture.md)` });
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return hits;
+  },
+};
+
+const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags, urlParams, resourceOwner];
 
 // ---- engine ----
 
