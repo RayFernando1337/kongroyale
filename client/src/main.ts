@@ -76,7 +76,7 @@ for (const [id, load] of entries) {
 }
 const gameImport = gameMode ? import("./game/index") : null;
 let postBuild = null as typeof import("./post-build") | null;
-import("./post-build").then((m) => { postBuild = m; }, (e) => report("post-build", e));
+const postBuildImport = import("./post-build").then((m) => (postBuild = m), (e) => { report("post-build", e); return null; });
 gameImport?.catch(() => { /* reported by the game stage */ });
 if (gameMode) { startStaticWorld(); startLootSpotsWorker(); } // (perf: the loot spots off the main thread too)
 
@@ -309,7 +309,7 @@ if (streamOn && READY_BY > 0) {
   const want = done.reduce((a, id) => a + est(id), 0), got = done.reduce((a, id) => a + buildMs[id], 0);
   const factor = Math.min(3, Math.max(0.8, want > 0 ? got / want : 1));
   kr.bootFactor = +factor.toFixed(2);
-  const postEst = postBuild?.postBuildEstimate(factor);
+  const postEst = (flag("readyest") ? await postBuildImport : postBuild)?.postBuildEstimate(factor);
   if (postEst) kr.postBuildEstimate = { ms: Math.round(postEst.ms), stored: postEst.stored };
   const rest = postEst && flag("readyest")
     ? (_n: number, preMs: number) => postEst.rest(preMs)
