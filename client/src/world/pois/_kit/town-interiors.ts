@@ -8,6 +8,7 @@ import * as THREE from "three";
 import type { WorldCtx } from "../../../engine/engine";
 import type { InteriorRoom } from "../../../../../shared/pois/interior-kit";
 import { buildInteriors } from "./interior";
+import { flag } from "../../../flags";
 
 export interface TownInteriorOpts { name: string; cell?: number; buildDist?: number; showDist?: number }
 
@@ -27,8 +28,7 @@ export function townInteriors(ctx: WorldCtx, parent: THREE.Object3D, rooms: Inte
   const list = [...cells.values()];
   const root = new THREE.Group(); root.name = `${o.name}:interiors`; parent.add(root);
   let busy = false;
-  const q = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
-  const eager = q.has("nocull");
+  const eager = flag("nocull");
   const buildCell = async (c: (typeof list)[number]) => {
     c.state = 1;
     // (perf: each cell its own group, hidden while the camera is well ABOVE every ceiling in it — from a roof

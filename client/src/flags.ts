@@ -6,28 +6,52 @@ const one: Kind<boolean> = { type: "on when =1", default: false, parse: (v) => v
 const num = (d: number): Kind<number> => ({ type: "number", default: d, parse: Number });
 const text: Kind<string | null> = { type: "string", default: null, parse: (v) => v };
 const list: Kind<readonly string[]> = { type: "comma list", default: [], parse: (v) => v.split(",").filter(Boolean) };
+const finite = (d: number): Kind<number> => ({ type: "finite number", default: d, parse: (v) => (Number.isFinite(Number(v)) ? Number(v) : d) });
+const subset: Kind<readonly string[] | undefined> = { type: "comma list, absent = all", default: undefined, parse: (v) => v.split(",").filter(Boolean) };
 const numbers: Kind<readonly number[] | undefined> = { type: "comma numbers", default: undefined, parse: (v) => v.split(",").map(Number) };
 
-type Owner = "atmos" | "boot" | "engine" | "terrain" | "veg" | "water";
+type Owner = "atmos" | "boot" | "engine" | "pois" | "terrain" | "veg" | "water";
 type Flag = { readonly kind: Kind<unknown>; readonly owner: Owner; readonly purpose: string };
 
 const FLAGS = {
   atmos: { kind: list, owner: "atmos", purpose: "atmosphere debug switches: noao, nogr, nobloom, nosmaa, nosharpen, noshadow, noclouds, nopost, nofog, nocloudshadow, cloudmarch" },
   atmosp: { kind: text, owner: "atmos", purpose: "override preset fields as key:value,key:value (hex colours as c0ffee)" },
   bananatint: { kind: on, owner: "veg", purpose: "per-plant tint variation on banana leaves" },
+  cam: { kind: text, owner: "boot", purpose: "camera position for a dev view, x,y,z first" },
+  canopyOff: { kind: list, owner: "pois", purpose: "Canopy Line perf probe: hide crowns, det, main or cast" },
+  cavesAmb: { kind: finite(0.36), owner: "pois", purpose: "Coco Caves remaining sky ambient deep inside" },
+  cavesHide: { kind: list, owner: "pois", purpose: "Coco Caves ablation: hide parts whose names contain these" },
+  cavesLamp: { kind: finite(0.7), owner: "pois", purpose: "Coco Caves lamp irradiance gain" },
+  cavesSky: { kind: finite(0.32), owner: "pois", purpose: "Coco Caves sky visibility at which the outside look is fully back" },
+  codebug: { kind: present, owner: "pois", purpose: "log the coplanar-face fixes the town and coast kits make" },
+  craneproxy: { kind: present, owner: "pois", purpose: "Peel Harbor cranes swap to their proxy at 150 m (the old behaviour)" },
+  ctLod: { kind: num(18), owner: "pois", purpose: "Peel Harbor container LOD distance (m)" },
+  ctMid: { kind: num(0), owner: "pois", purpose: "Peel Harbor container mid LOD distance (m); 0 = none" },
   cullfov: { kind: on, owner: "engine", purpose: "detail cull distances scale with the camera's field of view" },
   dither: { kind: on, owner: "engine", purpose: "LOD fades dither; =0 scales instead (always off under Node)" },
   dpr: { kind: num(0), owner: "engine", purpose: "device pixel ratio instead of the screen's (capped at 2); 0 = the screen's" },
+  dside: { kind: present, owner: "pois", purpose: "Mist Falls materials render double-sided" },
   dynres: { kind: text, owner: "engine", purpose: "dynamic resolution: =1 on, =0 forced off, absent = the setting" },
+  elevlod: { kind: on, owner: "pois", purpose: "elevation-aware LOD distances in the POIs; =0 = the old switches" },
   fullcam: { kind: present, owner: "engine", purpose: "full scene-graph camera updates instead of the camera-only walk" },
   gpu: { kind: text, owner: "engine", purpose: "renderer string to classify instead of the real GPU's" },
+  harborhyst: { kind: on, owner: "pois", purpose: "hysteresis on Peel Harbor LOD switches" },
+  harborNoCull: { kind: present, owner: "pois", purpose: "turn off Peel Harbor's LOD culling" },
+  harborOnly: { kind: subset, owner: "pois", purpose: "build only these Peel Harbor parts (plus the apron)" },
   impblend: { kind: on, owner: "veg", purpose: "impostors crossfade between their baked views" },
   impcull: { kind: on, owner: "veg", purpose: "cull impostor cells outside the view; =0 draws every impostor every frame" },
   impgrade: { kind: numbers, owner: "veg", purpose: "four numbers that replace the impostor colour grade uImpGrade" },
   impshadow: { kind: on, owner: "veg", purpose: "impostor quads cast the island-wide canopy shadows into the static far map" },
   impsplit: { kind: numbers, owner: "veg", purpose: "four numbers that replace the impostor shade/sun split uImpSplit" },
+  jdbgNoRocks: { kind: present, owner: "pois", purpose: "Mist Falls water without its rocks" },
+  jungleCheck: { kind: present, owner: "pois", purpose: "check the baked jungle layout still matches the terrain" },
+  jungleNoVeg: { kind: present, owner: "pois", purpose: "jungle POIs plant no vegetation" },
+  labhide: { kind: list, owner: "pois", purpose: "CNVS Lab perf A/B: hide shell, near, interior, glass, rocks, vines, falls, gravel, rooms" },
   lodv: { kind: on, owner: "engine", purpose: "the anti-pop LOD path: terrain geomorph, rock and HLOD crossfades, view-dependent detail culling" },
-  nocull: { kind: present, owner: "engine", purpose: "turn off detail culling and draw everything near" },
+  murkdbg: { kind: num(0), owner: "pois", purpose: "The Murk water debug mode" },
+  murknoscene: { kind: present, owner: "pois", purpose: "The Murk water without its scene grab" },
+  murkoff: { kind: list, owner: "pois", purpose: "The Murk: skip building decks, huts or int" },
+  nocull: { kind: present, owner: "engine", purpose: "turn off detail, POI and harbor culling: draw everything at full detail" },
   nofreeze: { kind: present, owner: "engine", purpose: "turn off the static matrix cache" },
   nohlod: { kind: present, owner: "engine", purpose: "turn off the far HLOD merge" },
   nolootworker: { kind: present, owner: "engine", purpose: "compute loot spots on the main thread instead of a worker" },
@@ -35,8 +59,11 @@ const FLAGS = {
   notimer: { kind: present, owner: "engine", purpose: "act as a browser without GPU timer queries" },
   nowarmshadow: { kind: present, owner: "engine", purpose: "warm draws skip the roots' shadow-depth programs" },
   offinstant: { kind: on, owner: "engine", purpose: "culled detail switches off at once instead of fading out" },
+  painttex: { kind: present, owner: "pois", purpose: "paint coast textures at load instead of loading the baked ones" },
+  rockMerge: { kind: on, owner: "pois", purpose: "Mist Falls merges its near rock sets into meshes; =0 = the old instanced sets" },
   rocks: { kind: on, owner: "terrain", purpose: "draw the terrain rocks" },
   scale: { kind: num(0), owner: "engine", purpose: "pin the 3D resolution scale; 0 = not pinned" },
+  sculpt: { kind: present, owner: "pois", purpose: "town statue sculpts live instead of loading its baked mesh" },
   splasync: { kind: one, owner: "veg", purpose: "read splat captures back from the GPU asynchronously" },
   splcache: { kind: on, owner: "veg", purpose: "keep baked splats in the browser cache; =0 bakes on every load" },
   splcut: { kind: num(1), owner: "veg", purpose: "splat opacity cut-off gain" },
@@ -62,6 +89,7 @@ const FLAGS = {
   sun: { kind: numbers, owner: "atmos", purpose: "sun elevation,azimuth in degrees instead of the preset's" },
   texprof: { kind: present, owner: "engine", purpose: "profile texture uploads" },
   tfar: { kind: on, owner: "terrain", purpose: "far terrain material beyond 350 m" },
+  townxfade: { kind: on, owner: "pois", purpose: "town materials crossfade between LOD tiers" },
   vegcol: { kind: one, owner: "veg", purpose: "debug colours for the veg colliders" },
   vegdbg: { kind: list, owner: "veg", purpose: "veg perf attribution switches: noshadow, noimp, nolod0, nolod1, nodetail" },
   vegpre: { kind: one, owner: "veg", purpose: "depth pre-pass for alpha-tested foliage (measured slower, so off)" },
@@ -73,6 +101,7 @@ const FLAGS = {
   vegsyncscatter: { kind: present, owner: "veg", purpose: "scatter the vegetation on the main thread instead of a worker" },
   vegwarm: { kind: on, owner: "veg", purpose: "compile every veg shadow program at load" },
   vegxfade: { kind: on, owner: "veg", purpose: "foliage LOD tiers crossfade" },
+  veneerSplit: { kind: on, owner: "pois", purpose: "Mist Falls rock veneer splits into near and far parts" },
   view: { kind: text, owner: "boot", purpose: "boot into a fixed dev view (a POI, biome or studio) instead of the game" },
   visfade: { kind: on, owner: "engine", purpose: "detail fades in and out at the cull edge (always off under Node)" },
   waniso: { kind: num(0), owner: "water", purpose: "anisotropy of the water normal and ripple textures; 0 = the default (4, ripples 8)" },

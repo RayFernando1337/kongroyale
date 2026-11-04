@@ -11,9 +11,10 @@
 import * as THREE from "three";
 import { Coplanar } from "./coplanar";
 const IDM = new THREE.Matrix4();
-const DEBUG_CO = typeof location !== "undefined" && /[?&]codebug/.test(location.search);
+const DEBUG_CO = flag("codebug");
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { exactIndex } from "../../../engine/exact-index";
+import { flag } from "../../../flags";
 
 export type V3 = [number, number, number];
 
