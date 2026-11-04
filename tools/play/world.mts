@@ -180,7 +180,7 @@ export function step(m: Mover, w: StaticWorld) { m.inp.seq++; stepPlayer(m.p, m.
 
 // ---- share ONE loaded world with worker threads (SharedArrayBuffers): a worker attaches in ~0 ms and ~0 MB instead of
 // rebuilding the whole island (1.8 s, ~250 MB each — 14 workers exhausted the 16 GB machine next to 3 Chromium sessions)
-const SOA = ["cx", "cy", "cz", "hx", "hy", "hz", "cos", "sin", "bx0", "bx1", "bz0", "bz1", "surf", "noShoot", "noWalk", "cellStart", "cellItems"] as const;
+const SOA = ["cx", "cy", "cz", "hx", "hy", "hz", "cos", "sin", "bx0", "bx1", "bz0", "bz1", "gx0", "gz0", "surf", "noShoot", "noWalk", "cellStart", "cellItems"] as const;
 export interface SharedWorld { heights: Float32Array; biome: Uint8Array; arrays: Record<string, ArrayLike<number>>; n: number; gridMin: number; gridN: number; srcCode: Uint8Array; srcNames: string[]; hash: number }
 function toShared<T extends Float32Array | Uint8Array | Int32Array>(a: T): T {
   const C = a.constructor as { new (b: SharedArrayBuffer): T; BYTES_PER_ELEMENT: number };
