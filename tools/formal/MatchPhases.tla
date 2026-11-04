@@ -118,8 +118,8 @@ OneWinner == phase = "results" => SquadsLeft <= 1
 \* a match is over only from its results screen
 OverFromResults == over => phase = "results"
 
-\* a started lobby match ends: its loop stops and the players are back in the room
-MatchEnds == <>over
+\* a started lobby match ends: its loop stops and the players are back in the room (practice loops by design)
+MatchEnds == EndAfterResults => <>over
 
 \* every Play reaches its results (practice included)
 PlayEnds == phase = "play" ~> phase = "results"
