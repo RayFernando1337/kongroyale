@@ -378,8 +378,11 @@ if (gameMode) {
   kr.warmAllMs = Math.round(performance.now() - tw);
 }
 // the live title does not wait for what only a match shows (the HUD map image is painted in a worker: 2-3 s after the
-// prewarm on a fast desktop). View-camera pages (?view / ?cam / ?shot) wait for every hold.
-const MATCH_ONLY_HOLDS = /^ui:map/;
+// prewarm on a fast desktop), nor for the far big trees' splat bake: it is cosmetic, can outlast the 90 s budget on a
+// slow GPU (~130 s on SwiftShader), and finishes after ready on its own (until then those trees are unlinked and not
+// drawn; the bake re-links every pool, or falls back to impostor cards). View-camera pages (?view / ?cam / ?shot) wait
+// for every hold.
+const MATCH_ONLY_HOLDS = /^(ui:map|veg-impostors$)/;
 const blocking = () => engine.pendingHolds().filter((h) => !(gameMode && MATCH_ONLY_HOLDS.test(h)));
 kr.settleHolds = engine.pendingHolds();
 while (!kr.bootError && blocking().length && performance.now() - t0 < 90_000) await new Promise((r) => setTimeout(r, 50));
