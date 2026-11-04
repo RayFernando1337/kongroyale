@@ -13,6 +13,7 @@ import { PEAK, PEAK_C, mulberry, resolvePeak, peakSurface } from "../../../../..
 import { layout as R } from "../../../../../shared/pois/ripe-peak";
 import { peakMaterials, buildFan, buildTotems, buildLava, buildSmoke, buildCrag, buildRim, buildRocks, buildSummit, buildTrails } from "./peak";
 import { distanceSwitch, noCast, type LodItem } from "../_kit/jungle-lod";
+import { flag } from "../../../flags";
 
 const C = PEAK_C, F = PEAK.fan;
 /** a LOD cut measured to the object's world box (0 inside it) */
@@ -53,7 +54,7 @@ const mod: WorldModule = {
     const endSlices = sliceMeter("ripe-peak");
     const root = new THREE.Group(); root.name = "ripe-peak"; ctx.scene.add(root);
     const h = (x: number, z: number) => ctx.terrain.height(x, z);
-    if (new URLSearchParams(location.search).has("jungleCheck")) { // dev: is the baked layout still current with this terrain?
+    if (flag("jungleCheck")) { // dev: is the baked layout still current with this terrain?
       const L = resolvePeak(h); let d = 0; L.totems.forEach((t, i) => { d = Math.max(d, Math.abs(t.y - (R.totems[i]?.y ?? 0))); });
       console.warn(`[poi-jungle] ripe-peak baked vs live: max totem Δy ${d.toFixed(2)} m`);
     }
@@ -89,7 +90,7 @@ const mod: WorldModule = {
     distanceSwitch(ctx, lods);
 
     // ?jungleNoVeg: skip the POI-planted vegetation (perf isolation)
-    const veg = new URLSearchParams(location.search).has("jungleNoVeg") ? undefined : ctx.shared.get("veg") as VegApi | undefined;
+    const veg = flag("jungleNoVeg") ? undefined : ctx.shared.get("veg") as VegApi | undefined;
     if (veg) {
       const rnd = mulberry(7070);
       const P: Partial<Record<PlantKind, THREE.Matrix4[]>> = {};
@@ -165,7 +166,7 @@ const mod: WorldModule = {
       // round the crag foot + along the lava pools: palms and bushes on the lower flank
       for (let i = 0; i < 22; i++) { const a = rnd() * 6.28, d = cg.rBase + 5 + rnd() * 18, x = cg.x + Math.cos(a) * d, z = cg.z + Math.sin(a) * d; add(rnd() < 0.2 ? "palm" : "bush", x, z, 0.8 + rnd() * 0.4); }
       for (const [k, list] of Object.entries(P)) veg.plant(k as PlantKind, list!);
-      if (dropped && new URLSearchParams(location.search).has("vegdbg")) console.log(`[poi-jungle] ripe-peak: ${dropped} plants dropped off steep faces, ${Object.values(P).reduce((n, l) => n + l!.length, 0)} kept`);
+      if (dropped && flag("vegdbg").length > 0) console.log(`[poi-jungle] ripe-peak: ${dropped} plants dropped off steep faces, ${Object.values(P).reduce((n, l) => n + l!.length, 0)} kept`);
     }
     endSlices();
   },

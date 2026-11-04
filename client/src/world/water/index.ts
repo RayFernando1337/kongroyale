@@ -26,6 +26,7 @@ import { SkyIrradianceProbe } from "./skyirr";
 import { Flotsam, flotsamSpots } from "./flotsam";
 import { Spray, objectSprayPoints, thinPoints, type SprayPoint } from "./spray";
 import type { Terrain } from "../../../../shared/world/terrain";
+import { flag } from "../../flags";
 
 const LEVEL = WORLD.SEA_LEVEL;
 
@@ -95,7 +96,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     // The CamSpec object is updated IN PLACE (main.ts copied the reference into its view table at the end of build)
     const beachSpec = mod.views["biome-01-beach"];
     let beachP: Promise<void> = Promise.resolve();
-    if (new URLSearchParams(location.search).get("view") === "biome-01-beach") {
+    if (flag("view") === "biome-01-beach") {
       beachP = bake.beach().then((v) => {
         if (v) { Object.assign(beachSpec, v); beachSpec.rel = false; }
         console.info(`[water] beach view: ${v ? JSON.stringify(v.pos) + " → " + JSON.stringify(v.target) + " (" + (v.note ?? "") + ")" : "none (static fallback)"}`);
@@ -123,11 +124,10 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     const measureSky = () => { if (skyIrr.update(ctx.renderer, ctx.scene)) (uniforms.wtrSkyIrr.value as THREE.Color).copy(skyIrr.value); };
     measureSky();
     await brk("step");
-    const qp = new URLSearchParams(location.search);
     // the foam stack inside the main pass: ONE blended colour pass for the whole surface (dual-source), measured cheaper
     // than its own early-discard pass (A/B: eye level −0.15 ms, aerial −0.08). ?wfoampass = the separate pass
-    const foamMain = dual && !qp.has("wfoampass");
-    const usePre = qp.has("wprepass");
+    const foamMain = dual && !flag("wfoampass");
+    const usePre = flag("wprepass");
     if (foamMain) for (const m of [material, materialMid, materialFar]) { m.defines = m.defines || {}; m.defines.WTR_FOAMMAIN = 1; }
     // NO polygon offset on the colour passes unless the depth pre-pass is on (?wprepass: they must pass LEQUAL on the
     // pixels it won). The offset is in depth-buffer UNITS — with near 0.1 m / far 12 km that is ~0.5 mm at 10 m but ~3 m
@@ -136,9 +136,9 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     // container ship / the wreck / the sea stacks (the ship's pale ghost rectangle, the wreck's olive halo, the
     // outlined bubble dots). The shore needs no offset: the film is lifted ≥ 2 cm + the LOD error above the sand
     if (!usePre) for (const m of [material, materialMid, materialFar, foamMat, foamFar, mul]) { m.polygonOffset = false; m.polygonOffsetFactor = 0; m.polygonOffsetUnits = 0; }
-    const cells = Number(qp.get("wcells")) || (ctx.quality === "low" ? 48 : 64);
-    const levels = Number(qp.get("wlevels")) || 8;
-    const geo = buildClipmap({ cells, baseCell: Number(qp.get("wbase")) || 1.0, levels, horizon: 60000 }); // 1 m cells near the camera → 128 m, span 16 km
+    const cells = flag("wcells") || (ctx.quality === "low" ? 48 : 64);
+    const levels = flag("wlevels") || 8;
+    const geo = buildClipmap({ cells, baseCell: flag("wbase") || 1.0, levels, horizon: 60000 }); // 1 m cells near the camera → 128 m, span 16 km
     // three draws of the one geometry, before every other transparent (renderOrder < 0; atmos clouds sort at 5)
     const passMesh = (mat: THREE.Material, name: string, order: number) => {
       const m = new THREE.Mesh(geo, mat);
@@ -213,7 +213,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     };
     // scene-depth copy: only for the underwater volume pass (the surface itself needs no framebuffer copy)
     const grab = new SceneGrab();
-    const sceneOn = !new URLSearchParams(location.search).has("wnoscene");
+    const sceneOn = !flag("wnoscene");
     grab.colour = sceneOn;
     grab.attach(mesh, (cam) => cam === ctx.camera);
     grab.attach(meshFar, (cam) => cam === ctx.camera);
@@ -237,7 +237,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     }
     const ripples = new InteractiveRipples();
     uniforms.wtrSim.value = ripples.texture;
-    const demoRipples = new URLSearchParams(location.search).has("wripple");
+    const demoRipples = flag("wripple");
     const sunDir = new THREE.Vector3(0.3, 0.85, -0.4).normalize();
     await brk("step");
     const under = new Underwater(ctx, LEVEL, { depth: () => grab.depth, caustics: tile.caustics.texture, net: tex.array, sunDir });
@@ -452,7 +452,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
       spray.mesh.visible = !disabled && !under.active;
     });
     // ?wfoamtest — paints demo foam shapes so other areas can see what registerFoam* looks like
-    if (new URLSearchParams(location.search).has("wfoamtest")) {
+    if (flag("wfoamtest")) {
       api.registerFoamCircle(60, -720, 3.2, 1);
       api.registerFoamCapsule(40, -700, 40, -740, 1.2, 0.9);
       api.registerFoamRect(20, -760, 12, 4, 0.5, 1.5, 1);

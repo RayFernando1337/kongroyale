@@ -21,6 +21,7 @@ import { addCarving } from "./carving";
 import { dressShipRooms } from "./cabin-dress";
 import { buildInteriors } from "../_kit/interior";
 import { buildShore, shoreProxy, type ItemBins } from "./shore";
+import { flag } from "../../../flags";
 
 type V3 = [number, number, number];
 // ---------------------------------------------------------------- views
@@ -231,7 +232,7 @@ const mod: WorldModule = {
     const mats = aliasTown(wm);
     // far 560: beyond `far` only the box proxy draws; at 340 m the swap to the real cove (BatchedMesh instance
     // toggles: no engine fade) landed in the middle of a dive onto the bay; at 560 m the whole cove is a few % of the screen
-    const EL = typeof location === "undefined" || new URLSearchParams(location.search).get("elevlod") !== "0";   // ?elevlod=0 = old distances (A/B)
+    const EL = flag("elevlod");   // ?elevlod=0 = old distances (A/B)
     const lod = new TownLod(mats, "wreckbay", { cell: 48, near: 95, far: EL ? 560 : 340, fine: 42, itemNear: 75, itemFine: 36, castItem: 180 });
     const rng = mulberry(0x57524b42);
     const g = (x: number, z: number) => ctx.terrain.height(x, z);
@@ -243,7 +244,7 @@ const mod: WorldModule = {
     const intLevels: Array<{ y: number; o: THREE.Object3D }> = [];
     const SHIPI = SHIPM.clone().invert(), camS = new THREE.Vector3();
     // ?nocull (the parity tool, screenshot captures that must see everything): no per-level room culling
-    const noCull = (() => { try { return new URLSearchParams(location.search).has("nocull"); } catch { return false; } })();
+    const noCull = flag("nocull");
     const yieldTask = async () => { const n = performance.now(); BZ.busy += n - BZ.last; if (n - BZ.last > BZ.max) { BZ.max = n - BZ.last; BZ.at = (new Error().stack ?? "").split("\n").slice(2, 4).join(" < ").replace(/https?:[^ )]*\//g, ""); } await new Promise<void>((r) => setTimeout(r, 0)); BZ.last = performance.now(); };
     // (mid 420: the galleon's LOD1 swap stays out of the dive)
     const it = lod.item("ship", SHIP.x, SHIP.z, { mid: EL ? 420 : 240, near: 110, fine: 46, top: 34 });

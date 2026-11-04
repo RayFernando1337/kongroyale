@@ -20,6 +20,7 @@ import { templeColliders } from "../../../../../shared/pois/jungle-layout";
 import { merge, boxUVs, tint } from "../_kit/jungle-geo";
 import { buildInteriors } from "../_kit/interior";
 import { INTERIOR_ROOMS } from "../../../../../shared/pois/banana-temple";
+import { flag } from "../../../flags";
 
 const W = TEMPLE_C;
 const V = (pos: CamSpec["pos"], target: CamSpec["target"], o: Partial<CamSpec> = {}): CamSpec => ({ pos, target, fov: 50, ...o });
@@ -132,7 +133,7 @@ const mod: WorldModule = {
     // ferns along the stair and tier tops, monstera by the towers, bushes + palms on the tier tops and crowns, palms and
     // jungle trees ringing the plaza, a palm frame left
     // ?jungleNoVeg: skip the POI-planted vegetation (perf isolation)
-    const veg = new URLSearchParams(location.search).has("jungleNoVeg") ? undefined : ctx.shared.get("veg") as VegApi | undefined;
+    const veg = flag("jungleNoVeg") ? undefined : ctx.shared.get("veg") as VegApi | undefined;
     if (veg) {
       const rnd = mulberry(4040);
       const P: Partial<Record<PlantKind, THREE.Matrix4[]>> = {};

@@ -18,8 +18,9 @@
 // built on one, incl. onBeforeCompile patches) carries it; depth / distance (shadow) programs are left out (a shadow
 // switches at the end of the fade — see cull.ts). ?dither=0 = scale fades instead (A/B).
 import * as THREE from "three";
+import { flag } from "../flags";
 
-export const DITHER = typeof location === "undefined" ? false : new URLSearchParams(location.search).get("dither") !== "0";
+export const DITHER = typeof location !== "undefined" && flag("dither");
 
 const GUARD = "!defined( DEPTH_PACKING ) && !defined( DISTANCE ) && !defined( KR_NO_DITHER )";
 let installed = false;

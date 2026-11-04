@@ -17,6 +17,7 @@ import { sculptCloud, type CloudKind } from "./cloud-shapes";
 import { bakeCloudVolume, makeDetailNoise, type CloudVolume } from "./cloud-bake";
 import type { CloudSpec } from "./cloud-field";
 import type { Quality } from "../../engine/engine";
+import { flag } from "../../flags";
 
 export { cloudField } from "./cloud-field";
 export type { CloudSpec } from "./cloud-field";
@@ -398,7 +399,7 @@ export class Clouds {
 
   constructor(private u: AtmosUniforms, private state: AtmosState, private renderer: THREE.WebGLRenderer, private quality: Quality, private shotMode = false) {
     this.tier = TIERS[quality];
-    try { this.noImpostors = new URLSearchParams(location.search).get("atmos")?.split(",").includes("cloudmarch") ?? false; } catch { /* tests */ }
+    this.noImpostors = flag("atmos").includes("cloudmarch");
     const qg = new THREE.BufferGeometry();
     qg.setAttribute("position", new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
     this.tileQuad = new THREE.Mesh(qg);

@@ -74,14 +74,25 @@ on a Mac. Software rendering is too slow to judge anything. Attach a screenshot 
 
 Agents: the `verify-kongroyale` skill (`.agents/skills/verify-kongroyale/`) scripts all of this on macOS, Windows and no-GPU Linux.
 
+Performance work: read the `perf` skill (`.agents/skills/perf/`). `tools/performance/alloc.mts` measures bytes allocated
+per tick and GC, and `tools/check-size.mts` reports what a production build makes the browser download.
+
 ## Code style
 
-There is no formatter or linter. Match the code around you:
+There is no formatter. `tools/lint/check.mts` runs in `npm test` and enforces the rules the table below names; for the
+rest, match the code around you:
 
 - TypeScript in strict mode, ES modules, two-space indentation, double quotes, semicolons, LF line endings.
-- Lines can be long. Wrap comments at about 120 characters.
-- Every file starts with a comment saying what it owns and how it fits in. Keep it accurate when you change the file.
-- Comments explain why, not what. A `/** ... */` comment on an exported field or function says what it means.
+- Lines can be long.
+- No comments. Say it with a name, a type or a test instead. Tool directives (`// @ts-expect-error`,
+  `/* @vite-ignore */`, `/// <reference>`) are the only exception. Existing comments are counted per file in
+  `tools/lint/baseline.json`, and the count only goes down: the `no-comments` skill from [pstack](https://github.com/cursor/plugins) removes them a file at a
+  time.
+- Per-tick and per-frame code lives in `*.hot.ts` files and doesn't allocate: no object or array literals, `new`,
+  closures, array callbacks, spreads or rest bindings inside any function written there, callbacks included. Build
+  scratch objects once at module scope with a plain loop, or import them from a module that isn't hot. Hot
+  functions that haven't moved into a `.hot.ts` file yet are listed in `tools/lint/hot.json`; moving one must keep the
+  headless match's state hash identical.
 - `camelCase` for functions and variables, `PascalCase` for classes and types, `UPPER_CASE` for constants. Constants
   carry their unit in the name: `WARMUP_S`, `HEARTBEAT_MS`, `NEAR_R` (metres).
 - World units are metres and seconds; +Y is up and −Z is north (`shared/world/map.ts`).
@@ -89,6 +100,34 @@ There is no formatter or linter. Match the code around you:
 - Use `import type` for type-only imports. Wire ids are `const enum`s in `shared/net/proto.ts`.
 - The client UI is plain DOM with small helpers, not a framework.
 - No new dependencies without discussion.
+
+## What enforces each rule
+
+A rule with an enforcer fails `npm test` (or CI) when it is broken. A rule marked "review only" depends on a reviewer
+catching it; turn it into a check when the same mistake shows up twice.
+
+| Rule | Enforced by |
+|---|---|
+| 1. The server is authoritative | Review only. The `redteam` step of `npm test` attacks the admin lobby. |
+| 2. `shared/` is deterministic: no `Math.random`, wall-clock time, Node or DOM APIs | Lint rule `shared-determinism`; the `sim` step of `npm test` fails when the headless match's state hash changes |
+| 2. Hot paths don't allocate | Lint rule `hot-alloc` over `*.hot.ts` and `tools/lint/hot.json` |
+| 3. Never commit secrets | CI job "no secrets" (key and env file check, gitleaks) |
+| 4. Every asset needs a source and a licence | `npx tsx tools/verify-assets.mts`, run by hand |
+| 5. One change per pull request | Review only |
+| 6. Build and test before the pull request | CI job "build and test" runs `npm run build` and `npm test` |
+| 7. Only test against servers you run | Review only |
+| No comments | Lint rule `no-comments` |
+| Constants carry their unit | Review only |
+| Tunable numbers live in `shared/sim/const.ts` | Review only |
+| `import type` for type-only imports | Review only |
+| Wire ids are `const enum`s | Review only |
+| No new dependencies without discussion | Review only (`package.json` is on the Ask first list) |
+
+The baselines in `tools/lint/baseline.json` only shrink: never add an entry to make a change pass. The one exception is a
+pure move: code moved to another file (into a `*.hot.ts` file, for example) may take its baselined sites or counts
+with it to the new file's entry, as long as no rule's total grows. Lint names this when a new file has findings.
+
+Run one check on its own with `npm test -- --only lint` (`--list` shows every id, `--fast` skips the slow ones).
 
 ## Ask first
 

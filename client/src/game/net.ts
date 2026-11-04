@@ -10,6 +10,7 @@ import { Match, type MatchOpts } from "../../../shared/sim/match";
 import type { BotDifficulty } from "../ui/api";
 import type { StaticWorld } from "../../../shared/sim/world";
 import { MatchHost, matchInfo, type HostPeer } from "../../../shared/net/host";
+import { flag } from "../flags";
 
 export interface Link {
   readonly offline: boolean;
@@ -24,7 +25,7 @@ export interface Link {
   pump?(): void;
 }
 
-const auxWanted = () => { try { return new URLSearchParams(location.search).get("aux") !== "0"; } catch { return true; } };
+const auxWanted = () => flag("aux");
 /** a STALLED link — nothing at all from the server for this long (a match sends 30 snapshots + a pong a second)
  *  — takes no more binary frames until something arrives again. Inputs queued behind a dead TCP link came out as one burst
  *  when it recovered (60 a second of stall, on each socket) and tripped the server's per-socket rate limit: strikes, then
@@ -112,7 +113,7 @@ export class OfflineLink implements Link {
         if (this.match) { this.match.startNow(); break; }
         const mode = (m.mode === "trios" ? "trios" : "solo");
         // ?seed=N (dev / tools): a reproducible practice match (same plane line, storm plan, loot)
-        const fixed = Number(new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("seed"));
+        const fixed = flag("seed");
         this.seed = fixed > 0 ? fixed | 0 : (Math.random() * 2 ** 31) | 0; this.mode = mode;
         // botDifficulty: the practice tier the Match gives its bots (EASY, STANDARD = full-strength bots, HARD)
         const opts: MatchOpts & { botDifficulty: BotDifficulty } = { seed: this.seed, mode: this.range ? "solo" : mode, world: this.world, humans: this.caster ? [] : [{ id: 0, name: this.name, team: 0 }], botDamageToHumans: this.botDamageToHumans, botAimRange: this.botAimRange, botDifficulty: this.difficulty, range: this.range };

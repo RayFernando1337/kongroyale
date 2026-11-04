@@ -8,6 +8,7 @@ import { FALLS, type FallsResolved } from "../../../../../shared/pois/jungle-fal
 import { waterMaterial, poolSurface, riverSurface, fallsMaterial, fallsSheet, cascadeSheet, puffCloud, rainbow, bakeRockDist } from "../_kit/jungle-water";
 import { pbr } from "../_kit/jungle-mat";
 import { rockProtos } from "../_kit/jungle-rocks";
+import { flag } from "../../../flags";
 
 export function buildWater(ctx: WorldCtx, root: THREE.Group, R: FallsResolved) {
   const h = (x: number, z: number) => ctx.terrain.height(x, z);
@@ -77,7 +78,7 @@ export function buildWater(ctx: WorldCtx, root: THREE.Group, R: FallsResolved) {
   // the ring hugs each rock's real waterline (cross-section of its hi-LOD mesh at the river level there)
   const protos = rockProtos("boulder", 5, RIVER_ROCK_RES[0]);
   const rockDist = bakeRockDist(rr, box, 1536, 540, { geo: (r) => protos[(r.seed ?? 0) % protos.length], level: (x, z) => riverLevelAt(R, x, z) });
-  const rMat = waterMaterial({ ground, fade: true, clarity: 1.15, lace: 0.9, foamScale: 0.9, alpha0: 0.25, glow: 0.5, env: 0.65, bed: { map: sandSet, tint: [1.0, 1.0, 1.02], scale: 3.2 }, sigma: [4.2, 0.62, 0.42], scatter: "#00829c", caustics: 1.8, rocks: new URLSearchParams(location.search).has("jdbgNoRocks") ? undefined : { tex: rockDist, box } });
+  const rMat = waterMaterial({ ground, fade: true, clarity: 1.15, lace: 0.9, foamScale: 0.9, alpha0: 0.25, glow: 0.5, env: 0.65, bed: { map: sandSet, tint: [1.0, 1.0, 1.02], scale: 3.2 }, sigma: [4.2, 0.62, 0.42], scatter: "#00829c", caustics: 1.8, rocks: flag("jdbgNoRocks") ? undefined : { tex: rockDist, box } });
   const gnd = (x: number, z: number) => Math.max(h(x, z), barHeight(R, x, z));
   // the ribbon (a) starts UNDER the weir (not 5 m
   // downstream of it, a straight cut standing 1.7 m over the outlet's sand); (b) ends AT sea level and hands over to the

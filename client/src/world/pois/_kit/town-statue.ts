@@ -15,6 +15,7 @@ import type { LabEnv } from "./town-lab";
 import { MeshoptSimplifier } from "three/addons/libs/meshopt_simplifier.module.js";
 import { M, col, cylGeo, latheGeo, chamferBoxGeo } from "./town-geo";
 import { shadowOnlyMaterial } from "./town-materials";
+import { flag } from "../../../flags";
 
 interface Simplifier {
   ready: Promise<void>;
@@ -787,7 +788,7 @@ export async function bakeStatue(): Promise<ArrayBuffer> {
   return buf;
 }
 async function loadBakedStatue(): Promise<StatueGeo | null> {
-  if (typeof fetch === "undefined" || new URLSearchParams(globalThis.location?.search ?? "").has("sculpt")) return null;
+  if (typeof fetch === "undefined" || flag("sculpt")) return null;
   try {
     const r = await fetch(`${(import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/"}assets/pois/town/statue.bin`);
     if (!r.ok) return null;

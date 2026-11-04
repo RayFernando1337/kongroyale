@@ -11,6 +11,7 @@ import type { WaterTextures } from "./textures";
 import type { WaveTile } from "./wavetile";
 import { DUAL_DST_SENTINEL } from "./dualsrc";
 import { FRAG_COLOR, FRAG_DEPTH_ONLY, FRAG_FOAM, FRAG_FOG, FRAG_LATE_PARS, FRAG_LIGHTS_INDIRECT, FRAG_MUL, FRAG_NORMAL, FRAG_NORMAL_FOAM, FRAG_OPAQUE, FRAG_OPAQUE_FOAM, FRAG_PARS, FRAG_ROUGH, FRAG_ROUGH_FOAM, VERT_BEGIN, VERT_BEGINNORMAL, VERT_SIMPLE, vertParsMain } from "./shader";
+import { flag } from "../../flags";
 
 export interface WaterMaterial {
   material: THREE.MeshStandardMaterial;
@@ -48,7 +49,7 @@ const LIGHTS_WATER = (() => {
 })();
 
 /** three's SunLight shadow layout the water's per-vertex shadow coordinates assume (2 cascades per sun) */
-const VSHADOW_OK = /#define SUN_LIGHT_CASCADES 2\b/.test(THREE.ShaderChunk.shadowmap_pars_fragment) && !new URLSearchParams(location.search).has("wnovshadow");
+const VSHADOW_OK = /#define SUN_LIGHT_CASCADES 2\b/.test(THREE.ShaderChunk.shadowmap_pars_fragment) && !flag("wnovshadow");
 /** sRGB hex → linear colour (uniform colours are linear radiance / albedo) */
 const lin = (hex: string) => new THREE.Color(hex).convertSRGBToLinear();
 
@@ -162,7 +163,7 @@ export function makeWaterMaterial(tex: WaterTextures, fields: WaterFields, obsta
     wtrFloorGain: { value: 1.0 },
     // wet sand under the swash film (0.5 printed a dark brown stripe; the target art's wet band is ~10-25 % darker)
     wtrWetDark: { value: 0.73 },
-    wtrGlitter: { value: new URLSearchParams(location.search).has("wphys") ? 1.0 : 0.5 },   // (× the sun's GGX lobe; F0 0.04 → 0.5)
+    wtrGlitter: { value: flag("wphys") ? 1.0 : 0.5 },   // (× the sun's GGX lobe; F0 0.04 → 0.5)
     wtrSparkle: { value: 7.0 },      // HDR sun-glitter sparkles (× sun colour) — bloom catches them
     // ---- motion
     wtrWaveAmp: { value: 1.0 },
@@ -194,7 +195,7 @@ export function makeWaterMaterial(tex: WaterTextures, fields: WaterFields, obsta
     const far = mode === "far";
     // MeshStandardMaterial (not Physical: the same GGX sun lobe, without the ior / specular-colour / sheen plumbing).
     // Its F0 is 0.04 (water's is 0.02): wtrGlitter's default carries the ×0.5
-    const phys = new URLSearchParams(location.search).has("wphys");
+    const phys = flag("wphys");
     // (the near program writes depth: it replaces the depth pre-pass — see index.ts; the far one stays depth-less)
     const m = phys ? new THREE.MeshPhysicalMaterial({
       color: 0xffffff, roughness: 0.05, metalness: 0, ior: 1.333, envMapIntensity: 1.0,
@@ -215,7 +216,7 @@ export function makeWaterMaterial(tex: WaterTextures, fields: WaterFields, obsta
     if (mode === "near") { m.defines.WTR_NEAR = 1; m.defines.WTR_VALL = 1; }
     // the lighter tier for Medium / Low (M1 Pro-class machines run Auto = Medium): shorter SSR march
     if (quality === "medium" || quality === "low") m.defines.WTR_LITE = 1;
-    if (!far && !new URLSearchParams(location.search).has("wnoscene")) m.defines.WTR_SCENE = 1;
+    if (!far && !flag("wnoscene")) m.defines.WTR_SCENE = 1;
     // (the coral heads: per pixel from the air — the far program — per vertex near the camera, where the clipmap cells
     // are finer than the field's 2 m texels)
     if (dual) { m.defines.WTR_DUAL_SRC = 1; if (far) m.defines.WTR_MULFLD2 = 1; }

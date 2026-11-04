@@ -28,10 +28,10 @@ import { captureSpecies } from "./splat-bake";
 import { buildSplats, SPLAT_FLOATS, type SplatBuildInput, type SplatBuildOutput } from "./splat-build";
 import { crownFootprint } from "../../../../shared/world/veg-scatter";
 import { cacheGet, cachePut, splatKey } from "./splat-cache";
+import { flag } from "../../flags";
 
-export const VEG_SPLAT = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("vegsplat") !== "0";
-export const VEG_SPLAT_SMALL = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("vegsplatsmall") !== "0";
-const Q = typeof location === "undefined" ? new URLSearchParams() : new URLSearchParams(location.search);
+export const VEG_SPLAT = flag("vegsplat");
+export const VEG_SPLAT_SMALL = flag("vegsplatsmall");
 
 /** splats per level (finest first) and the projected-radius boundaries (px) between neighbouring levels */
 export const SPLAT_LEVELS = [4096, 2048, 1024, 512, 256, 128, 64, 32, 16];
@@ -39,13 +39,13 @@ export const SPLAT_LEVELS = [4096, 2048, 1024, 512, 256, 128, 64, 32, 16];
 export const SPLAT_LEVELS_SMALL = [1024, 512, 256, 128, 64, 32, 16];
 /** splat density: a level of N splats is used while N <= density · P² < 2N (P = the plant's projected radius, px) —
  *  boundary between level l and l+1 at P = √(N_l / density) (live: __kr.veg.splats.setDensity) */
-const DENSITY0 = Number(Q.get("spldens") ?? 0.3);
+const DENSITY0 = flag("spldens");
 /** the band (fraction of a boundary) over which two levels dissolve into each other (boundaries are √2 apart) */
 const BAND_LO = 0.9, BAND_HI = 1.1;
 /** the level the far-map / canopy shadow copy uses */
 const SHADOW_N = 64;
 /** levels of at least this many splats are captured from LOD1 (the swap partner), the rest from LOD0 */
-const NEAR_N = Number(Q.get("splnear") ?? 1024);
+const NEAR_N = flag("splnear");
 const SPLAT_W = 2048;   // splat data texture width (texels): 2 texels per splat (RGBA32UI)
 const FADE_W = 1024;
 const MAXSP = 24;
@@ -54,7 +54,7 @@ const CELL = 64;
 const GRID_HALF = 1760;
 const GRID = Math.ceil((2 * GRID_HALF) / CELL);
 /** live tuning (__kr.veg.splats.U): x = opacity gain, y = size gain, z = min splat sigma (px), w = stochastic (1) / hard (0) */
-export const SPLAT_TUNE = { uSplTune: { value: new THREE.Vector4(Number(Q.get("splop") ?? 1.35), Number(Q.get("splsz") ?? 1), 0.3, 1) }, uSplCut: { value: Number(Q.get("splcut") ?? 1) }, uSplKeep: { value: Number(Q.get("splkeep") ?? 0.35) }, uSplShOff: { value: Number(Q.get("splshoff") ?? 1) }, uSplLight: { value: new THREE.Vector4(Number(Q.get("splshadow") ?? 1), Number(Q.get("splocc") ?? 1), Number(Q.get("splshfar") ?? 0.6), Number(Q.get("splocfar") ?? 0.5)) }, uSplNear: { value: new THREE.Vector2(Number(Q.get("splhue") ?? -0.12), Number(Q.get("splsat") ?? 1.1)) } };
+export const SPLAT_TUNE = { uSplTune: { value: new THREE.Vector4(flag("splop"), flag("splsz"), 0.3, 1) }, uSplCut: { value: flag("splcut") }, uSplKeep: { value: flag("splkeep") }, uSplShOff: { value: flag("splshoff") }, uSplLight: { value: new THREE.Vector4(flag("splshadow"), flag("splocc"), flag("splshfar"), flag("splocfar")) }, uSplNear: { value: new THREE.Vector2(flag("splhue"), flag("splsat")) } };
 
 const V_PARS = /* glsl */ `
 attribute vec4 aI0;
@@ -480,8 +480,8 @@ export class SplatSet {
     this.vpH = renderer.getDrawingBufferSize(new THREE.Vector2()).y;
     for (const p of pools) if (!this.spIndex.has(p.sp)) { this.spIndex.set(p.sp, this.species.length); this.species.push({ sp: p.sp, index: this.species.length }); }
     if (this.species.length > MAXSP) throw new Error(`veg splats: ${this.species.length} species > ${MAXSP}`);
-    const res = Number(Q.get("splres") ?? 256);
-    const opts = { res, levels: this.LV, spread: Number(Q.get("splspread") ?? 1.25), thick: Number(Q.get("splthick") ?? 0.22) };
+    const res = flag("splres");
+    const opts = { res, levels: this.LV, spread: flag("splspread"), thick: flag("splthick") };
     // workers (up to 4 in parallel); the main thread captures the next species while they cluster
     const nW = typeof Worker === "undefined" ? 0 : Math.min(4, Math.max(1, (navigator.hardwareConcurrency ?? 4) - 2));
     const workers: Worker[] = [];
@@ -651,7 +651,7 @@ export class SplatSet {
       return m;
     }
     const atm = this.atmos?.();
-    const DBG = (Q.get("spldbg") ?? "").split(",");
+    const DBG = flag("spldbg");
     const adefs = (atm?.glsl && atm.uniforms && !DBG.includes("noatm") ? "#define SPL_ATMOS\n" + (this.scene.fog && !DBG.includes("nofog") ? "#define SPL_FOG\n" : "") + (DBG.includes("nofar") ? "#define SPL_NOFAR\n" : "") : "");
     const m = new THREE.ShaderMaterial({
       uniforms: { ...U, ...own, ...(adefs ? atm!.uniforms : {}) },

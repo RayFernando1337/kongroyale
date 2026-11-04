@@ -5,9 +5,10 @@
 import type { ConsumableId } from "../../../shared/world/map";
 import type { Terrain } from "../../../shared/world/terrain";
 import type { HudState } from "./api";
+import { flag } from "../flags";
 
 export function sampleHudState(_terrain: Terrain, map = false): HudState {
-  const mapShot = map || new URLSearchParams(location.search).get("map") === "1";
+  const mapShot = map || flag("map");
   const me = { x: 240, z: 485, alive: true };
   return {
     phase: mapShot ? "plane" : "play",

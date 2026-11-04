@@ -16,6 +16,7 @@ import { PropBatcher } from "../_kit/harbor-batch";
 import { drawPieces, roomMats } from "../_kit/harbor-rooms";
 import type { Part } from "./parts";
 import { harborFarProxy } from "./far";
+import { flag } from "../../../flags";
 
 // ------------------------------------------------------------------------------------------------ materials
 let boxMat: THREE.MeshStandardMaterial | null = null;
@@ -738,7 +739,7 @@ export const part: Part = {
     }
     // HI within 24 m (inside the c0 shadow split: they cast into cascade 0 only), the merged LO beyond
     // (`?nocull` = the parity tool: every prop at its HI detail, like the harbor's other detail tiers)
-    const nocull = new URLSearchParams(location.search).has("nocull");
+    const nocull = flag("nocull");
     await ctx.yield();
     const batch = await pb.buildAsync({ name: "props", near: nocull ? 2000 : 24, far: nocull ? 2000 : 260 }, () => ctx.yield());
     await ctx.yield();

@@ -15,6 +15,7 @@
 // distance (LOD); an analytic bound skips every ray that cannot touch the storm. A full-res composite triangle draws it
 // into the scene with gl_FragDepth = the traced depth, so foreground palms / terrain occlude it per pixel.
 import * as THREE from "three";
+import { flag } from "../../flags";
 
 const N = 64;            // texels per tile edge
 const CELLS = 6;         // sphere cells per tile edge
@@ -527,7 +528,7 @@ export function createStormVolume(o: { boltCol: THREE.Color; hazeCol: THREE.Colo
     uSunDir: { value: new THREE.Vector3(0.4, 0.62, 0.55).normalize() }, uSunCol: { value: new THREE.Color(4.8, 4.5, 4.1) }, uHazeCol: { value: o.hazeCol }, uHazeK: { value: 1 / 2600 }, uLipK: { value: 0 }, uFlash: { value: 0 },
     uBolt: { value: o.bolts }, uBoltCol: { value: o.boltCol }, uPixAng: { value: 0.001 }, uNearFade: { value: 1 },
     uGround: { value: groundTex as THREE.Texture }, uHalf: { value: half },
-    uDebug: { value: typeof location !== "undefined" ? Number((/[?&]stormdebug=(\d)/.exec(location.search) || [])[1] || 0) : 0 },
+    uDebug: { value: flag("stormdebug") },
   };
   const traceMat = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: TRACE_VERT, fragmentShader: TRACE_FRAG, uniforms: u, depthTest: false, depthWrite: false });
   const tri = new THREE.BufferGeometry();

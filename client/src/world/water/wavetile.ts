@@ -16,6 +16,7 @@
 // cells are the periodic images of the opposite edge — ~4× fewer triangles than 3×3 instances). R = sharp focus
 // (0–2 m water), G = deeper focus. One light 3×3 tent pass joins sub-texel slivers; no heavier blur (crisp net).
 import * as THREE from "three";
+import { flag } from "../../flags";
 
 export const TILE = 9.0; // metres per ripple tile
 /** the tile's slopes are stored as slope / TILE_SLOPE_RANGE + 0.5 in an RGBA8 target */
@@ -158,7 +159,7 @@ export class WaveTile {
       type: THREE.UnsignedByteType, format: THREE.RGBAFormat, wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping,
       minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true, depthBuffer: false, stencilBuffer: false,
     });
-    this.tile.texture.name = "water-ripple-tile"; this.tile.texture.anisotropy = Number(new URLSearchParams(globalThis.location?.search ?? "").get("waniso")) || 8;
+    this.tile.texture.name = "water-ripple-tile"; this.tile.texture.anisotropy = flag("waniso") || 8;
     this.caustics = new THREE.WebGLRenderTarget(causRes, causRes, {
       type: THREE.UnsignedByteType, format: THREE.RGBAFormat, wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping,
       minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: true, depthBuffer: false, stencilBuffer: false,

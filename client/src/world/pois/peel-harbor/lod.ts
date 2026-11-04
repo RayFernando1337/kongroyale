@@ -22,6 +22,7 @@
 // POI's force-shown stand-in (harbor-geo farBakeStandIn), never from the live groups.
 import * as THREE from "three";
 import type { ContainerSet } from "../_kit/containers";
+import { flag } from "../../../flags";
 
 interface Entry { obj: THREE.Object3D; ref: THREE.Object3D; box: THREE.Box3; show: number; hideWithin: number; showAir: number; hideAir: number; shadow: number; casters: THREE.Mesh[]; pairOf?: Entry }
 interface Kid { obj: THREE.Object3D; box: THREE.Box3; casts: boolean }
@@ -33,7 +34,7 @@ const CAST_REACH = 240;
 /** world boxes are padded by this much for the frustum test (the camera may move after the update hooks ran) */
 const PAD = 6;
 /** ground hysteresis up to the air distance (?harborhyst=0 = the old AIR_Y swap, A/B) */
-const HYST = typeof location === "undefined" || new URLSearchParams(location.search).get("harborhyst") !== "0";
+const HYST = flag("harborhyst");
 
 export class HarborLod {
   private entries: Entry[] = [];
@@ -50,10 +51,10 @@ export class HarborLod {
   private frustum = new THREE.Frustum();
   private pv = new THREE.Matrix4();
   /** set false to disable the off-screen cull (debug: `?harborNoCull`) */
-  cull = typeof location === "undefined" || !new URLSearchParams(location.search).has("harborNoCull");
+  cull = !flag("harborNoCull");
   /** `?nocull` (for the collider ≡ visual parity check) — every DETAIL tier is drawn at any distance
    *  and the far proxies stay hidden, so the tool compares the colliders with what a player sees up close */
-  nearAll = typeof location !== "undefined" && new URLSearchParams(location.search).has("nocull");
+  nearAll = flag("nocull");
   constructor(readonly root: THREE.Object3D) {}
 
   /** `ref`: measure the distance to THIS object's bounding box instead of obj's own (a proxy paired with its detail) */
