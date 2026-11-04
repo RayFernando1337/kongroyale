@@ -1,7 +1,7 @@
 import type * as THREE from "three";
 import { flag } from "../flags";
 
-type Pixels = { data?: ArrayBufferView | null; close?: () => void };
+type Pixels = { data?: ArrayBufferView | null; width: number; height: number; depth?: number };
 
 const ENABLED = flag("texfree");
 
@@ -14,6 +14,7 @@ function dropSource(t: THREE.Texture) {
   const px = t.source.data as Pixels | null;
   if (!px || px.data === null) return;
   t.onUpdate = null;
+  if (px.data !== undefined) { t.source.data = { width: px.width, height: px.height, depth: px.depth, data: null }; return; }
   if (typeof ImageBitmap !== "undefined" && px instanceof ImageBitmap) px.close();
   t.source.data = null;
 }
