@@ -1,0 +1,30 @@
+[
+  {
+    "name": "kill keeps the seat",
+    "why": "match.ts kill: the seat is no longer freed when a riding kong dies",
+    "find": "/\\ seats' = IF Riding(p) THEN ExitSeats(p, veh[p]) ELSE seats\n  /\\ st' = [st EXCEPT ![p] = \"dead\"]",
+    "replace": "/\\ seats' = seats\n  /\\ st' = [st EXCEPT ![p] = \"dead\"]",
+    "expect": "Invariant SeatsAgree is violated"
+  },
+  {
+    "name": "freeSeat lets another squad in",
+    "why": "vehicle.ts freeSeat: the squad check is gone",
+    "find": "     \\/ \\E k \\in Seats : seats[v][k] # None /\\ Team(seats[v][k]) # Team(p)\n",
+    "replace": "",
+    "expect": "Invariant OneSquad is violated"
+  },
+  {
+    "name": "ejectAll leaves the riders on",
+    "why": "match.ts ejectAll: the seats are cleared but the kongs still ride",
+    "find": "  /\\ st' = [p \\in Players |-> IF Riding(p) /\\ veh[p] = v /\\ \\E k \\in Seats : seats[v][k] = p THEN \"ground\" ELSE st[p]]\n  /\\ veh' = [p \\in Players |-> IF Riding(p) /\\ veh[p] = v /\\ \\E k \\in Seats : seats[v][k] = p THEN None ELSE veh[p]]\n  /\\ seat' = [p \\in Players |-> IF Riding(p) /\\ veh[p] = v /\\ \\E k \\in Seats : seats[v][k] = p THEN 0 ELSE seat[p]]",
+    "replace": "  /\\ UNCHANGED <<st, veh, seat>>",
+    "expect": "Invariant SeatsAgree is violated"
+  },
+  {
+    "name": "a seat switch keeps the old seat",
+    "why": "vehicle.ts switchSeat/takeSeat: the old seat is not freed",
+    "find": "/\\ seats' = [ExitSeats(p, veh[p]) EXCEPT ![veh[p]][k] = p]",
+    "replace": "/\\ seats' = [seats EXCEPT ![veh[p]][k] = p]",
+    "expect": "Invariant SeatsAgree is violated"
+  }
+]
