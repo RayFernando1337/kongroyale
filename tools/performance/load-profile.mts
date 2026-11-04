@@ -227,7 +227,7 @@ async function playwrightDriver(kind: "chrome" | "edge" | "webkit", o: Opts): Pr
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kr-load-profile-"));
   const common = { headless: !o.headed, viewport: { width: o.viewport[0], height: o.viewport[1] }, deviceScaleFactor: o.dpr, timeout: 120_000 };
   const ctx = kind !== "webkit"
-    ? await pw.chromium.launchPersistentContext(dir, { ...common, channel: kind === "edge" ? "msedge" : "chrome", args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required"] })
+    ? await pw.chromium.launchPersistentContext(dir, { ...common, channel: kind === "edge" ? "msedge" : "chrome", args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required", "--enable-precise-memory-info"] })
     : await pw.webkit.launchPersistentContext(dir, common);
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   const ua = String(await page.evaluate("navigator.userAgent"));
@@ -552,8 +552,9 @@ function toCase(L: Load, seed: number, matchSecs: number): CaseResult {
 
   const pointDetail: Record<string, unknown> = {};
   for (const p of SNAP_POINTS) {
+    if (p !== "title" && matchSecs * 1000 < MATCH_SNAP_MS) continue;
     const s = L.points.find((x) => x.point === p);
-    const why = p === "title" ? "the title never became ready" : matchSecs * 1000 < MATCH_SNAP_MS ? "not reached: pass --match-secs 30 or more" : "not reached in this run";
+    const why = p === "title" ? "the title never became ready" : "not reached in this run";
     const ua = fin.mem?.[p];
     metrics["mem." + p + ".uaMB"] = !s ? notReached("MB", why) : typeof ua?.bytes === "number" ? num(ua.bytes / 1e6, "MB") : unsupported("MB", s.uaWhy ?? ua?.error ?? "the measurement had not resolved when the load ended");
     metrics["mem." + p + ".jsHeapMB"] = !s ? notReached("MB", why) : s.jsHeapMB !== null ? num(s.jsHeapMB, "MB") : unsupported("MB", "performance.memory is Chrome and Edge only");
