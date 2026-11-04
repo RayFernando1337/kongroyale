@@ -152,7 +152,7 @@ case (`load/cold`, `load/warm`) has these metrics:
 | `gl.textureMs`, `gl.bufferMs`, `gl.readbackMs` | Time inside texture uploads (including any synchronous image decode the browser does there), buffer uploads, and readbacks (`readPixels`, `getBufferSubData`, `clientWaitSync`) before ready. `detail.glSlow` lists calls of 8 ms or more. |
 | `gl.programs` | Shader programs at ready (`__kr.programsAtReady`). |
 | `trace.*Ms` (Chrome) | The page's main-thread self time before ready, by kind: `scripting` (JS and the WebGL calls made from it), `parseCompile`, `gc`, `decode` (image decode), `styleLayoutPaint`, `gpuWait` (the page blocked on the GPU process), `other`. `trace.jsSelfMs` is JS self time from the CPU profile, `trace.gpuMainBusyMs` the GPU process main thread's busy time. `detail.trace` has the top events, the long tasks with their biggest children, the GPU-process threads, and the top JS functions and scripts. |
-| `match.startMs` | Click Play to `inMatch`. `match.prepareMs` is the "preparing the island" card's share of it (`__kr.prepareMs`, 0 when the card did not show). |
+| `match.startMs` | The Play click (recorded in the page, before the game's own click handler, so driver latency is not in it) to `inMatch`. `match.prepareMs` is the "preparing the island" card's share of it (`__kr.prepareMs`, 0 when the card did not show). |
 | `match.framesOver100`, `match.p99FrameMs`, `match.maxFrameMs`, `match.blockedMs`, `match.shaderMs` | The first `--match-secs` seconds after `inMatch`: frames over 100 ms, the 99th percentile and longest frame, main-thread blocks, and WebGL shader time. This is the DEF-16 window. |
 | `streamedMs` | When the island finished streaming in (`__kr.streamedAt`); invalid if it did not finish inside the run. |
 
@@ -161,7 +161,11 @@ another software renderer), `matchStarted`, `visible` (the page was never hidden
 gap of 15 s or more: a throttled window or a hang). A run with a failed gate is not a measurement.
 
 `table` prints the median and range of the headline metrics and of `blockedByPhase` for each label and browser.
-`--metrics a,b` picks others.
+`--metrics a,b` picks others. It leaves every case with a failed gate out of the medians and lists it, with the
+failed gates, under the table.
+
+`--starts` picks the loads per run: `cold,warm` (the default), `cold`, or `warm`. A warm-only run first does one
+untimed load to the title so the fresh profile's caches are filled; a cold load can only come first.
 
 ## Comparing a change (A/B)
 

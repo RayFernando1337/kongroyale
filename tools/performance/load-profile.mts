@@ -78,6 +78,8 @@ const PROBE = `(function () {
   // main-thread blocks in any browser: a 10 ms timer; a gap well over its period is a long task or a long frame
   var last = now();
   (function tick() { var t = now(); if (t - last > 30) P.gaps.push([Math.round(last), Math.round(t - last)]); last = t; if (document.visibilityState !== "visible") P.hidden++; setTimeout(tick, 10); })();
+  // the Play click itself, in the capture phase on window: before the button's own handler (ui/lobby.ts) runs
+  addEventListener("click", function (e) { var el = e.target; if (el && el.closest && el.closest("button.tn-play-cta")) mark("click"); }, true);
   requestAnimationFrame(function frame(t) { P.frames.push(Math.round(t * 10) / 10); var k = window.__kr; if (k && k.game && k.game.inMatch) mark("inMatch"); requestAnimationFrame(frame); });
   // the WebGL calls that can block the main thread, timed per window (boot = before ready, title, match)
   var B = { compileShader: "shaderCompile", shaderSource: "shaderCompile", linkProgram: "shaderLink",
@@ -114,7 +116,6 @@ const PROBE = `(function () {
   } catch (e) {}
 })();`;
 const STATUS = `JSON.stringify({ ready: !!(window.__kr && window.__kr.ready), stage: window.__kr ? String(window.__kr.stage) : "none", inMatch: !!(window.__kr && window.__kr.game && window.__kr.game.inMatch), probe: !!window.__krProbe })`;
-const MARK_CLICK = `(function () { if (window.__krProbe) window.__krProbe.marks.click = performance.now(); try { performance.mark("kr:click"); } catch (e) {} return "1"; })()`;
 const COLLECT = `(function () {
   var k = window.__kr || {}, P = window.__krProbe || null, n = performance.getEntriesByType("navigation")[0];
   var nav = n ? { requestStart: n.requestStart, responseStart: n.responseStart, responseEnd: n.responseEnd, domInteractive: n.domInteractive, dcl: n.domContentLoadedEventEnd, load: n.loadEventEnd } : null;
@@ -171,12 +172,16 @@ function startProxy(target: URL, shape: { mbps: number; rttMs: number } | null, 
       }
       res.writeHead(ur.statusCode ?? 502, out);
       if (!shape) { ur.on("data", (c: Buffer) => { hit.bytes += c.length; }); ur.pipe(res); return; }
-      ur.on("data", async (c: Buffer) => {
-        ur.pause(); await pace(c.length); hit.bytes += c.length;
-        if (!res.write(c)) await new Promise((r) => res.once("drain", r));
-        ur.resume();
+      // every chunk waits for the one before it, and the response ends only after the last paced write
+      let chain = Promise.resolve();
+      ur.on("data", (c: Buffer) => {
+        ur.pause();
+        chain = chain.then(async () => {
+          await pace(c.length); hit.bytes += c.length;
+          if (!res.write(c)) await new Promise((r) => res.once("drain", r));
+        }).finally(() => ur.resume());
       });
-      ur.on("end", () => res.end());
+      ur.on("end", () => { chain = chain.then(() => { res.end(); }); });
     });
     up.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });
     req.pipe(up);
@@ -314,7 +319,6 @@ async function loadOnce(d: Driver, start: Start, url: string, out: string, proxy
   const boot: Snap = JSON.parse(await d.run(COLLECT));
   if (!s.ready) failure = "the title never became ready (stage " + s.stage + ")";
   if (s.ready && matchSecs > 0) {
-    await d.run(MARK_CLICK);
     await d.click("button.tn-play-cta");
     const m = await poll(d, (x) => x.inMatch, MATCH_TIMEOUT_MS);
     if (!m.inMatch) failure = "the practice match did not start within " + MATCH_TIMEOUT_MS / 1000 + " s";
@@ -585,6 +589,9 @@ async function run() {
   for (const b of browsers) if (!BROWSERS.includes(b)) fail("unknown browser " + b + " (chrome, safari, webkit)");
   const runs = Number(opt("--runs", "3")), matchSecs = flag("--no-match") ? 0 : Number(opt("--match-secs", "15")), seed = Number(opt("--seed", "42"));
   const starts = opt("--starts", "cold,warm").split(",") as Start[];
+  for (const s of starts) if (s !== "cold" && s !== "warm") fail("unknown start " + s + " (cold, warm)");
+  // a profile is cold only on its first load: a cold start anywhere but first would measure a warm profile
+  if (starts.indexOf("cold") > 0 || starts.filter((s) => s === "cold").length > 1) fail("--starts: cold can only come first (cold, cold,warm, warm or warm,warm)");
   const [vw, vh] = opt("--viewport", "1600x900").split("x").map(Number);
   const netOpt = opt("--net", ""), shape = netOpt ? { mbps: Number(netOpt.split(",")[0]), rttMs: Number(netOpt.split(",")[1] ?? 0) } : null;
   const o: Opts = { viewport: [vw, vh], dpr: Number(opt("--dpr", "2")), headed: flag("--headed"), trace: !flag("--no-trace"), inspect: flag("--inspect"), sdPort: Number(opt("--safaridriver-port", "4471")) };
@@ -613,6 +620,8 @@ async function run() {
       try {
         if (browser === "safari" && screenLocked()) throw new Error(LOCKED);
         d = await launch(browser, o);
+        // a warm-only run first fills the fresh profile's caches with one untimed load to the title
+        if (starts[0] === "warm") { await d.open(pageUrl.href); await poll(d, (x) => x.ready || x.stage === "failed", READY_TIMEOUT_MS); }
         for (const s of starts) loads.push(await loadOnce(d, s, pageUrl.href, out, proxy, matchSecs));
       } catch (e) { errors.push(String((e as Error).stack ?? e).slice(0, 1200)); }
       finally { await d?.close().catch(() => {}); proxy.close(); awake?.kill(); }
@@ -626,7 +635,7 @@ async function run() {
         cases, errors, artifacts: loads.flatMap((L) => L.artifacts),
       };
       save(path.join(out, "result.json"), result);
-      const ok = !errors.length && cases.length === starts.length && cases.every((c) => c.gates.every((g) => g.pass || g.id === "visible"));
+      const ok = !errors.length && cases.length === starts.length && cases.every((c) => c.gates.every((g) => g.pass));
       if (!ok) failed++;
       order.push(id);
       const line: Record<string, unknown> = { run: id, ok };
@@ -655,9 +664,11 @@ function table() {
   const med = (v: number[]) => { const a = [...v].sort((x, y) => x - y), n = a.length; return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2; };
   const fmt = (v: number[]) => !v.length ? "—" : v.length === 1 ? String(v[0]) : med(v) + " [" + Math.min(...v) + "–" + Math.max(...v) + "]";
   for (const id of [...new Set(runs.flatMap((r) => r.cases.map((c) => c.scenario.id)))]) {
-    console.log("\n### " + id + " (median [min–max] over runs; n per group: " + groups.map((g) => g + " " + runs.filter((r) => group(r) === g && r.cases.some((c) => c.scenario.id === id)).length).join(", ") + ")\n");
+    console.log("\n### " + id + " (median [min–max] over runs; n per group: " + groups.map((g) => g + " " + runs.filter((r) => group(r) === g && r.cases.some((c) => c.scenario.id === id && c.gates.every((x) => x.pass))).length).join(", ") + ")\n");
     console.log("| metric | " + groups.join(" | ") + " |\n|---|" + groups.map(() => "---|").join(""));
-    const vals = (g: string, f: (c: CaseResult) => number | undefined) => runs.filter((r) => group(r) === g).flatMap((r) => r.cases.filter((c) => c.scenario.id === id)).map(f).filter((v): v is number => typeof v === "number");
+    // a case with a failed gate is not a measurement: it is left out of every median and listed below the table
+    const valid = (c: CaseResult) => c.gates.every((g) => g.pass);
+    const vals = (g: string, f: (c: CaseResult) => number | undefined) => runs.filter((r) => group(r) === g).flatMap((r) => r.cases.filter((c) => c.scenario.id === id && valid(c))).map(f).filter((v): v is number => typeof v === "number");
     for (const m of metrics) {
       const cells = groups.map((g) => fmt(vals(g, (c) => { const x = c.metrics[m]; return x && x.status === "ok" && "value" in x ? x.value : undefined; })));
       if (cells.every((c) => c === "—")) continue;
@@ -665,6 +676,7 @@ function table() {
     }
     const phases = [...new Set(runs.flatMap((r) => r.cases.filter((c) => c.scenario.id === id).flatMap((c) => Object.keys((c.detail as any)?.blockedByPhase ?? {}))))];
     for (const p of phases) console.log("| blocked in " + p + " (ms) | " + groups.map((g) => fmt(vals(g, (c) => (c.detail as any)?.blockedByPhase?.[p] ?? 0))).join(" | ") + " |");
+    runs.forEach((r, i) => { for (const c of r.cases) if (c.scenario.id === id && !valid(c)) console.log("\nleft out: " + files[i] + " (" + group(r) + "): " + c.gates.filter((g) => !g.pass).map((g) => g.id + ": " + g.detail).join("; ")); });
   }
   return 0;
 }
