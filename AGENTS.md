@@ -126,7 +126,7 @@ catching it; turn it into a check when the same mistake shows up twice.
 | No comments | Lint rule `no-comments` |
 | Constants carry their unit | Review only |
 | Tunable numbers live in `shared/sim/const.ts` | Review only |
-| `import type` for type-only imports | Review only |
+| `import type` for type-only imports | Lint rule `import-type` (also flags unused imports) |
 | Wire ids are `const enum`s | Review only |
 | No new dependencies without discussion | Review only (`package.json` is on the Ask first list) |
 

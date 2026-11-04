@@ -649,5 +649,122 @@
     "tools/verify-boot.mts": 36,
     "tools/verify-online-match.mts": 59,
     "tools/world/raycast-test.mts": 10
+  },
+  "import-type": {
+    "client/src/caster/app.ts": [
+      "import { teamLook } from \"./teams\";"
+    ],
+    "client/src/engine/engine.ts": [
+      "import { Terrain } from \"../../../shared/world/terrain\";"
+    ],
+    "client/src/engine/views.ts": [
+      "import * as THREE from \"three\";"
+    ],
+    "client/src/game/client.ts": [
+      "import { IK, lootReachable, type Chest, type Item } from \"../../../shared/sim/loot\";"
+    ],
+    "client/src/game/render.ts": [
+      "import { bindingText, climbText, descendText, glyphFamily, lookText } from \"../settings/labels\";",
+      "import { glyph, PB, stickGlyph } from \"../settings/pad\";",
+      "import { ClientMatch, type EventSink, type Remote } from \"./client\";"
+    ],
+    "client/src/ui/bigmap.ts": [
+      "import { preferences } from \"../settings/preferences\";"
+    ],
+    "client/src/ui/hud.ts": [
+      "import { CONSUMABLES, POIS, RARITY_COLOR, type ConsumableId, type Rarity, type WeaponId } from \"../../../shared/world/map\";",
+      "import { CONSUMABLE_DEFS, WEAPON_DEFS } from \"../../../shared/sim/const\";",
+      "import { hudUnit, injectStyles, RARITY_DEEP, UI } from \"./styles\";",
+      "import { itemIconUrl, preloadItems, svgGlyph, weaponSilhouette, drawGlyph } from \"./icons\";",
+      "import { bindingText, lookText, onLabelsChange, padText } from \"../settings/labels\";",
+      "import { device } from \"../settings/device\";"
+    ],
+    "client/src/weapons/guns/common.ts": [
+      "import { PartBuilder } from \"../lib/builder\";"
+    ],
+    "client/src/weapons/guns/index.ts": [
+      "import * as THREE from \"three\";"
+    ],
+    "client/src/weapons/index.ts": [
+      "import * as THREE from \"three\";"
+    ],
+    "client/src/world/pois/_kit/coast-props.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, blobShadow, type MatKey } from \"./coast-kit\";"
+    ],
+    "client/src/world/pois/_kit/coast-sign.ts": [
+      "import { Batch } from \"./coast-kit\";"
+    ],
+    "client/src/world/pois/_kit/coast-vehicles.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, lathe, type MatKey } from \"./coast-kit\";"
+    ],
+    "client/src/world/pois/_kit/harbor-rooms.ts": [
+      "import { Builder, hash, type V3 } from \"./harbor-geo\";"
+    ],
+    "client/src/world/pois/banana-temple/cover.ts": [
+      "import * as THREE from \"three\";"
+    ],
+    "client/src/world/pois/cnvs-lab/details.ts": [
+      "import { Bins, type V3 } from \"./geo\";"
+    ],
+    "client/src/world/pois/cnvs-lab/dish.ts": [
+      "import { Bins, type V3 } from \"./geo\";"
+    ],
+    "client/src/world/pois/cnvs-lab/props.ts": [
+      "import { Bins, type V3 } from \"./geo\";"
+    ],
+    "client/src/world/pois/lobby-islet/lk.ts": [
+      "import { Batch, M, cyl, lathe, tube, type Tint } from \"./kit\";"
+    ],
+    "client/src/world/pois/lookout-point/cliff.ts": [
+      "import { Batch, M, rbox, box, mat } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/lookout-point/dress.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, addPieces, dressOpenings } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/lookout-point/keeper-cottage.ts": [
+      "import {Batch,M,box,cyl} from '../_kit/coast-kit';"
+    ],
+    "client/src/world/pois/lookout-point/lh-interior.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, lathe, lightPoolMat } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/peel-strip/crash.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, blobShadow } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/peel-strip/dress.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, addPieces, dressOpenings, blobShadow } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/peel-strip/field.ts": [
+      "import { Batch, M, rbox, cyl, sph, patch, ribbon } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/peel-strip/hangar.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, addPieces, frameGeo, rectShape, shapeGeo, decal, lightPoolMat } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/peel-strip/hero-props.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, lathe } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/peel-strip/tower.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, addPieces, frameGeo, rectShape, shapeGeo, decal } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/the-plantation/barn.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, addPieces, frameGeo, lightPoolMat } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/the-plantation/dress.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, addPieces, dressOpenings, frameGeo } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/pois/the-plantation/yard.ts": [
+      "import { Batch, M, box, rbox, cyl, sph, lathe, addPieces, frameGeo, rectShape, shapeGeo, gableGeo, blobShadow, decal } from \"../_kit/coast-kit\";"
+    ],
+    "client/src/world/veg/index.ts": [
+      "import { SpeciesPool, DetailPool, ImpostorSet, PartGroup, buildPartGroups, VEG_DBG, frustumPlanes, LOD_STATS } from \"./lod\";"
+    ],
+    "client/src/world/veg/splat-cache.ts": [
+      "import * as THREE from \"three\";"
+    ],
+    "shared/sim/static-world.ts": [
+      "import { Terrain } from \"../world/terrain\";"
+    ],
+    "shared/world/terrain.ts": [
+      "import { Biome, WORLD } from \"./map\";"
+    ]
   }
 }

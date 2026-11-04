@@ -285,7 +285,49 @@ const noComments: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments];
+function inTypePosition(n: ts.Node): boolean {
+  for (let p = n.parent; p; p = p.parent) {
+    if (ts.isHeritageClause(p)) return p.token === ts.SyntaxKind.ImplementsKeyword || ts.isInterfaceDeclaration(p.parent);
+    if (ts.isExpressionWithTypeArguments(p)) continue;
+    if (ts.isTypeNode(p)) return true;
+    if (ts.isExpression(p) || ts.isStatement(p) || ts.isExportSpecifier(p) || ts.isShorthandPropertyAssignment(p)) return false;
+  }
+  return false;
+}
+
+const importType: Rule = {
+  id: "import-type",
+  applies: (rel) => /\.m?ts$/.test(rel),
+  check(sf) {
+    const hits: Hit[] = [];
+    const uses = new Map<string, { value: boolean; type: boolean }>();
+    const visit = (n: ts.Node): void => {
+      if (ts.isImportDeclaration(n)) return;
+      if (ts.isIdentifier(n) && !(ts.isPropertyAccessExpression(n.parent) && n.parent.name === n) && !(ts.isQualifiedName(n.parent) && n.parent.right === n)) {
+        const u = uses.get(n.text) ?? { value: false, type: false };
+        if (inTypePosition(n)) u.type = true; else u.value = true;
+        uses.set(n.text, u);
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st) || !st.importClause || st.importClause.isTypeOnly) continue;
+      const c = st.importClause, names: ts.Identifier[] = [];
+      if (c.name) names.push(c.name);
+      if (c.namedBindings && ts.isNamespaceImport(c.namedBindings)) names.push(c.namedBindings.name);
+      if (c.namedBindings && ts.isNamedImports(c.namedBindings)) for (const e of c.namedBindings.elements) if (!e.isTypeOnly) names.push(e.name);
+      for (const id of names) {
+        const u = uses.get(id.text);
+        if (!u) hits.push({ node: id, message: `${id.text} is imported but never used: delete it` });
+        else if (!u.value) hits.push({ node: id, message: `${id.text} is only used as a type: import it with \`import type\` so the bundler never loads its module for it (AGENTS.md "Code style")` });
+      }
+    }
+    return hits;
+  },
+};
+
+const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType];
 
 // ---- engine ----
 
