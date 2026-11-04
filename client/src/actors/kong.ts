@@ -432,7 +432,11 @@ class KongManager {
   slots: Slot[] = [];
   private free: number[] = [];
   group = new THREE.Group();
-  mats: ReturnType<typeof createKongMaterials>;
+  /** the procedural kong's painted materials: only the procedural body draws with them (?kongv=1, or kong.glb failed
+   *  to load), so they are painted on first use. (perf: painting them up front cost 0.5-0.8 s of main thread in every
+   *  boot, inside the first createKong, though the Blender kong never draws them) */
+  private get mats(): KongMaterials { return this.paintedMats ??= createKongMaterials(); }
+  private paintedMats: KongMaterials | null = null;
   weapons: WeaponsKit;
   tris = { hi: 0, lo: 0, min: 0 };
   batches: Batch[] = [];
@@ -476,7 +480,6 @@ class KongManager {
     for (let i = MAX_KONGS - 1; i >= 0; i--) this.free.push(i);
     this.texs = this.datas.map((d) => { const t = new THREE.DataTexture(d, ROW, MAX_KONGS, THREE.RGBAFormat, THREE.FloatType); t.minFilter = t.magFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true; return t; });
     this.uBones = { value: this.texs[0] }; this.uBonesPrev = { value: this.texs[1] };
-    this.mats = createKongMaterials();
     this.weapons = createWeaponsKit(ctx);
     this.asset = asset;
     if (asset) {
