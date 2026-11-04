@@ -54,6 +54,6 @@ if (!fs.existsSync(built) || fs.readFileSync(built, "utf8") !== buildKey) {
 
 if (argv.includes("--no-serve")) { say(`built ${label} in ${dir}`); process.exit(0); }
 say(`serving ${channel} (${label}) on http://localhost:${port}/`);
-const child = spawn(process.execPath, [path.join(dir, "node_modules", "tsx", "dist", "cli.mjs"), "server/index.ts", "--serve"], { cwd: dir, stdio: "inherit", env: { ...process.env, KR_PORT: String(port) } });
+const child = spawn(process.execPath, [path.join(dir, "node_modules", "tsx", "dist", "cli.mjs"), "server/index.ts", "--serve"], { cwd: dir, stdio: "inherit", env: { ...process.env, KR_PORT: String(port), KR_PLAYTEST_BUNDLES: process.env.KR_PLAYTEST_BUNDLES ?? path.join(root, "playtest-bundles") } });
 for (const s of ["SIGINT", "SIGTERM"] as const) process.on(s, () => child.kill(s));
 child.on("exit", (code) => process.exit(code ?? 0));
