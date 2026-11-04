@@ -191,7 +191,7 @@ function hotFileFunctions(sf: ts.SourceFile): [string, ts.FunctionLikeDeclaratio
     return owner ? `${owner.name?.text ?? "class"}.${own.getText(sf)}` : own.getText(sf);
   };
   const visit = (n: ts.Node): void => {
-    if (ts.isConstructorDeclaration(n)) return;
+    if (ts.isConstructorDeclaration(n)) { if (n.body) ts.forEachChild(n.body, visit); return; }
     if (ts.isFunctionLike(n) && "body" in n && n.body) { out.push([label(n as ts.FunctionLikeDeclaration), n as ts.FunctionLikeDeclaration]); return; }
     ts.forEachChild(n, visit);
   };

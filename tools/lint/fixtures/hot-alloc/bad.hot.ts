@@ -24,3 +24,9 @@ export const wrapped = ((r: number) => ALL.map((p) => p.x * r)); // lint-expect
 setInterval(() => ({ ...SCRATCH }), 16); // lint-expect
 export const POOL = Array.from({ length: 3 }, () => ({ x: 0, z: 0 })); // lint-expect
 export const spun = new (class { tick() { return [SCRATCH.x]; } })(); // lint-expect
+export class Wired {
+  tick: () => number[];
+  constructor() {
+    this.tick = () => [SCRATCH.x]; // lint-expect
+  }
+}
