@@ -25,7 +25,7 @@ npx tsx tools/release.mts promote <tag> [--dry-run]
 npx tsx tools/release.mts rollback [--to <tag>] [--dry-run]
 ```
 
-Always run with `--dry-run` first. Run `npm run build` and `npm test` on the commit before `cut`; it checks CI, builds and publishes a prerelease and moves `next`. All commands are safe to repeat. Use `--prefix kongtest` for any trial; it keeps its own `kongtest-next` and `kongtest-stable` and you delete what you created.
+Always run with `--dry-run` first. Run `npm run build` and `npm test` on the commit before `cut`; it checks CI, builds and publishes a prerelease and moves `next`. Every command is safe to repeat except a bare `rollback`, which steps back one more release each time: to retry a rollback, pass `--to <known-good tag>`. Use `--prefix kongtest` for any trial; it keeps its own `kongtest-next` and `kongtest-stable` and you delete what you created.
 
 ## Flow
 
