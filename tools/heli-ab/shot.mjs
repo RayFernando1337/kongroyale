@@ -7,7 +7,7 @@ const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z
 const { chromium } = await import(new URL("file://" + path.resolve(repo, "node_modules/playwright/index.mjs").replace(/\\/g, "/")).href);
 fs.mkdirSync(out, { recursive: true });
 const oldGlb = path.join(out, "old.glb");
-if (!fs.existsSync(oldGlb)) fs.writeFileSync(oldGlb, execSync("git show origin/main:public/assets/vehicles/heli/kong-air.glb", { cwd: repo, maxBuffer: 1 << 26 }));
+if (!fs.existsSync(oldGlb)) fs.writeFileSync(oldGlb, execSync("git show 290a32b:public/assets/vehicles/heli/kong-air.glb", { cwd: repo, maxBuffer: 1 << 26 }));
 const files = { "/index.html": path.join(here, "index.html"), "/old.glb": oldGlb, "/new.glb": path.resolve(repo, "public/assets/vehicles/heli/kong-air.glb") };
 const srv = http.createServer((q, s) => { const u = q.url.split("?")[0]; const f = files[u] ?? (u.startsWith("/three/") ? path.resolve(repo, "node_modules", u.slice(1)) : null); if (!f || !fs.existsSync(f)) { s.writeHead(404); s.end(); return; } s.writeHead(200, { "content-type": f.endsWith(".js") ? "text/javascript" : f.endsWith(".html") ? "text/html" : "application/octet-stream" }); fs.createReadStream(f).pipe(s); }).listen(8766, "127.0.0.1");
 const b = await chromium.launch({ channel: angle === "swiftshader" ? undefined : "chrome", args: angle === "swiftshader" ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist"] });
