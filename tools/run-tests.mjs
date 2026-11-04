@@ -4,7 +4,8 @@
 //   npm test                         every check
 //   npm test -- --list               print each check's id and stop
 //   npm test -- --only types,lint    only these checks (ids from --list)
-//   npm test -- --fast               skip the checks marked slow (about 30 s instead of about 4 min); run them all before a PR
+//   npm test -- --fast               skip the checks marked slow (about 30 s instead of about 4 min);
+//                                    run them all before a PR
 // A filtered run says how many checks it skipped, so it never reads as a full pass.
 import { spawnSync } from "node:child_process";
 import os from "node:os";
@@ -49,7 +50,7 @@ for (let i = 0; i < argv.length; i++) {
     if (bad.length) usage(`unknown check id(s): ${bad.join(", ")}`);
   } else usage(`unknown argument: ${a}`);
 }
-if (only && fast) usage("--only and --fast don't combine; pick one");
+if ([list, fast, !!only].filter(Boolean).length > 1) usage("--list, --fast and --only don't combine; pick one");
 if (list) {
   for (const c of checks) console.log(`${c.id.padEnd(10)} ${c.slow ? "slow" : "    "}  ${c.name}`);
   process.exit(0);
