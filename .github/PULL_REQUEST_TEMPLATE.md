@@ -14,6 +14,11 @@
 - [ ] None
 - [ ] Yes, and they're my own work or CC0 / CC-BY. Where each one came from:
 
+## Release labels (fork)
+
+- [ ] One bump label: `release:major`, `release:minor` or `release:patch`
+- [ ] One section label: `section:features`, `section:performance`, `section:fixes`, `section:tooling` or `section:docs`
+
 ## Used AI?
 
 <!-- No / yes, for which parts. Either way is fine; you're responsible for all of it. -->
