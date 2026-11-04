@@ -76,6 +76,7 @@ for (const [id, load] of entries) {
 }
 const gameImport = gameMode ? import("./game/index") : null;
 let postBuild = null as typeof import("./post-build") | null;
+const prepareCardImport = import("./prepare-card");
 const postBuildImport = import("./post-build").then((m) => (postBuild = m), (e) => { report("post-build", e); return null; });
 gameImport?.catch(() => { /* reported by the game stage */ });
 if (gameMode) { startStaticWorld(); startLootSpotsWorker(); } // (perf: the loot spots off the main thread too)
@@ -479,7 +480,7 @@ kr.prepare = () => {
     const heavyLeft = () => !kr.streamed && (streamList.some((id) => est(id) >= HEAVY_MS) || (streamNow !== null && est(streamNow) >= HEAVY_MS));
     if (!heavyLeft() && (!prefabs || kr.warmDone === true)) return Promise.resolve();
     return (preparing ??= (async () => {
-      const card = prepareCard(); const tick = setInterval(() => card.set(), 100);
+      const card = (await prepareCardImport).prepareCard(kr); const tick = setInterval(() => card.set(), 100);
       const t0 = performance.now();
       streamList.sort((a, b) => est(b) - est(a));
       urgent = true; kr.prepareUrgent = true; engine.sliceMs = 1e9; engine.suspended = true;
@@ -499,7 +500,7 @@ kr.prepare = () => {
   return (preparing ??= (async () => {
     urgent = true; kr.prepareUrgent = true;
     engine.sliceMs = 1e9;
-    const card = prepareCard();
+    const card = (await prepareCardImport).prepareCard(kr);
     // the card covers the title: no title frames while the island finishes (the main thread goes to the stream)
     engine.suspended = true;
     const t0 = performance.now();
@@ -512,24 +513,6 @@ kr.prepare = () => {
     preparing = null;
   })());
 };
-function prepareCard() {
-  const el = document.createElement("div");
-  el.id = "kr-preparing";
-  el.style.cssText = "position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(8,26,40,.72),rgba(6,14,22,.9));font-family:'Barlow Condensed',Arial Narrow,sans-serif;color:#f6efc6;pointer-events:auto";
-  el.innerHTML = `<div style="text-align:center;min-width:min(520px,80vw)"><div style="font-size:clamp(28px,4vw,48px);font-weight:800;letter-spacing:.08em;color:#ffd400">PREPARING THE ISLAND</div><div style="margin:18px 0 10px;height:12px;border-radius:6px;background:rgba(246,239,198,.16);overflow:hidden"><i style="display:block;height:100%;width:100%;transform-origin:left;transform:scaleX(0);background:linear-gradient(90deg,#ffb800,#ffe066);transition:transform .25s linear"></i></div><div data-t style="font-size:20px;font-weight:700;letter-spacing:.06em;opacity:.85"></div></div>`;
-  document.body.appendChild(el);
-  const bar = el.querySelector("i") as HTMLElement, txt = el.querySelector("[data-t]") as HTMLElement;
-  const total = Math.max(1, (kr.streamTotal as number | undefined) ?? 1);
-  const set = () => {
-    const left = ((kr.streamPending as (() => string[]) | undefined)?.() ?? []).length + (kr.streamed ? 0 : 1);
-    const k = kr.streamed ? (kr.warmDone === true ? 1 : 0.95) : Math.min(0.94, 1 - left / (total + 1));
-    bar.style.transform = `scaleX(${k.toFixed(3)})`;
-    const cur = String(kr.streamStage ?? "").replace(/^(build|integrate):(poi:)?/, "").replace(/-/g, " ").toUpperCase();
-    txt.textContent = kr.streamed ? "WAKING THE KONGS" : cur ? `BUILDING ${cur}` : "";
-  };
-  set();
-  return { set, remove: () => el.remove() };
-}
 
 let holding = 0;
 function holdWarmupUntilStreamed() {
