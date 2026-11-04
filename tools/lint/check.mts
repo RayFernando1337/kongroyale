@@ -19,17 +19,18 @@ const BASELINE = `${LINT_DIR}/baseline.json`;
 const SCAN_DIRS = ["client/src", "shared", "server", "tools"];
 const SOURCE_EXT = /\.(ts|mts|js|mjs)$/;
 
-type Hit = { node: ts.Node; message: string };
+type Hit = { node: ts.Node; message: string; line?: number };
 type Rule = {
   id: string;
   /** which repo files the rule covers (posix path relative to the repo root) */
   applies: (rel: string) => boolean;
   check: (sf: ts.SourceFile, rel: string) => Hit[];
+  counted?: boolean;
 };
 /** key = the site's identity in the baseline: the trimmed text of the flagged line */
 type Finding = { rule: string; file: string; line: number; key: string; message: string };
 /** rule id -> file -> baselined site keys */
-type Baseline = Record<string, Record<string, string[]>>;
+type Baseline = Record<string, Record<string, string[] | number>>;
 
 // ---- scopes ----
 
@@ -246,7 +247,45 @@ function hotListErrors(list: unknown, from: string, readable: (rel: string) => t
   return errors;
 }
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc];
+const DIRECTIVES = ["@ts-expect-error", "@ts-ignore", "@ts-nocheck", "@vite-ignore", "lint-expect"];
+const MSG_COMMENT = "no comments (plan decision 2, after Lauren Tan): say it with a name, a type or a test instead; the pstack no-comments skill turns one comment at a time into one of those. Tool directives (@ts-expect-error, @vite-ignore, /// <reference>) are allowed";
+
+function isDirective(text: string): boolean {
+  if (text.startsWith("/// <reference")) return true;
+  const body = text.startsWith("//") ? text.slice(2) : text.slice(2, -2).replace(/^\s*\*+/, "");
+  const word = body.trim().split(/\s/, 1)[0];
+  return DIRECTIVES.includes(word);
+}
+
+function comments(sf: ts.SourceFile): ts.CommentRange[] {
+  const seen = new Map<number, ts.CommentRange>();
+  const add = (ranges: ts.CommentRange[] | undefined) => { for (const r of ranges ?? []) seen.set(r.pos, r); };
+  const walk = (n: ts.Node): void => {
+    if (ts.isJSDoc(n)) return;
+    const children = n.getChildren(sf);
+    if (children.length === 0) { add(ts.getLeadingCommentRanges(sf.text, n.pos)); add(ts.getTrailingCommentRanges(sf.text, n.end)); }
+    children.forEach(walk);
+  };
+  walk(sf);
+  return [...seen.values()];
+}
+
+const noComments: Rule = {
+  id: "no-comments",
+  counted: true,
+  applies: () => true,
+  check(sf) {
+    const hits: Hit[] = [];
+    for (const c of comments(sf)) {
+      if (isDirective(sf.text.slice(c.pos, c.end))) continue;
+      const first = sf.getLineAndCharacterOfPosition(c.pos).line, last = sf.getLineAndCharacterOfPosition(c.end).line;
+      for (let l = first; l <= last; l++) hits.push({ node: sf, line: l + 1, message: MSG_COMMENT });
+    }
+    return hits;
+  },
+};
+
+const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments];
 
 // ---- engine ----
 
@@ -260,7 +299,7 @@ function runRule(rule: Rule, sf: ts.SourceFile, file: string): Finding[] {
   const byLine = new Map<number, Finding>();
   const lines = sf.text.split(/\r?\n/);
   for (const h of rule.check(sf, file)) {
-    const line = sf.getLineAndCharacterOfPosition(h.node.getStart(sf)).line + 1;
+    const line = h.line ?? sf.getLineAndCharacterOfPosition(h.node.getStart(sf)).line + 1;
     if (!byLine.has(line)) byLine.set(line, { rule: rule.id, file, line, key: lines[line - 1].trim(), message: h.message });
   }
   return [...byLine.values()];
@@ -280,22 +319,31 @@ function sourceFiles(): string[] {
 }
 
 /** findings the baseline doesn't list (fresh), and errors for those and for every baseline entry that no longer matches */
-function compareBaseline(findings: Finding[], baseline: Baseline, ruleIds: string[], fileExists: (rel: string) => boolean): { fresh: Finding[]; errors: string[] } {
+function compareBaseline(findings: Finding[], baseline: Baseline, rules: Pick<Rule, "id" | "counted">[], fileExists: (rel: string) => boolean): { fresh: Finding[]; errors: string[] } {
   const fresh: Finding[] = [], errors: string[] = [];
-  for (const rule of Object.keys(baseline)) if (!ruleIds.includes(rule)) errors.push(`${BASELINE} names unknown rule "${rule}": remove it`);
-  for (const rule of ruleIds) {
+  for (const rule of Object.keys(baseline)) if (!rules.some((r) => r.id === rule)) errors.push(`${BASELINE} names unknown rule "${rule}": remove it`);
+  for (const { id: rule, counted } of rules) {
     const base = baseline[rule] ?? {};
     const byFile = new Map<string, Finding[]>();
     for (const f of findings) if (f.rule === rule) byFile.set(f.file, [...(byFile.get(f.file) ?? []), f]);
     for (const file of new Set([...Object.keys(base), ...byFile.keys()])) {
-      const listed = base[file];
+      const listed = base[file], found = byFile.get(file) ?? [];
+      if (counted) {
+        if (listed !== undefined && (typeof listed !== "number" || !Number.isInteger(listed) || listed < 1)) { errors.push(`${rule}: ${file} in ${BASELINE} must be a positive line count, got ${JSON.stringify(listed)}`); continue; }
+        if (listed !== undefined && !fileExists(file)) { errors.push(`${rule}: ${file} is in ${BASELINE} but does not exist: remove its entry`); continue; }
+        const allowed = listed ?? 0, n = found.length;
+        if (n > allowed && allowed === 0) fresh.push(...found);
+        if (n > allowed) errors.push(`${rule}: ${file} has ${n} flagged line(s), the baseline allows ${allowed}: remove the new one(s)${allowed ? " (git diff shows yours)" : " (see above)"}`);
+        if (n < allowed) errors.push(`${rule}: ${file} has ${n} flagged line(s), fewer than the baseline's ${allowed}: ${n ? `lower its count in ${BASELINE} to ${n}` : `delete its entry from ${BASELINE}`} so it stays that way`);
+        continue;
+      }
       if (listed !== undefined && (!Array.isArray(listed) || listed.length === 0 || !listed.every((k) => typeof k === "string" && k))) {
         errors.push(`${rule}: ${file} in ${BASELINE} must be a non-empty list of site texts, got ${JSON.stringify(listed)}`);
         continue;
       }
       if (listed !== undefined && !fileExists(file)) { errors.push(`${rule}: ${file} is in ${BASELINE} but does not exist: remove its entry`); continue; }
       const left = [...(listed ?? [])];
-      for (const f of byFile.get(file) ?? []) {
+      for (const f of found) {
         const i = left.indexOf(f.key);
         if (i >= 0) left.splice(i, 1);
         else { fresh.push(f); errors.push(`${rule}: ${file}:${f.line} is a new violation: fix it (see above)`); }
@@ -327,6 +375,7 @@ function selfTest(): string[] {
   }
   // the ratchet itself: every way a site can appear, move or vanish must fail; only an exact match passes
   const at = (key: string, file = "a.ts"): Finding => ({ rule: "r", file, line: 1, key, message: "" });
+  const atC = (file = "a.ts"): Finding => ({ rule: "c", file, line: 1, key: "", message: "" });
   const exists = (f: string) => f !== "gone.ts";
   const cases: [string, Finding[], unknown, boolean][] = [
     ["exact match", [at("x"), at("x")], { r: { "a.ts": ["x", "x"] } }, true],
@@ -339,9 +388,17 @@ function selfTest(): string[] {
     ["empty list", [], { r: { "a.ts": [] } }, false],
     ["count instead of list", [at("x")], { r: { "a.ts": 1 } }, false],
     ["unknown rule", [], { q: { "a.ts": ["x"] } }, false],
+    ["counted: exact count", [atC(), atC()], { c: { "a.ts": 2 } }, true],
+    ["counted: one more", [atC(), atC(), atC()], { c: { "a.ts": 2 } }, false],
+    ["counted: new file", [atC("b.ts")], {}, false],
+    ["counted: one fewer", [atC()], { c: { "a.ts": 2 } }, false],
+    ["counted: all gone", [], { c: { "a.ts": 2 } }, false],
+    ["counted: list instead of count", [atC()], { c: { "a.ts": ["x"] } }, false],
+    ["counted: zero", [], { c: { "a.ts": 0 } }, false],
+    ["counted: missing file", [], { c: { "gone.ts": 1 } }, false],
   ];
   for (const [name, found, base, pass] of cases) {
-    if ((compareBaseline(found, base as Baseline, ["r"], exists).errors.length === 0) !== pass) errors.push(`baseline ratchet: case "${name}" should ${pass ? "pass" : "fail"}`);
+    if ((compareBaseline(found, base as Baseline, [{ id: "r" }, { id: "c", counted: true }], exists).errors.length === 0) !== pass) errors.push(`baseline ratchet: case "${name}" should ${pass ? "pass" : "fail"}`);
   }
   errors.push(...hotListErrors(readJson(HOT_FIXTURE_JSON), HOT_FIXTURE_JSON, readSource));
   const hotSf = ts.createSourceFile("h.ts", "export function f() {}\nexport const g = () => 0;\nexport class C { m() {} }\n", ts.ScriptTarget.Latest, true);
@@ -382,7 +439,7 @@ for (const file of files) {
   for (const r of rules) findings.push(...runRule(r, sf, file));
 }
 const baseline: Baseline = JSON.parse(fs.readFileSync(path.join(ROOT, BASELINE), "utf8"));
-const { fresh, errors } = compareBaseline(findings, baseline, RULES.map((r) => r.id), (rel) => fs.existsSync(path.join(ROOT, rel)));
+const { fresh, errors } = compareBaseline(findings, baseline, RULES, (rel) => fs.existsSync(path.join(ROOT, rel)));
 for (const f of fresh) console.error(`${f.file}:${f.line}  ${f.rule}  ${f.message}`);
 const ms = Math.round(performance.now() - t0);
 if (errors.length) { console.error(`\nlint FAILED (${files.length} files, ${ms} ms):\n  ${errors.join("\n  ")}`); process.exit(1); }
