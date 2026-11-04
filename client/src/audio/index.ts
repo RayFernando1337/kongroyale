@@ -350,7 +350,7 @@ class Engine implements KongAudio {
     if (this.uwBed) { this.uwBed.stop(); this.uwBed = null; } this.uwK = 0;
     const t = this.ctx.currentTime;
     for (const v of this.voices) if (v.end > t && !v.group.startsWith("ui/")) this.fadeOut(v, 0.15);
-    if (flag("audioevict")) this.lib.releaseLoaded(prefetchGroup);
+    if (flag("audioevict")) { this.lib.releaseLoaded(prefetchGroup); this.dropWanted = false; this.stormFetched = false; }
   }
   /** endSession() ran and no match update() since: the idle slice starts nothing */
   private sessionOff = false;

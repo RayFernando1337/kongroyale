@@ -316,7 +316,10 @@ export class Library {
   }
 
   releaseLoaded(keep: (group: string) => boolean) {
-    for (const g of [...this.groupLoads.keys()]) if (!keep(g) && (this.groups.get(g) ?? []).every((id) => this.buffers.has(id))) this.release(g);
+    for (const [g, ids] of this.groups) {
+      if (!this.isLazy(g) || keep(g) || ids.some((id) => this.pending.has(id)) || !ids.some((id) => this.buffers.has(id))) continue;
+      this.release(g);
+    }
   }
 
   private release(group: string) {
