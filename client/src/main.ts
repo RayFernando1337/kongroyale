@@ -734,3 +734,5 @@ function showError(msg: string) {
   }
   el.textContent += msg.slice(0, 600) + "\n";
 }
+
+if (typeof window !== "undefined") throw new Error("deliberate boot break (throwaway CI proof)");
