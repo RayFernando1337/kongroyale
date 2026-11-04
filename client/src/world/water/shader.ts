@@ -1070,8 +1070,8 @@ vec3 wtrReflSkyHi(vec3 d) {
 #ifdef WTR_SCENE
 // SCREEN-SPACE REFLECTION: march the reflected ray through the opaque scene's depth copy (the huts, piles,
 // boats, treeline and cliffs mirrored in the water at grazing angles). 20 steps growing ×1.3 (≈ 0.3 m → 400 m) + a
-// 5-step binary refine; misses (sky, off-screen) keep the analytic sky reflection. rgb = scene radiance, a = weight
-// (the Medium / Low tier — WTR_LITE — marches 9 growing steps + 3 refines instead of 20 + 5)
+// 3-step binary refine; misses (sky, off-screen) keep the analytic sky reflection. rgb = scene radiance, a = weight
+// (the Medium / Low tier — WTR_LITE — marches 9 growing steps + 3 refines instead of 20 + 3)
 #ifdef WTR_LITE
 #define WTR_SSR_N 9
 #define WTR_SSR_G 1.65
@@ -1079,7 +1079,7 @@ vec3 wtrReflSkyHi(vec3 d) {
 #else
 #define WTR_SSR_N 20
 #define WTR_SSR_G 1.3
-#define WTR_SSR_R 5
+#define WTR_SSR_R 3
 #endif
 vec4 wtrSSRTrace(vec3 P, vec3 R, float dist) {
   if (wtrGrab.w < 0.5 || R.y < 0.002) return vec4(0.0);
