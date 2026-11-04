@@ -227,6 +227,40 @@ Distance moves a region between states, with hysteresis, and so does its categor
 can reach within a few seconds stay near. Rebuilding costs time, so `far` is the main lever, and `cold` is for the lobby
 islet once the plane leaves and for anything the storm has closed.
 
+## Context loss
+
+The browser can take the WebGL context away at any time: a GPU reset, a driver update, too many contexts, or memory
+pressure (the Safari case above). three.js handles the event itself: it calls `preventDefault()` on
+`webglcontextlost`, so the browser may restore the context, and on `webglcontextrestored` it rebuilds its GL state and
+uploads geometry and textures again from their CPU copies. Nothing in `client/src` listens for either event today. So
+after a restore:
+
+- Every baked render target comes back empty: impostor banks, the terrain's far albedo, water obstacle and wave bakes,
+  cloud volumes, the sky bake. They were drawn once and are never drawn again.
+- Every texture whose CPU copy was released (`releaseAfterUpload` in `engine/texture-release.ts`, behind `?texfree`)
+  keeps only a sized stub, so it uploads as nothing.
+- Geometry whose CPU arrays are dropped would do the same, which is why the [CPU copies](#cpu-copies) section keeps them
+  until the owner registers `rebuild`.
+
+The policy has two stages, and the second replaces the first only when a check proves it covers everything.
+
+1. **Reload (now).** One handler in `engine/engine.ts` owns both events. On `webglcontextlost` it pauses the frame loop
+   and shows a "graphics reset" card. On `webglcontextrestored` it reloads the page, which rebuilds every bake and
+   refetches every released texture from the HTTP cache. If the context is not restored within a few seconds, it
+   reloads anyway. A practice match is lost. An online player lands on the title and rejoins through the lobby link,
+   the same as after any reload. This is crude, but it is correct for every resource, including ones nobody has
+   classified yet, and a context loss is rare.
+2. **Restore in place (later).** Every ledger entry gets a restore path: a cached file is reloaded through the cache, a
+   procedural texture or a bake re-runs its builder (registered with the scope next to the resource), and geometry runs
+   its `rebuild`. On `webglcontextrestored` the engine walks the ledger, app scope first, and restores each entry before
+   the next frame. The engine switches from reload to restore only when the ledger reports no entry without a restore
+   path.
+
+What enforces it: an `npm test` step on SwiftShader boots to the title, calls `WEBGL_lose_context.loseContext()` and
+then `restoreContext()`, and requires the page to reach `__kr.ready` again with no `__kr.errors`. In stage 2 it also
+reads a pixel from one baked target and requires it to be non-empty. While the ledger still has entries without a
+restore path, the same step requires that the reload path ran.
+
 ## Rules and what enforces them
 
 A rule only counts if a check fails when it breaks. Each rule lands together with its check, as a row in AGENTS.md
@@ -240,6 +274,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | A match leaves nothing behind | CI on SwiftShader: two matches back to back. The ledger's bytes per category after the second equal those after the first, within a small tolerance, and the match scope is empty after leaving |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
 | Only the cache frees what it lends | Development builds throw on `dispose()` of a cached resource from outside the cache |
+| The game survives a WebGL context loss | `npm test` step on SwiftShader: `loseContext()` then `restoreContext()` at the title, and the page must reach `__kr.ready` again with no errors, by reload until every ledger entry has a restore path and by restoring in place after (see [Context loss](#context-loss)) |
 
 Geometry constructors are not in the lint rule. Most of the roughly 1,400 `new THREE.*Geometry` calls build temporary
 inputs that are merged and never reach the GPU, so a lint would mostly flag harmless code. The "no unowned resource"
@@ -268,8 +303,10 @@ ships dark behind a registry flag where it changes behaviour.
 9. **Residency**: `far` regions free their sources' GPU buffers (with RAY-106), then `cold` for the lobby islet.
 10. **Capped internal pixels** for every screen-sized target (`world/atmos/post.ts`, `engine/engine.ts`), so the
     `target` budget no longer depends on the display.
+11. **Context loss**: the reload handler in `engine/engine.ts` and its `npm test` step first. Restoring in place comes after
+    step 8, once every scope entry can carry a restore path.
 
-Steps 2, 4 and 5 belong to the architecture lane. Steps 3 and 6 to 10 change other lanes' code and go through them.
+Steps 2, 4 and 5 belong to the architecture lane. Steps 3 and 6 to 11 change other lanes' code and go through them.
 Step 10 needs none of the others and addresses the Safari kill, so it can land first.
 
 ## Open questions
