@@ -10,4 +10,9 @@ export class Mover {
   tick() { this.n++; return this.n; }
   step = () => this.n + 1;
   readonly scratch = new Float32Array(3);
+  constructor() { this.n = [1, 2].length; }
 }
+export const loop = {
+  tick() { return SCRATCH.x + BUF[0]; },
+  scratch: { x: 0 },
+};

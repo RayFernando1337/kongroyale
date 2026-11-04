@@ -13,3 +13,11 @@ export class Mover {
   step = () => new Float32Array(3); // lint-expect
 }
 export default (ps: P[]) => ps.slice(1); // lint-expect
+export const loop = {
+  tick() { return { ...SCRATCH }; }, // lint-expect
+  step: (r: number) => [r], // lint-expect
+};
+export const Spinner = class {
+  tick() { return new Float32Array(1); } // lint-expect
+};
+export const wrapped = ((r: number) => ALL.map((p) => p.x * r)); // lint-expect

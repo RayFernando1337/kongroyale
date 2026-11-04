@@ -181,6 +181,24 @@ function topLevelFunctions(sf: ts.SourceFile): [string, ts.FunctionLikeDeclarati
 
 const findHot = (sf: ts.SourceFile, name: string) => topLevelFunctions(sf).find(([n]) => n === name)?.[1];
 
+function hotFileFunctions(sf: ts.SourceFile): [string, ts.FunctionLikeDeclaration][] {
+  const out: [string, ts.FunctionLikeDeclaration][] = [];
+  const label = (fn: ts.FunctionLikeDeclaration): string => {
+    const p = fn.parent;
+    const own = fn.name ?? ((ts.isVariableDeclaration(p) || ts.isPropertyAssignment(p) || ts.isPropertyDeclaration(p)) ? p.name : undefined);
+    const owner = ts.isClassLike(p) ? p : ts.isPropertyDeclaration(p) && ts.isClassLike(p.parent) ? p.parent : undefined;
+    if (!own) return `the function at line ${sf.getLineAndCharacterOfPosition(fn.getStart(sf)).line + 1}`;
+    return owner ? `${owner.name?.text ?? "class"}.${own.getText(sf)}` : own.getText(sf);
+  };
+  const visit = (n: ts.Node): void => {
+    if (ts.isConstructorDeclaration(n)) return;
+    if (ts.isFunctionLike(n) && "body" in n && n.body) { out.push([label(n as ts.FunctionLikeDeclaration), n as ts.FunctionLikeDeclaration]); return; }
+    ts.forEachChild(n, visit);
+  };
+  ts.forEachChild(sf, visit);
+  return out;
+}
+
 function allocation(n: ts.Node, sf: ts.SourceFile): string | undefined {
   if (ts.isNewExpression(n)) return `new ${n.expression.getText(sf)} allocates: create it once (module scope or a field) and reuse it`;
   if (ts.isObjectLiteralExpression(n)) return "an object literal allocates: reuse a preallocated scratch object (like the module-level H = makeHit() in shared/sim/loot-spots.ts)";
@@ -197,7 +215,7 @@ const hotAlloc: Rule = {
   applies: (rel) => rel in HOT || isHotFile(rel),
   check(sf, rel) {
     const hits: Hit[] = [];
-    const hot = isHotFile(rel) ? topLevelFunctions(sf) : (HOT[rel] ?? []).flatMap((name): [string, ts.FunctionLikeDeclaration][] => {
+    const hot = isHotFile(rel) ? hotFileFunctions(sf) : (HOT[rel] ?? []).flatMap((name): [string, ts.FunctionLikeDeclaration][] => {
       const fn = findHot(sf, name);
       return fn ? [[name, fn]] : [];
     });
