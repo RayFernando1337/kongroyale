@@ -4,13 +4,14 @@
 import type { StaticWorld } from "../../../shared/sim/world";
 import { adoptLootSpots, type SpotSet } from "../../../shared/sim/loot-spots";
 import { assetUrl } from "./assets";
+import { flag } from "../flags";
 
 interface Result { ok: boolean; hash?: number; set?: SpotSet; worldMs?: number; spotsMs?: number; error?: string }
 let job: Promise<Result> | null = null;
 
 /** start the worker (idempotent; ?nolootworker = off) */
 export function startLootSpotsWorker() {
-  if (job || new URLSearchParams(location.search).has("nolootworker")) return;
+  if (job || flag("nolootworker")) return;
   job = new Promise<Result>((resolve) => {
     try {
       const w = new Worker(new URL("./lootspots.worker.ts", import.meta.url), { type: "module" });

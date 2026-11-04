@@ -19,6 +19,7 @@ import type { Engine } from "./engine";
 import { gate as gateVisible, type Gate } from "./scene-hooks";
 import { programMergeSafe, releaseShaderRecorder } from "./shader-src";
 import { DITHER, clearDither, setDither } from "./dither";
+import { flag } from "../flags";
 
 interface FarPoi {
   id: string;
@@ -46,7 +47,7 @@ const PREPARE_CHUNK = 512;
 const HYST = 25;
 /** ?lodv=1: a source the engine's DetailCull would already have cut at the proxy's switch distance
  * is NOT merged (it keeps its own cut / fade) — a merged proxy brought every sub-pixel prop of a far POI back at once */
-const HLOD_LODV = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("lodv") !== "0";
+const HLOD_LODV = flag("lodv");
 const MAX_TRIS = 40000;
 /** instanced sources with at most this many instances expand into the proxy (ripe-peak draws 86 one-instance chunks) */
 const MAX_INSTANCES = 64;

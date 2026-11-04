@@ -435,7 +435,7 @@ export function navCellAt(nav: Nav, x: number, y: number, z: number): number {
 let BFS_D = new Int32Array(0), BFS_P = new Int32Array(0), BFS_Q = new Int32Array(0), BFS_STAMP = new Int32Array(0), STAMP = 0;
 /** a walk route from (fx, fy, fz) to nav cell `to`: waypoints (x, y, z) into `out`, returns their count (0 = no route).
  * From outdoors the route enters through the exit that minimises (straight line to its outside point + walk inside). */
-export function navPath(nav: Nav, fx: number, fy: number, fz: number, to: number, out: Float32Array, terrain?: (x: number, z: number) => number): number {
+export function navPath(nav: Nav, fx: number, fy: number, fz: number, to: number, out: Float32Array, terrain?: { height(x: number, z: number): number }): number {
   if (to < 0) return 0;
   if (BFS_D.length < nav.n) { BFS_D = new Int32Array(nav.n); BFS_P = new Int32Array(nav.n); BFS_Q = new Int32Array(nav.n); BFS_STAMP = new Int32Array(nav.n); }
   const from = navCellAt(nav, fx, fy, fz), cap = out.length / 3;
@@ -460,7 +460,7 @@ export function navPath(nav: Nav, fx: number, fy: number, fz: number, to: number
   // the door's level (a deck, a walkway) still goes in.
   if (!inside) {
     const ex = nav.ex[entry * 3], ey = nav.ex[entry * 3 + 1], ez = nav.ex[entry * 3 + 2];
-    const raised = terrain ? ey - Math.max(0, terrain(ex, ez)) > 1.6 : ey - fy > 1.6;
+    const raised = terrain ? ey - Math.max(0, terrain.height(ex, ez)) > 1.6 : ey - fy > 1.6;
     if (raised && ey - fy > 1.6) return 0;                          // (a door below: walk off the roof / ledge to it)
   }
   if (!inside && n < cap) { out[n * 3] = nav.ex[entry * 3]; out[n * 3 + 1] = nav.ex[entry * 3 + 1]; out[n * 3 + 2] = nav.ex[entry * 3 + 2]; n++; }
