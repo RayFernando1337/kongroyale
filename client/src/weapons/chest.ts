@@ -21,6 +21,7 @@ import { gunInstance } from "./guns/index";
 import type { ChestView } from "./api";
 import { CHEST_CRATE } from "../../../shared/sim/crate";
 import { flag } from "../flags";
+import { shareAttributes } from "../engine/geo-share";
 
 export interface ChestOpts { studio?: boolean; dressed?: boolean; tall?: boolean; style?: CrateStyle; /** keep the burst lit (staging) */ hold?: boolean; /** studio: ground aura + outer halo (loot-03); off for loot-01 (plain white sheet) */ aura?: boolean }
 
@@ -53,6 +54,7 @@ function crate(rarity: Rarity, style: CrateStyle, tall: boolean): CrateGeo {
     const band = rarity === "legendary" && style !== "lineup" ? "#ffd400" : BAND[rarity];
     const tint: Tint = { band, gold: rarity === "legendary", seam: GLOW[rarity] };
     g = buildCrate(tall ? TALL : CUBE, tint, style);
+    for (const part of [g.closed, g.far, g.imp, g.seamGlow, g.body, g.lid, g.leftovers]) if (part) shareAttributes(`crate:${style}:${tall ? "T" : "C"}`, part);
     geoCache.set(key, g);
   }
   return g;
@@ -138,6 +140,7 @@ function openedGeometry(rarity: Rarity, style: CrateStyle, tall: boolean): THREE
       merged.setAttribute(k, new THREE.BufferAttribute(arr, (body.attributes[k] as THREE.BufferAttribute).itemSize));
     }
     merged.computeBoundingSphere();
+    shareAttributes(`crate:${style}:${tall ? "T" : "C"}`, merged);
     openedGeo.set(key, merged);
     g = merged;
   }
