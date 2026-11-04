@@ -69,74 +69,103 @@ children first.
 | `match` | one match, from start to leaving | `game/index.ts` | `GameRender` and everything it creates: views, FX, markers, the storm volume |
 | `transient` | one call | the function that opens it | bake targets, readback buffers, worker pools for one build |
 
-The API is small. This is a sketch; the names land with step 2 of the migration:
+The API is `client/src/engine/res/scope.ts`. A scope takes ownership of an object you have just made and returns it,
+so the call site reads like the code it replaces:
 
 ```ts
-type Category = "tex.world" | "tex.actor" | "tex.ui" | "geo.world" | "geo.actor" | "target" | "audio";
-interface Scope {
-  readonly name: string;
+type Category = "tex.world" | "tex.actor" | "tex.ui" | "geo.world" | "geo.actor" | "target" | "audio" | "other";
+class Scope {
+  readonly path: string;
   child(name: string): Scope;
-  texture<T extends THREE.Texture>(cat: Category, make: () => T, o?: { keepCpu?: string }): T;
-  geometry<T extends THREE.BufferGeometry>(cat: Category, make: () => T, o?: { keepCpu?: string }): T;
-  material<T extends THREE.Material>(make: () => T): T;
-  target<T extends THREE.RenderTarget>(make: () => T): T;
-  worker(make: () => Worker): Worker;
-  adopt(o: { dispose(): void }, cat: Category, bytes: number): void;
+  texture<T extends THREE.Texture>(cat: Category, t: T): T;
+  geometry<T extends THREE.BufferGeometry>(cat: Category, g: T): T;
+  target<T extends THREE.RenderTarget>(rt: T): T;
+  material<T extends THREE.Material>(m: T): T;
+  worker(w: Worker): Worker;
+  own<T extends { dispose(): void }>(cat: Category, obj: T, bytes?: () => number): T;
+  defer(fn: () => void): void;
   dispose(): void;
 }
+function withScope<T>(parent: Scope, name: string, fn: (s: Scope) => Promise<T> | T): Promise<T>;
+const resources: Ledger;
 ```
 
-A transient scope is a function, so a bake can't forget to free its target:
+Rules the module enforces:
+
+- An object has one owner. Handing the same object to a second scope throws, and names both scopes.
+- `dispose()` frees children first, then what the scope owns in reverse order of creation, then runs its `defer`
+  callbacks in the same reverse order. A resource that fails to free does not stop the others; the scope throws one
+  `AggregateError` at the end.
+- A disposed scope refuses new resources.
+- `resources.report()` gives count and bytes per category and per scope, and how many owned geometries and textures have
+  uploaded. Bytes are measured when the report is read, so a texture whose image arrives later, or a render target that
+  is resized, is counted at its current size.
+
+## Usage
+
+A match owns what it makes, and the non-resource cleanup that leaving a match needs goes into `defer`, next to the code
+it undoes:
 
 ```ts
-await withScope("bake:impostor", async (s) => {
-  const rt = s.target(() => new THREE.WebGLRenderTarget(size, size));
+import { resources, type Scope } from "../engine/res/scope";
+
+const match: Scope = resources.root.child("match");
+const geo = match.geometry("geo.actor", new THREE.CapsuleGeometry(0.09, 0.4, 4, 8));
+const mat = match.material(new THREE.MeshStandardMaterial({ color: "#f5c531" }));
+const rocket = new THREE.Mesh(geo, mat);
+scene.add(rocket);
+match.defer(() => rocket.removeFromParent());
+match.defer(() => overlay.remove());
+
+match.dispose();
+```
+
+A bake frees its target even when it throws:
+
+```ts
+await withScope(resources.root, "bake:impostor", async (s) => {
+  const rt = s.target(new THREE.WebGLRenderTarget(size, size));
   renderBake(rt);
 });
 ```
+
+Shared resources (a prefab's geometry, a cached texture) are not handed to a per-match scope: the scope that made them
+owns them. The tests in `tools/res/test.mts` run each of these cases.
 
 What changes for each owner:
 
 - **World modules** get `ctx.res`, their region scope, on `WorldCtx`. A module creates through it and no longer frees
   anything by hand. The boot already knows each module's scene roots (`rootsOf` in `main.ts`), so the scope also gives
   per-POI accounting.
-- **`GameRender`** gets the match scope. Its hand-written `dispose()` chain becomes `match.dispose()` plus removing its
-  roots from the scene. Per-match classes stop writing their own `dispose()`.
+- **`GameRender`** gets the match scope. The resources its views and effects own move into the scope, so their
+  hand-written `dispose()` methods shrink to nothing. The rest of today's teardown stays, registered with `defer` where it
+  is set up: the `disposed` flag that pending chest and loot loads check, returning kongs to the pool with
+  `releaseKong`, removing the buff overlay's DOM, and stopping sound loops. The lifecycle lane (RAY-107) does this
+  migration.
 - **Shared prefabs** (the `SHARED ??= build()` pattern) move to the app scope through the cache below. They stay
   session-long, as RAY-16 needs (their programs stay linked), but now they are counted.
 
-Sharing is explicit: a resource from the cache is borrowed, and only the cache frees it. Freeing a borrowed resource
-throws in development builds.
-
-## One asset cache
-
-`engine/assets.ts` becomes the only way to get a file-backed or shared procedural resource:
-
-- **Keyed by what the resource is, not by how it was asked for.** Today the key `tex:path:srgb:repeat` makes two GPU
-  textures from one image when two callers want different wrap modes. The cache keys the upload by path and decode
-  options, and hands out `Texture` objects that share one `Source` when only sampler state differs.
-- **Reference counted.** `acquire(key, scope)` adds a reference owned by that scope, and disposing the scope drops it. A
-  resource with no references stays cached until its category needs the room, then the least recently used goes first.
-- **Procedural builds go through it too:** `cache.build(key, cat, () => buildTukTuk())`. This replaces the hand-rolled
-  `Map` caches, one area at a time.
-- **One loader of each kind**, owned by the cache: one GLTF loader, one KTX2 transcoder pool, one image path. The ten
-  bypass sites move onto it.
+Sharing is explicit: a resource from the cache is borrowed, and only the cache frees it.
 
 ## CPU copies
 
-After a resource is uploaded, the layer drops its CPU copy by default:
+After a texture is uploaded, the layer drops its CPU copy by default: `texture.onUpdate` closes an `ImageBitmap`, and
+lets go of an `<img>`, a canvas or a typed array once the upload has happened. Width and height stay readable. After a
+context loss, a texture is reloaded through the cache, never from a kept copy, so every texture whose copy is dropped
+must come from the cache or from a builder the cache can run again.
 
-- Textures: `texture.onUpdate` closes an `ImageBitmap`, and lets go of an `<img>`, a canvas or a typed array once the
-  upload has happened. Width and height stay readable.
-- Geometry: `attribute.onUpload` swaps the array for an empty one of the same type, after the bounding box and sphere are
-  computed.
+Geometry is different: three.js uploads `attribute.array` again whenever the GPU buffer is recreated (after a
+`dispose()`, or after a context loss), so a geometry whose array is gone can't come back. Geometry copies are dropped
+only where the owner can rebuild it: the scope gets a `rebuild` callback for that geometry (a module's builder, a
+cached GLTF), and the `far`-to-near transition and context restore call it. Until an owner registers one, its geometry
+keeps its CPU copy. This puts textures first in the migration, which is also where most of the bytes are.
 
 Code that reads the data later says so: `{ keepCpu: "hlod merge" }`. The reason is a string so the ledger can list every
-kept copy and why. Known readers today are the HLOD far merge (`engine/hlod.ts` reads source arrays), raycasts against
-world meshes, canvas textures that are redrawn (plane paint, signs), and DataTextures updated in place (water fields,
-splat fade). Collision is not a reader: it comes from `shared/` and the static-world worker.
-
-After a context loss, a texture is reloaded through the cache, not from a kept copy.
+kept copy and why. Known readers today are the HLOD far merge (`engine/hlod.ts` reads source arrays), the interaction
+highlight (`hullOf` in `game/highlight.ts` welds a hull from the target's positions, sometimes in an idle slice long
+after the upload), raycasts against world meshes, canvas textures that are redrawn (plane paint, signs), and
+DataTextures updated in place (water fields, splat fade). Collision is not a reader: it comes from `shared/` and the
+static-world worker.
 
 ## Budgets and residency
 
@@ -160,7 +189,8 @@ Budgets scale with the quality tier, and with `navigator.deviceMemory` where the
 1. **near**: built, and drawn as the module built it.
 2. **far**: only its HLOD proxy is resident. The engine already builds a merged proxy for far POIs (`engine/hlod.ts`), but
    keeps the sources alive beside it, so today a far POI costs its sources plus the proxy. In this state the region
-   frees its sources' GPU buffers and near-only textures.
+   frees its sources' GPU buffers and near-only textures. It keeps the sources' CPU arrays, or a `rebuild` callback for
+   them (see [CPU copies](#cpu-copies)), because coming back near uploads them again.
 3. **cold**: nothing resident; the module rebuilds it when the camera comes close.
 
 Distance moves a region between states, with hysteresis, and so does its category being over budget. Regions the player
@@ -175,7 +205,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | rule | enforced by |
 |---|---|
 | GPU resources are created only through a scope or the cache | Lint rule `resource-owner`: no `new THREE.*Texture`, `*RenderTarget`, `new Worker`, `TextureLoader` or `GLTFLoader` outside `client/src/engine/res/`. Today's sites go in `tools/lint/baseline.json`, which only shrinks |
-| The renderer holds no unowned resource | `npm test` memory step: after boot and a match on SwiftShader, the `renderer.info.memory` counts equal the ledger's counts |
+| The renderer holds no unowned resource | `npm test` memory step: after boot and a match on SwiftShader, the number of geometries and textures three.js has uploaded (`renderer.info.memory`) equals the number the ledger saw upload. The ledger counts an upload from `attribute.onUpload` and `texture.onUpdate`, so equal counts mean every uploaded geometry and texture has an owner. Bytes and categories come from the ledger, never from `renderer.info`. Render buffers, programs and VAOs are outside this check: render targets cover the first, and the second two are small |
 | Each category stays inside its budget | `npm test` memory step on KONG-43's harness: bytes per category against `tools/memory-budgets.json`. Over budget fails, and more than 5% under fails until the budget is lowered, as `tools/size-budgets.json` works today |
 | A match leaves nothing behind | CI on SwiftShader: two matches back to back. The ledger's bytes per category after the second equal those after the first, within a small tolerance, and the match scope is empty after leaving |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
@@ -191,21 +221,21 @@ One PR per step. Each step is useful on its own, keeps the state hash, the visua
 ships dark behind a registry flag where it changes behaviour.
 
 1. **This document.**
-2. **The ledger and scopes** in `client/src/engine/res/`: `Scope`, categories, byte counts, and a read-only `__kr.res`.
-   No callers yet.
-3. **The lint rule `resource-owner`**, with today's sites as its baseline. From then on, no new unowned texture, target
+2. **The ledger and scopes**: `client/src/engine/res/scope.ts` with its tests (`tools/res/test.mts`). No callers yet.
+3. **The match scope**, by the lifecycle lane (RAY-107): `GameRender` creates through it, and its teardown moves into the
+   scope and its `defer` callbacks.
+4. **The lint rule `resource-owner`**, with today's sites as its baseline. From then on, no new unowned texture, target
    or worker.
-4. **The match scope.** `GameRender` creates through it and `dispose()` becomes `match.dispose()`. The
-   match-to-match leak check joins CI.
-5. **The CPU-copy policy**, behind a flag, applied first to loads that go through `Assets`. This is the largest single
-   saving that needs no visual change.
-6. **One asset cache**: reference counts and one loader of each kind. Then each bypass site, one PR each, by the lane that
+5. **The budget step and the match-to-match leak check**, on KONG-43's harness, with each budget set to today's number.
+   Budgets only go down.
+6. **The CPU-copy policy for textures**, behind a flag, applied first to loads that go through `Assets`. This is the
+   largest single saving that needs no visual change.
+7. **One asset cache**: reference counts and one loader of each kind. Then each bypass site, one PR each, by the lane that
    owns that code.
-7. **Region scopes**: `ctx.res` for world modules, with per-POI accounting.
-8. **The budget step in `npm test`**, on KONG-43's harness, with each budget set to today's number. Budgets only go down.
-9. **Residency**: `far` regions free their sources (with RAY-106), then `cold` for the lobby islet.
+8. **Region scopes**: `ctx.res` for world modules, with per-POI accounting and `rebuild` callbacks for their geometry.
+9. **Residency**: `far` regions free their sources' GPU buffers (with RAY-106), then `cold` for the lobby islet.
 
-Steps 2, 3, 4 and 8 belong to the architecture lane. Steps 5, 6, 7 and 9 change other lanes' code and go through them.
+Steps 2, 4 and 5 belong to the architecture lane. Steps 3 and 6 to 9 change other lanes' code and go through them.
 
 ## Open questions
 
