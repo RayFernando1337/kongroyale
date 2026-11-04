@@ -71,7 +71,7 @@ const releases = (): Rel[] => {
 };
 
 const loadMap = (): Record<string, number> => {
-  const f = path.join(path.dirname(new URL(import.meta.url).pathname), "release", "upstream.json");
+  const f = new URL("./release/upstream.json", import.meta.url);
   return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : {};
 };
 
@@ -133,6 +133,7 @@ const moveTag = (name: string, sha: string) => {
   else gh("api", "-X", "POST", "repos/" + repo + "/git/refs", "-f", "ref=refs/tags/" + name, "-f", "sha=" + sha);
 };
 
+const isPre = (tag: string) => gh("release", "view", tag, "--json", "isPrerelease", "--jq", ".isPrerelease") === "true";
 const releaseExists = (tag: string) => !!run("gh", ["release", "view", tag, "--json", "tagName", "--jq", ".tagName"], { allowFail: true });
 
 const ciGreen = (sha: string) => {
@@ -186,7 +187,7 @@ if (cmd === "plan") {
   const tarball = path.join(tmp, p.tag + "-dist.tar.gz");
   if (dry) say("would run npm run build and attach " + path.basename(tarball));
   else {
-    execFileSync("npm", ["run", "build"], { stdio: "inherit" });
+    execFileSync("npm", ["run", "build"], { stdio: "inherit", shell: process.platform === "win32" });
     const dirs = ["dist", "dist-admin"].filter((d) => fs.existsSync(d));
     run("tar", ["-czf", tarball, ...dirs]);
   }
@@ -207,7 +208,7 @@ if (cmd === "plan") {
   const all = releases().filter((r) => releaseExists(r.tag));
   const stableSha = refSha(channel("stable")) ?? die("no " + channel("stable") + " tag; nothing to roll back");
   const cur = all.find((r) => r.sha === stableSha) ?? die("stable does not point at a release");
-  const to = opt("--to") ? all.find((r) => r.tag === opt("--to")) ?? die("no such release " + opt("--to")) : all[all.indexOf(cur) - 1] ?? die("no release before " + cur.tag);
+  const to = opt("--to") ? all.find((r) => r.tag === opt("--to")) ?? die("no such release " + opt("--to")) : [...all.slice(0, all.indexOf(cur))].reverse().find((r) => !isPre(r.tag)) ?? die("no promoted release before " + cur.tag);
   console.log("rolling stable back " + cur.tag + " -> " + to.tag);
   if (to.sha !== cur.sha) { git("fetch", "--quiet", "origin", to.sha, cur.sha); console.log(git("log", "--format=  removed: %h %s", to.sha + ".." + cur.sha)); }
   moveTag(channel("stable"), to.sha);
