@@ -58,7 +58,8 @@ npx tsx tools/performance/run.mts --base .
 
 Results land in `reports/performance/run-<time>/` (git ignores it): one JSON per run, `comparison.md`.
 
-The same commands run on Windows (PowerShell or Git Bash). On a Windows on ARM64 desktop (20 cores, Node 24.20 arm64),
+The same commands run in Git Bash on Windows. In PowerShell, join each command onto one line, because the trailing `\`
+continuations are POSIX shell syntax. On a Windows on ARM64 desktop (20 cores, Node 24.20 arm64),
 five host pairs took 139 s and five alloc pairs 137 s.
 
 On a cloud machine a long background run can die when the machine sleeps or restarts. Run it in the foreground with
