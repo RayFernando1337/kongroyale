@@ -502,6 +502,7 @@ export interface StormVolume {
   };
   /** trace the storm for this frame (call after the camera is final, before the frame renders) */
   trace(renderer: THREE.WebGLRenderer, cam: THREE.PerspectiveCamera): void;
+  compile(renderer: THREE.WebGLRenderer): Promise<unknown>;
   /** dev: the trace target (a bench reads a pixel back to sync the GPU) */
   readonly target: THREE.WebGLRenderTarget | null;
   /** CPU copy of the storm SDF (bolt placement): world point → signed distance (m), octaves 1..5 */
@@ -536,6 +537,7 @@ export function createStormVolume(o: { boltCol: THREE.Color; hazeCol: THREE.Colo
   const traceMesh = new THREE.Mesh(tri, traceMat); traceMesh.frustumCulled = false;
   const traceScene = new THREE.Scene(); traceScene.add(traceMesh);
   const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const TRACE_TARGET: THREE.RenderTargetOptions = { count: 2, type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false };
   let rt: THREE.WebGLRenderTarget | null = null;
   const cu = { uCol: { value: null as THREE.Texture | null }, uDep: { value: null as THREE.Texture | null }, uSize: { value: new THREE.Vector2(1, 1) } };
   const compMat = new THREE.ShaderMaterial({
@@ -594,7 +596,7 @@ export function createStormVolume(o: { boltCol: THREE.Color; hazeCol: THREE.Colo
       const w = Math.max(64, Math.round(size.x * k)), h = Math.max(64, Math.round(size.y * k));
       if (!rt || rt.width !== w || rt.height !== h) {
         rt?.dispose();
-        rt = new THREE.WebGLRenderTarget(w, h, { count: 2, type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false });
+        rt = new THREE.WebGLRenderTarget(w, h, TRACE_TARGET);
         rt.textures[1].minFilter = rt.textures[1].magFilter = THREE.NearestFilter;
         cu.uCol.value = rt.textures[0]; cu.uDep.value = rt.textures[1]; cu.uSize.value.set(w, h);
       }
@@ -615,6 +617,14 @@ export function createStormVolume(o: { boltCol: THREE.Color; hazeCol: THREE.Colo
         while (tq.q.length && gl.getQueryParameter(tq.q[0], gl.QUERY_RESULT_AVAILABLE)) { const r = tq.q.shift()!; tq.ms.push(gl.getQueryParameter(r, gl.QUERY_RESULT) / 1e6); gl.deleteQuery(r); }
       }
       renderer.setRenderTarget(prev); renderer.autoClear = prevAuto;
+    },
+    compile(renderer) {
+      const t = new THREE.WebGLRenderTarget(4, 4, TRACE_TARGET), prev = renderer.getRenderTarget();
+      renderer.setRenderTarget(t);
+      let p: Promise<unknown> = Promise.resolve();
+      try { p = renderer.compileAsync(traceScene, orthoCam); } catch (e) { console.warn("[storm] compile", e); }
+      renderer.setRenderTarget(prev);
+      return p.catch(() => undefined).finally(() => t.dispose());
     },
     sdf,
     dispose() { rt?.dispose(); grid.tex.dispose(); groundTex.dispose(); traceMat.dispose(); compMat.dispose(); tri.dispose(); },

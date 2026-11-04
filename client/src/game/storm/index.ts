@@ -414,6 +414,7 @@ export function createStormVisual(ctx: WorldCtx): StormVisual {
     },
     flash(strength = 1) { flashE = Math.max(flashE, Math.min(strength, 1.5)); for (const b of bolts) if (b.idle > 0.05) b.idle = Math.min(b.idle, 0.05 + rnd() * 0.2); },
     setVisible(v: boolean) { visible = v; root.visible = v && circle.phase > 0; if (!v) restoreFog(); },
+    compile: (renderer) => vol.compile(renderer),
     update(dt: number, t: number, cam: THREE.PerspectiveCamera): number {
       // circle motion: the sim's circle; displayed with a short ease so jumps (late join) glide
       if (ctx.shotMode) { dispX = circle.cx; dispZ = circle.cz; dispR = circle.r; }
