@@ -28,7 +28,7 @@ node tools/formal/tlc.mjs VehicleSeats --mutants
 
 It needs Java 11 or newer on PATH. The first run downloads the pinned TLA+ tools jar (version and SHA-256 in
 tools/formal/tlc.mjs) into node_modules/.cache. A run takes about 5 seconds: 3 kongs in 2 squads, 2 vehicles of 3
-seats, about 16,500 distinct states. Expected output: one `PASS VehicleSeats` line and one `PASS ... mutant` line per
+seats, about 32,500 distinct states. Expected output: one `PASS VehicleSeats` line and one `PASS ... mutant` line per
 entry in tools/formal/VehicleSeats.mutants.json. Exit 0 means all of them passed. Any other exit is a finding or a broken
 setup, and the output says which.
 

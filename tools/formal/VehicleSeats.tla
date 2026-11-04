@@ -95,7 +95,7 @@ Clear(v) ==
   /\ \E to \in {"gone", "ok"} : vst' = [vst EXCEPT ![v] = to]
   /\ seats' = [seats EXCEPT ![v] = IF vst'[v] = "ok" THEN [k \in Seats |-> None] ELSE @]   \* spawnVehicle empties the seats
   /\ UNCHANGED <<st, veh, seat, evt>>
-Flip(v) == vst[v] = "tipped" /\ ~evt[v] /\ vst' = [vst EXCEPT ![v] = "righting"] /\ UNCHANGED <<st, veh, seat, seats, evt>>
+Flip(v) == vst[v] = "tipped" /\ vst' = [vst EXCEPT ![v] = "righting"] /\ UNCHANGED <<st, veh, seat, seats, evt>>
 Righted(v) == vst[v] = "righting" /\ vst' = [vst EXCEPT ![v] = "ok"] /\ UNCHANGED <<st, veh, seat, seats, evt>>
 
 \* stepVehicles (skips Gone, and wrecks and sunk ones before this loop)
