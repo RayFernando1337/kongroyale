@@ -437,6 +437,8 @@ const SETTLE = gameMode ? 6 : 20;
 while (!kr.bootError && engine.frames - settleFrom < SETTLE) await new Promise((r) => requestAnimationFrame(r));
 kr.programsAtReady = engine.renderer.info.programs?.length;
 kr.noFrameWaits = noFrameWaitCount();
+document.removeEventListener("visibilitychange", notePostBuildHidden);
+postBuildMeasuring = false;
 if (kr.bootError) {
   // a failed boot never becomes a playable "ready" title (the loading screen shows the reload card)
   kr.stage = "failed";
@@ -445,9 +447,7 @@ if (kr.bootError) {
   bootReady = true;
   kr.stage = "ready";
   kr.readyAt = Math.round(performance.now());
-  document.removeEventListener("visibilitychange", notePostBuildHidden);
   kr.postBuildHidden = postBuildHidden;
-  postBuildMeasuring = false;
   if (noFrameWaitCount() > postBuildNoFrameWaits) postBuildUnpainted = true;
   kr.postBuildUnpainted = postBuildUnpainted;
   if (gameMode && streamOn && !postBuildHidden && !postBuildUnpainted) {
