@@ -26,7 +26,8 @@ const failed = [];
 for (const [name, cmd, args] of checks) {
   const t = Date.now();
   console.log(`\n▶ ${name}`);
-  const r = spawnSync(cmd, args, { stdio: "inherit" });
+  // (npm and npx are .cmd scripts on Windows, which Node only spawns through a shell)
+  const r = spawnSync(cmd, args, { stdio: "inherit", shell: process.platform === "win32" });
   const ok = r.status === 0;
   console.log(`${ok ? "✔" : "✘"} ${name} (${((Date.now() - t) / 1000).toFixed(1)} s)`);
   if (!ok) failed.push(name);
