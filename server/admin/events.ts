@@ -5,7 +5,7 @@
 // Kicks block that token and, for tokens this lobby has never seen, the address it came from (salted hash). Wire:
 // shared/net/event.ts. Every admin action lands in adminAction() — server/admin/http.ts calls it only for a live session.
 import crypto from "node:crypto";
-import type { Client, Lobby } from "../index";
+import type { Client, Lobby } from "../lobby";
 import { EVENT_CAP_DEFAULT, EVENT_CAP_MAX, EVENT_CAP_MIN, EVENT_CODE_RE, EVENT_NAME_MAX, EVENT_TEAM_SIZE, PLAYER_TOKEN_RE, eventTeamCount,
   type AdminLobby, type AdminPlayer, type EventEndReason, type EventPublicInfo, type EventRoom } from "../../shared/net/event";
 import { cleanName } from "../names";
