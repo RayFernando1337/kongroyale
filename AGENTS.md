@@ -33,10 +33,15 @@ pieces fit; read it before changing networking, the simulation or world loading.
 | `npm run dev` | Dev client on <http://localhost:5317/>. It listens on your network too (`--host`). Hot reload is off: reload the page after a change. |
 | `npm run server` | Game server on port 3020, restarted when a file changes. Add `KR_EVENT_MODE=0` to allow creating rooms. |
 | `npm run build` | Production build into `dist/` and `dist-admin/`, then precompression. About 15 s. |
-| `npm test` | Every check that needs no GPU, network or database. Run `npm run build` first. About 2 min. |
+| `npm test` | Every check that needs no GPU, network or database. Run `npm run build` first. About 4 min. |
+| `npm test -- --fast` | Skips the five slow checks (solver, glass, parity, sim, redteam). About 30 s. `--list` shows each check's id and `--only lint,sim` runs some of them. |
 | `npm run typecheck` | The TypeScript check alone (the first step of `npm test`). |
 | `npm run sim` | A headless 50-bot match (trios, seed 42). Fast feedback for simulation changes. |
-| `npm run netlab` | Hit registration under simulated latency, using the real client and server code. |
+| `npm run netlab` | Hit registration under simulated latency, using the real client and server code. Add `-- --check` to fail on a regression. |
+| `npx tsx tools/verify-online-match.mts` | A whole online match over real WebSockets against the real server. |
+| `npx tsx tools/verify-boot.mts` | The production client boots and plays a short match on SwiftShader, no GPU needed. |
+| `node --import tsx tools/verify-assets.mts` | Every file under `public/assets/` has a recorded source or licence. |
+| `npm run bench:host`, `bench:server`, `bench:verify` | Host tick cost, a 50-player socket load test against a local server, and the parity checks. See [PERFORMANCE.md](PERFORMANCE.md). |
 | `npm start` | Serve `dist/` and the game server on one port. See [HOSTING.md](HOSTING.md). |
 
 ## Rules
