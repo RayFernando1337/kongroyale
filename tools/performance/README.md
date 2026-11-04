@@ -29,6 +29,7 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 |---|---|---|
 | `npm run bench:host -- --out <file>` | `kong-perf-result` | Authoritative host and snapshot fan-out, CPU only. `--root <checkout>` measures another checkout, `--scenario combat` runs one scenario, `--ticks N` sets the window. The four scenarios are synthetic and run in the match's warm-up phase. They are not real-play coverage. |
 | `npm run bench:server -- --seconds 60 --out <file>` | its own JSON (not yet the contract) | Private server and 50 real WebSocket players. Build first. |
+| `npx tsx tools/performance/gpu-match.mts --out <file>` | `kong-perf-result` | Real GPU, in-match frame timing: a seed-42 trios practice match in Chrome at a pinned video preset (default High, 1920x1080, DPR 1, no dynamic resolution), normal rAF, valid `EXT_disjoint_timer_query_webgl2` samples per frame. Four cases: `warmup-15s`, `plane`, `descent`, `ground-pan`. Build first; `--root` measures another checkout's `dist/`. One timed GPU job per machine. |
 
 ## Comparing runs
 
