@@ -25,8 +25,9 @@ export interface Scenario {
   version: number;
   /** -1 when the runner can't fix the seed (the server picks one per match); runs then sample different matches */
   seed: number;
-  /** "synthetic-*" workloads isolate one cost; only "real-play" claims match coverage */
-  workload: "synthetic-warmup" | "synthetic-play" | "real-play" | "socket-load";
+  /** "synthetic-*" workloads isolate one cost; only "real-play" claims match coverage; "page-load" is a browser load to
+   *  the playable title and a match start (load-profile.mts) */
+  workload: "synthetic-warmup" | "synthetic-play" | "real-play" | "socket-load" | "page-load";
 }
 
 export interface CaseResult {

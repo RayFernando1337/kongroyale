@@ -31,6 +31,7 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 | `npx tsx tools/performance/run.mts --base <checkout> --cand <checkout>` | a folder of results plus `comparison.md` | Interleaved repeated `bench:host` runs and the comparison. See below. |
 | `npm run bench:server -- --seconds 60 --out <file>` | `kong-perf-result` | Private server and 50 real WebSocket players, each also on an aux socket. Build first. The match gets a 5 s warm-up and a real plane, so the bench takes about 50 s plus `--seconds`. The timed window starts at the first PLAY snapshot. Linux and macOS only. |
 | `npx tsx tools/performance/gpu-match.mts --out <file>` | `kong-perf-result` | Real GPU, in-match frame timing: a seed-42 trios practice match in Chrome at a pinned video preset (default High, 1920x1080, DPR 1, no dynamic resolution), normal rAF, valid `EXT_disjoint_timer_query_webgl2` samples per frame. Four cases: `warmup-15s`, `plane`, `descent`, `ground-pan`. Build first; `--root` measures another checkout's `dist/`. One timed GPU job per machine. |
+| `npx tsx tools/performance/load-profile.mts run --url http://127.0.0.1:<port> --browsers chrome,safari` | `kong-perf-result`, one file per run | Browser page load to the playable title and a practice match start, cold and warm, per phase (workload `page-load`). Chrome adds a CDP trace and CPU profile; Safari runs through safaridriver. `table` prints medians per browser. See [the profile-kongroyale-load skill](../../.agents/skills/profile-kongroyale-load/SKILL.md). |
 
 ### What the windows include
 
