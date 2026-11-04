@@ -311,6 +311,7 @@ export function createHeli(late?: (o: THREE.Object3D) => void): TukView & { muzz
   return view;
 }
 
+let PANEL: { geo: THREE.BoxGeometry; mat: THREE.MeshStandardMaterial } | null = null;
 /** loose pieces for the bang: the rotor's blades, the tail fan, the door gun, a panel — fresh objects, the caller owns
  * them (client/src/game/tuk-fx.ts throws them about). Empty until the model has loaded. */
 export function heliDebris(): THREE.Object3D[] {
@@ -323,7 +324,8 @@ export function heliDebris(): THREE.Object3D[] {
     g.add(c); out.push(g);
   };
   piece("rotor_blades"); piece("tailfan"); piece("gun_pitch");
-  const panel = new THREE.Group(); panel.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 1.6), new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.8 }))); out.push(panel);
+  PANEL ??= { geo: new THREE.BoxGeometry(0.7, 0.6, 1.6), mat: new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.8 }) };
+  const panel = new THREE.Group(); panel.add(new THREE.Mesh(PANEL.geo, PANEL.mat)); out.push(panel);
   return out;
 }
 /** one of each (fresh + wreck) for the prewarm compile — empty if the model has not landed yet (then it compiles on
