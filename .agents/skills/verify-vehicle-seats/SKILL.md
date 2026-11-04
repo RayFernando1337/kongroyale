@@ -35,14 +35,19 @@ setup, and the output says which.
 Each mutant takes one guard out of a scratch copy of the model and must make TLC report the rule its entry names. A
 mutant that still passes means the model can no longer see that guard. Fix the model, not the mutant.
 
+On Windows, tlc.mjs suggests `winget install Microsoft.OpenJDK.21`. Microsoft's portable JDK zip also works without an
+installer: unzip it and put its `bin` folder on PATH. On Windows on ARM, use the aarch64 build
+(`https://aka.ms/download-jdk/microsoft-jdk-21-windows-aarch64.zip`), which runs natively. There the run took 7 s, including the first jar download.
+
 ## When the check fails
 
 Read the result with the pstack `/statechart` skill: give it a scratch copy of the model and its config, and it gives
 the shortest path to each broken rule in plain words. Then decide which one it is:
 
 - **A real bug.** The path is a sequence of real calls. Replay it against the code: a headless match
-  (`npx tsx tools/sim-smoke.mts trios 42`) or a small script that drives `Match` through the same calls. If it
-  reproduces, report it with the path and the replay. Do not weaken the rule.
+  with scripted riders (`npx tsx tools/sim-smoke.mts trios 7 --riders --check`, about 71,000 rider-ticks checked; a plain
+  `trios 42` run checks 0, because nobody boards a vehicle in that match) or a small script that drives `Match`
+  through the same calls. If it reproduces, report it with the path and the replay. Do not weaken the rule.
 - **A modelling error.** The path uses a step the code cannot take (for example, a step the code guards that the model
   does not). Fix the model so that it says what the code does, and cite the code line in the action's comment.
 

@@ -30,7 +30,13 @@ Both runners play the same seeded all-bot trios match (`scenarios/real-play.mts`
    ln -s "$PWD/node_modules" ../kong-base/node_modules
    ```
 
-4. Check the machine is idle (`uptime`, `nproc`). Run nothing else while a benchmark runs, including builds,
+   On Windows, Git Bash's `ln -s` copies the folder instead of linking it. Make a junction from PowerShell instead:
+   `New-Item -ItemType Junction -Path ..\kong-base\node_modules -Target "$PWD\node_modules"` (`mklink /J` in cmd).
+   Before you remove the worktree, delete the junction alone with `cmd /c rmdir ..\kong-base\node_modules` (no `/s`),
+   so no recursive delete walks into this checkout's `node_modules`.
+
+4. Check the machine is idle (`uptime`, `nproc`; on Windows, Task Manager or
+   `Get-Counter '\Processor(_Total)\% Processor Time'`). Run nothing else while a benchmark runs, including builds,
    `npm test` or a second benchmark.
 
 ## 2. Run interleaved, five pairs or more
@@ -51,6 +57,9 @@ npx tsx tools/performance/run.mts --base .
 ```
 
 Results land in `reports/performance/run-<time>/` (git ignores it): one JSON per run, `comparison.md`.
+
+The same commands run on Windows (PowerShell or Git Bash). On a Windows on ARM64 desktop (20 cores, Node 24.20 arm64),
+five host pairs took 139 s and five alloc pairs 137 s.
 
 On a cloud machine a long background run can die when the machine sleeps or restarts. Run it in the foreground with
 a long enough timeout, or check that every run file exists before you read `comparison.md`.

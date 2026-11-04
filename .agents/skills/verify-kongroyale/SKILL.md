@@ -28,7 +28,7 @@ looks or frame rate, so doctor fails when the GPU string does not match the prof
 | Profile | Where | Browser | Renderer doctor expects | What it can prove |
 |---|---|---|---|---|
 | `mac` | macOS, Apple silicon | Google Chrome (`--channel chrome`), headless, `--use-angle=metal` | `ANGLE Metal Renderer` | everything, including fps and visuals |
-| `win` | Windows, discrete or integrated GPU | Google Chrome, headless, `--use-angle=d3d11` | `Direct3D11` / `D3D11`, not SwiftShader or "Basic Render" | everything, including fps and visuals |
+| `win` | Windows, discrete or integrated GPU | Google Chrome (or Microsoft Edge with `--channel msedge`), headless, `--use-angle=d3d11` | `Direct3D11` / `D3D11`, not SwiftShader or "Basic Render" | everything, including fps and visuals |
 | `nogpu` | Linux cloud machine with no GPU | Playwright's bundled Chromium, `--use-angle=swiftshader --enable-unsafe-swiftshader` | anything (SwiftShader) | boot reaches ready with no errors; a bot match starts. Not fps, not visuals |
 
 Validated end to end: `mac` (M3 Max), `nogpu`, and `win` on a Windows on ARM64 laptop (NVIDIA RTX Spark N1X, driver
@@ -37,7 +37,11 @@ D3D11)`). There `up`, `doctor`, `all` and `down` passed from Windows PowerShell 
 the title was ready in 30-35 s on the dev client with a fresh profile, `all` took about 5 minutes, play fps was
 2 / 3 / 20 / 55 / 56 at 0 / 5 / 15 / 30 / 60 s, the range walk moved the kong 10.7 m, the room pings were 23 and 39 ms,
 and `__kr.errors` and the console errors were empty. `up --prod` with `play --secs 30`, and `room --url` against
-`npm run dev` plus a `KR_EVENT_MODE=0` `npm run server` started by hand, passed too.
+`npm run dev` plus a `KR_EVENT_MODE=0` `npm run server` started by hand, passed too. Rechecked on main 1f876f2 (Node
+24.20 arm64): `all` passed with the title ready in 32.0 s, play fps 1 / 4 / 22 / 55 / 56, a 10.8 m walk and room pings
+of 17 and 33 ms. `up --prod` then `boot`, the two commands of CI's boot smoke, reached ready in 29.5 s. `all --channel
+msedge` passed on the kong-v0.3.0 build, with play fps 54 / 56 at 30 / 60 s and room pings of 51 and
+71 ms.
 
 On `nogpu` (validated on a 4-vCPU, 16 GB Ubuntu 24.04 cloud machine): run `npx playwright install chromium` once (add
 `--with-deps` if libraries are missing); the helper uses a 640x360 viewport, because at 1600x900 SwiftShader trips
@@ -133,6 +137,7 @@ list: commands land over time, and a newer one beats a recipe here.
 | `npx tsx tools/verify-online-match.mts` | a whole online match over real WebSockets against the real server, with the real client network code | no |
 | `npx tsx tools/verify-boot.mts` | the production client boots to a playable title and plays a short practice match on SwiftShader | no |
 | `node --import tsx tools/verify-assets.mts` | every file under `public/assets/` has a recorded source or licence; `npm test` runs it against `tools/verify-assets.baseline.json` | no |
+| `node tools/formal/tlc.mjs VehicleSeats --mutants`, `... MatchPhases --mutants` | the vehicle-seat and match-phase models hold every rule, and every guard's mutant breaks one (Java 11+; see the verify-vehicle-seats and verify-match-phases skills) | no |
 | `npm run sim` | a full 50-bot trios match (seed 42): winner, kills, tick cost | no |
 | `npm run netlab` (`-- --kill`) | hit registration under 20-320 ms RTT with the real client and server code | no |
 | `npm run bench:host` / `npm run bench:server` | host tick cost; 50 players over 100 real sockets against a local built server | no |
@@ -143,6 +148,12 @@ read files through file URLs (#16). If a check still fails there, run it alone w
 in the PR which checks you could not run; CI on Linux runs them all. `npm start` and `npm run kongbot:db` use POSIX shell syntax and
 do not run from cmd or PowerShell: use `up --prod` to serve `dist/`. `node tools/shot.mjs` launches Playwright's own
 Chromium unless `KR_CHROME` names a browser; set it to Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`).
+`tools/verify-boot.mts` spawns `npm` without a shell, so its build step fails on Windows (`FAIL build exited null`). Run
+`npm run build` first and pass `--no-build`. Playwright's bundled headless shell is an x64 build, so on Windows on ARM
+also pass `--chrome` with that Chrome path. The run is still SwiftShader: there the title was ready about 180 s after
+load, and the whole run passed in about 6 minutes. `tools/verify-online-match.mts` prints `FAIL (1)` on Windows even when
+every match check passes. On Windows, `kill("SIGTERM")` ends the server with exit code null, and the tool expects 0.
+If that is the only line under `failures`, the match itself passed.
 
 When a PR adds a verifier, it adds a row to the table above in the same PR.
 

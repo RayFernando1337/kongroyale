@@ -37,6 +37,10 @@ distinct states. Expected output: `PASS MatchPhases` and one `PASS ... mutant` l
 tools/formal/MatchPhases.mutants.json, exit 0. Each mutant takes one guard out of a scratch copy and must make TLC report
 the rule its entry names. A mutant that still passes means the model no longer sees that guard: fix the model.
 
+On Windows, tlc.mjs suggests `winget install Microsoft.OpenJDK.21`. Microsoft's portable JDK zip also works without an
+installer: unzip it and put its `bin` folder on PATH. On Windows on ARM, use the aarch64 build
+(`https://aka.ms/download-jdk/microsoft-jdk-21-windows-aarch64.zip`), which runs natively. There the run took 5 s.
+
 To check trios rules too, copy the model and its config to a scratch folder, set `Trios = TRUE` there, and run TLC on
 the copy the same way; both pass at the commit below.
 

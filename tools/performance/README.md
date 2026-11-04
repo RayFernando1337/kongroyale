@@ -97,7 +97,7 @@ process measuring the checkout you name with `host.mts --root`. Then it checks t
 
 ```sh
 git worktree add ../kong-base origin/main          # the baseline checkout
-ln -s "$PWD/node_modules" ../kong-base/node_modules
+ln -s "$PWD/node_modules" ../kong-base/node_modules  # Windows: a junction, see the perf skill
 npx tsx tools/performance/run.mts --base ../kong-base --cand . --scenario real-play \
   --metrics hostTickMs,simulationMs --stats p50,p99 --budgets tools/performance/budgets.json
 npx tsx tools/performance/run.mts --base .           # A/A: the noise floor of this runner
