@@ -37,7 +37,8 @@ Fix forward on `main` and cut as usual when `main` holds nothing unreleased. Oth
 
 ```sh
 git checkout -b hotfix/x kong-vA.B.C && git cherry-pick <fix> && git push -u origin HEAD
-# CI only runs for pull requests and main: open a draft PR from hotfix/x and wait for it to go green
+git push origin kong-vA.B.C:refs/heads/hotfix-base/x
+# CI runs only for pull requests and main. Open a draft PR from hotfix/x with base hotfix-base/x (the tag), so CI tests exactly the hotfix commit, and wait for it to go green
 npx tsx tools/release.mts cut --hotfix-from kong-vA.B.C
 ```
 
