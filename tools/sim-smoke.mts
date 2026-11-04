@@ -38,13 +38,15 @@ const poiStats: Record<string, { landed: number; kills: number; chests: number }
 const ps = (id: string) => (poiStats[id] ??= { landed: 0, kills: 0, chests: 0 });
 function scanEvents() {
   const u8 = m.ev.finish(m.tick); const r = new Reader(u8); r.u8(); const n = r.u8(); r.u32();
-  // a vehicle going up hurts everybody, squadmates of whoever set it off included (match.ts explode, all = true)
+  // a vehicle going up hurts everybody, squadmates of whoever set it off included (match.ts explode, all = true): its
+  // hits follow its Boom, so they are excused until the next event that is not part of a blast
   const blastBy: number[] = [];
   for (let i = 0; i < n; i++) {
     const k = r.u8(); const start = r.o;
     if (k === EV.Kill) { r.u8(); const vic = r.u8(); const vp = m.players[vic]; if (vp) ps(poiAt(vp.x, vp.z)).kills++; const w = r.u8(); const f = r.u8(); const c = w === 255 ? "storm" : w === 254 ? "fall" : "weapon" + w; causes[c] = (causes[c] ?? 0) + 1; if (f) finals++; else knocks++; }
     else if (k === EV.Hit) { const a = r.u8(), b = r.u8(); if (a !== 255 && a !== b && m.players[a]?.team === m.players[b]?.team && !blastBy.includes(a)) ff++; hits++; }
     else if (k === EV.Veh) { const id = r.u8(); if (r.u8() === VK.Boom) blastBy.push(m.vehs.list[id].lastBy); }
+    else if (k !== EV.Kill && k !== EV.VehHit && k !== EV.Explosion) blastBy.length = 0;
     else if (k === EV.Rocket) rocketsFired++;
     else if (k === EV.Announce) { const c = r.u8(); if (c === ANN.ResurgenceOff) resOffAt = m.time; }
     const len = EV_BYTES[k]; if (len === undefined) return; r.o = start + len;
@@ -64,7 +66,7 @@ function checkSeats() {
     rideTicks++;
     const v = m.vehs.list[p.veh];
     if (!v || v.seats[p.seat] !== p.id) return `player ${p.id} rides vehicle ${p.veh} seat ${p.seat}, which holds ${v ? v.seats[p.seat] : "no vehicle"}`;
-    if (!alive(p)) return `player ${p.id} rides vehicle ${v.id} while dead (hp ${p.hp})`;
+    if (!alive(p) || p.hp <= 0) return `player ${p.id} rides vehicle ${v.id} while dead (hp ${p.hp})`;
     if (!v.live || v.st === VS.Gone) return `player ${p.id} rides vehicle ${v.id}, which is gone`;
   }
   return "";
