@@ -23,7 +23,8 @@
 // GPU_DISJOINT_EXT reports a disjoint event is discarded, and a frame without a valid sample stays unmeasured, never 0.
 // The engine's own timer (dynamic resolution) is off (?dynres=0), so queries never nest. The collector is armed before
 // Play and decides the match boundary in the page: it times every frame and keeps the first one at whose end inMatch is
-// true (enterMatch runs inside the step's update hooks), so warmup-15s starts with the first, most expensive match frame.
+// true (enterMatch can run inside that step's update hooks or between frames, when the offline link pumps on a timer),
+// so warmup-15s starts with the first, most expensive match frame.
 //
 // The route. Nothing moves the player but the match itself, so every run follows the same path: warm-up on the lobby
 // islet (its first 15 s are the "slow start" window), the plane's chase camera across the island, the forced drop
@@ -259,7 +260,7 @@ try {
 
 // ---- windows -> cases
 const WINDOW_DEF: Record<string, string> = {
-  "gpu/match/warmup-15s": "first " + WARM_WINDOW_S + " s from the first match frame, the one during which inMatch turns true (lobby islet, island streaming)",
+  "gpu/match/warmup-15s": "first " + WARM_WINDOW_S + " s from the first match frame, the first frame at whose end inMatch is true (lobby islet, island streaming)",
   "gpu/match/plane": "player state Plane (chase camera) once the island has finished streaming in",
   "gpu/match/descent": "player state Freefall or Glide",
   "gpu/match/ground-pan": "frames with the scripted " + PAN_RATE + " rad/s yaw pan active (player state Ground in phase play), the first " + PAN_S + " s of them",
