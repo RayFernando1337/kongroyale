@@ -1,0 +1,7 @@
+{
+  "shared-determinism": {
+    "shared/pois/canopy-line-ground.ts": 1,
+    "shared/pois/jungle-layout.ts": 2,
+    "shared/sim/loot-spots.ts": 1
+  }
+}

@@ -10,6 +10,7 @@ const tmp = (f) => path.join(os.tmpdir(), `kong-royale-${f}`);
 
 const checks = [
   ["types", "npx", ["tsc", "--noEmit"]],
+  ["lint", "npx", ["tsx", "tools/lint/check.mts"]],
   ["movement", "npx", ["tsx", "tools/gameplay/movetest.mts"]],
   ["swimming", "npx", ["tsx", "tools/swim/simtest.mts"]],
   ["kong face", "npx", ["tsx", "tools/actors/face-test.mts"]],
