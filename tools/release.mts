@@ -182,7 +182,7 @@ if (cmd === "plan") {
   const tarball = path.join(tmp, p.tag + "-dist.tar.gz");
   if (dry) say("would run npm run build and attach " + path.basename(tarball));
   else {
-    execFileSync("npm", ["run", "build"], { stdio: "inherit", shell: process.platform === "win32" });
+    execFileSync("npm", ["run", "build"], { stdio: "inherit", shell: process.platform === "win32", env: { ...process.env, KR_CHANNEL: "next", VITE_KR_TAG: p.tag } });
     const dirs = ["dist", "dist-admin"].filter((d) => fs.existsSync(d));
     run("tar", ["-czf", tarball, ...dirs]);
   }
