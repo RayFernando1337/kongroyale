@@ -30,7 +30,7 @@ Always run with `--dry-run` first. Run `npm run build` and `npm test` on the com
 ## Flow
 
 1. **Trains** at 10:00, 13:00, 16:00, 19:00 PT cut when `main` has unreleased merges. On demand any time. An upstream sync PR freezes trains.
-2. **Hotfix:** fix forward on `main`; if `main` holds unfinished work, branch from the broken tag, cherry-pick, push, `cut --hotfix-from <tag>`, then land the fix on `main` too. Always a patch.
+2. **Hotfix:** fix forward on `main`; if `main` holds unfinished work, branch from the broken tag, cherry-pick, push, open a draft PR so CI runs and wait for green, then `cut --hotfix-from <tag>`, then land the fix on `main` too. Always a patch.
 3. **Gate:** a release stays on `next` until Kong Mac (Metal) and Kong RTX (D3D11) pass the `verify-kongroyale` smoke (and a profiler A/B if it claims perf). Only then `promote <tag>`. The game runs in the browser, so promotion is live as soon as the host serves `stable`.
 4. **Bad release:** `rollback` first (seconds), then fix forward as the next patch with the evidence on the PR.
 5. **Features ship in slices behind flags,** landing dark in several small PRs; the release that flips the default is the minor. Sim or wire changes (`NET_VERSION`, golden hashes) wait for a planned major.
