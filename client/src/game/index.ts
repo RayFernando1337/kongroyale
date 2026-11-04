@@ -80,6 +80,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
 
   // ---- kits (contracts)
   const weapons = createWeaponsKit(engine);
+  if (!DEFER_PREFABS) void weapons.prepareLoot();
   gameStage("kits:viewmodel", 0.12);
   // (perf: the first-person viewmodel — ~1.7 s of weapon LOD / merge work — only ever draws in a match: with
   // DEFER_PREFABS it is made right after the title is ready, in the prefab warm-up every PRACTICE / CREATE / JOIN waits
@@ -814,6 +815,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   if (DEFER_PREFABS) { const kr = (window as unknown as { __kr: Record<string, unknown> }).__kr; kr.prefabWarmP = (async () => {
     while (!kr.ready) await new Promise((r) => setTimeout(r, 100));
     if (!kits.viewModel) { const t = performance.now(); const vm = await weapons.createViewModel(); vm.object.visible = false; engine.camera.add(vm.object); kits.viewModel = vm; kr.viewModelMs = Math.round(performance.now() - t); }
+    await weapons.prepareLoot(() => new Promise<void>((r) => (kr.prepareUrgent ? setTimeout(r, 0) : requestAnimationFrame(() => setTimeout(r, 0)))));
     await prewarmPrefabs(engine, kits, () => inMatch); await prewarmMatch(engine, kits, title, () => inMatch); kr.warmDone = true; })(); }
 
   // the loot generator's spots (shared/sim/loot-spots.ts, ~1.5-2 s of probes on the static world) are

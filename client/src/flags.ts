@@ -83,6 +83,7 @@ const FLAGS = {
   kyval: { kind: num(0.97), owner: "actors", purpose: "v2 kong ripe-yellow value" },
   labhide: { kind: list, owner: "pois", purpose: "CNVS Lab perf A/B: hide shell, near, interior, glass, rocks, vines, falls, gravel, rooms" },
   lodv: { kind: on, owner: "engine", purpose: "the anti-pop LOD path: terrain geomorph, rock and HLOD crossfades, view-dependent detail culling" },
+  lootlater: { kind: one, owner: "weapons", purpose: "=1 bakes the floor-loot far LODs after the title is ready, before the prefab warm-up a match waits for, instead of during boot" },
   manual: { kind: present, owner: "caster", purpose: "caster camera starts in manual instead of autopilot" },
   map: { kind: one, owner: "ui", purpose: "open the full-screen map (view-camera captures)" },
   mode: { kind: text, owner: "caster", routing: true, purpose: "mode of the lobby a caster creates: trios, else solo" },

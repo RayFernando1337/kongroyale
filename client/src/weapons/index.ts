@@ -13,6 +13,7 @@ import { tickCamo } from "./camo";
 import { ChestSystem, createChestView } from "./chest";
 import { createLootView, LootSystem } from "./loot";
 import { CONSUMABLES, WEAPONS } from "../../../shared/world/map";
+import { flag } from "../flags";
 
 /** FX piece surface (fx.ts): the contract Fx + extras the viewmodel / kongs use */
 export type FxEx = Fx & VmFx & { hitSparkle?(pos: THREE.Vector3, headshot: boolean): void; markerSmoke?(pos: THREE.Vector3, k?: number): void };
@@ -43,6 +44,7 @@ export interface WeaponsKitEx extends WeaponsKit {
   createSupplyDrop(): Promise<import("./supply").SupplyDrop>;
   /** the in-flight rocket (banana bunch + coconut nose + trail); null until the fx piece provides it */
   createRocket(): Promise<{ object: THREE.Object3D; update(dt: number): void } | null>;
+  prepareLoot(next?: () => Promise<void>): Promise<void>;
 }
 
 /** boot cost of the weapons area (main thread ms) — a perf script reads window.__krWpnBoot */
@@ -94,17 +96,17 @@ export function createWeaponsKit(ctx: WorldCtx): WeaponsKitEx {
   patchTree(lootSys.root);
   bootT.lootMs = Math.round(performance.now() - tp);
   // the far-LOD bakes of every floor-loot item (~1-2 s of main thread) run one item per macrotask right after boot
-  // (done long before the deferred prefab prewarm compiles them)
-  {
-    const items = [...WEAPONS, ...CONSUMABLES, "ammo"] as const;
-    let i = 0, spent = 0;
-    const step = () => {
-      if (i >= items.length) { bootT.lootPrepMs = Math.round(spent); return; }
-      const t0 = performance.now(); lootSys.prepare([items[i++]]); patchTree(lootSys.root); spent += performance.now() - t0;
-      setTimeout(step, 0);
-    };
-    setTimeout(step, 0);
-  }
+  // (done long before the deferred prefab prewarm compiles them); ?lootlater=1 leaves them to the game's prefab warm-up
+  let lootPrep: Promise<void> | null = null;
+  const prepareLoot = (next: () => Promise<void> = () => new Promise<void>((r) => setTimeout(r, 0))) => (lootPrep ??= (async () => {
+    let spent = 0;
+    for (const item of [...WEAPONS, ...CONSUMABLES, "ammo"] as const) {
+      await next();
+      const t0 = performance.now(); lootSys.prepare([item]); patchTree(lootSys.root); spent += performance.now() - t0;
+    }
+    bootT.lootPrepMs = Math.round(spent);
+  })());
+  if (!flag("lootlater")) void prepareLoot();
   let tick = 0;
   ctx.onUpdate((dt, t) => { tick++; chestSys.update(dt, t); lootSys.update(t); tickCamo(t); });
   // remote kongs holding a mythic: their held gun (under the actor's hand socket) wears the
@@ -121,6 +123,7 @@ export function createWeaponsKit(ctx: WorldCtx): WeaponsKitEx {
       return vm;
     },
     createFx() { return fx; },
+    prepareLoot,
     async createChest(rarity: Rarity) {
       const v = createChestView(ctx, rarity, {}, chestSys);
       // a chest that is opened in the same tick it was created was already open when we arrived: no burst
