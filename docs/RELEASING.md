@@ -46,7 +46,7 @@ A hotfix is always a patch in the base's line (`A.B`). Delete the `hotfix-base/*
 
 ## Promote
 
-After Kong Mini (the M4 with 16 GB; Kong Mac is the fallback) and Kong RTX (D3D11) pass the `verify-kongroyale` smoke on `next`, plus a profiler A/B when the release claims perf. The Metal smoke must include boot, Play and a full practice match in Safari 27 on that Mac (the 16 GB Mini; if Kong Mac stands in, say how much memory it has), and report the peak WebContent memory and whether the tab was killed or survived. A kill blocks promotion.
+After Kong Mini (the M4 with 16 GB; Kong Mac is the fallback) and Kong RTX (D3D11) pass the `verify-kongroyale` smoke on `next`, plus a profiler A/B when the release claims perf. The Metal smoke must include boot, Play and a full practice match in Safari 27 on that Mac (the 16 GB Mini; if Kong Mac stands in, say how much memory it has), (the Safari steps are in the profile-kongroyale-load skill) and report the peak WebContent memory and whether the tab was killed or survived. A kill blocks promotion.
 
 ```sh
 npx tsx tools/release.mts promote kong-vX.Y.Z
