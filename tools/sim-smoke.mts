@@ -6,7 +6,7 @@
 //   --check: also fail (exit 1) on a regression: no winner, friendly-fire hits, bots not arming up, tick cost over budget, a
 //            vehicle seat and its rider disagreeing after any tick (with --riders, also nobody riding at all), a phase change
 //            other than Warmup → Plane → Play → Results, or
-//            (trios seed 42 only) a different final-state hash than SIM_HASH_TRIOS_42 (the match is deterministic within Node).
+//            a final-state hash other than its SIM_HASH golden (by mode, seed, riders; skipped with no golden or no Results).
 //            Without --check the output and exit code are unchanged. Run: npx tsx tools/sim-smoke.mts trios 42 --check
 import { Terrain } from "../shared/world/terrain";
 import { decodeTerrainFile, generateTerrain } from "../shared/world/terrain-gen";
@@ -150,7 +150,8 @@ for (const q of [...POIS.map((p) => p.id), "open"]) { const v = poiStats[q]; if 
 const stateHash = matchHash(m);
 if (check) {
   console.log(`state hash: ${stateHash}`);
-  const SIM_HASH_TRIOS_42 = "888d3a01";
+  const SIM_HASH: Record<string, string> = { "trios 42 riders 0": "888d3a01", "solo 1 riders 0": "35793e5f", "trios 7 riders 0": "df98eec3", "trios 7 riders 8": "2ca1c7c6" };
+  const golden = m.phase === Phase.Results ? SIM_HASH[`${mode} ${seed} riders ${riders}`] : undefined;
   const MAX_AVG_TICK_MS = 3, MAX_TICK_MS = 100, MIN_ARMED_PCT = 90;
   const fail: string[] = [];
   if (m.phase !== Phase.Results || m.winnerTeam < 0) fail.push(`no winner (phase ${Phase[m.phase]}, winnerTeam ${m.winnerTeam}, ticks ${m.tick})`);
@@ -164,7 +165,7 @@ if (check) {
   console.log(`seat invariant: ${rideTicks} rider-ticks checked`);
   if (seatBad) fail.push(`seat invariant broken (${mode} seed ${seed}) at ${seatBad}`);
   if (riders > 0 && rideTicks === 0) fail.push("seat invariant checked no riders (nobody rode a vehicle, so the check proved nothing)");
-  if (mode === "trios" && seed === 42 && riders === 0 && stateHash !== SIM_HASH_TRIOS_42) fail.push(`state hash ${stateHash} != ${SIM_HASH_TRIOS_42} (deterministic outcome changed; if intended, update SIM_HASH_TRIOS_42)`);
+  if (golden !== undefined && stateHash !== golden) fail.push(`state hash ${stateHash} != golden ${golden} for ${mode} seed ${seed} riders ${riders} (deterministic outcome changed; if intended, update SIM_HASH)`);
   if (fail.length) { console.error("SIM CHECK FAILED:\n  " + fail.join("\n  ")); process.exit(1); }
   console.log("SIM CHECK PASSED");
 }
