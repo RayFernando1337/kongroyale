@@ -1,6 +1,7 @@
 import type { Engine } from "../engine/engine";
 import { BUILD, buildLabel } from "../build";
-import { CAPACITY_S, FIELDS, WIDTH, cursor, onFrame, pauseClock, ring, rollSecond } from "./metrics.hot";
+import { flag } from "../flags";
+import { CAPACITY_S, FIELDS, WIDTH, cursor, pauseClock, recordFrame, ring, rollSecond } from "./metrics.hot";
 
 export interface Timeline { fields: readonly string[]; rows: number[][]; dropped: number }
 
@@ -23,7 +24,7 @@ const fixed = (v: number, d: number) => (v < 0 ? "–" : v.toFixed(d));
 const warn = (bad: boolean, text: string) => (bad ? `<span class="bad">${text}</span>` : text);
 
 export function installPerfHud(engine: Engine): void {
-  engine.timeGpu();
+  if (!flag("notimer")) engine.timeGpu();
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -31,7 +32,7 @@ export function installPerfHud(engine: Engine): void {
   el.className = "kr-perfhud";
   el.dataset.channel = BUILD.channel;
   document.body.appendChild(el);
-  requestAnimationFrame(onFrame);
+  engine.onDraw = recordFrame;
   addEventListener("visibilitychange", pauseClock);
   setInterval(() => {
     const at = rollSecond(engine);

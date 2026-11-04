@@ -626,6 +626,7 @@ export class Engine implements WorldCtx {
         const kr = (globalThis as { __kr?: { streamStage?: string } }).__kr;
         this.hitchLog.push({ at: Math.round(now), gapMs: +(now - this.last).toFixed(1), lastStepMs: +this.lastStepMs.toFixed(1), stream: kr?.streamStage ?? "" });
       }
+      if (this.onDraw) this.onDraw(now - this.last);
       this.frameMs[this.frameIdx++ % this.frameMs.length] = now - this.last;
       this.last = now;
       const c0 = performance.now();
@@ -731,6 +732,8 @@ export class Engine implements WorldCtx {
   /** smoothed GPU ms per frame (0 = unknown) */
   gpuMs = 0;
   private gpuTimed = false;
+  gpuHold = false;
+  onDraw: ((dtMs: number) => void) | null = null;
   timeGpu() {
     this.gpuTimed = true;
     if (this.tq === null) this.tq = undefined;
@@ -742,7 +745,7 @@ export class Engine implements WorldCtx {
       const ext = (this.dynOn || this.dynPin || this.gpuTimed) && !this.shotMode ? gl.getExtension("EXT_disjoint_timer_query_webgl2") : null;
       this.tq = ext ? { ext, free: [], pending: [] } : null;
     }
-    const t = this.tq; if (!t || (globalThis as { __stormTimer?: unknown }).__stormTimer) return null;
+    const t = this.tq; if (!t || this.gpuHold || (globalThis as { __stormTimer?: unknown }).__stormTimer) return null;
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
     // collect finished queries (oldest first)
     while (t.pending.length) {

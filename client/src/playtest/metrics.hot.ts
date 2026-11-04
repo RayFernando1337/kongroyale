@@ -9,18 +9,23 @@ export const cursor = { rows: 0 };
 const BINS = 256, BIN_MS = 0.5, STALL_MS = 50, HITCH_MS = 100;
 const hist = new Uint16Array(BINS);
 const second = { frames: 0, sumMs: 0, maxMs: 0, over50: 0, over100: 0 };
-const clock = { lastMs: 0 };
+const clock = { skip: false };
 
 interface KrMatch { phase: number; ping: number; jitter: number }
 interface KrHandle { __kr?: { game?: { inMatch?: boolean; cm?: KrMatch | null } } }
 interface HeapPerf { memory?: { usedJSHeapSize: number } }
 
-export function onFrame(ts: number): void {
-  const last = clock.lastMs;
-  clock.lastMs = ts;
-  requestAnimationFrame(onFrame);
-  if (last <= 0) return;
-  const dt = ts - last;
+function clearSecond(): void {
+  hist.fill(0);
+  second.frames = 0;
+  second.sumMs = 0;
+  second.maxMs = 0;
+  second.over50 = 0;
+  second.over100 = 0;
+}
+
+export function recordFrame(dt: number): void {
+  if (clock.skip) { clock.skip = false; return; }
   hist[dt >= BINS * BIN_MS ? BINS - 1 : Math.floor(dt / BIN_MS)]++;
   second.frames++;
   second.sumMs += dt;
@@ -30,7 +35,8 @@ export function onFrame(ts: number): void {
 }
 
 export function pauseClock(): void {
-  clock.lastMs = 0;
+  clock.skip = true;
+  clearSecond();
 }
 
 function percentile(p: number): number {
@@ -66,12 +72,7 @@ export function rollSecond(engine: Engine): number {
   ring[row + 13] = info.programs ? info.programs.length : 0;
   ring[row + 14] = engine.renderScale;
   ring[row + 15] = cm ? cm.phase : -1;
-  hist.fill(0);
-  second.frames = 0;
-  second.sumMs = 0;
-  second.maxMs = 0;
-  second.over50 = 0;
-  second.over100 = 0;
+  clearSecond();
   cursor.rows++;
   return row;
 }
