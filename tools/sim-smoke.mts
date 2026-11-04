@@ -6,8 +6,7 @@
 //   --check: also fail (exit 1) on a regression: no winner, friendly-fire hits, bots not arming up, tick cost over budget, a
 //            vehicle seat and its rider disagreeing after any tick (with --riders, also nobody riding at all), a phase change
 //            other than Warmup → Plane → Play → Results, or
-//            a final-state hash other than the golden one in SIM_HASH for that mode, seed and riders count (the match is
-//            deterministic within Node; runs with no golden hash and runs that stop before Results skip that comparison).
+//            a final-state hash other than its SIM_HASH golden (by mode, seed, riders; skipped with no golden or no Results).
 //            Without --check the output and exit code are unchanged. Run: npx tsx tools/sim-smoke.mts trios 42 --check
 import { Terrain } from "../shared/world/terrain";
 import { decodeTerrainFile, generateTerrain } from "../shared/world/terrain-gen";
