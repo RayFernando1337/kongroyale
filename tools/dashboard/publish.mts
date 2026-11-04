@@ -15,9 +15,17 @@ function run(cmd: string, args: string[], cwd = ROOT): string {
 }
 
 function originRepo(url: string): string | undefined {
-  const m = url.match(/^(?:https:\/\/(?:[^@/]+@)?([^/:]+)\/|ssh:\/\/git@([^/:]+)(?::\d+)?\/|git@([^:]+):)([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
-  if (!m || !HOSTS.includes((m[1] ?? m[2] ?? m[3]).toLowerCase())) return undefined;
-  return m[4].toLowerCase();
+  const scp = url.match(/^git@([^:/]+):([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
+  if (scp) return HOSTS.includes(scp[1].toLowerCase()) ? scp[2].toLowerCase() : undefined;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return undefined;
+  }
+  if ((u.protocol !== "https:" && u.protocol !== "ssh:") || !HOSTS.includes(u.hostname.toLowerCase())) return undefined;
+  const repo = u.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/i, "");
+  return /^[^/]+\/[^/]+$/.test(repo) ? repo.toLowerCase() : undefined;
 }
 
 function withoutStamp(html: string): string {
@@ -28,7 +36,7 @@ function main(): void {
   const dryRun = process.argv.includes("--dry-run");
   const data = JSON.parse(fs.readFileSync(path.join(HERE, "data.json"), "utf8")) as { repo: string; hide: string };
   const origin = run("git", ["remote", "get-url", "origin"]).trim();
-  if (originRepo(origin) !== data.repo.toLowerCase()) throw new Error("refusing to publish: origin is " + origin.replace(/\/\/[^@/]*@/, "//"));
+  if (originRepo(origin) !== data.repo.toLowerCase()) throw new Error("refusing to publish: origin is not " + data.repo + " on " + HOSTS.join(" or "));
   const forbidden = new RegExp(ALWAYS_FORBIDDEN + "|" + data.hide, "gi");
   const site = fs.mkdtempSync(path.join(os.tmpdir(), "kr-dash-site-"));
   const work = path.join(os.tmpdir(), "kr-dash-pages-" + process.pid);
