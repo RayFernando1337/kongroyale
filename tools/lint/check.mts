@@ -247,7 +247,7 @@ function hotListErrors(list: unknown, from: string, readable: (rel: string) => t
   return errors;
 }
 
-const LINE_DIRECTIVES = ["@ts-expect-error", "@ts-ignore", "@ts-nocheck", "lint-expect"], BLOCK_DIRECTIVES = ["@vite-ignore"];
+const LINE_DIRECTIVES = ["@ts-expect-error", "@ts-ignore", "@ts-nocheck"], BLOCK_DIRECTIVES = ["@vite-ignore"];
 const MSG_COMMENT = "no comments (plan decision 2, after Lauren Tan): say it with a name, a type or a test instead; the pstack no-comments skill turns one comment at a time into one of those. Tool directives (@ts-expect-error, @vite-ignore, /// <reference>) are allowed";
 
 function isDirective(text: string): boolean {
@@ -273,10 +273,11 @@ const noComments: Rule = {
   id: "no-comments",
   counted: true,
   applies: () => true,
-  check(sf) {
+  check(sf, rel) {
     const hits: Hit[] = [];
     for (const c of comments(sf)) {
-      if (isDirective(sf.text.slice(c.pos, c.end))) continue;
+      const text = sf.text.slice(c.pos, c.end);
+      if (isDirective(text) || (rel.startsWith(`${LINT_DIR}/fixtures/`) && text === "// lint-expect")) continue;
       const first = sf.getLineAndCharacterOfPosition(c.pos).line, last = sf.getLineAndCharacterOfPosition(c.end).line;
       for (let l = first; l <= last; l++) hits.push({ node: sf, line: l + 1, message: MSG_COMMENT });
     }
