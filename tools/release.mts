@@ -45,7 +45,7 @@ const git = (...a: string[]) => run("git", a);
 const gh = (...a: string[]): string => {
   for (let i = 1; ; i++) {
     try { return run("gh", a); }
-    catch (e: any) { if (i >= 3 || !/HTTP 5\d\d/.test(e.message)) throw e; execFileSync("sleep", ["2"]); }
+    catch (e: any) { if (i >= 3 || !/HTTP 5\d\d/.test(e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000); }
   }
 };
 const ghJson = (...a: string[]) => JSON.parse(gh(...a) || "null");
