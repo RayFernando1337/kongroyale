@@ -12,6 +12,11 @@ export class Mover {
   readonly scratch = new Float32Array(3);
   constructor() { this.n = [1, 2].length; }
 }
+const PAIRS = Array.from({ length: 3 }, () => ({ x: 0, z: 0 }));
+export class Pool {
+  items = Array.from({ length: 2 }, () => [0, 0]);
+  first() { return PAIRS[0].x + this.items[0][0]; }
+}
 export const loop = {
   tick() { return SCRATCH.x + BUF[0]; },
   scratch: { x: 0 },
