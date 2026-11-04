@@ -11,6 +11,7 @@
 //
 // options: --profile mac|win|nogpu (default: from the OS)  --seed N (default 42)  --secs N (play length, default 60)
 //          --out DIR (default shots/verify/<run-id>)  --headed  --web PORT  --port PORT  --prod (up: serve dist/)
+//          --splat (nogpu: keep the far-tree splat bake, which can exceed the 90 s settle budget)
 //          --channel chrome|msedge|chromium  --url URL (drive an instance you started yourself; skips the state file)
 // Exit code 0 = every check in the command passed. Each drive prints one JSON line and writes <out>/result.json.
 import fs from "node:fs";
@@ -96,7 +97,8 @@ async function browser() {
 }
 async function openGame(b, query) {
   // nogpu: at 1600x900 SwiftShader cannot settle the vegetation impostors inside the game's own 90 s ready budget
-  // (main.ts), and frames are seconds apart, so a smaller viewport and long Playwright timeouts
+  // (main.ts), and frames are seconds apart, so a smaller viewport and long Playwright timeouts; the far-tree splat
+  // bake alone takes ~130 s there, so nogpu adds ?vegsplat=0 unless --splat
   const ctx = await b.newContext({ viewport: NOGPU ? { width: 640, height: 360 } : { width: 1600, height: 900 } });
   const page = await ctx.newPage();
   if (NOGPU) page.setDefaultTimeout(180_000);
@@ -104,7 +106,8 @@ async function openGame(b, query) {
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 300)); });
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${String(e.message).slice(0, 300)}`));
   const t0 = Date.now();
-  await page.goto(`${BASE}/?${query}`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+  const q = NOGPU && !flag("--splat") ? `${query}&vegsplat=0` : query;
+  await page.goto(`${BASE}/?${q}`, { waitUntil: "domcontentloaded", timeout: 120_000 });
   await page.waitForFunction(() => window.__kr?.ready === true || window.__kr?.stage === "failed", null, { timeout: READY_TIMEOUT_MS, polling: 500 });
   const boot = await page.evaluate(() => {
     const c = document.createElement("canvas").getContext("webgl2");

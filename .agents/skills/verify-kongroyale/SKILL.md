@@ -44,7 +44,7 @@ On `nogpu` (validated on a 4-vCPU, 16 GB Ubuntu 24.04 cloud machine): run `npx p
 the game's own 90 s settle timeout (`[ready] timed out waiting for: veg-impostors`, `__kr.stage === "failed"`). The
 title takes about 2.5 minutes, play about 5, and `all` about 9. One `all` run on that machine was killed at a
 12.6 GB memory cap; if that happens, run `boot` and `play` one at a time. On `nogpu` the title takes minutes and frames are seconds apart, so `all` runs only `boot` and `play` (20 s) with long
-timeouts. Never judge looks or performance from a `nogpu` run; say "smoke only" in the PR.
+timeouts. `nogpu` adds `?vegsplat=0` (the far-tree splat bake takes ~130 s on SwiftShader, past the 90 s settle budget); pass `--splat` to keep it. Never judge looks or performance from a `nogpu` run; say "smoke only" in the PR.
 
 ## Launch
 
