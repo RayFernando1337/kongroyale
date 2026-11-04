@@ -65,3 +65,8 @@ footer{color:var(--muted);text-align:center;padding:32px;font-size:.85rem;border
 .win{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:32px}
 .win-num{font-size:3.6rem;font-weight:800;letter-spacing:-.03em;color:var(--good);line-height:1}
 .win-name{font-size:1.2rem;font-weight:700;margin-top:12px}
+.card.regression{border-color:#5a2a2a}
+.card.regression .delta{color:var(--bad)}
+.card.regression .bar.after{background:linear-gradient(90deg,var(--bad),#ffa3a3)}
+.tracked{color:var(--bad);font-weight:700;font-size:.95rem;margin:12px 0 0}
+.pill.s-regressed{background:#3b1212;color:var(--bad)}

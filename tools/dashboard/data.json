@@ -165,6 +165,71 @@
   },
   "perf": [
     {
+      "id": "title-since-v020",
+      "area": "loading",
+      "name": "Title screen ready, v0.2.0 vs today (Windows Chrome)",
+      "plain": "Compared with the version we started from, the title screen shows up about 4 seconds sooner on a first visit.",
+      "unit": "s",
+      "before": 31.175,
+      "after": 27.082,
+      "digits": 1,
+      "metric": "readyMs, cold, median of 3 interleaved loads a side, [31.1-31.4] to [25.9-27.4]",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T19:10:00Z",
+      "prs": [
+        88
+      ],
+      "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
+    },
+    {
+      "id": "heap-title",
+      "area": "loading",
+      "name": "Memory used at the title screen",
+      "plain": "Compared with v0.2.0, the game now holds about 300 MB more memory at the title. The new measurement caught it, and it is being fixed.",
+      "unit": "MB",
+      "before": 1043,
+      "after": 1341,
+      "regression": true,
+      "issue": "RAY-104",
+      "metric": "performance.memory.usedJSHeapSize at __kr.ready, median of 3, [1033-1076] to [1103-1539]; Chrome quantizes this, so differences under about 100 MB are noise",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T19:10:00Z",
+      "prs": [],
+      "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
+    },
+    {
+      "id": "heap-plane",
+      "area": "graphics",
+      "name": "Memory used on the plane",
+      "plain": "On the drop plane the game also holds about 400 MB more memory than v0.2.0. Same fix, same lane.",
+      "unit": "MB",
+      "before": 2135,
+      "after": 2538,
+      "regression": true,
+      "issue": "RAY-104",
+      "metric": "usedJSHeapSize at the first poll in the Plane phase, median of 3, [2085-2300] to [2444-2562]",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T19:10:00Z",
+      "prs": [],
+      "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
+    },
+    {
+      "id": "geo-plane",
+      "area": "graphics",
+      "name": "3D shapes kept in memory on the plane",
+      "plain": "About 400 more 3D shapes stay loaded than in v0.2.0, which is part of the extra memory.",
+      "unit": "geometries",
+      "before": 2810,
+      "after": 3214,
+      "regression": true,
+      "issue": "RAY-104",
+      "metric": "three.js renderer.info geometries in the Plane phase, median of 3; 3078 to 3504 at 30 s into the match",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T19:10:00Z",
+      "prs": [],
+      "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
+    },
+    {
       "id": "ready-depth-warm",
       "area": "loading",
       "name": "Title screen ready, Windows Chrome (first visit)",
@@ -505,32 +570,32 @@
       {
         "category": "load",
         "name": "Data downloaded before the title screen",
-        "value": null,
+        "value": 42.1,
         "unit": "MB",
         "target": null,
-        "status": "not measured yet",
-        "detail": "A measurement of v0.2.0 against today's build on a Windows PC is being set up.",
-        "source": "RAY-94"
+        "status": "measured",
+        "detail": "Median of 3 first visits on a Windows PC; v0.2.0 was 41.5 MB. Audio now loads later (28 requests at the title instead of 77).",
+        "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
       },
       {
         "category": "load",
         "name": "Memory used at the title screen",
-        "value": null,
+        "value": 1341,
         "unit": "MB",
         "target": null,
-        "status": "not measured yet",
-        "detail": "A measurement of v0.2.0 against today's build on a Windows PC is being set up.",
-        "source": "RAY-94"
+        "status": "regressed",
+        "detail": "Up about 300 MB from v0.2.0 (1043 MB). Found by the new measurement; the memory lane (RAY-104) is fixing it.",
+        "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
       },
       {
         "category": "enter",
         "name": "Press Play to in the match",
-        "value": null,
+        "value": 6.6,
         "unit": "s",
         "target": null,
-        "status": "not measured yet",
-        "detail": "Not measured on a real graphics card yet. The only reading is on software graphics, which is too slow to count.",
-        "source": "fork PR #41 (SwiftShader only)"
+        "status": "measured",
+        "detail": "Click to in the match, median of 3 first-visit runs on a Windows PC: 6.6 s [5.1-8.0]. v0.2.0 measured 7.4 s [7.1-8.1]. Three runs a side, so treat it as indicative.",
+        "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
       },
       {
         "category": "enter",
@@ -598,12 +663,12 @@
       {
         "category": "match",
         "name": "Memory used 30 s into a match",
-        "value": null,
+        "value": 2472,
         "unit": "MB",
         "target": null,
-        "status": "not measured yet",
-        "detail": "A measurement of v0.2.0 against today's build on a Windows PC is being set up.",
-        "source": "RAY-94"
+        "status": "measured",
+        "detail": "v0.2.0 was 2383 MB. The difference is inside Chrome's roughly 100 MB rounding, but 3D shapes are up about 400 (3078 to 3504). Tracked in RAY-104.",
+        "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
       },
       {
         "category": "server",
@@ -880,6 +945,11 @@
   ],
   "inProgress": [
     {
+      "name": "Fix the memory regression found today",
+      "estimate": "the game holds about 300 MB more memory at the title than v0.2.0 (tracked as RAY-104)",
+      "source": "RAY-94; RAY-104"
+    },
+    {
       "name": "Prepare the storm effect during loading",
       "estimate": "an estimated 1.7 to 3.4 s off a first visit",
       "source": "RAY-90"
@@ -896,7 +966,7 @@
   },
   "summary": {
     "wins": [
-      "ready-depth-warm",
+      "title-since-v020",
       "first-frame-cpu",
       "server-tick",
       "slow-boots",

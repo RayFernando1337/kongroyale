@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 type Area = { id: string; name: string; blurb: string };
-type PerfItem = { id: string; area: string; name: string; plain: string; unit: string; before: number; after: number; approxAfter?: boolean; higherIsBetter?: boolean; digits?: number; metric: string; machine: string; date: string; prs: number[]; source: string };
+type PerfItem = { id: string; area: string; name: string; plain: string; unit: string; before: number; after: number; approxAfter?: boolean; higherIsBetter?: boolean; digits?: number; regression?: boolean; issue?: string; metric: string; machine: string; date: string; prs: number[]; source: string };
 type PlayItem = { category: string; name: string; value: number | null; baseline?: number; unit: string; target: number | null; targetNote?: string; status: string; detail: string; source: string };
 type Phase = { name: string; plain: string; source: string; issues: [string, string][] };
 type Data = {
@@ -72,6 +72,7 @@ function truncTo(n: number, digits: number): string {
 }
 
 function change(p: PerfItem): string {
+  if (p.regression) return "+" + Math.trunc(((p.after - p.before) / p.before) * 100) + "% more";
   if (p.higherIsBetter) return num(p.before) + " → " + num(p.after);
   if (p.unit === "s") return truncTo(p.before - p.after, 1) + " s sooner";
   if (p.after > 0 && p.before / p.after >= 2) return truncTo(p.before / p.after, 1) + (p.unit === "ms" || p.unit === "s" ? "× faster" : "× less");
@@ -145,13 +146,14 @@ function main(): void {
     const max = Math.max(p.before, p.after) || 1;
     const fmt = (n: number) => p.digits === undefined ? num(n) : n.toFixed(p.digits);
     const after = (p.approxAfter ? "about " : "") + fmt(p.after) + " " + p.unit;
-    return '<div class="card perf"><div class="perf-head"><h3>' + esc(p.name) + '</h3><div class="delta">' + change(p) + '</div></div><p class="plain">' + esc(p.plain) + '</p>' +
+    return '<div class="card perf' + (p.regression ? " regression" : "") + '"><div class="perf-head"><h3>' + esc(p.name) + '</h3><div class="delta">' + change(p) + '</div></div><p class="plain">' + esc(p.plain) + '</p>' +
       '<div class="bar-row"><span class="bar-label">Before</span><div class="bar-track"><div class="bar before" style="width:' + Math.max(2, (p.before / max) * 100).toFixed(1) + '%"></div></div><span class="bar-val">' + fmt(p.before) + " " + p.unit + "</span></div>" +
       '<div class="bar-row"><span class="bar-label">Now</span><div class="bar-track"><div class="bar after" style="width:' + Math.max(2, (p.after / max) * 100).toFixed(1) + '%"></div></div><span class="bar-val">' + after + "</span></div>" +
-      "<details><summary>How we measured it</summary><p class=\"tech\">" + esc(p.metric) + ". Measured on " + esc(p.machine) + ". Changes: " + p.prs.map(prLink).join(", ") + ".</p></details></div>";
+      "<details><summary>How we measured it</summary><p class=\"tech\">" + esc(p.metric) + ". Measured on " + esc(p.machine) + "." + (p.prs.length ? " Changes: " + p.prs.map(prLink).join(", ") + "." : "") + (p.issue ? " Tracked as " + esc(p.issue) + "." : "") + "</p></details>" + (p.issue ? '<p class="tracked">Being fixed: tracked as ' + esc(p.issue) + "</p>" : "") + "</div>";
   };
 
-  const perfRecent = data.perf.filter((p) => inDay(p.date));
+  const regressions = data.perf.filter((p) => p.regression);
+  const perfRecent = data.perf.filter((p) => !p.regression && inDay(p.date));
   const headline = ["server-tick", "first-frame-cpu", "warmup-worst", "ready-chrome"].map((id) => data.perf.find((p) => p.id === id)).filter((p): p is PerfItem => !!p);
 
   const areaCounts = data.areas.map((a) => ({ a, n: merged24.filter((p) => shown(p.title) && areaOf(p) === a.id).length })).filter((x) => x.n > 0);
@@ -173,7 +175,8 @@ function main(): void {
 
   const performance =
     '<h2>Last 24 hours</h2><p class="lead">Measured before and after each change on the same machine. Shorter bars are better.</p><div class="grid">' + (perfRecent.length ? perfRecent.map(bars).join("") : '<p class="muted">No new measurements landed in the last 24 hours.</p>') + "</div>" +
-    '<h2>Since the project started</h2><div class="grid">' + data.perf.filter((p) => !perfRecent.includes(p)).map(bars).join("") + (data.perf.length === perfRecent.length ? '<p class="muted">Every measurement so far landed in the last 24 hours.</p>' : "") + "</div>" +
+    '<h2>Since the project started</h2><div class="grid">' + data.perf.filter((p) => !p.regression && !perfRecent.includes(p)).map(bars).join("") + (data.perf.length - regressions.length === perfRecent.length ? '<p class="muted">Every measurement so far landed in the last 24 hours.</p>' : "") + "</div>" +
+    (regressions.length ? '<h2>Regressions we found and are fixing</h2><p class="lead">Measuring everything means we also see what got worse. These went the wrong way, and each one has someone fixing it. Shorter bars are still better.</p><div class="grid">' + regressions.map(bars).join("") + "</div>" : "") +
     '<h2>Coming next</h2><div class="card"><p class="lead">These are estimates from profiling, not measurements yet.</p><ul class="list">' + data.inProgress.map((x) => '<li><span class="plain">' + esc(x.name) + '</span> <span class="muted">' + esc(x.estimate) + "</span></li>").join("") + "</ul></div>";
 
   const fixes =
@@ -237,7 +240,7 @@ function main(): void {
     "</div><h2>What's next</h2><div class=\"card\"><ul class=\"list\">" + data.inProgress.map((x) => '<li><span class="plain">' + esc(x.name) + '</span> <span class="muted">' + esc(x.estimate) + "</span></li>").join("") + '<li><span class="plain">' + esc(data.releaseTrain.plain) + "</span></li></ul></div>" +
     "<h2>Waiting on people</h2><div class=\"card\"><ul class=\"list\">" + data.asks.map((a) => '<li><span class="pill who">' + esc(a.who) + '</span> <span class="plain">' + esc(a.what) + "</span></li>").join("") + '<li><span class="pill who">Max</span> <span class="plain">' + upOpen.length + " changes offered to the original game are waiting for review.</span></li></ul></div>";
 
-  const statusClass = (s: string) => s === "not measured yet" ? "s-unmeasured" : s === "done" ? "s-done" : "s-improving";
+  const statusClass = (s: string) => s === "not measured yet" ? "s-unmeasured" : s === "done" ? "s-done" : s === "regressed" ? "s-regressed" : "s-improving";
   const play =
     '<h2>Play experience tracker</h2><p class="lead">Every moment a player feels, with today\'s number and the goal. Anything we haven\'t measured says so.</p>' +
     '<div class="stats">' + stat(data.play.items.filter((i) => i.value !== null).length, "measured", "experiences with a current number") + stat(data.play.items.filter((i) => i.value === null).length, "not measured yet", "on the list to measure") + stat(data.play.items.filter((i) => i.status === "done").length, "at target", "experiences that hit their goal") + "</div>" +
