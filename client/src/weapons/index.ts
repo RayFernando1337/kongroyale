@@ -44,7 +44,7 @@ export interface WeaponsKitEx extends WeaponsKit {
   createSupplyDrop(): Promise<import("./supply").SupplyDrop>;
   /** the in-flight rocket (banana bunch + coconut nose + trail); null until the fx piece provides it */
   createRocket(): Promise<{ object: THREE.Object3D; update(dt: number): void } | null>;
-  prepareLoot(next?: () => Promise<void>): Promise<void>;
+  prepareLoot(next?: () => Promise<void>): Promise<THREE.Object3D>;
 }
 
 /** boot cost of the weapons area (main thread ms) — a perf script reads window.__krWpnBoot */
@@ -97,7 +97,7 @@ export function createWeaponsKit(ctx: WorldCtx): WeaponsKitEx {
   bootT.lootMs = Math.round(performance.now() - tp);
   // the far-LOD bakes of every floor-loot item (~1-2 s of main thread) run one item per macrotask right after boot
   // (done long before the deferred prefab prewarm compiles them); ?lootlater=1 leaves them to the game's prefab warm-up
-  let lootPrep: Promise<void> | null = null;
+  let lootPrep: Promise<THREE.Object3D> | null = null;
   const prepareLoot = (next: () => Promise<void> = () => new Promise<void>((r) => setTimeout(r, 0))) => (lootPrep ??= (async () => {
     let spent = 0;
     for (const item of [...WEAPONS, ...CONSUMABLES, "ammo"] as const) {
@@ -105,6 +105,7 @@ export function createWeaponsKit(ctx: WorldCtx): WeaponsKitEx {
       const t0 = performance.now(); lootSys.prepare([item]); patchTree(lootSys.root); spent += performance.now() - t0;
     }
     bootT.lootPrepMs = Math.round(spent);
+    return lootSys.root;
   })());
   if (!flag("lootlater")) void prepareLoot();
   let tick = 0;
