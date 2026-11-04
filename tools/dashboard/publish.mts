@@ -21,7 +21,7 @@ function main(): void {
   const dryRun = process.argv.includes("--dry-run");
   const data = JSON.parse(fs.readFileSync(path.join(HERE, "data.json"), "utf8")) as { repo: string; hide: string };
   const origin = run("git", ["remote", "get-url", "origin"]).trim();
-  if (!origin.toLowerCase().replace(/\.git$/, "").endsWith("/" + data.repo.toLowerCase())) throw new Error("refusing to publish: origin is " + origin + ", expected " + data.repo);
+  if (!origin.toLowerCase().replace(/\.git$/, "").replace(/:/g, "/").endsWith("/" + data.repo.toLowerCase())) throw new Error("refusing to publish: origin is " + origin + ", expected " + data.repo);
   const forbidden = new RegExp(ALWAYS_FORBIDDEN + "|" + data.hide, "gi");
   const site = fs.mkdtempSync(path.join(os.tmpdir(), "kr-dash-site-"));
   const work = path.join(os.tmpdir(), "kr-dash-pages-" + process.pid);
@@ -44,13 +44,16 @@ function main(): void {
       orphanMade = true;
     }
     const live = path.join(work, "index.html");
-    if (exists && fs.existsSync(live) && withoutStamp(fs.readFileSync(live, "utf8")) === withoutStamp(html)) {
+    const tracked = run("git", ["ls-files"], work).split("\n").filter(Boolean).sort().join(",");
+    const jekyll = path.join(work, ".nojekyll");
+    const clean = tracked === ".nojekyll,index.html" && fs.readFileSync(jekyll, "utf8") === "";
+    if (exists && clean && withoutStamp(fs.readFileSync(live, "utf8")) === withoutStamp(html)) {
       console.log("dashboard publish: no change");
       return;
     }
     for (const f of run("git", ["ls-files"], work).split("\n").filter(Boolean)) run("git", ["rm", "-q", "-f", f], work);
     fs.writeFileSync(live, html);
-    fs.writeFileSync(path.join(work, ".nojekyll"), "");
+    fs.writeFileSync(jekyll, "");
     run("git", ["add", "index.html", ".nojekyll"], work);
     run("git", ["commit", "-q", "-m", "dashboard: publish " + new Date().toISOString()], work);
     if (dryRun) {
