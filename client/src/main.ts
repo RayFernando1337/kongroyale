@@ -344,6 +344,9 @@ if (streamOn && READY_BY > 0) {
 kr.programsAfterTitleModules = engine.renderer.info.programs?.length;
 enterStep("afterBuild");
 const postBuildFrom = performance.now();
+let postBuildHidden = document.hidden;
+const notePostBuildHidden = () => { if (document.hidden) postBuildHidden = true; };
+document.addEventListener("visibilitychange", notePostBuildHidden);
 // (before the game's prewarm: the post chain it compiles is the one the settings ask for)
 try { display?.apply(); } catch (e) { report("display", e); }
 for (const m of [...loaded]) await runAfterBuild(m, false);
@@ -430,7 +433,9 @@ if (kr.bootError) {
   bootReady = true;
   kr.stage = "ready";
   kr.readyAt = Math.round(performance.now());
-  if (gameMode && streamOn) {
+  document.removeEventListener("visibilitychange", notePostBuildHidden);
+  kr.postBuildHidden = postBuildHidden;
+  if (gameMode && streamOn && !postBuildHidden) {
     const postMs = performance.now() - postBuildFrom;
     const preMs = ((kr.preReady as string[] | undefined) ?? []).reduce((a, id) => a + (buildMs[id] ?? 0), 0);
     const baseMs = postMs - POST_MS_PER_PRE_READY_BUILD_MS * preMs;
