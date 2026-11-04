@@ -3,10 +3,11 @@
 // landings, roofs; the capsule resolved with step-up, its resolved place kept), linked when ≤ 1.0 m apart, ≤ 0.5 m rise,
 // knee (0.62 m) and chest (1.5 m) rays clear on the server's walk colliders. Independent of the loot generator's nav.
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const { makeHit } = await import(ROOT + "/shared/sim/world.ts");
-const { PLAYER_R, PLAYER_H } = await import(ROOT + "/shared/sim/const.ts");
+// (a file URL, not a path: Node's ESM loader reads a Windows path's drive letter as a URL scheme)
+const { makeHit } = await import(pathToFileURL(path.join(ROOT, "shared/sim/world.ts")).href);
+const { PLAYER_R, PLAYER_H } = await import(pathToFileURL(path.join(ROOT, "shared/sim/const.ts")).href);
 type World = InstanceType<(typeof import("../../shared/sim/world.ts"))["StaticWorld"]>;
 export type FineGraph = ReturnType<typeof makeFineGraph>;
 // ---------------------------------------------------------------------------------------------- the fine walk graph
