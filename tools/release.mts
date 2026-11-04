@@ -1,21 +1,12 @@
-// Fork release tooling: plan, cut, promote and rollback for kong-vX.Y.Z releases on the fork. Zero dependencies; it shells
-// out to git, gh and npm. A cut checks the release commit's CI, rebuilds it and publishes; run npm test yourself first. Every command takes --dry-run and is safe to re-run: a command that has nothing left to do says
-// so and exits 0. See docs/RELEASING.md for the workflow and the design behind the bump rules.
-//   npx tsx tools/release.mts plan                          merged PRs since the last release, next version, notes
-//   npx tsx tools/release.mts cut [--hotfix-from <tag>]     test, tag, build, publish a prerelease, move "next"
-//   npx tsx tools/release.mts promote <tag>                 move "stable" to a release that passed the GPU smokes
-//   npx tsx tools/release.mts rollback [--to <tag>]         move "stable" back one release (or to --to)
-// Options: --dry-run, --prefix <p> (tag prefix, default "kong"; any other prefix uses <p>-next and <p>-stable so a
-// trial never touches the real channels), --allow-unlabelled (cut with PRs that lack a release: label).
-// It only ever talks to the fork; it refuses to run against any other repository.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 const FORK = "rayfernando1337/kongroyale";
+const MERGED_AT_SLACK_MS = 10 * 60_000;
 const BASE_VERSION = "0.2.0";
-const BASE_AFTER = "2026-11-03T02:32:49Z"; // upstream v0.2.0's commit time; the fork has no tag for it
+const UPSTREAM_V020_TIME = "2026-11-03T02:32:49Z";
 const SECTIONS = [
   ["features", "Features"],
   ["performance", "Performance"],
@@ -68,7 +59,6 @@ const refSha = (name: string): string | undefined => {
   return type === "tag" ? gh("api", "repos/" + repo + "/git/tags/" + sha, "--jq", ".object.sha") : sha;
 };
 
-/** Every release tag of this prefix, oldest first, with the commit each points at. */
 const releases = (): Rel[] => {
   const refs = ghJson("api", "--paginate", "repos/" + repo + "/git/matching-refs/tags/" + tagPrefix, "--jq", "[.[] | .ref]") as string[] | null;
   return (refs ?? []).map((r) => r.replace("refs/tags/", "")).filter((t) => /^.+-v\d+\.\d+\.\d+$/.test(t))
@@ -90,13 +80,11 @@ const prInfo = (n: number): Pr => {
   return { number: p.number, title: p.title, bump, section };
 };
 
-/** The PRs a release covers: with no base release, everything merged after upstream v0.2.0; else the commits base..target. */
 const collect = (base: Rel | undefined, target: string): { prs: Pr[]; loose: string[] } => {
   if (!base) {
     const merged = ghJson("pr", "list", "--state", "merged", "--base", "main", "--limit", "500", "--json", "number,mergedAt") as { number: number; mergedAt: string }[];
-    // GitHub stamps mergedAt a little after the merge commit's own time, so the bound has slack
     const until = git("log", "-1", "--format=%cI", target);
-    return { prs: merged.filter((p) => p.mergedAt > BASE_AFTER && new Date(p.mergedAt).getTime() <= new Date(until).getTime() + 10 * 60_000).map((p) => p.number).sort((a, b) => a - b).map(prInfo), loose: [] };
+    return { prs: merged.filter((p) => p.mergedAt > UPSTREAM_V020_TIME && new Date(p.mergedAt).getTime() <= new Date(until).getTime() + MERGED_AT_SLACK_MS).map((p) => p.number).sort((a, b) => a - b).map(prInfo), loose: [] };
   }
   git("fetch", "--quiet", "origin", base.sha);
   const nums = new Set<number>(), loose: string[] = [];
