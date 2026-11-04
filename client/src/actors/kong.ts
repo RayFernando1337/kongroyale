@@ -25,6 +25,7 @@ import { heldMuzzle, HELD_SCALE } from "../weapons/held";
 import { UNBOUNCE_GLSL } from "./look";
 import { gunSpec } from "../weapons/guns/index";
 import { loadAccessories, type AccPiece, type Outfit } from "./outfits";
+import { flag } from "../flags";
 
 /** socket-local foregrip of a two-handed gun (GunSpec.foreAnchor − gripAnchor, × HELD_SCALE), null for one-handed */
 const foreCache = new Map<WeaponId, THREE.Vector3 | null>();
@@ -72,12 +73,11 @@ const rimP = (px: number, r: number[]) => r[4] + (r[5] - r[4]) * rimT(px, r);
  *  near-black in shade) — premultiplied colour added as emissive × albedo */
 const FILL = new THREE.Color(0.09, 0.08, 0.062);
 /** dev: ?kongtier=0|1|2 forces every kong into one LOD tier (LOD captures) */
-const QS = (() => { try { return new URLSearchParams(location.search); } catch { return new URLSearchParams(); } })();
 /** dev: ?kongproxy=<cm> overrides the shadow proxy shrink (0 = no kong shadows at all) */
-const PROXY_CM = QS.has("kongproxy") ? Number(QS.get("kongproxy")) : null;
-const FORCE_TIER: Tier | null = (() => { try { const v = new URLSearchParams(location.search).get("kongtier"); return v === null ? null : (Math.max(0, Math.min(2, Number(v))) as Tier); } catch { return null; } })();
+const PROXY_CM = flag("kongproxy");
+const FORCE_TIER: Tier | null = (() => { try { const v = flag("kongtier"); return v === null ? null : (Math.max(0, Math.min(2, Number(v))) as Tier); } catch { return null; } })();
 /** v2 ripe-yellow chroma / value (dev: ?kysat= / ?kyval= to tune) */
-const YSAT = QS.has("kysat") ? Number(QS.get("kysat")) : 1.12, YVAL = QS.has("kyval") ? Number(QS.get("kyval")) : 0.97;
+const YSAT = flag("kysat"), YVAL = flag("kyval");
 // per-kong look variety (subtle: the brand look is chocolate fur + brick-red shorts)
 const SHORTS = ["#ffffff", "#f2e6e0", "#ffd9c8", "#e8d0d0", "#fff0e0", "#f6dcd2"].map((c) => new THREE.Color(c));
 
@@ -1086,7 +1086,7 @@ export async function createKong(ctx: WorldCtx, opts: { variant?: number; lod?: 
   };
   const eyeM = new THREE.Matrix4(), eyeV = new THREE.Vector3(), gazeXY = { x: 0, y: 0 };
   // ?fp3=0 = the older outstretched POV arms (A/B)
-  const POV_TUCK = typeof location === "undefined" || new URLSearchParams(location.search).get("fp3") !== "0";
+  const POV_TUCK = flag("fp3");
   // first-person body (pov): freefall places the head behind the camera (offset learned from the last frame) + fist IK
   let inPov = false;
   const povP: KongPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vz: 0, vy: 0, state: "freefall", crouch: false, sprint: false, weapon: null, team: 0, friendly: true };

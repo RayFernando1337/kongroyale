@@ -22,6 +22,7 @@ import { ICON } from "./lobby-icons";
 import { glyphFamily, onLabelsChange, pauseText } from "../settings/labels";
 import { glyph, PB } from "../settings/pad";
 import { device } from "../settings/device";
+import { flag } from "../flags";
 
 const NAME_KEY = "kr-callsign", NAME_MAX = 14;
 const store = { get(k: string) { try { return localStorage.getItem(k); } catch { return null; } }, set(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* private */ } } };
@@ -44,7 +45,7 @@ type Info = Extract<EventPublicInfo, { ok: true }>;
 /** api/event/CODE beside the page (or beside a ?ws= override, the way game/index.ts connects) */
 function infoUrl(code: string): string {
   try {
-    const ws = new URL(location.href).searchParams.get("ws");
+    const ws = flag("ws");
     if (ws && /^wss?:\/\/[^\s]+$/.test(ws)) { const u = new URL(ws); u.protocol = u.protocol === "wss:" ? "https:" : "http:"; u.pathname = `/api/event/${code}`; u.search = ""; return u.href; }
   } catch { /* fall through */ }
   return `${import.meta.env.BASE_URL}api/event/${code}`;

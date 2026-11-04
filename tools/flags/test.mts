@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import type * as Flags from "../../client/src/flags";
 
-type Env = { search?: string };
+type Env = { search?: string; stored?: string | null; document?: boolean; storageThrows?: boolean };
 let run = 0;
 
 async function load(env: Env): Promise<typeof Flags> {
   const g = globalThis as Record<string, unknown>;
-  delete g.location;
+  for (const k of ["location", "document", "localStorage"]) delete g[k];
   if (env.search !== undefined) g.location = { search: env.search };
+  if (env.document) g.document = {};
+  if (env.stored !== undefined || env.storageThrows) g.localStorage = { getItem: (k: string) => { if (env.storageThrows) throw new Error("denied"); return k === "kr.flags" ? env.stored : null; } };
   return import(`../../client/src/flags.ts?run=${run++}`);
 }
 
@@ -33,6 +35,44 @@ async function load(env: Env): Promise<typeof Flags> {
   assert.equal(flag("vegpre"), true);
   assert.equal(flag("view"), "a");
   assert.deepEqual(flag("impgrade"), [1, 2, NaN, 4]);
+}
+
+{
+  const { flag, flagQuery } = await load({ search: "?vegsplat=0&vegpre=1&x=url", stored: "vegsplat=1&vegpre=0&splres=128&vegcol=1&x=stored", document: true });
+  assert.equal(flag("vegsplat"), false);
+  assert.equal(flag("vegpre"), true);
+  assert.equal(flag("splres"), 128);
+  assert.equal(flag("vegcol"), true);
+  assert.deepEqual(flagQuery, { splres: "128", vegcol: "1", vegsplat: "0", vegpre: "1", x: "url" });
+}
+
+{
+  const { flag, flagQuery } = await load({ search: "?join=URLCODE", stored: "ws=wss://evil.example/ws&join=STORED&e=EVT&cast=ABC&caster=exhibit&program&mode=trios&splres=128", document: true });
+  assert.equal(flag("ws"), null);
+  assert.equal(flag("join"), "URLCODE");
+  assert.equal(flag("e"), null);
+  assert.equal(flag("cast"), null);
+  assert.equal(flag("caster"), null);
+  assert.equal(flag("program"), false);
+  assert.equal(flag("mode"), null);
+  assert.equal(flag("splres"), 128);
+  assert.deepEqual(flagQuery, { splres: "128", join: "URLCODE" });
+}
+
+{
+  const { flag } = await load({ search: "?ws=ws://localhost:3020/ws&e=AB12", document: true, stored: null });
+  assert.equal(flag("ws"), "ws://localhost:3020/ws");
+  assert.equal(flag("e"), "AB12");
+}
+
+{
+  const { flag } = await load({ search: "", stored: "splres=128", document: false });
+  assert.equal(flag("splres"), 256);
+}
+
+{
+  const { flag } = await load({ search: "?splres=64", storageThrows: true, document: true });
+  assert.equal(flag("splres"), 64);
 }
 
 console.log("flags: ok");

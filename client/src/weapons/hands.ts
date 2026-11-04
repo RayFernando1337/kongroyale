@@ -22,6 +22,7 @@
 import * as THREE from "three";
 import { rbox } from "./lib/geo";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { flag } from "../flags";
 
 // ------------------------------------------------------------------------------------------------ dimensions (m)
 /** palm: thickness (x), width along the grip (y), length heel → knuckles (z) */
@@ -49,7 +50,7 @@ const ARM_K = 1.45;
 export const ARMS2: boolean = (() => {
   try {
     if (typeof location === "undefined") return false;
-    const q = new URLSearchParams(location.search).get("arms");
+    const q = flag("arms");
     if (q) return q === "2";
     return typeof localStorage !== "undefined" && localStorage.getItem("kr.arms") === "2";
   } catch { return false; }
@@ -57,7 +58,7 @@ export const ARMS2: boolean = (() => {
 
 /** dev A/B (`?armsab`, a bench script): every hand mesh is kept so the bench can swap v1 ↔ v2 geometry
  *  on the live meshes (same bones) and time both in ONE page at the same frame — null (nothing kept) otherwise */
-const AB: THREE.SkinnedMesh[] | null = (() => { try { return typeof location !== "undefined" && new URLSearchParams(location.search).has("armsab") ? [] : null; } catch { return null; } })();
+const AB: THREE.SkinnedMesh[] | null = (() => { try { return flag("armsab") ? [] : null; } catch { return null; } })();
 export function swapArmsAB(v2: boolean): number {
   if (!AB) return 0;
   for (const m of AB) { const side = m.name.endsWith("L") ? "L" : "R"; m.geometry = (v2 ? (geoCache[`${side}2`] ??= buildHandGeo(side === "L", true)) : (geoCache[side] ??= buildHandGeo(side === "L"))).geo; }

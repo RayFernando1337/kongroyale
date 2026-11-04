@@ -6,6 +6,7 @@ import { GeoBin } from "./town-geo";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { WorldCtx } from "../../../engine/engine";
 import { townTex, TOWN_TEX_SETS as S, blobTexture, netTexture, canvasTexture, signCanvas, type TownTex } from "./town-tex";
+import { flag } from "../../../flags";
 export { preloadTownTex } from "./town-tex";
 
 export interface TownMats {
@@ -264,7 +265,7 @@ function aliasBins(b: TownBins, t: Tier) {
 // white) drives a dithered crossfade like the vegetation's (interleaved gradient noise, moving every frame under TAA so
 // the history blends the two tiers); the incoming tier keeps the pixels where d < f, the outgoing where d > 1 − f.
 // The batches and the proxy are `noCull` (no engine scale fades). ?townxfade=0 = the old swaps (A/B).
-export const TOWN_XFADE = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("townxfade") !== "0";
+export const TOWN_XFADE = flag("townxfade");
 /** crossfade duration (s) — like the vegetation's tier crossfade */
 export const TOWN_FADE_T = 0.45;
 /** x = TAA on (mirrors atmos' uAtmTemporal), y = frame number — the dither moves per frame under TAA */
@@ -330,7 +331,7 @@ export function shadowOnlyMaterial(): THREE.ShaderMaterial {
  *    near (floors, flower boxes…) within `near`, fine (furniture) within `fine`.
  *  - PROXY: one merged box town, the only thing drawn beyond `far` from the POI's bounds (atmos' far shadow map).
  */
-const PARITY = typeof location !== "undefined" && new URLSearchParams(location.search).has("nocull");
+const PARITY = flag("nocull");
 export class TownLod {
   private items = new Map<string, LodItem>();
   private batches: THREE.BatchedMesh[] = [];
@@ -475,7 +476,7 @@ export class TownLod {
     // the coplanar resolver first: it moves box faces inside the bins' buffers, before they become geometries
     if (this.co.boxes.length) {
       const it = this.co.steps(); let st = it.next(); while (!st.done) { yield; st = it.next(); }
-      const r = st.value; if (r.moved && /[?&]codebug/.test(location.search)) console.info(`[${this.prefix}] coplanar: ${r.boxes} boxes, ${r.pairs} coplanar pairs, ${r.moved} faces moved (${r.ms} ms, longest pass ${r.maxPass} ms)`);
+      const r = st.value; if (r.moved && flag("codebug")) console.info(`[${this.prefix}] coplanar: ${r.boxes} boxes, ${r.pairs} coplanar pairs, ${r.moved} faces moved (${r.ms} ms, longest pass ${r.maxPass} ms)`);
       yield;
     }
     let tS1 = performance.now();

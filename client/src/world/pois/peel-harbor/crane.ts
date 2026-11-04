@@ -8,6 +8,7 @@ import { drawPieces, roomMats } from "../_kit/harbor-rooms";
 import { Builder, type V3, mergeCasters } from "../_kit/harbor-geo";
 import { weather, type HarborMats } from "../_kit/harbor-materials";
 import type { Part } from "./parts";
+import { flag } from "../../../flags";
 
 const C = CRANE;
 
@@ -367,7 +368,7 @@ export const part: Part = {
     // air, and the AIR_Y switch between the two while landing, reads as the crane re-spawning). The full crane is ≈10
     // draws; the proxy stays as a SHADOW-ONLY stand-in: force-shown for the far shadow-map bake + merged into the
     // harbor's cascade-1 caster) (?craneproxy = the old swap, A/B)
-    if (typeof location !== "undefined" && new URLSearchParams(location.search).has("craneproxy")) lod.pair(g, pg, 150, { air: 330 });
+    if (flag("craneproxy")) lod.pair(g, pg, 150, { air: 330 });
     else { pg.visible = false; pg.userData.farShadow = "force"; }
     void THREE;
   },

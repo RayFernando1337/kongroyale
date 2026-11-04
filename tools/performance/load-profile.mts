@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Load profiler for Kong Royale: times one page load from navigation to the playable title (window.__kr.ready) and on
-// to a started practice match, in Google Chrome (CDP trace + CPU profile), real Safari (safaridriver / WebDriver) and
-// Playwright WebKit (an automated stand-in that is NOT Safari), and writes one kong-perf-result file (schema.ts) per
+// to a started practice match, in Google Chrome or Microsoft Edge (CDP trace + CPU profile), real Safari (safaridriver /
+// WebDriver) and Playwright WebKit (an automated stand-in that is NOT Safari), and writes one kong-perf-result file (schema.ts) per
 // run, so runs compare with compare.mts. The method, what every number means and how to rank wins:
 // .agents/skills/profile-kongroyale-load/SKILL.md. Run from the repository root with Node 22.12+:
 //
@@ -14,8 +14,8 @@
 // thread blocks, frame times, blocking WebGL calls), and logs every request it forwards (bytes and timing per asset).
 // Only local servers: the proxy refuses any host but 127.0.0.1 / localhost (AGENTS.md rule 7).
 //
-// run options: --url [label=]URL (repeat it for A/B; the URL may carry game flags)  --browsers chrome,safari,webkit
-//   --runs N (3)  --starts cold,warm  --match-secs N (15) | --no-match  --no-trace (Chrome)  --no-gl (no WebGL probe)
+// run options: --url [label=]URL (repeat it for A/B; the URL may carry game flags)  --browsers chrome,edge,safari,webkit
+//   --runs N (3)  --starts cold,warm  --match-secs N (15) | --no-match  --no-trace (Chrome, Edge)  --no-gl (no WebGL probe)
 //   --inspect (Safari: Web Inspector Timelines recording)  --headed  --viewport 1600x900  --dpr 2  --seed 42
 //   --net MBPS,RTT_MS (shape the proxy's link)  --cooldown S (10)  --out DIR  --root CHECKOUT  --safaridriver-port 4471
 // table options: --metrics a,b (default: the headline metrics)
@@ -37,7 +37,7 @@ const opt = (k: string, d: string) => all(k).at(-1) ?? d;
 const flag = (k: string) => argv.includes(k);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const BROWSERS = ["chrome", "safari", "webkit"] as const;
+const BROWSERS = ["chrome", "edge", "safari", "webkit"] as const;
 type Browser = (typeof BROWSERS)[number];
 type Start = "cold" | "warm";
 /** the scenario version: bump it when what a load does (flags, the match drive, the windows) changes */
@@ -207,27 +207,27 @@ function startProxy(target: URL, shape: { mbps: number; rttMs: number } | null, 
 interface Driver { browser: Browser; version: string; headless: boolean; open(url: string): Promise<void>; run(expr: string): Promise<string>; click(sel: string): Promise<void>; shot(base: string): Promise<string>; trace?: { start(): Promise<void>; stop(): Promise<Buffer> }; close(): Promise<void> }
 interface Opts { viewport: [number, number]; dpr: number; headed: boolean; trace: boolean; inspect: boolean; sdPort: number }
 
-async function playwrightDriver(kind: "chrome" | "webkit", o: Opts): Promise<Driver> {
+async function playwrightDriver(kind: "chrome" | "edge" | "webkit", o: Opts): Promise<Driver> {
   const pw = await import("playwright");
   const angle = process.platform === "darwin" ? "metal" : process.platform === "win32" ? "d3d11" : "swiftshader";
   // a fresh on-disk profile per run: the cold load starts empty, and the warm load gets a real disk cache (an
   // incognito-style context keeps only a small in-memory cache, which a returning player does not have)
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kr-load-profile-"));
   const common = { headless: !o.headed, viewport: { width: o.viewport[0], height: o.viewport[1] }, deviceScaleFactor: o.dpr, timeout: 120_000 };
-  const ctx = kind === "chrome"
-    ? await pw.chromium.launchPersistentContext(dir, { ...common, channel: "chrome", args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required"] })
+  const ctx = kind !== "webkit"
+    ? await pw.chromium.launchPersistentContext(dir, { ...common, channel: kind === "edge" ? "msedge" : "chrome", args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required"] })
     : await pw.webkit.launchPersistentContext(dir, common);
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   const ua = String(await page.evaluate("navigator.userAgent"));
   const d: Driver = {
-    browser: kind, version: (kind === "chrome" ? /Chrome\/([\d.]+)/ : /Version\/([\d.]+)/).exec(ua)?.[1] ?? ua, headless: !o.headed,
+    browser: kind, version: (kind === "edge" ? /Edg\/([\d.]+)/ : kind === "chrome" ? /Chrome\/([\d.]+)/ : /Version\/([\d.]+)/).exec(ua)?.[1] ?? ua, headless: !o.headed,
     open: async (url) => { await page.goto(url, { waitUntil: "commit", timeout: 120_000 }); },
     run: (expr) => page.evaluate(expr) as Promise<string>,
     click: (sel) => page.locator(sel).click({ timeout: 30_000 }),
     shot: async (base) => { const file = base + ".jpg"; await page.screenshot({ path: file, type: "jpeg", quality: 70 }); return file; },
     close: async () => { await ctx.close(); fs.rmSync(dir, { recursive: true, force: true }); },
   };
-  if (kind === "chrome" && o.trace) {
+  if (kind !== "webkit" && o.trace) {
     // CDP Tracing from the page's session: the trace is browser-wide (renderer, GPU process, workers)
     const cdp = await ctx.newCDPSession(page);
     d.trace = {
@@ -586,7 +586,7 @@ async function run() {
   if (!urls.length) fail("pass --url http://127.0.0.1:PORT (a server you started: kr-verify up --prod, npm start, npm run dev)");
   for (const { url } of urls) if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) fail(url.hostname + " is not local: this tool only measures servers you run on this machine (AGENTS.md rule 7)");
   const browsers = opt("--browsers", "chrome").split(",") as Browser[];
-  for (const b of browsers) if (!BROWSERS.includes(b)) fail("unknown browser " + b + " (chrome, safari, webkit)");
+  for (const b of browsers) if (!BROWSERS.includes(b)) fail("unknown browser " + b + " (chrome, edge, safari, webkit)");
   const runs = Number(opt("--runs", "3")), matchSecs = flag("--no-match") ? 0 : Number(opt("--match-secs", "15")), seed = Number(opt("--seed", "42"));
   const starts = opt("--starts", "cold,warm").split(",") as Start[];
   for (const s of starts) if (s !== "cold" && s !== "warm") fail("unknown start " + s + " (cold, warm)");
@@ -630,7 +630,7 @@ async function run() {
       const result: RunResult = {
         schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "load-profile", startedAt, durationMs: Date.now() - t0, source: source(root),
         environment: { platform: e.platform, arch: e.arch, release: e.release, node: e.node, cpu: e.cpu, cpus: e.cpus, memoryMB: e.memoryMB, loadAvg1: e.loadAvg1, gpu: (cases[0]?.detail as any)?.gl?.renderer ?? null },
-        config: { browser, browserVersion: d?.version ?? "?", headless: d?.headless ?? !o.headed, viewport: o.viewport.join("x"), dpr: o.dpr, trace: browser === "chrome" && o.trace, inspect: browser === "safari" && o.inspect, starts: starts.join(","), matchSecs, net: netOpt || "loopback", glProbe: !flag("--no-gl"),
+        config: { browser, browserVersion: d?.version ?? "?", headless: d?.headless ?? !o.headed, viewport: o.viewport.join("x"), dpr: o.dpr, trace: (browser === "chrome" || browser === "edge") && o.trace, inspect: browser === "safari" && o.inspect, starts: starts.join(","), matchSecs, net: netOpt || "loopback", glProbe: !flag("--no-gl"),
           build: loads.some((L) => L.hits.some((h) => h.url.startsWith("/@vite/") || h.url.startsWith("/client/src/"))) ? "dev" : "prod" },
         cases, errors, artifacts: loads.flatMap((L) => L.artifacts),
       };

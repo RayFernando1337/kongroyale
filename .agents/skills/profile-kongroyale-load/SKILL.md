@@ -63,6 +63,7 @@ finding is not the probe, rerun with `--no-gl` (no wrappers) and compare `readyM
 | `--browsers` | What runs | Extra evidence | Use it for |
 |---|---|---|---|
 | `chrome` | Google Chrome (`channel: chrome`), headless, `--use-angle=metal` on a Mac (`d3d11` on Windows), as in verify-kongroyale | A CDP trace (`trace-<start>.json.gz`) and the page's CPU profile (`cpu-<start>.cpuprofile`), unless `--no-trace` | Attribution: what the main thread and the GPU process did |
+| `edge` | Microsoft Edge (`channel: msedge`), the same Chromium flags and ANGLE backend as `chrome` | Same as Chrome | The numbers Windows players get in the default browser |
 | `safari` | Real Safari through `safaridriver` (W3C WebDriver), a visible automation window | Screenshots; `--inspect` asks safaridriver to start a Web Inspector Timelines recording with the session (`safari:automaticProfiling`; not yet exercised on Fuego Max) | The numbers Safari players get |
 | `webkit` | Playwright's WebKit build | Same as Safari | A scriptable stand-in on machines without Safari. **It is not Safari**: a different WebKit build, without Safari's own GPU process settings, Metal shader cache and networking. Never quote it as Safari |
 

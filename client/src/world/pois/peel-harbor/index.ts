@@ -20,6 +20,7 @@ import { dressBeach } from "./beach";
 import { HarborLod } from "./lod";
 import { setFinePre } from "./apron-fine";
 import { workerPool } from "../../../engine/worker-pool";
+import { flag } from "../../../flags";
 
 /** a camera authored in harbor-local coordinates → world CamSpec */
 const L = (pos: [number, number, number], target: [number, number, number], fov: number, note: string): CamSpec => {
@@ -102,7 +103,7 @@ const mod: WorldModule = {
     useBananaRenderer(ctx.renderer);
     await prepareBananaSkin(() => ctx.yield());
     const kit = new ContainerKit();
-    const only = new URLSearchParams(location.search).get("harborOnly")?.split(",").filter(Boolean);
+    const only = flag("harborOnly");
     if (!only || only.includes("yard")) kit.addMany(CONTAINERS);
     if (!only || only.includes("ship")) kit.addMany(SHIP_CONTAINERS);
     const lod = new HarborLod(group);
@@ -132,9 +133,8 @@ const mod: WorldModule = {
     // full model within 18 m (perf). ONE bucket per size (perf: per-96 m cells cost 34–48 draw calls a frame —
     // near + LOD box + caster per cell and size — for culling that saved a few thousand 30-tri boxes; the draw calls,
     // not the triangles, are what the harbor pays for on ANGLE/Metal)
-    const qs = new URLSearchParams(location.search), num = (k: string, d: number) => (qs.has(k) ? Number(qs.get(k)) : d);
     // (`?nocull` = the parity tool: full models everywhere, like the harbor's other detail tiers)
-    const set = await kit.buildAsync({ name: "harbor-containers", lod: qs.has("nocull") ? 400 : num("ctLod", 18), midLod: num("ctMid", 0), cell: 4096, shadowDist: 60 }, () => ctx.yield());
+    const set = await kit.buildAsync({ name: "harbor-containers", lod: flag("nocull") ? 400 : flag("ctLod"), midLod: flag("ctMid"), cell: 4096, shadowDist: 60 }, () => ctx.yield());
     group.add(set);
     lod.containers(set);
     await ctx.yield();

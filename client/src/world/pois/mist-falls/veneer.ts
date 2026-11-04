@@ -7,6 +7,7 @@ import type { WorldCtx } from "../../../engine/engine";
 import { WORLD } from "../../../../../shared/world/map";
 import { FALLS } from "../../../../../shared/pois/jungle-falls";
 import { noise3 } from "../_kit/jungle-geo";
+import { flag } from "../../../flags";
 
 export function buildVeneer(ctx: WorldCtx, root: THREE.Group, mat: THREE.MeshStandardMaterial) {
   const t = ctx.terrain, CELL = WORLD.CELL, HALF = WORLD.HALF, S = FALLS.skin;
@@ -67,7 +68,7 @@ export function buildVeneer(ctx: WorldCtx, root: THREE.Group, mat: THREE.MeshSta
   // copy of the material (no alpha test) — the same pixels; only the noisy edge band stays alpha-tested. 0 = one mesh (A/B).
   const ix = g.index!.array as ArrayLike<number>, A = g.attributes.color as THREE.BufferAttribute;
   const solid: number[] = [], edge: number[] = [];
-  const split = new URLSearchParams(location.search).get("veneerSplit") !== "0";
+  const split = flag("veneerSplit");
   for (let q = 0; q < ix.length; q += 3) { const a = Math.min(A.getW(ix[q]), A.getW(ix[q + 1]), A.getW(ix[q + 2])); (split && a >= 0.8 ? solid : edge).push(ix[q], ix[q + 1], ix[q + 2]); }
   const add = (index: number[], mm: THREE.Material, name: string) => {
     if (!index.length) return;

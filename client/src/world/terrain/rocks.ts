@@ -24,6 +24,7 @@ import { GLSL_COMMON, terrainCellTexture, terrainNoiseTexture } from "./material
 import { sculptStack } from "./stackgeo";
 import { SKIN_HI, SKIN_MID, buildCliffSkins } from "./cliffskin";
 import { layerIndex, LAYERS, type LayerArrays } from "./textures";
+import { flag } from "../../flags";
 
 type Mat = "block" | "slab" | "basalt" | "stack" | "boulder" | "crag" | "spire" | "shard" | "tor";
 const MATS: Mat[] = ["block", "slab", "basalt", "stack", "boulder", "crag", "spire", "shard", "tor"];
@@ -41,7 +42,7 @@ const matOf = (k: RockKind): Mat => k;
 /** (lodv) sea-stack tier distances (m from the stack's footprint) */
 const STACK_HI_D = 110, STACK_LO_D = 320;
 /** dithered tier crossfades + shrink fades (?lodv=1; ?lodv=0 = off) */
-export const ROCK_LODV = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("lodv") !== "0";
+export const ROCK_LODV = flag("lodv");
 
 // 3D noise from three 2D simplex planes (cheap, seeded)
 function n3(s: Simplex2, x: number, y: number, z: number) { return (s.noise(x, y) + s.noise(y + 31.7, z) + s.noise(z + 11.3, x)) / 3; }

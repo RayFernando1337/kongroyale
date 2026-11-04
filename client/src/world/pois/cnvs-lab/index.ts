@@ -23,6 +23,7 @@ import { buildInteriors, stockKitRacks } from "./interiors";
 import { buildFalls } from "./falls";
 import { buildRocks, ROCK_NEAR, ELEV_LOD } from "./rocks";
 import { buildFarProxy } from "./proxy";
+import { flag } from "../../../flags";
 
 const W = (u: number, y: number, v: number): [number, number, number] => [CX + u, y, CZ + v];
 const views: Record<string, CamSpec> = {
@@ -128,7 +129,7 @@ const mod: WorldModule = {
     const kit = { tris: 0, draws: 0 };
     // (?nocull = the parity page, which visits the POI in 40 m tiles: every room shows, as when the kong stands at it)
     // 22 m (at 12 m the furnished rooms popped in through the windows a few steps from the glass; ?elevlod=0 = 12)
-    let ROOM_DIST = ELEV_LOD ? 22 : 12; try { if (new URLSearchParams(location.search).has("nocull")) ROOM_DIST = 1e9; } catch { /* tools */ }
+    let ROOM_DIST = ELEV_LOD ? 22 : 12; try { if (flag("nocull")) ROOM_DIST = 1e9; } catch { /* tools */ }
     // (four groups, a yield between — the A/B/E call alone is one 53 ms task)
     // (one call per pod: a call culls on ONE bounding sphere — D + F together made a 20 m sphere that stayed visible
     // from the helipad)
@@ -314,7 +315,7 @@ const mod: WorldModule = {
     const rk = await buildRocks(ctx, root); mark("rocks"); rocks = { near: rk.near, far: rk.far }; rk.near.traverse((o) => { o.renderOrder = -1; }); upd();
     // dev (perf A/B): ?labhide=shell,near,interior,glass,rocks,vines,falls,gravel,rooms hides those parts for good
     try {
-      const hide = new URLSearchParams(location.search).get("labhide")?.split(",") ?? [];
+      const hide = flag("labhide");
       const tag = (n: string) => n.startsWith("lab:shell") ? "shell" : n.startsWith("lab:near") ? "near" : n.startsWith("lab:interior") ? "interior" : n.startsWith("lab:glass") ? "glass"
         : n.startsWith("lab:rock") ? "rocks" : /vine/i.test(n) ? "vines" : /falls|puff|pool|water/i.test(n) ? "falls" : n === "lab:gravel" ? "gravel" : n.startsWith("lab:rooms") ? "rooms" : "";
       if (hide.length) root.traverse((o) => { let t = ""; for (let p: THREE.Object3D | null = o; p && !t; p = p.parent) t = tag(p.name); if (t && hide.includes(t)) o.layers.disableAll(); });

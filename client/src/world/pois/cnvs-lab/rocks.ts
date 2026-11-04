@@ -11,6 +11,7 @@ import type { WorldCtx } from "../../../engine/engine";
 import { CX, CZ, rockLobes, lobeShape, MASSIF_FALLS, type LobeShape } from "../../../../../shared/pois/cnvs-lab";
 import { pbr, stoneMaterial, bindJungleCtx } from "../_kit/jungle-mat";
 import { buildHangingVines, type VineSpot } from "../_kit/jungle-vines";
+import { flag } from "../../../flags";
 
 function hash(x: number, y: number, z: number, s: number) { let h = (x * 374761393 + y * 668265263 + z * 1274126177 + s * 97531) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
 function vnoise(x: number, y: number, z: number, s: number) {
@@ -74,7 +75,7 @@ function lobeMesh(b: Buf, sh: LobeShape, step: number, wet: Array<{ x: number; z
 }
 
 /** ?elevlod=0 = the old LOD distances (for A/B comparisons) */
-export const ELEV_LOD = typeof location === "undefined" || new URLSearchParams(location.search).get("elevlod") !== "0";
+export const ELEV_LOD = flag("elevlod");
 /** distance (from the lab centre) beyond which the coarse rock copy shows */
 export const ROCK_NEAR = ELEV_LOD ? 240 : 120;   // (240, not 120, so the coarse copy never swaps in while you walk the compound's edge)
 

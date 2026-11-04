@@ -23,6 +23,7 @@ import { buildWater, buildLilies } from "./water";
 import { buildFx } from "./fx";
 import { addDress } from "./dress";
 import { soft, addPost, murkLantern, murkCrate, ROPE } from "./geo";
+import { flag } from "../../../flags";
 
 type V3 = [number, number, number];
 // ---- the view camera: ~1.5 m over the tea water SE of the shack, looking NNW up the channel — the shack on the
@@ -166,8 +167,8 @@ const mod: WorldModule = {
   async build(ctx: WorldCtx) {
     const t0 = performance.now();
     // dev ablation: ?murkoff=crown,water,fx,roots,huts,decks,veg,gm
-    const OFF = new Set((typeof location !== "undefined" ? new URLSearchParams(location.search).get("murkoff") ?? "" : "").split(","));
-    const OLD_LOD = typeof location !== "undefined" && new URLSearchParams(location.search).get("elevlod") === "0";   // A/B: ?elevlod=0 = the old LOD switches
+    const OFF = new Set(flag("murkoff"));
+    const OLD_LOD = !flag("elevlod");   // A/B: ?elevlod=0 = the old LOD switches
     const group = new THREE.Group();
     group.name = "poi:the-murk";
     ctx.scene.add(group);

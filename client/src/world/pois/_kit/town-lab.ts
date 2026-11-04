@@ -19,6 +19,7 @@ import { mulberry } from "../../../../../shared/pois/town-kit";
 import { townMats, makeBins, buildBins, type TownBins, type TownMats } from "./town-materials";
 import { M, col, slabGeo, boxGeo } from "./town-geo";
 import { TownVeg } from "./town-veg";
+import { flag } from "../../../flags";
 
 /** lab name → slot origin (world). Water labs sit in ~1–2 m of water; dry labs get a platform at y = 0.6 */
 export const LAB_SLOTS: Record<string, [number, number]> = {
@@ -56,9 +57,8 @@ export function labViews(): Record<string, CamSpec> {
 
 /** should this page build the lab instead of the POI? */
 export function labRequested(): boolean {
-  const q = new URLSearchParams(location.search);
-  if (q.get("view")?.startsWith("townlab-")) return true;
-  const cam = q.get("cam");
+  if (flag("view")?.startsWith("townlab-")) return true;
+  const cam = flag("cam");
   if (cam) {
     const [x, , z] = cam.split(",").map(Number);
     return x >= LAB_REGION.x0 && x <= LAB_REGION.x1 && z >= LAB_REGION.z0 && z <= LAB_REGION.z1;

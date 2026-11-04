@@ -8,9 +8,8 @@
 import * as THREE from "three";
 import type { WorldCtx } from "../../../engine/engine";
 import { assetUrl } from "../../../engine/assets";
+import { flag } from "../../../flags";
 
-const q = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
-const num = (k: string, d: number) => { const v = Number(q.get(k)); return q.has(k) && Number.isFinite(v) ? v : d; };
 
 export const caveU = {
   uCaveOn: { value: 0 },
@@ -19,11 +18,11 @@ export const caveU = {
   uCaveMin: { value: new THREE.Vector3() },
   uCaveSize: { value: new THREE.Vector3(1, 1, 1) },
   /** remaining sky IBL deep inside (never black) */
-  uCaveAmb: { value: num("cavesAmb", 0.36) },
+  uCaveAmb: { value: flag("cavesAmb") },
   /** sky visibility at which the exterior look is fully back */
-  uCaveSkyK: { value: num("cavesSky", 0.32) },
+  uCaveSkyK: { value: flag("cavesSky") },
   /** lamp irradiance gain */
-  uCaveLamp: { value: num("cavesLamp", 0.7) },
+  uCaveLamp: { value: flag("cavesLamp") },
   uCaveOff: { value: 0.7 },
   /** cool bias of the remaining cave ambient (the skylight's blue) */
   uCaveCool: { value: new THREE.Color(0.6, 0.88, 1.4) },

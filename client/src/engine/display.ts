@@ -14,6 +14,7 @@
 // frame rate stays under 50 fps. View-camera pages (?view / ?cam / ?shot) and pages with ?q= ignore all of it.
 import type * as THREE from "three";
 import type { Engine, Quality } from "./engine";
+import { flag } from "../flags";
 
 export type Level = "low" | "medium" | "high" | "epic";
 export type PresetId = "auto" | Level | "custom";
@@ -155,7 +156,7 @@ export class Display {
 
   constructor(private engine: Engine) {
     this.gpu = gpuString(engine.renderer.getContext());
-    const spoof = new URLSearchParams(location.search).get("gpu"); // tools: ?gpu=<renderer string>
+    const spoof = flag("gpu"); // tools: ?gpu=<renderer string>
     this.gpuLevel = classifyGpu(spoof || this.gpu);
     const saved = store.get();
     this.firstVisit = !saved;
@@ -313,7 +314,7 @@ export class Display {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** GPU ms (timer query when available) and frame ms (median) over `ms` of real frames */
-const NO_TIMER = typeof location !== "undefined" && new URLSearchParams(location.search).has("notimer"); // tools: a Mac-like browser
+const NO_TIMER = flag("notimer"); // tools: a Mac-like browser
 function hasTimer(e: Engine) {
   if (NO_TIMER) return false;
   try { return !!(e.renderer.getContext() as WebGL2RenderingContext).getExtension("EXT_disjoint_timer_query_webgl2"); } catch { return false; }

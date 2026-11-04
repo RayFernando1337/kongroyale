@@ -12,8 +12,9 @@
 //     im · n for the stone's world normal (mergedStoneMat swaps the shader's `objectNormal` read there for `aJN`).
 //   • The far sets (big cells, few draws, never cast) stay instanced. ?rockMerge=0 = the old instanced sets (A/B).
 import * as THREE from "three";
+import { flag } from "../../../flags";
 
-export const ROCK_MERGE = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("rockMerge") !== "0";
+export const ROCK_MERGE = flag("rockMerge");
 
 /** turn a FRESH stone material (made by the same factory as the instanced sets' material, before anything else patched
  *  it) into the merged-geometry variant: identical shader except the stone's world normal comes from `aJN` */

@@ -7,14 +7,14 @@
 //   ?playtest / ?playtest=1 ............................... ON  (any build)
 //   ?dev / ?playtest=0 .................................... OFF (any build: bot matches with mode + difficulty)
 //   VITE_KR_PLAYTEST=0|1 at build / dev-server start ....... the default above, overridden
+import { flag } from "../flags";
+
 const env = (import.meta as unknown as { env?: { DEV?: boolean; VITE_KR_PLAYTEST?: string } }).env ?? {};
 
 export function playtestTitle(): boolean {
-  try {
-    const q = new URLSearchParams(location.search);
-    if (q.has("dev") || q.get("playtest") === "0") return false;
-    if (q.has("playtest")) return true;
-  } catch { /* no location (tests) */ }
+  const playtest = flag("playtest");
+  if (flag("dev") !== null || playtest === "0") return false;
+  if (playtest !== null) return true;
   if (env.VITE_KR_PLAYTEST === "1") return true;
   if (env.VITE_KR_PLAYTEST === "0") return false;
   return !env.DEV;
