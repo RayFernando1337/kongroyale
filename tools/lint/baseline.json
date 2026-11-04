@@ -772,6 +772,7 @@
     "client/src/actors/kong-dev-views.ts": 1,
     "client/src/actors/kong.ts": 3,
     "client/src/audio/audition.ts": 1,
+    "client/src/caster/app.ts": 1,
     "client/src/engine/cull.ts": 4,
     "client/src/engine/display.ts": 2,
     "client/src/engine/dither.ts": 1,

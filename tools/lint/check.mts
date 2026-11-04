@@ -373,11 +373,16 @@ const unitSuffix: Rule = {
 
 const FLAG_REGISTRY = "client/src/flags.ts";
 const RAW_QUERY_EXEMPT = new Set([FLAG_REGISTRY, "client/src/kongbot/context.ts"]);
-const QUERY_READS = new Set(["get", "getAll", "has", "entries", "keys", "values", "forEach"]);
+const QUERY_WRITES = new Set(["set", "append", "delete", "sort"]);
 
 function isLocation(e: ts.Expression): boolean {
   if (ts.isIdentifier(e)) return e.text === "location";
   return ts.isPropertyAccessExpression(e) && e.name.text === "location";
+}
+
+function isPageHref(e: ts.Expression): boolean {
+  if (isLocation(e)) return true;
+  return ts.isPropertyAccessExpression(e) && e.name.text === "href" && isLocation(e.expression);
 }
 
 const urlFlags: Rule = {
@@ -385,13 +390,25 @@ const urlFlags: Rule = {
   counted: true,
   applies: (rel) => rel.startsWith("client/src/") && !RAW_QUERY_EXEMPT.has(rel),
   check(sf) {
+    const pageUrlNames = new Set<string>();
+    const isPageUrl = (e: ts.Expression): boolean => {
+      if (ts.isParenthesizedExpression(e)) return isPageUrl(e.expression);
+      if (ts.isIdentifier(e)) return pageUrlNames.has(e.text);
+      return ts.isNewExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "URL" && e.arguments?.length === 1 && isPageHref(e.arguments[0]);
+    };
+    const collect = (n: ts.Node): void => {
+      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && isPageUrl(n.initializer)) pageUrlNames.add(n.name.text);
+      ts.forEachChild(n, collect);
+    };
+    collect(sf);
     const hits: Hit[] = [];
     const visit = (n: ts.Node): void => {
       if (ts.isPropertyAccessExpression(n) && n.name.text === "search" && isLocation(n.expression)) {
         hits.push({ node: n, message: `a raw location.search read: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
       }
-      if (ts.isPropertyAccessExpression(n) && QUERY_READS.has(n.name.text) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === "searchParams") {
-        hits.push({ node: n, message: `a raw searchParams.${n.name.text} read: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
+      if (ts.isPropertyAccessExpression(n) && n.name.text === "searchParams" && isPageUrl(n.expression)) {
+        const write = ts.isPropertyAccessExpression(n.parent) && QUERY_WRITES.has(n.parent.name.text) && ts.isCallExpression(n.parent.parent);
+        if (!write) hits.push({ node: n, message: `a raw read of the page URL's searchParams: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
       }
       ts.forEachChild(n, visit);
     };
