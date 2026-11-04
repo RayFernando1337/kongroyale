@@ -131,6 +131,7 @@ const POST_BUILD_EXPECT_MS = { afterBuild: 750, game: 11200, settle: 4300 };
 const POST_MS_PER_PRE_READY_BUILD_MS = 0.27;
 const POST_BUILD_STORE_KEY = "kr-boot-post-v1";
 const POST_BUILD_STORED_MIN_MS = 2000, POST_BUILD_STORED_MAX_MS = 90_000;
+const POST_BUILD_TICK_MS = 250, POST_BUILD_TICK_LATE_MS = 1000, POST_BUILD_NO_FRAME_MS = 2000;
 function storedPostBuildMs(): number | null {
   try {
     const ms = Number((JSON.parse(localStorage.getItem(POST_BUILD_STORE_KEY) ?? "null") as { baseMs?: unknown } | null)?.baseMs);
@@ -347,6 +348,17 @@ const postBuildFrom = performance.now();
 let postBuildHidden = document.hidden;
 const notePostBuildHidden = () => { if (document.hidden) postBuildHidden = true; };
 document.addEventListener("visibilitychange", notePostBuildHidden);
+const postBuildNoFrameWaits = noFrameWaitCount();
+let postBuildUnpainted = false, postBuildMeasuring = true, postBuildFrameAt = postBuildFrom;
+const notePostBuildFrame = () => { postBuildFrameAt = performance.now(); if (postBuildMeasuring) requestAnimationFrame(notePostBuildFrame); };
+requestAnimationFrame(notePostBuildFrame);
+const postBuildTick = (due: number) => {
+  if (!postBuildMeasuring) return;
+  const now = performance.now();
+  if (now - due < POST_BUILD_TICK_LATE_MS && now - postBuildFrameAt > POST_BUILD_NO_FRAME_MS) postBuildUnpainted = true;
+  setTimeout(postBuildTick, POST_BUILD_TICK_MS, now + POST_BUILD_TICK_MS);
+};
+setTimeout(postBuildTick, POST_BUILD_TICK_MS, postBuildFrom + POST_BUILD_TICK_MS);
 // (before the game's prewarm: the post chain it compiles is the one the settings ask for)
 try { display?.apply(); } catch (e) { report("display", e); }
 for (const m of [...loaded]) await runAfterBuild(m, false);
@@ -435,7 +447,10 @@ if (kr.bootError) {
   kr.readyAt = Math.round(performance.now());
   document.removeEventListener("visibilitychange", notePostBuildHidden);
   kr.postBuildHidden = postBuildHidden;
-  if (gameMode && streamOn && !postBuildHidden) {
+  postBuildMeasuring = false;
+  if (noFrameWaitCount() > postBuildNoFrameWaits) postBuildUnpainted = true;
+  kr.postBuildUnpainted = postBuildUnpainted;
+  if (gameMode && streamOn && !postBuildHidden && !postBuildUnpainted) {
     const postMs = performance.now() - postBuildFrom;
     const preMs = ((kr.preReady as string[] | undefined) ?? []).reduce((a, id) => a + (buildMs[id] ?? 0), 0);
     const baseMs = postMs - POST_MS_PER_PRE_READY_BUILD_MS * preMs;
