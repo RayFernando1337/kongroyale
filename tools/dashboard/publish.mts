@@ -7,10 +7,17 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
 const BRANCH = "gh-pages";
+const HOSTS = ["github.com", "git.capy.ai"];
 const ALWAYS_FORBIDDEN = "advisory|advisories|ghsa|security|lobby cap|role switch";
 
 function run(cmd: string, args: string[], cwd = ROOT): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+}
+
+function originRepo(url: string): string | undefined {
+  const m = url.match(/^(?:https:\/\/(?:[^@/]+@)?([^/:]+)\/|ssh:\/\/git@([^/:]+)(?::\d+)?\/|git@([^:]+):)([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
+  if (!m || !HOSTS.includes((m[1] ?? m[2] ?? m[3]).toLowerCase())) return undefined;
+  return m[4].toLowerCase();
 }
 
 function withoutStamp(html: string): string {
@@ -21,7 +28,7 @@ function main(): void {
   const dryRun = process.argv.includes("--dry-run");
   const data = JSON.parse(fs.readFileSync(path.join(HERE, "data.json"), "utf8")) as { repo: string; hide: string };
   const origin = run("git", ["remote", "get-url", "origin"]).trim();
-  if (!origin.toLowerCase().replace(/\.git$/, "").replace(/:/g, "/").endsWith("/" + data.repo.toLowerCase())) throw new Error("refusing to publish: origin is " + origin + ", expected " + data.repo);
+  if (originRepo(origin) !== data.repo.toLowerCase()) throw new Error("refusing to publish: origin is " + origin.replace(/\/\/[^@/]*@/, "//"));
   const forbidden = new RegExp(ALWAYS_FORBIDDEN + "|" + data.hide, "gi");
   const site = fs.mkdtempSync(path.join(os.tmpdir(), "kr-dash-site-"));
   const work = path.join(os.tmpdir(), "kr-dash-pages-" + process.pid);
@@ -46,7 +53,7 @@ function main(): void {
     const live = path.join(work, "index.html");
     const tracked = run("git", ["ls-files"], work).split("\n").filter(Boolean).sort().join(",");
     const jekyll = path.join(work, ".nojekyll");
-    const clean = tracked === ".nojekyll,index.html" && fs.readFileSync(jekyll, "utf8") === "";
+    const clean = tracked === ".nojekyll,index.html" && fs.existsSync(jekyll) && fs.lstatSync(jekyll).isFile() && fs.readFileSync(jekyll, "utf8") === "";
     if (exists && clean && withoutStamp(fs.readFileSync(live, "utf8")) === withoutStamp(html)) {
       console.log("dashboard publish: no change");
       return;
