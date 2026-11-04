@@ -7,7 +7,7 @@ import type { GlassState } from "./glass";
 import type { VehicleSet } from "./vehicle";
 import type { CoverSet } from "./cover";
 
-const GRID_CELL = 24;
+const GRID_CELL = 8;
 /** padding (m) on each box's x/z bounds so float32 rounding can never cull a box a ray really hits */
 const BOUNDS_PAD_M = 0.01;
 // terrain slopes: full speed up to 35°, uphill
