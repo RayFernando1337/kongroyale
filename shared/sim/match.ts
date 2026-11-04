@@ -83,6 +83,9 @@ const vslot = (tick: number) => (((tick % HISTORY_TICKS) + HISTORY_TICKS) % HIST
 const RES = makeShotResult();
 /** where a spawned item comes to rest (settleLoot / tossClear register) */
 const LP = new Float64Array(3);
+/** does p carry this weapon (any rarity)? Kept out of autoPickup's loop: a closure there over the loop's item makes V8
+ * allocate a context for every item visited, picked up or not (about 40 B per item, over half the sim's allocation) */
+const carriesWeapon = (p: Player, id: number) => p.slots.some((s) => s.kind === SK.Weapon && s.id === id);
 const CASH: number[] = [];
 
 /** lab / debug probe: called once per hitscan pellet with the evaluated (rewound) time and the verdict */
@@ -1214,7 +1217,7 @@ export class Match {
       if (d2 > PICKUP_DIST * PICKUP_DIST || it.y - p.y < -1.3 || it.y - p.y > 1.5) continue;
       if (!this.range && !lootReachable(this.world, p.x, p.y, p.z, it.x, it.y, it.z, !p.bot)) continue;
       // walking over a gun you already carry (same weapon, any rarity) never fills a second slot with it — take it with E
-      if (it.kind === IK.Weapon) { if (p.slots.some((s) => s.kind === SK.Empty) && !p.slots.some((s) => s.kind === SK.Weapon && s.id === it.sub)) this.takeItem(p, it, false); }
+      if (it.kind === IK.Weapon) { if (p.slots.some((s) => s.kind === SK.Empty) && !carriesWeapon(p, it.sub)) this.takeItem(p, it, false); }
       // bots never use bombs / crate walls: they leave them for the humans instead of filling slots with them
       else if (p.bot && it.kind === IK.Consumable && !CONSUMABLE_DEFS[CONSUMABLES[it.sub]].hp && !CONSUMABLE_DEFS[CONSUMABLES[it.sub]].shield) continue;
       else this.takeItem(p, it, false);
