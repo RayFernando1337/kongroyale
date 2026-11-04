@@ -137,5 +137,5 @@ export function installKongbot(engine: Engine) {
     if (e.code === "Slash" || e.key === "/" || (e.key === "Enter" && inMatch && t?.tagName !== "BUTTON")) { e.preventDefault(); e.stopImmediatePropagation(); open(); }
   }, true);
 
-  (kr() as Record<string, unknown>).kongbot = { open, close, mark: (m: string) => { if (!bar.hidden) return; open(); input.value = "/kongbot " + m; void submit(); }, context: () => gatherContext(engine), screenshot: () => grabScreenshot(engine) };
+  (kr() as Record<string, unknown>).kongbot = { open, close, mark: (m: string) => { if (!bar.hidden || sending) return false; open(); input.value = "/kongbot " + m; void submit(); return true; }, context: () => gatherContext(engine), screenshot: () => grabScreenshot(engine) };
 }

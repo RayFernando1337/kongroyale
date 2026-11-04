@@ -28,7 +28,7 @@ side by side both write there. For the dev pair: `KR_PLAYTEST_BUNDLES=1 KR_EVENT
 `npm run dev`, then open <http://localhost:5317/?perfhud>.
 
 Each bundle is a folder `<UTC time>-<report id>/` with `bundle.json` and `shot.jpg`. The server stops writing at
-500 bundles or 1 GB, logs that once, and resumes after the folder is cleared. MongoDB keeps the timeline but never
+500 bundles or 1 GB, counted on disk before every write (so two servers sharing a folder share the cap), logs that once, and resumes as soon as the folder is cleared. MongoDB keeps the timeline but never
 the replay log.
 
 ## Read them
@@ -49,8 +49,10 @@ What the summary means:
 - **Memory**: the JS heap at the start and end, its maximum, and a linear trend in MB/min. The renderer's
   texture, geometry and program counts are shown first to last. A heap or texture count that keeps climbing
   across matches is a leak lead, not a proof.
-- **Replay**: present for offline bot matches. `bundle.replay` is a `ReplayLog` (`shared/net/replay.ts`), so
-  `replayMatch(log, world)` plays the match again bit for bit, and you can step to the tick of a stall.
+- **Replay**: present while an offline bot match runs. `bundle.replay` is a `ReplayLog` (`shared/net/replay.ts`), so
+  `replayMatch(log, world)` plays the match again bit for bit, and you can step to the tick of a stall. JSON has no
+  `Infinity`, so non-finite numbers are saved as the strings `"Infinity"` and `"-Infinity"` (practice matches set
+  `opts.botAimRange` to `Infinity`). Turn them back into numbers before `replayMatch`, or the bots aim differently.
 
 The raw timeline is `bundle.timeline` (`fields` plus one row per second). `ctx`, `logs` and `trail` are the
 usual KONGBOT report (`client/src/kongbot/context.ts`).

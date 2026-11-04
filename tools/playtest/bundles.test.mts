@@ -43,6 +43,8 @@ const hostile: Array<[string, unknown]> = [
   ["replay event string too long", { ...good, replay: { ...good.replay, events: [[1, 3, "z".repeat(41)]] } }],
   ["replay too many events", { ...good, replay: { ...good.replay, events: Array.from({ length: 200_001 }, () => [1, 6]) } }],
   ["replay opts too large", { ...good, replay: { ...good.replay, opts: { pad: "o".repeat(5000) } } }],
+  ["replay opts nested", { ...good, replay: { ...good.replay, opts: { humans: [{ id: 0, name: { $ne: 1 } }] } } }],
+  ["replay opts with a long string", { ...good, replay: { ...good.replay, opts: { mode: "s".repeat(41) } } }],
 ];
 for (const [name, v] of hostile) assert.equal(parseBundle(v).ok, false, `hostile bundle accepted: ${name}`);
 assert.ok(JSON.stringify(hostile[2][1]).length > BUNDLE_MAX_BYTES);
@@ -74,7 +76,10 @@ assert.equal(bundleDir(root, path.join(root, "elsewhere")), path.join(root, "els
   const big = bundleWriter(path.join(root, "bytes"), () => {}, { count: 10, bytes: 100 });
   assert.equal(big.write({ at, id: "KB-5", json: { pad: "b".repeat(200) }, shot: null, shotMime: null }), null, "byte cap");
   const again = bundleWriter(dir, () => {}, { count: 2, bytes: 1024 * 1024 });
-  assert.equal(again.write({ at, id: "KB-6", json: {}, shot: null, shotMime: null }), null, "caps count what is already on disk");
+  assert.equal(again.write({ at, id: "KB-6", json: {}, shot: null, shotMime: null }), null, "a second writer on the same folder sees the same cap");
+  for (const f of fs.readdirSync(dir)) fs.rmSync(path.join(dir, f), { recursive: true });
+  assert.ok(w.write({ at, id: "KB-7", json: {}, shot: null, shotMime: null }), "clearing the folder lets writing resume");
+  assert.ok(parseBundle({ ...good, replay: { ...good.replay, opts: { seed: 1, botAimRange: "Infinity", humans: [{ id: 0, name: "KONG", team: 0 }] } } }).ok);
 }
 
 {

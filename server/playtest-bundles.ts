@@ -50,6 +50,9 @@ function parseReplay(v: unknown): Parsed<Replay | null> {
   if (v === null || v === undefined) return { ok: true, value: null };
   if (!isObj(v) || v.version !== 1 || !isObj(v.opts) || !finite(v.warmupS) || typeof v.endAfterResults !== "boolean" || !Number.isInteger(v.ticks) || (v.ticks as number) < 0 || !Array.isArray(v.events)) return bad("replay must be a version 1 replay log");
   if (JSON.stringify(v.opts).length > MAX_OPTS_BYTES) return bad("replay opts too large");
+  const prim = (x: unknown) => x === null || typeof x === "boolean" || finite(x) || (typeof x === "string" && x.length <= 40);
+  const okOpt = (x: unknown) => prim(x) || (Array.isArray(x) && x.length <= 64 && x.every((o) => isObj(o) && Object.values(o).every(prim)));
+  if (!Object.values(v.opts).every(okOpt)) return bad("replay opts must be numbers, booleans, short strings or lists of flat records");
   if (v.events.length > MAX_REPLAY_EVENTS) return bad(`replay holds at most ${MAX_REPLAY_EVENTS} events`);
   const okEvent = (e: unknown) => Array.isArray(e) && e.length >= 2 && e.length <= MAX_EVENT_LEN && e.every((x) => finite(x) || (typeof x === "string" && x.length <= 40));
   if (!v.events.every(okEvent)) return bad("replay events must be short arrays of numbers and short strings");
@@ -74,30 +77,36 @@ export function bundleDir(root: string, setting: string | undefined): string | n
 
 export interface BundleFile { at: Date; id: string; json: unknown; shot: Buffer | null; shotMime: string | null }
 
-export function bundleWriter(dir: string, log: (...a: unknown[]) => void, limits = { count: 500, bytes: 1024 * 1024 * 1024 }) {
-  let count = 0, bytes = 0, full = false;
+function usage(dir: string): { count: number; bytes: number } {
+  let count = 0, bytes = 0;
   try {
     for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!d.isDirectory()) continue;
       count++;
       for (const f of fs.readdirSync(path.join(dir, d.name))) bytes += fs.statSync(path.join(dir, d.name, f)).size;
     }
-  } catch { count = 0; bytes = 0; }
+  } catch { return { count: 0, bytes: 0 }; }
+  return { count, bytes };
+}
+
+export function bundleWriter(dir: string, log: (...a: unknown[]) => void, limits = { count: 500, bytes: 1024 * 1024 * 1024 }) {
+  let full = false;
 
   function write(b: BundleFile): string | null {
     const body = Buffer.from(JSON.stringify(b.json));
     const size = body.length + (b.shot?.length ?? 0);
+    const { count, bytes } = usage(dir);
     if (count >= limits.count || bytes + size > limits.bytes) {
       if (!full) { full = true; log(`playtest bundles: ${dir} is full (${count} bundles, ${Math.round(bytes / 1048576)} MB); not writing more until it is cleared`); }
       return null;
     }
+    full = false;
     const name = `${b.at.toISOString().replace(/[:.]/g, "-")}-${b.id.replace(/[^A-Za-z0-9-]/g, "").slice(0, 24) || "report"}`;
     const folder = path.resolve(dir, name);
     if (path.dirname(folder) !== path.resolve(dir)) return null;
     fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(folder, "bundle.json"), body, { mode: 0o600 });
     if (b.shot) fs.writeFileSync(path.join(folder, b.shotMime === "image/png" ? "shot.png" : b.shotMime === "image/webp" ? "shot.webp" : "shot.jpg"), b.shot, { mode: 0o600 });
-    count++; bytes += size;
     return folder;
   }
   return { dir, write };

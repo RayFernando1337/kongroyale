@@ -2,13 +2,13 @@ import type { Engine } from "../engine/engine";
 import { BUILD } from "../build";
 import { flag, flagQuery } from "../flags";
 
-const MARK_GAP_MS = 5000, MAX_REPLAY_EVENTS = 150_000, FLAG_NAME = /^[A-Za-z0-9_-]{1,40}$/;
+const MARK_GAP_MS = 5000, MAX_REPLAY_CHARS = 6_000_000, FLAG_NAME = /^[A-Za-z0-9_-]{1,40}$/;
 
 interface Kr {
   playtest?: { timeline: () => unknown };
-  replayLog?: () => { events: unknown[] };
+  replayLog?: () => { opts: Record<string, unknown> };
   playtestBundle?: () => unknown;
-  kongbot?: { mark: (message: string) => void };
+  kongbot?: { mark: (message: string) => boolean };
   game?: { inMatch?: boolean; cm?: { time: number } | null };
 }
 const kr = () => (window as unknown as { __kr: Kr }).__kr;
@@ -19,7 +19,8 @@ function bundle() {
   const K = kr(), replay = K.replayLog?.() ?? null, mark = marking.on;
   marking.on = false;
   const flags = Object.fromEntries(Object.entries(flagQuery).filter(([k, v]) => FLAG_NAME.test(k) && v.length <= 500).slice(0, 200));
-  return { mark, timeline: K.playtest?.timeline() ?? null, flags, build: BUILD, replay: replay && replay.events.length <= MAX_REPLAY_EVENTS ? replay : null };
+  const json = replay ? JSON.stringify(replay, (k, v) => (typeof v === "number" && !Number.isFinite(v) ? String(v) : v)) : null;
+  return { mark, timeline: K.playtest?.timeline() ?? null, flags, build: BUILD, replay: json && json.length <= MAX_REPLAY_CHARS ? JSON.parse(json) : null };
 }
 
 function markMessage(): string {
@@ -41,6 +42,6 @@ export function installPlaytest(engine: Engine, game: boolean): void {
     if (e.repeat || now - lastMark < MARK_GAP_MS) return;
     lastMark = now;
     marking.on = true;
-    kr().kongbot?.mark(markMessage());
+    if (!kr().kongbot?.mark(markMessage())) marking.on = false;
   }, true);
 }
