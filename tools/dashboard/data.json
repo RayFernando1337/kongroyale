@@ -223,7 +223,7 @@
       "after": 3214,
       "regression": true,
       "issue": "RAY-104",
-      "metric": "three.js renderer.info geometries in the Plane phase, median of 3; 3078 to 3504 at 30 s into the match",
+      "metric": "three.js renderer.info geometries at the first poll in the Plane phase, median of 3. A later capture point, 30 s into the match, shows the same gap: 3078 to 3504",
       "machine": "Windows PC, Chrome, D3D11",
       "date": "2026-11-04T19:10:00Z",
       "prs": [],
@@ -500,7 +500,7 @@
         "target": 25,
         "targetNote": "the game's own title-screen budget",
         "status": "improving",
-        "detail": "Median of 5 first-visit loads after #88 (30.0 s just before it, and 32.3 s before the overnight fixes). About 10 s of a first visit is the graphics driver preparing shaders; two more cuts worth an estimated 3 to 5.5 s are in progress.",
+        "detail": "26.0 s is the median of 5 first-visit loads in the #88 comparison (30.0 s just before it, and 32.3 s before the overnight fixes). A separate 3-run batch on the same build, compared against v0.2.0, measured 27.1 s. About 10 s of a first visit is the graphics driver preparing shaders, and two more cuts worth an estimated 3 to 5.5 s are in progress.",
         "source": "fork PR #88 body; RAY-89; RAY-53; RAY-86"
       },
       {
@@ -667,7 +667,7 @@
         "unit": "MB",
         "target": null,
         "status": "measured",
-        "detail": "v0.2.0 was 2383 MB. The difference is inside Chrome's roughly 100 MB rounding, but 3D shapes are up about 400 (3078 to 3504). Tracked in RAY-104.",
+        "detail": "v0.2.0 was 2383 MB. The difference is inside Chrome's roughly 100 MB rounding, but 3D shapes 30 s into the match are up about 400 (3078 to 3504). Tracked in RAY-104.",
         "source": "RAY-94 result comment (v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative)"
       },
       {
