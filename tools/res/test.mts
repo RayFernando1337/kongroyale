@@ -87,21 +87,40 @@ const mb = (r: ReturnType<Ledger["report"]>, k: keyof ReturnType<Ledger["report"
 
 {
   const res = new Ledger();
-  const g = res.root.geometry("geo.world", tri());
-  const t = res.root.texture("tex.world", new THREE.DataTexture(new Uint8Array(16), 2, 2));
-  assert.deepEqual(res.report().uploaded, { geometries: 0, textures: 0 });
-  (g.attributes.position as THREE.BufferAttribute).onUploadCallback();
-  t.onUpdate?.(t);
-  assert.deepEqual(res.report().uploaded, { geometries: 1, textures: 1 });
+  const match = res.root.child("match");
+  const rt = disposed(match.target(new THREE.WebGLRenderTarget(4, 4)));
+  const effects = match.child("effects"), actors = match.child("actors");
+  const fx = disposed(effects.geometry("geo.actor", tri()));
+  actors.defer(() => { throw new Error("actor teardown failed"); });
+  const kong = disposed(actors.geometry("geo.actor", tri()));
+  assert.throws(() => match.dispose(), (e: unknown) => e instanceof AggregateError && e.errors.length === 1 && e.errors[0] instanceof AggregateError);
+  assert.deepEqual([rt.hit, fx.hit, kong.hit], [1, 1, 1]);
+  assert.equal(match.isDisposed, true);
+  assert.equal(res.report().scopes, 1);
+  console.log("PASS  a child that fails to free does not stop its siblings or its parent");
+}
+
+{
+  const res = new Ledger();
+  res.root.child("match");
+  assert.throws(() => res.root.child("match"), /already has a live child named match/);
+  res.root.child("other").dispose();
+  res.root.child("other");
+  console.log("PASS  live siblings have unique names, so per-scope totals never merge");
+}
+
+{
+  const buf = new ArrayBuffer(72);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(buf, 0, 9), 3));
+  g.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(buf, 36, 9), 3));
+  assert.equal(geometryBytes(g), 72);
   const ib = new THREE.InterleavedBuffer(new Float32Array(12), 6);
   const ig = new THREE.BufferGeometry();
   ig.setAttribute("position", new THREE.InterleavedBufferAttribute(ib, 3, 0));
   ig.setAttribute("normal", new THREE.InterleavedBufferAttribute(ib, 3, 3));
-  res.root.geometry("geo.world", ig);
-  ib.onUploadCallback();
-  assert.equal(res.report().uploaded.geometries, 2);
   assert.equal(geometryBytes(ig), 48);
-  console.log("PASS  uploads are counted for plain and interleaved geometry and for textures");
+  console.log("PASS  geometry bytes count each GPU buffer once: separate views separately, interleaved data once");
 }
 
 {
@@ -112,11 +131,13 @@ const mb = (r: ReturnType<Ledger["report"]>, k: keyof ReturnType<Ledger["report"
   assert.equal(textureBytes(lazy), Math.round(64 * 32 * 4 * 4 / 3));
   const half = new THREE.DataTexture(new Uint16Array(4 * 4 * 2), 4, 4, THREE.RGFormat, THREE.HalfFloatType);
   assert.equal(textureBytes(half), 4 * 4 * 2 * 2);
+  const cube = new THREE.CubeTexture(Array.from({ length: 6 }, () => ({ width: 8, height: 8 })));
+  assert.equal(textureBytes(cube), Math.round(6 * 8 * 8 * 4 * 4 / 3));
   const rt = new THREE.WebGLRenderTarget(8, 8, { type: THREE.HalfFloatType, depthBuffer: true });
   assert.equal(targetBytes(rt), 8 * 8 * 8 + 8 * 8 * 4);
   rt.setSize(16, 16);
   assert.equal(targetBytes(rt), 16 * 16 * 8 + 16 * 16 * 4);
-  console.log("PASS  bytes are measured at read time: a late image, a resized target");
+  console.log("PASS  bytes are measured at read time: a late image, a cube map, a resized target");
 }
 
 console.log("resource scopes: all checks passed");

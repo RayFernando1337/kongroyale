@@ -11,14 +11,12 @@ interface Entry {
   obj: object;
   free: () => void;
   bytes: () => number;
-  uploaded: boolean;
 }
 
 export interface Totals { count: number; bytes: number }
 export interface Report {
   byCategory: Record<Category, Totals>;
   byScope: Record<string, Totals>;
-  uploaded: { geometries: number; textures: number };
   scopes: number;
 }
 
@@ -42,9 +40,11 @@ export function textureBytes(t: THREE.Texture): number {
     for (const m of t.mipmaps ?? []) b += (m as { data?: ArrayBufferView }).data?.byteLength ?? 0;
     return b;
   }
-  const img = t.image as { width?: number; height?: number; depth?: number } | null;
-  if (!img?.width || !img.height) return 0;
-  return Math.round(img.width * img.height * (img.depth ?? 1) * texelBytes(t) * mipScale(t));
+  type Img = { width?: number; height?: number; depth?: number } | null;
+  const faces: Img[] = Array.isArray(t.image) ? t.image : [t.image as Img];
+  let texels = 0;
+  for (const img of faces) if (img?.width && img.height) texels += img.width * img.height * (img.depth ?? 1);
+  return Math.round(texels * texelBytes(t) * mipScale(t));
 }
 
 export function targetBytes(rt: THREE.RenderTarget): number {
@@ -56,15 +56,17 @@ export function targetBytes(rt: THREE.RenderTarget): number {
   return Math.round(b);
 }
 
+const gpuBuffer = (a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute): THREE.BufferAttribute | THREE.InterleavedBuffer => ((a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute ? (a as THREE.InterleavedBufferAttribute).data : (a as THREE.BufferAttribute));
+
 export function geometryBytes(g: THREE.BufferGeometry): number {
-  const seen = new Set<ArrayBufferLike>();
+  const seen = new Set<object>();
   let b = 0;
   const add = (a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute | null | undefined) => {
     if (!a) return;
-    const arr = (a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute ? (a as THREE.InterleavedBufferAttribute).data.array : (a as THREE.BufferAttribute).array;
-    if (seen.has(arr.buffer)) return;
-    seen.add(arr.buffer);
-    b += arr.byteLength;
+    const buf = gpuBuffer(a);
+    if (seen.has(buf)) return;
+    seen.add(buf);
+    b += buf.array.byteLength;
   };
   for (const a of Object.values(g.attributes)) add(a);
   for (const list of Object.values(g.morphAttributes)) for (const a of list) add(a);
@@ -96,19 +98,16 @@ export class Ledger {
   report(): Report {
     const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c, { count: 0, bytes: 0 }])) as Record<Category, Totals>;
     const byScope: Record<string, Totals> = {};
-    const uploaded = { geometries: 0, textures: 0 };
     for (const s of this.live) {
       const own = (byScope[s.path] = { count: 0, bytes: 0 });
       for (const e of s.entries()) {
         const b = e.bytes();
         own.count++; own.bytes += b;
         byCategory[e.cat].count++; byCategory[e.cat].bytes += b;
-        if (e.uploaded && e.kind === "geometry") uploaded.geometries++;
-        if (e.uploaded && e.kind === "texture") uploaded.textures++;
         if (e.kind === "finalizer") { own.count--; byCategory[e.cat].count--; }
       }
     }
-    return { byCategory, byScope, uploaded, scopes: this.live.size };
+    return { byCategory, byScope, scopes: this.live.size };
   }
 }
 
@@ -128,25 +127,19 @@ export class Scope {
 
   child(name: string): Scope {
     this.alive();
+    if (this.children.some((x) => x.name === name)) throw new Error("scope " + this.path + " already has a live child named " + name);
     const c = new Scope(name, this.ledger, this);
     this.children.push(c);
     return c;
   }
 
   texture<T extends THREE.Texture>(cat: Category, t: T): T {
-    const e = this.add("texture", cat, t, () => t.dispose(), () => textureBytes(t));
-    const prev = t.onUpdate;
-    t.onUpdate = (x: THREE.Texture) => { e.uploaded = true; prev?.(x); };
+    this.add("texture", cat, t, () => t.dispose(), () => textureBytes(t));
     return t;
   }
 
   geometry<T extends THREE.BufferGeometry>(cat: Category, g: T): T {
-    const e = this.add("geometry", cat, g, () => g.dispose(), () => geometryBytes(g));
-    for (const a of Object.values(g.attributes)) {
-      const buf = (a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute ? (a as THREE.InterleavedBufferAttribute).data : (a as THREE.BufferAttribute);
-      const prev = buf.onUploadCallback;
-      buf.onUploadCallback = function (this: unknown) { e.uploaded = true; prev.call(this); };
-    }
+    this.add("geometry", cat, g, () => g.dispose(), () => geometryBytes(g));
     return g;
   }
 
@@ -177,9 +170,11 @@ export class Scope {
 
   dispose() {
     if (this.disposed) return;
-    for (let i = this.children.length - 1; i >= 0; i--) this.children[i].dispose();
-    this.children.length = 0;
     const errors: unknown[] = [];
+    for (let i = this.children.length - 1; i >= 0; i--) {
+      try { this.children[i].dispose(); } catch (err) { errors.push(err); }
+    }
+    this.children.length = 0;
     for (let i = this.owned.length - 1; i >= 0; i--) {
       const e = this.owned[i];
       this.ledger.release(e.obj);
@@ -202,7 +197,7 @@ export class Scope {
   private add(kind: Kind, cat: Category, obj: object, free: () => void, bytes: () => number): Entry {
     this.alive();
     this.ledger.claim(obj, this);
-    const e: Entry = { kind, cat, obj, free, bytes, uploaded: false };
+    const e: Entry = { kind, cat, obj, free, bytes };
     this.owned.push(e);
     return e;
   }
