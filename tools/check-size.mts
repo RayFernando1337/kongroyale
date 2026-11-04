@@ -1,6 +1,6 @@
 // Reports what a production build makes the browser download, from dist/ after `npm run build`. Report only: it never
-// fails on a size. Sizes are as served: raw, and the .gz / .br files precompress.mjs wrote (a file without one is
-// served raw, so its raw size counts).
+// fails on a size. Sizes are as served: raw, and the .gz / .br files precompress.mjs wrote, counted by the rule
+// server/static.ts serves them by (a missing, stale or larger sidecar means the file goes out raw).
 //   npx tsx tools/check-size.mts                 (markdown tables on stdout)
 //   npx tsx tools/check-size.mts --json sizes.json --dist dist
 // Three views:
@@ -16,11 +16,13 @@ const opt = (name: string) => { const i = argv.indexOf(name); return i < 0 ? und
 const dist = path.resolve(opt("--dist") ?? "dist"), jsonOut = opt("--json");
 const indexFile = path.join(dist, "index.html");
 if (!fs.existsSync(indexFile)) { console.error(`check-size: no ${indexFile}; run npm run build first`); process.exit(2); }
+if (jsonOut && !path.relative(dist, path.resolve(jsonOut)).startsWith("..")) { console.error("check-size: write --json outside the build, or the next run counts the report"); process.exit(2); }
 
 interface Size { raw: number; gz: number; br: number }
 const sizeOf = (file: string): Size => {
-  const raw = fs.statSync(file).size;
-  const packed = (ext: string) => fs.existsSync(file + ext) ? fs.statSync(file + ext).size : raw;
+  const original = fs.statSync(file), raw = original.size;
+  // the rule server/static.ts serves by: a sidecar only when it is at least as new as the file and smaller
+  const packed = (ext: string) => { const s = fs.existsSync(file + ext) ? fs.statSync(file + ext) : null; return s && s.mtimeMs >= original.mtimeMs && s.size < raw ? s.size : raw; };
   return { raw, gz: packed(".gz"), br: packed(".br") };
 };
 const add = (a: Size, b: Size): Size => ({ raw: a.raw + b.raw, gz: a.gz + b.gz, br: a.br + b.br });
@@ -31,9 +33,11 @@ const walk = (dir: string) => { for (const e of fs.readdirSync(dir, { withFileTy
 walk(dist);
 
 const html = fs.readFileSync(indexFile, "utf8");
-const servedPath = (href: string) => path.join(dist, href.replace(/^\//, ""));
 const entryHref = html.match(/<script[^>]*type="module"[^>]*src="([^"]+)"/)?.[1];
-if (!entryHref) { console.error("check-size: index.html has no module script"); process.exit(2); }
+if (!entryHref?.includes("/assets/")) { console.error("check-size: index.html has no module script under assets/"); process.exit(2); }
+// URLs carry the deploy base (DEPLOY_BASE, e.g. /kong/assets/...) but Vite writes the files at dist/assets/...
+const base = entryHref.slice(0, entryHref.indexOf("/assets/") + 1);
+const servedPath = (href: string) => path.join(dist, href.startsWith(base) ? href.slice(base.length) : href.replace(/^\//, ""));
 const preloads = [...html.matchAll(/<link[^>]*rel="modulepreload"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
 const boot = new Set([entryHref, ...preloads].map(servedPath));
 
