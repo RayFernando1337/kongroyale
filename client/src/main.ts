@@ -113,6 +113,7 @@ kr.fps = () => engine.liveFps();
 kr.info = () => ({ ...engine.renderer.info.render, geometries: engine.renderer.info.memory.geometries, textures: engine.renderer.info.memory.textures, programs: engine.renderer.info.programs?.length });
 // bug reports: `/` → /kongbot <message> (screenshot + context → the server)
 if (gameMode && !shot) installKongbot(engine);
+if (gameMode && !shot && flag("perfhud")) void import("./playtest/perf-hud").then((m) => m.installPerfHud(engine), (e) => report("perfhud", e));
 if (!shot && BUILD.channel !== "stable" && flag("badge")) void import("./ui/build-badge").then((m) => m.showBuildBadge(), (e) => report("build-badge", e));
 
 // ---- loading progress, weighted by measured cost (ms on an RTX 4080 desktop, cold dev loads). The loading
