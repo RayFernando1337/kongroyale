@@ -11,7 +11,8 @@
 // ground), --timeout-s 420 (whole match), --headed, --chrome <path> (else the installed Chrome channel),
 // --angle d3d11|metal|vulkan|default (default: d3d11 on Windows, metal on macOS, vulkan on Linux),
 // --shots <dir> (a screenshot per window), --trace <file> (a Chrome performance trace of the first --trace-s 30 s of
-// the match), --query "a=1&b=2" (extra URL flags, e.g. an A/B switch; recorded in config so differing runs never mix).
+// the match), --query "a=1&b=2" (extra URL flags, e.g. an A/B switch). --query, --trace and --shots are recorded in
+// config, so runs that differ in them never mix. A software renderer (SwiftShader, llvmpipe, ...) fails the run.
 //
 // Interleave baseline and candidate runs yourself (base, cand, base, cand ...), five or more a side, one at a time:
 // a GPU runs ONE timed job at a time.
@@ -57,6 +58,7 @@ if (!["low", "medium", "high", "epic"].includes(PRESET)) throw Error("--preset "
 if (!fs.existsSync(path.join(root, "dist/index.html"))) throw Error(root + "/dist is missing: run npm run build in that checkout first");
 
 const t0 = Date.now();
+const { at: _at, ...base } = env();
 const log = (m: string) => console.log(((Date.now() - t0) / 1000).toFixed(1).padStart(6) + "s  " + m);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const FLAGS = [
@@ -184,6 +186,7 @@ try {
   });
   log("ready in " + (marks.readyWallMs / 1000).toFixed(1) + " s on " + pageInfo.renderer + "; timer query " + pageInfo.timerQuery);
   if (pageInfo.stage === "failed") throw Error("boot failed");
+  if (/swiftshader|llvmpipe|softpipe|software|microsoft basic/i.test(String(pageInfo.renderer))) throw Error("software renderer " + pageInfo.renderer + ": not a real-GPU run");
   await page.evaluate(install, { maxFrames: Math.ceil(TIMEOUT_S * 250), panRate: PAN_RATE, panPitch: PAN_PITCH, planeSpeed: PLANE_SPEED });
 
   if (TRACE) await browser.startTracing(page, { path: TRACE, screenshots: false, categories: ["devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.frame", "v8.execute", "blink.user_timing", "gpu", "disabled-by-default-v8.gc"] });
@@ -285,11 +288,10 @@ const winInfo = process.platform === "win32" ? {
   gpuDriver: sh("nvidia-smi", ["--query-gpu=driver_version", "--format=csv,noheader"]).split(/\r?\n/)[0] || null,
   onAC: sh("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_Battery).BatteryStatus"]) === "2",
 } : {};
-const { at: _at, ...base } = env();
 const result: RunResult = {
   schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "tools/performance/gpu-match.mts", startedAt: new Date(t0).toISOString(), durationMs: Date.now() - t0,
   source: source(root), environment: { ...base, gpu: data ? String(pageInfo.renderer) : null },
-  config: { browser: "chrome " + browserVersion, flags: FLAGS.join(" "), headless: !HEADED, viewport: W + "x" + H, dpr: 1, preset: PRESET, res3d: 1, dynres: false, fpsCap: "display refresh", mode: MODE, seed: SEED, panS: PAN_S, query: QUERY, cache: "fresh browser profile per run" },
+  config: { browser: "chrome " + browserVersion, flags: FLAGS.join(" "), headless: !HEADED, viewport: W + "x" + H, dpr: 1, preset: PRESET, res3d: 1, dynres: false, fpsCap: "display refresh", mode: MODE, seed: SEED, panS: PAN_S, query: QUERY, cache: "fresh browser profile per run", ...(TRACE ? { traceS: TRACE_S } : {}), ...(SHOTS ? { shots: true } : {}) },
   cases, errors: [...errors, ...pageErrors.map((e) => "pageerror: " + e), ...((pageInfo.krErrors as string[] | undefined) ?? []).map((e) => "__kr.errors: " + e.split("\n")[0])], artifacts,
 };
 (result as unknown as Record<string, unknown>).detail = {
