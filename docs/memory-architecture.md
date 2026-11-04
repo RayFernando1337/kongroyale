@@ -191,13 +191,27 @@ geometry and lifecycle lanes (RAY-105, RAY-106, RAY-107) refine them.
 |---|---|---|---|
 | `tex.world` on the GPU | 1000 MB | about 1700 MB | POI textures at the size they are seen at, KTX2, far regions drop near-only maps |
 | `tex.actor` on the GPU | 350 MB | about 1050 MB | the helicopter at 2048² (RAY-105), one texture set per kong variant |
-| `target` | 350 MB at 1080p | about 450 MB | impostor arrays sized to the view-distance setting |
+| `target` | 350 MB at the tier's pixel cap | about 450 MB | impostor arrays sized to the view-distance setting |
 | `geo.world` on the GPU | 600 MB | about 1100 MB | far regions draw their proxy only (RAY-106) |
 | kept CPU copies, all categories | 150 MB | about 3700 MB | the CPU-copy policy |
 | `audio` PCM | 150 MB | 212 MB, plus 50 MB per match | the existing idle eviction, also run at match end |
 | JS heap | 350 MB | 205-318 MB | lifecycle lane (RAY-107) |
 
 Budgets scale with the quality tier, and with `navigator.deviceMemory` where the browser reports it.
+
+**Render targets are sized from capped internal pixels, not display pixels.** Today the canvas follows
+`devicePixelRatio` up to 2 (`engine/engine.ts`), so a 4K display at DPR 2 renders 8.3 million pixels. The post chain's
+half-float targets then grow with the display, not with the quality setting. Safari on a 16 GB M4 Mac mini killed the
+page (`ExceededMemoryLimit`) as a match loaded, at or just after the switch to fullscreen on such a display, in 5 of 5
+runs (RAY-104). So:
+
+- Each quality tier sets a maximum number of internal pixels (for example 2.1 million, 1080p, on high). Every
+  screen-sized target is created from `min(display pixels, cap)`, and the final pass upscales to the canvas.
+  `renderScale` and dynamic resolution keep working below the cap.
+- The `target` budget is set at the cap, so it is a fixed number per tier, the same on a 1080p laptop and a 4K monitor.
+- A resize or fullscreen switch that would cross the cap changes the upscale factor, never the target sizes, so
+  switching to fullscreen allocates nothing.
+- The budget step checks `target` bytes at the cap, with the page at DPR 2 on a 4K viewport.
 
 **Residency.** A region is in one of three states:
 
@@ -251,8 +265,11 @@ ships dark behind a registry flag where it changes behaviour.
    owns that code.
 8. **Region scopes**: `ctx.res` for world modules, with per-POI accounting and `rebuild` callbacks for their geometry.
 9. **Residency**: `far` regions free their sources' GPU buffers (with RAY-106), then `cold` for the lobby islet.
+10. **Capped internal pixels** for every screen-sized target (`world/atmos/post.ts`, `engine/engine.ts`), so the
+    `target` budget no longer depends on the display.
 
-Steps 2, 4 and 5 belong to the architecture lane. Steps 3 and 6 to 9 change other lanes' code and go through them.
+Steps 2, 4 and 5 belong to the architecture lane. Steps 3 and 6 to 10 change other lanes' code and go through them.
+Step 10 needs none of the others and addresses the Safari kill, so it can land first.
 
 ## Open questions
 
