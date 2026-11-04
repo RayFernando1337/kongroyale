@@ -176,7 +176,7 @@ function main(): void {
   const performance =
     '<h2>Last 24 hours</h2><p class="lead">Measured before and after each change on the same machine. Shorter bars are better.</p><div class="grid">' + (perfRecent.length ? perfRecent.map(bars).join("") : '<p class="muted">No new measurements landed in the last 24 hours.</p>') + "</div>" +
     '<h2>Since the project started</h2><div class="grid">' + data.perf.filter((p) => !p.regression && !perfRecent.includes(p)).map(bars).join("") + (data.perf.length - regressions.length === perfRecent.length ? '<p class="muted">Every measurement so far landed in the last 24 hours.</p>' : "") + "</div>" +
-    (regressions.length ? '<h2>Regressions we found and are fixing</h2><p class="lead">Measuring everything means we also see what got worse. These went the wrong way, and each one has someone fixing it. Shorter bars are still better.</p><div class="grid">' + regressions.map(bars).join("") + "</div>" : "") +
+    (regressions.length ? '<h2>Regressions we found and are fixing</h2><p class="lead">Measuring everything means we also see what got worse. These went the wrong way, and each one has someone fixing it. Shorter bars are still better. Memory 30 seconds into a match is level with v0.2.0, so the extra is up front.</p><div class="grid">' + regressions.map(bars).join("") + "</div>" : "") +
     '<h2>Coming next</h2><div class="card"><p class="lead">These are estimates from profiling, not measurements yet.</p><ul class="list">' + data.inProgress.map((x) => '<li><span class="plain">' + esc(x.name) + '</span> <span class="muted">' + esc(x.estimate) + "</span></li>").join("") + "</ul></div>";
 
   const fixes =
@@ -240,7 +240,7 @@ function main(): void {
     "</div><h2>What's next</h2><div class=\"card\"><ul class=\"list\">" + data.inProgress.map((x) => '<li><span class="plain">' + esc(x.name) + '</span> <span class="muted">' + esc(x.estimate) + "</span></li>").join("") + '<li><span class="plain">' + esc(data.releaseTrain.plain) + "</span></li></ul></div>" +
     "<h2>Waiting on people</h2><div class=\"card\"><ul class=\"list\">" + data.asks.map((a) => '<li><span class="pill who">' + esc(a.who) + '</span> <span class="plain">' + esc(a.what) + "</span></li>").join("") + '<li><span class="pill who">Max</span> <span class="plain">' + upOpen.length + " changes offered to the original game are waiting for review.</span></li></ul></div>";
 
-  const statusClass = (s: string) => s === "not measured yet" ? "s-unmeasured" : s === "done" ? "s-done" : s === "regressed" ? "s-regressed" : "s-improving";
+  const statusClass = (s: string) => s === "not measured yet" ? "s-unmeasured" : s === "done" ? "s-done" : s === "regressed" ? "s-regressed" : s === "level" ? "s-done" : "s-improving";
   const play =
     '<h2>Play experience tracker</h2><p class="lead">Every moment a player feels, with today\'s number and the goal. Anything we haven\'t measured says so.</p>' +
     '<div class="stats">' + stat(data.play.items.filter((i) => i.value !== null).length, "measured", "experiences with a current number") + stat(data.play.items.filter((i) => i.value === null).length, "not measured yet", "on the list to measure") + stat(data.play.items.filter((i) => i.status === "done").length, "at target", "experiences that hit their goal") + "</div>" +
