@@ -129,6 +129,7 @@ catching it; turn it into a check when the same mistake shows up twice.
 | Tunable numbers live in `shared/sim/const.ts` | Review only |
 | `import type` for type-only imports | Lint rule `import-type` (also flags unused imports) |
 | Download size only goes down | `npm test` (`size` step): gzip bytes for entry, boot, worker and lazy JS against `tools/size-budgets.json`. Over budget fails, and so does more than 5% under until the budget is lowered |
+| URL flags are read through `client/src/flags.ts` | Lint rule `url-flags`: no raw `location.search` or `searchParams` reads elsewhere in `client/src/` (`kongbot/context.ts` is exempt because it dumps the whole query for bug reports). Existing reads are counted per file in `tools/lint/baseline.json`, and the count only goes down |
 | Wire ids are `const enum`s | Review only |
 | No new dependencies without discussion | Review only (`package.json` is on the Ask first list) |
 

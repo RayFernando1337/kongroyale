@@ -371,7 +371,36 @@ const unitSuffix: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix];
+const FLAG_REGISTRY = "client/src/flags.ts";
+const RAW_QUERY_EXEMPT = new Set([FLAG_REGISTRY, "client/src/kongbot/context.ts"]);
+const QUERY_READS = new Set(["get", "getAll", "has", "entries", "keys", "values", "forEach"]);
+
+function isLocation(e: ts.Expression): boolean {
+  if (ts.isIdentifier(e)) return e.text === "location";
+  return ts.isPropertyAccessExpression(e) && e.name.text === "location";
+}
+
+const urlFlags: Rule = {
+  id: "url-flags",
+  counted: true,
+  applies: (rel) => rel.startsWith("client/src/") && !RAW_QUERY_EXEMPT.has(rel),
+  check(sf) {
+    const hits: Hit[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(n) && n.name.text === "search" && isLocation(n.expression)) {
+        hits.push({ node: n, message: `a raw location.search read: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
+      }
+      if (ts.isPropertyAccessExpression(n) && QUERY_READS.has(n.name.text) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === "searchParams") {
+        hits.push({ node: n, message: `a raw searchParams.${n.name.text} read: read the flag with flag("name") from ${FLAG_REGISTRY}, and add it to FLAGS there if it is new` });
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return hits;
+  },
+};
+
+const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags];
 
 // ---- engine ----
 
