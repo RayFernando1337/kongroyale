@@ -257,11 +257,14 @@ const mod: WorldModule = {
     for (const st of nearB.steps) { st(); await Y(":crown-cell"); }
     // the hero's crown: its own lime-gold mesh (the landmark from the plane)
     crown.add(crownMesh(ctx, heroLobes(), 11, HERO_LEAF));
-    // distance LOD: beyond ~450 m from the POI centre the crowns swap to 30 % of the cards (hysteresis 20 m) — the
-    // far set builds LAZILY, two cells a frame, the first time a camera is far (the near crown shows until it is done)
+    // distance LOD: beyond ~450 m from the POI centre the crowns swap to 30 % of the cards (hysteresis 20 m). The far set
+    // builds here with the near one: built lazily in the frames the first time a camera was far (always, in a match's
+    // warm-up on the lobby islet), it cost ~35 ms a frame, and its new materials missed the atmos sweep and the stream's
+    // parallel compile — two synchronous program links (~0.2 s) in one warm-up frame
     const farB = crownBuilder(ctx, canLobes, 7, undefined, 0.3);
     const crownFar = farB.group;
-    let farHero = false;
+    for (const st of farB.steps) { st(); await Y(":crown-far-cell"); }
+    crownFar.add(crownMesh(ctx, heroLobes(), 11, HERO_LEAF, 0.3));
     crownFar.name = "murk:crown-far"; crownFar.visible = false;
     const crownRoot = new THREE.Group(); crownRoot.name = "murk:crown"; crownRoot.add(crown, crownFar);
     let farNow = false;
@@ -270,12 +273,7 @@ const mod: WorldModule = {
       // the near / far crown crossfade at 420–450 m (at 210–230 m the canopy visibly thinned / thickened
       // during every approach on foot from Mango Market and every glide)
       if (OLD_LOD ? (farNow ? d < 210 : d > 230) : (farNow ? d < 420 : d > 450)) farNow = !farNow;
-      if (farNow && (farB.steps.length || !farHero)) {
-        for (let k = 0; k < 2 && farB.steps.length; k++) farB.steps.shift()!();
-        if (!farB.steps.length && !farHero) { crownFar.add(crownMesh(ctx, heroLobes(), 11, HERO_LEAF, 0.3)); farHero = true; }
-      }
-      const farReady = farHero && !farB.steps.length;
-      crown.visible = !(farNow && farReady); crownFar.visible = farNow && farReady;
+      crown.visible = !farNow; crownFar.visible = farNow;
     });
 
     if (!OFF.has("crown")) group.add(crownRoot);

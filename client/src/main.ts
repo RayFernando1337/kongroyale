@@ -31,7 +31,7 @@ import type { WorldModule } from "./world/module";
 import { loadTerrain } from "./world/terrain/load";
 import { startStaticWorld } from "./engine/static-world";
 import { startLootSpotsWorker } from "./engine/lootspots";
-import { onStructure, gate, ungate } from "./engine/scene-hooks";
+import { onStructure, gate, ungate, type Gate } from "./engine/scene-hooks";
 import { POIS } from "../../shared/world/map";
 import { Display, bootQuality } from "./engine/display";
 import { WARMUP_S } from "../../shared/sim/const";
@@ -589,9 +589,13 @@ async function stream(): Promise<void> {
     try { atmos()?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
     // pipelined: this module's programs compile on the driver's threads while the NEXT module builds (its fresh
     // materials stay hidden until its integration ends); at most one integration in flight
-    // (the build gate opens right here: integrateFresh hides every not-yet-compiled material synchronously before any frame)
-    const bg = buildGates.get(id); if (bg) { bg.gate.active = false; for (const o of bg.adds) ungate(o, bg.gate); buildGates.delete(id); engine.cull.reveal(bg.adds); }
-    const done = integrateFresh(fast, moduleRoots(id, true)).then(() => { engine.markBuilt(id); streamMs[id] = Math.round(performance.now() - t0); });
+    // (the build gate stays shut until integrateFresh's offscreen first draw has uploaded the module's vertex buffers:
+    // opened before it, the meshes on already-compiled materials drew on the next live frame and uploaded tens of MB of
+    // geometry inside it — 180-580 ms warm-up frames while Peel Harbor integrated)
+    const bg = buildGates.get(id); buildGates.delete(id);
+    let shut = !!bg;
+    const open = () => { if (!bg || !shut) return; shut = false; bg.gate.active = false; for (const o of bg.adds) ungate(o, bg.gate); engine.cull.reveal(bg.adds); };
+    const done = integrateFresh(fast, moduleRoots(id, true), bg?.gate, open).finally(open).then(() => { engine.markBuilt(id); streamMs[id] = Math.round(performance.now() - t0); });
     inflight.push(done);
     if (inflight.length > 1) await inflight.shift();
     if (est(id) >= HEAVY_MS) await done; // (the PRACTICE card waits for the heavy ones — integrated, not just built)
@@ -624,7 +628,7 @@ const releaseFresh = (m: THREE.Material) => { const h = heldFresh.get(m); if (!h
  * post chain's HDR target (KHR_parallel_shader_compile — the main thread never waits on the driver), first-used, their
  * textures uploaded one per slice, and only then shown. Nothing a streamed module adds can stall a frame.
  */
-async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = []) {
+async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], buildGate?: Gate, openGate?: () => void) {
   const r = engine.renderer;
   const props = r.properties as unknown as { get(o: object): Record<string, unknown> };
   const fresh = new Map<THREE.Material, boolean>();
@@ -703,7 +707,9 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = []) {
   // player first looks at it (the arrival hitch). Restored before any frame runs.
   phase("draw");
   if (roots.length) {
-    if (urgent) engine.warmDraw(roots);
+    // (a streamed module's build gate is still shut: open for each synchronous offscreen draw only)
+    const warm = (c: THREE.Object3D[]) => { if (buildGate) buildGate.active = false; try { engine.warmDraw(c); } finally { if (buildGate) buildGate.active = true; } };
+    if (urgent) warm(roots);
     else {
       await nextFrame();
       const chunks: THREE.Object3D[][] = [];
@@ -719,10 +725,11 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = []) {
       };
       for (const root of roots) split(root);
       if (cur.length) chunks.push(cur);
-      for (const c of chunks) { engine.warmDraw(c); await engine.yield(); }
+      for (const c of chunks) { warm(c); await engine.yield(); }
     }
   }
   // first use: uniform / attribute tables of the new programs (a sync driver round trip — the compile is done now)
+  openGate?.();
   phase("first-use");
   for (const pr of (r.info.programs ?? []) as unknown as Array<{ getUniforms?: () => unknown; getAttributes?: () => unknown; isReady?: () => boolean }>) {
     try { if (!pr.isReady || pr.isReady()) { pr.getUniforms?.(); pr.getAttributes?.(); } } catch { /* reported by three */ }
