@@ -14,6 +14,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { assetUrl } from "../engine/assets";
 import { releaseAfterUpload } from "../engine/texture-release";
+import { flag } from "../flags";
 import type { TukDraw, TukView } from "./tuktuk";
 import { VF, VS } from "../../../shared/sim/vehicle";
 
@@ -143,7 +144,13 @@ export function loadHeli(): Promise<Kit> {
     return (KIT = K);
   })());
 }
-if (typeof document !== "undefined") void loadHeli().catch((e) => console.error("[heli] model failed", e));
+function loadsLazily() {
+  const f = flag("helilazy");
+  if (f !== null) return f === "1";
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  return mem < 8 || /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
+}
+if (typeof document !== "undefined" && !loadsLazily()) void loadHeli().catch((e) => console.error("[heli] model failed", e));
 
 interface Inst {
   model: THREE.Group;
