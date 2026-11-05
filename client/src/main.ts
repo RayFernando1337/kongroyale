@@ -588,8 +588,8 @@ async function stream(): Promise<void> {
   kr.streamPending = () => streamList.slice();
   const streamMs: Record<string, number> = {};
   kr.streamMs = streamMs;
-  const trim = (room: number) => postBuild!.trimStreamed(engine, world, room, streamList, streamMs, POIS);
-  if (LOW_MEM) setInterval(() => void trim(0), 2000);
+  const trim = (incoming: string | null) => postBuild!.trimStreamed(engine, world, incoming, streamList, streamMs, POIS);
+  if (LOW_MEM) setInterval(() => void trim(null), 2000);
   const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
   const inflight: Promise<void>[] = [];
   // a grace of 2.5 s after ready before the first module build — several streamed POIs still build in single
@@ -599,7 +599,7 @@ async function stream(): Promise<void> {
     while (!urgent && !inMatch() && performance.now() < graceUntil) await new Promise((r) => setTimeout(r, 50)); }
   while (streamList.length || LOW_MEM) {
     const id = LOW_MEM ? await postBuild!.nextNearModule(streamList, engine.camera, POIS, flag("lowmemr"), flag("lowmemview")) : streamList.shift()!;
-    if (LOW_MEM && id.startsWith("poi:")) await trim(1);
+    if (LOW_MEM && id.startsWith("poi:")) await trim(id);
     streamNow = id;
     // in the title / lobby: one module per idle gap at the title's slice budget. In a match (warm-up) the plane must
     // not see an unbuilt POI: go flat out, and once the plane phase starts build the rest back to back.

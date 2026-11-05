@@ -33,13 +33,13 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
   let best: string | null = null, bestD = Infinity;
-  const limitM = buildLimitM();
+  const resident = residents?.() ?? [];
   pickedByView = false;
   for (const id of pending) {
     const p = pois.find((x) => `poi:${x.id}` === id);
     if (!p) { pickedByView = false; return id; }
     const d = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
-    if (d >= limitM) continue;
+    if (d >= buildLimitM(resident, id)) continue;
     const near = (airborne ? Math.hypot(d, e[13] - (p.padY ?? 0)) : d) < radiusM;
     const seen = overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M)));
     if (!seen && !near) continue;
@@ -120,25 +120,27 @@ function costMB(roots: readonly THREE.Object3D[]): number {
   return bytes / 1e6;
 }
 
-function over(list: Resident[], room: number): boolean {
-  return list.length + room > flag("lowmemcap") || list.reduce((a, r) => a + r.mb, 0) > flag("lowmembudget");
+const UNKNOWN_POI_MB = 400;
+
+function over(list: Resident[], incoming: string | null): boolean {
+  const extra = incoming === null ? 0 : costOf.get(incoming) ?? UNKNOWN_POI_MB;
+  return list.length + (incoming === null ? 0 : 1) > flag("lowmemcap") || list.reduce((a, r) => a + r.mb, extra) > flag("lowmembudget");
 }
 
-function victimOf(list: Resident[]): Resident | null {
+function victimOf(list: Resident[], incoming: string | null): Resident | null {
   const v = list[list.length - 1];
-  return list.length > 1 && v.d > 0 ? v : null;
+  return v && v.d > 0 && (incoming !== null || list.length > 1) ? v : null;
 }
 
-function buildLimitM(): number {
-  const list = residents?.() ?? [];
-  if (!over(list, 1)) return Infinity;
-  const v = victimOf(list);
+function buildLimitM(list: Resident[], id: string): number {
+  if (!over(list, id)) return Infinity;
+  const v = victimOf(list, id);
   return v ? v.d - flag("lowmemhyst") : -Infinity;
 }
 
 let trimming = Promise.resolve();
 
-export function trimStreamed(engine: Engine, w: World, room: number, pending: string[], streamMs: Record<string, number>, pois: readonly Poi[]) {
+export function trimStreamed(engine: Engine, w: World, incoming: string | null, pending: string[], streamMs: Record<string, number>, pois: readonly Poi[]) {
   residents ??= () => {
     const e = engine.camera.matrixWorld.elements, list: Resident[] = [];
     for (const id of w.modOf.keys()) {
@@ -153,10 +155,9 @@ export function trimStreamed(engine: Engine, w: World, room: number, pending: st
   return (trimming = trimming.then(async () => {
     for (;;) {
       const list = residents!();
-      const victim = over(list, room) ? victimOf(list) : null;
+      const victim = over(list, incoming) ? victimOf(list, incoming) : null;
       if (!victim) return;
       await evictStreamed(engine, w, victim.id);
-      costOf.delete(victim.id);
       pending.push(victim.id);
       delete streamMs[victim.id];
     }
