@@ -41,12 +41,16 @@ export class Coplanar {
       E[0] * cx + E[4] * cy + E[8] * cz + E[12], E[1] * cx + E[5] * cy + E[9] * cz + E[13], E[2] * cx + E[6] * cy + E[10] * cz + E[14], 1];
     this.addMatrix(x1 - x0, y1 - y0, z1 - z0, m, tag, pos, v0, vn);
   }
-  resolve(): CoStats { return this.apply(solveCoplanar(this.pack())); }
-  *steps(slice = 12): Generator<void, CoStats, void> { return this.apply(yield* solveCoplanarSteps(this.pack(), slice)); }
+  resolve(): CoStats {
+    const it = this.apply(solveCoplanar(this.pack()), Infinity);
+    let st = it.next();
+    while (!st.done) st = it.next();
+    return st.value;
+  }
+  *steps(slice = 12): Generator<void, CoStats, void> { return yield* this.apply(yield* solveCoplanarSteps(this.pack(), slice), slice); }
   async resolveAsync(pace: Pace, slice: number): Promise<CoStats> {
     const solved = flag("coworker") ? await pace.wait(solveInWorker(this.pack())) : null;
-    if (solved) return this.apply(solved);
-    const it = this.steps(slice);
+    const it = solved ? this.apply(solved, slice) : this.steps(slice);
     let st = it.next();
     while (!st.done) { await pace.pause(); st = it.next(); }
     return st.value;
@@ -62,9 +66,11 @@ export class Coplanar {
     }
     return out;
   }
-  private apply(s: CoSolved): CoStats {
+  private *apply(s: CoSolved, slice: number): Generator<void, CoStats, void> {
     const M = s.moves;
+    let t0 = performance.now();
     for (let i = 0; i < M.length; i += 4) {
+      if ((i & 4095) === 4092 && performance.now() - t0 > slice) { yield; t0 = performance.now(); }
       const b = this.boxes[M[i]], k = M[i + 1], sg = M[i + 2], delta = M[i + 3], P = b.pos(); if (!P) continue;
       const ax = b.a[k * 3], ay = b.a[k * 3 + 1], az = b.a[k * 3 + 2], hk = b.h[k] * sg, tol = Math.max(1e-3, b.h[k] * 1e-3);
       const dx = ax * sg * delta, dy = ay * sg * delta, dz = az * sg * delta;
