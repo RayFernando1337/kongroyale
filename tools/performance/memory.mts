@@ -549,17 +549,19 @@ async function run() {
 
 function leakCase(samples: Sample[], seed: number): CaseResult | null {
   const left = samples.filter((s) => s.name.startsWith("left")), a = left.at(-2), b = left.at(-1);
-  if (!a?.audit || !b?.audit) return null;
-  const x = a.audit, y = b.audit;
+  if (!a || !b) return null;
   const grew = (from: number, to: number, unit: "MB" | "count" = "MB"): Metric => ({ status: "ok", unit, better: "lower", value: Math.max(0, Math.round((to - from) * 10) / 10) });
-  const metrics: Record<string, Metric> = {
-    webglMB: grew(a.webglMB, b.webglMB), textureCount: grew(a.textureCount, b.textureCount, "count"),
-    unownedMB: grew(mb(x.unowned.bytes), mb(y.unowned.bytes)), unownedCount: grew(x.unowned.count, y.unowned.count, "count"),
-    geometryCount: grew(x.info.geometries, y.info.geometries, "count"),
-  };
-  for (const [k, v] of Object.entries(y.ledger.byCategory)) metrics[`ledger.${k}MB`] = grew(mb(x.ledger.byCategory[k as keyof typeof x.ledger.byCategory].bytes), mb(v.bytes));
-  const names = Object.entries(y.names).map(([name, t]) => ({ name, count: t.count - (x.names[name]?.count ?? 0), bytes: t.bytes - (x.names[name]?.bytes ?? 0) })).filter((n) => n.count > 0).sort((p, q) => q.bytes - p.bytes);
-  for (const n of names.slice(0, 20)) console.log(`  ${a.name} -> ${b.name} unowned +${n.count} ${n.name} (${mb(n.bytes)} MB)`);
+  const metrics: Record<string, Metric> = { webglMB: grew(a.webglMB, b.webglMB), textureCount: grew(a.textureCount, b.textureCount, "count") };
+  const x = a.audit, y = b.audit;
+  let names: Array<{ name: string; count: number; bytes: number }> = [];
+  if (x && y) {
+    metrics.unownedMB = grew(mb(x.unowned.bytes), mb(y.unowned.bytes));
+    metrics.unownedCount = grew(x.unowned.count, y.unowned.count, "count");
+    metrics.geometryCount = grew(x.info.geometries, y.info.geometries, "count");
+    for (const [k, v] of Object.entries(y.ledger.byCategory)) metrics[`ledger.${k}MB`] = grew(mb(x.ledger.byCategory[k as keyof typeof x.ledger.byCategory].bytes), mb(v.bytes));
+    names = Object.entries(y.names).map(([name, t]) => ({ name, count: t.count - (x.names[name]?.count ?? 0), bytes: t.bytes - (x.names[name]?.bytes ?? 0) })).filter((n) => n.count > 0).sort((p, q) => q.bytes - p.bytes);
+    for (const n of names.slice(0, 20)) console.log(`  ${a.name} -> ${b.name} unowned +${n.count} ${n.name} (${mb(n.bytes)} MB)`);
+  }
   return { scenario: { id: "memory/leak", version: SCENARIO_VERSION, seed, workload: "page-load" }, windows: { from: a.name, to: b.name }, load: {}, metrics, gates: [], detail: { names } };
 }
 
