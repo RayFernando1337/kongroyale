@@ -71,7 +71,7 @@
     {
       "id": "d3d11-v3",
       "title": "Chrome on Windows (D3D11) with the fixed measuring script: main vs v0.4.1",
-      "caption": "Three runs of each build with the fixed measuring script, both standing still. Main 7890f3b used less memory at every point: 6,091 MB against 8,063 MB at the title, 12,364 MB against 12,718 MB thirty seconds into a match, and 12,631 MB against 12,812 MB after leaving the second match (medians). The two builds don't run at the same quality, though. Since #125, main boots at high on Auto on this machine, while v0.4.1 boots at ultra, and that change accounts for most of the gap at the title.",
+      "caption": "Three runs of each build with the fixed measuring script, both standing still. At every measured phase, main 7890f3b's median was lower: 6,091 MB against 8,063 MB at the title, 12,364 MB against 12,718 MB thirty seconds into a match, and 12,631 MB against 12,812 MB after leaving the second match. The chart shows one run of each, and between those phases the two lines sometimes cross. The two builds don't run at the same quality, though. Since #125, main boots at high on Auto on this machine, while v0.4.1 boots at ultra, and that change accounts for most of the gap at the title.",
       "series": [
         "total"
       ],
