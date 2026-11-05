@@ -23,8 +23,8 @@ the boot smoke walk one order each; this model checks all of them.
 | ReasonStays | A reason the server gives for ending your match stays until you move on. | "MATCH CRASHED" flashes and is gone. |
 | OneRestore | One context restore at a time. | Two `restoreAll` runs upload the same resources at once. |
 
-`ClientLifecycle.cfg` checks the first two, which hold today. `ClientLifecycle.findings.cfg` checks all seven; the last
-five break, and docs/statecharts/client-lifecycle.md gives the shortest path to each. When a fix lands, move its rule
+`ClientLifecycle.cfg` checks the first three, which hold today. `ClientLifecycle.findings.cfg` checks all seven; the
+last four break, and docs/statecharts/client-lifecycle.md gives the shortest path to each. When a fix lands, move its rule
 from the findings config into `ClientLifecycle.cfg` and add a mutant that takes the fix out again.
 
 ## Run it
@@ -34,7 +34,7 @@ node tools/formal/tlc.mjs ClientLifecycle --mutants
 ```
 
 It needs Java 11 or newer on PATH; the first run downloads the pinned TLA+ tools jar into node_modules/.cache. A run
-takes about a second (358 distinct states, `Online = TRUE`). Expected output: one `PASS ClientLifecycle` line and one
+takes about a second (295 distinct states, `Online = TRUE`). Expected output: one `PASS ClientLifecycle` line and one
 `PASS ... mutant` line per entry in `ClientLifecycle.mutants.json`. Each mutant takes one guard out of a scratch copy
 of the model and must make TLC report the rule its entry names; a mutant that passes means the model can no longer see
 that guard. Fix the model, not the mutant.
@@ -66,9 +66,10 @@ Read the shortest path, then decide which it is:
 | lobby.ts `housekeeping` (AFK), `unseat`, `leave`; `pump`, `endMatch` (crash, end) | RemovedAfk, Crashed, MatchOver |
 | restore.ts `watchContext`; restore-run.ts `restoreAll` | Lose, Restored, RestoreDone, Reload |
 
-Two facts no region can name: main.ts sets `__kr.prepare` and `__kr.ready` at top level. The model's PLAY, CREATE and
-JOIN guards (before ready there is no prepare, so a button goes straight on) depend on that order, and the drift check
-cannot see it change. Read main.ts's boot order against the model whenever it changes.
+Facts no region can name: main.ts sets `__kr.prepare`, `__kr.ready` and `dataset.ready` at top level, and the lobby's
+Enter handler (inside ui/lobby.ts `createLobby`) waits for `dataset.ready`. The model's PLAY, CREATE and JOIN guards
+(nothing before the prefabs) depend on both, and the drift check cannot see either change. Read them against the model
+whenever main.ts's boot order or the lobby's keyboard handling changes.
 
 Coverage record: `tools/formal/ClientLifecycle.covers.json` names the code above (one region per function) and the
 writes the model guards (`inMatch` and `staleMatch` in index.ts, `contextLost` in the engine), and records a token

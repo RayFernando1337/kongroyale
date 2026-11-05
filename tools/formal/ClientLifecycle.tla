@@ -42,11 +42,11 @@ WireScope == IF render THEN 0 ELSE scope            \* after render?.dispose()
 WireOk == WireScope = 0 /\ prefabs
 WireScopeAfter == IF WireScope = 0 THEN 1 ELSE WireScope
 
-(* PLAY vs bots: offline() (index.ts:251-266): leaveAll, new OfflineLink, wire, start in 50 ms. Before ready only
-   Enter reaches the lobby (the loading screen swallows clicks, not Enter: index.html:389-404, ui/lobby.ts:333-350) *)
+(* PLAY vs bots: offline() (index.ts:251-266): leaveAll, new OfflineLink, wire, start in 50 ms. Before ready nothing
+   reaches the lobby: the loading screen swallows clicks, and the lobby's Enter waits for dataset.ready (ui/lobby.ts) *)
 Play ==
   /\ view = "title"   \* a lost context does not disable the title's buttons (restore.ts watchContext)
-  /\ boot = "loading" \/ prefabs   \* after ready, kr.prepare() waits for the prefabs (main.ts:502-531); before, it is undefined
+  /\ prefabs   \* after ready, kr.prepare() waits for the prefabs (main.ts:502-531)
   /\ scope' = WireScopeAfter /\ render' = WireOk
   /\ link' = "offline"
   /\ view' = (IF WireOk THEN "match" ELSE "title") /\ phase' = "warmup"
@@ -55,10 +55,10 @@ Play ==
 
 (* CREATE/JOIN: online() (index.ts:230-244) reuses any online link without checking it is open (231). Like PLAY,
    create and join await prepareIsland(), which waits for the prefabs after ready and resolves at once before it;
-   before ready only Enter reaches the lobby, and Enter is JOIN when the page was opened with an invite (?join=) *)
+   before ready no button or key reaches the lobby, invite links included *)
 Connect ==
   /\ Online /\ view = "title"
-  /\ boot = "loading" \/ prefabs
+  /\ prefabs
   /\ IF link = "closed"
        THEN /\ silent' = TRUE   \* link?.sendJSON does nothing on a closed socket (net.ts:42); no busy, no error
             /\ UNCHANGED <<view, link, scope, render>>

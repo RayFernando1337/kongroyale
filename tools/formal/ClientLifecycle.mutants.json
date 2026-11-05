@@ -1,9 +1,9 @@
 [
   {
-    "name": "a match shows without its renderer",
-    "why": "index.ts offline(): the match view no longer waits for wire() to build a GameRender",
-    "find": "/\\ view' = (IF WireOk THEN \"match\" ELSE \"title\") /\\ phase' = \"warmup\"",
-    "replace": "/\\ view' = \"match\" /\\ phase' = \"warmup\"",
+    "name": "a match starts without its renderer",
+    "why": "index.ts enterMatch: START no longer keeps the GameRender that wire() built for the room",
+    "find": "/\\ seated' = TRUE\n  /\\ UNCHANGED <<boot, prefabs, link, scope, render, err",
+    "replace": "/\\ seated' = TRUE /\\ render' = FALSE\n  /\\ UNCHANGED <<boot, prefabs, link, scope, err",
     "expect": "Invariant NoMatchWithoutRenderer is violated"
   },
   {
@@ -12,5 +12,12 @@
     "find": "/\\ view' = \"title\" /\\ link' = \"none\" /\\ seated' = FALSE",
     "replace": "/\\ view' = \"title\" /\\ link' = \"none\" /\\ seated' = seated",
     "expect": "Invariant LeaveFreesTheSeat is violated"
+  },
+  {
+    "name": "Enter reaches PLAY before ready",
+    "why": "ui/lobby.ts: the lobby's Enter no longer waits for dataset.ready, so PLAY runs before the prefabs exist",
+    "find": "  /\\ prefabs   \\* after ready, kr.prepare() waits for the prefabs (main.ts:502-531)",
+    "replace": "  /\\ boot = \"loading\" \\/ prefabs",
+    "expect": "Invariant ScopeHasOwner is violated"
   }
 ]
