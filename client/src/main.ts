@@ -225,7 +225,7 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   const t0 = performance.now();
   let m: WorldModule | null = null;
   const scope = resources.root.child(`region:${id}`);
-  const ctx = streamed ? postBuild!.moduleCtx(engine, id) : engine;
+  const ctx = streamed && postBuild ? postBuild.moduleCtx(engine, id) : engine;
   try {
     m = await imports.get(id)!;
     await m.build(ctx, scope);
@@ -251,7 +251,7 @@ async function runAfterBuild(m: WorldModule, streamed: boolean) {
   if (!m.afterBuild) return;
   if (!streamed) kr.stage = `afterBuild:${m.id}`;
   const t0 = performance.now();
-  try { await m.afterBuild(streamed ? postBuild!.moduleCtx(engine, m.id) : engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
+  try { await m.afterBuild(streamed && postBuild ? postBuild.moduleCtx(engine, m.id) : engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
   engine.rebuilding = false;
   afterBuildMs[m.id] = (afterBuildMs[m.id] ?? 0) + Math.round(performance.now() - t0);
 }
