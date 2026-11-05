@@ -24,13 +24,15 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   if (!kr?.game?.inMatch && !casting) return null;
   const phase = kr?.game?.cm?.phase ?? Phase.Play;
   const airborne = !casting && phase <= Phase.Plane;
+  if (phase !== Phase.Plane) viewBuilds = 0;
   const overview = !casting && phase === Phase.Plane && viewBuilds < viewCap;
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
   let best: string | null = null, bestD = Infinity;
+  pickedByView = false;
   for (const id of pending) {
     const p = pois.find((x) => `poi:${x.id}` === id);
-    if (!p) return id;
+    if (!p) { pickedByView = false; return id; }
     const d = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
     const near = (airborne ? Math.hypot(d, e[13] - (p.padY ?? 0)) : d) < radiusM;
     const seen = overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M)));
