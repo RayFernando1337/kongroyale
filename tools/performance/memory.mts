@@ -276,7 +276,7 @@ function osMemory(pids: number[]): Map<number, OsMem> {
       out.set(pid, { pssMB: null, rssMB, privateMB: null, footprintMB });
     }
   } else if (process.platform === "win32" && pids.length) {
-    const t = execFileSync("powershell", ["-NoProfile", "-Command", `Get-Process -Id ${pids.join(",")} -ErrorAction SilentlyContinue | Select-Object Id,WorkingSet64,PrivateMemorySize64 | ConvertTo-Json -Compress`], { encoding: "utf8" });
+    const t = execFileSync("powershell", ["-NoProfile", "-Command", `Get-Process -Id ${pids.join(",")} -ErrorAction SilentlyContinue | Select-Object Id,WorkingSet64,PrivateMemorySize64 | ConvertTo-Json -Compress; exit 0`], { encoding: "utf8" });
     for (const r of [JSON.parse(t || "[]")].flat() as Array<{ Id: number; WorkingSet64: number; PrivateMemorySize64: number }>) out.set(r.Id, { pssMB: null, rssMB: mb(r.WorkingSet64), privateMB: mb(r.PrivateMemorySize64), footprintMB: null });
   }
   return out;
