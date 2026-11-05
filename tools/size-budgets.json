@@ -1,8 +1,8 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size.",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size. boot raised by 30 bytes on 2026-11-05 (1,163,000 to 1,163,030) for a context-restore correctness fix that the 11 bytes left could not hold: engine.contextLost also reads gl.isContextLost(), so no frame draws between the loss and the webglcontextlost event (Captain-approved exception).",
   "gzBytes": {
     "entry": 34200,
-    "boot": 1163000,
+    "boot": 1163030,
     "workers": 4701000,
     "lazy": 3055000
   }

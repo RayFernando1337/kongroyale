@@ -584,7 +584,14 @@ export class Engine implements WorldCtx {
    * the island stream) so the main thread goes to the stream, not to frames nobody sees.
    */
   suspended = false;
-  contextLost = false;
+  private lost = false;
+  /**
+   * true from the moment the GL context is lost until the restore has rebuilt everything (set by watchContext). The
+   * browser queues `webglcontextlost` as a later task, and three stops drawing only at that event: frames in between
+   * upload into a dead context, and three caches the extensions it first asks for there as missing (the BPTC warnings).
+   */
+  get contextLost() { return this.lost || this.renderer.getContext().isContextLost(); }
+  set contextLost(v: boolean) { this.lost = v; }
   restores = 0;
   start() {
     if (this.started) return;
