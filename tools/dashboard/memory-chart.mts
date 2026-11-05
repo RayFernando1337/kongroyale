@@ -38,6 +38,19 @@ const SERIES_DASH: Record<Series, string> = { total: "", renderer: "10 6", gpu: 
 const COLORS = ["#ffcc33", "#3ddc84", "#5aa9ff", "#ff6b6b", "#c58cff", "#ff9f43", "#4dd8e6", "#f368e0"];
 const WIDTH_PX = 1600;
 const HEIGHT_PX = 900;
+const COMPACT_WIDTH_PX = 640;
+const COMPACT_HEIGHT_PX = 520;
+
+function wrapText(s: string, max: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of s.split(" ")) {
+    if (line && (line + " " + word).length > max) { lines.push(line); line = word; }
+    else line = line ? line + " " + word : word;
+  }
+  lines.push(line);
+  return lines;
+}
 
 function fail(msg: string): never {
   throw new Error("memory-chart: " + msg);
@@ -113,10 +126,18 @@ function phaseX(tr: MemoryTrace, axis: MarkerName[], t: number): number {
   return axis.length + 1;
 }
 
-export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: Series[]; xMode: "time" | "phase"; killMB?: number; killLabel?: string }): string {
-  const legendRows = traces.length;
-  const top = 90, left = 110, right = 40, bottom = (opts.xMode === "time" ? 170 : 120) + legendRows * 30;
-  const w = WIDTH_PX, h = HEIGHT_PX + legendRows * 30 + (opts.xMode === "time" ? 50 : 0);
+export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: Series[]; xMode: "time" | "phase"; killMB?: number; killLabel?: string; compact?: boolean }): string {
+  const compact = opts.compact === true;
+  const w = compact ? COMPACT_WIDTH_PX : WIDTH_PX;
+  const top = compact ? 124 : 90, left = compact ? 84 : 110, right = compact ? 20 : 40;
+  const wrapChars = compact ? Math.floor((w - left - 40) / 10.5) : Infinity;
+  const legendLines = traces.map((tr) => wrapText(tr.label + "\u00a0\u00a0" + [tr.build === tr.label ? "" : tr.build, tr.browser, tr.machine, tr.flags].filter(Boolean).join(" · ") + (tr.killed ? "; " + tr.killed.process + " killed at " + tr.killed.MB + " MB" : ""), wrapChars));
+  const styleKey = opts.series.length === 1 ? SERIES_LABEL[opts.series[0]] : opts.series.map((se) => SERIES_LABEL[se] + (SERIES_DASH[se] ? " (" + (se === "renderer" ? "dashed" : se === "gpu" ? "dotted" : se === "heap" ? "fine dots" : "dash-dot") + ")" : " (solid)")).join(", ");
+  const noteLines = wrapText("Lines: " + styleKey + (opts.xMode === "time" && traces.length > 1 ? ". Phase markers are from " + traces[0].label + "." : ""), wrapChars + 4);
+  if (traces.some((tr) => tr.launcher === "playwright")) noteLines.push(...wrapText("Playwright-launched runs: totals after Play may be inflated by the launcher.", wrapChars + 4));
+  const legendRows = legendLines.reduce((n, l) => n + l.length, 0) + Math.max(0, noteLines.length - 2);
+  const bottom = (opts.xMode === "time" ? 170 : 120) + legendRows * 30;
+  const h = (compact ? COMPACT_HEIGHT_PX : HEIGHT_PX) + legendRows * 30 + (opts.xMode === "time" ? 50 : 0);
   const plotW = w - left - right, plotH = h - top - bottom;
   const axis = phaseAxis(traces);
   const xOf = (tr: MemoryTrace, t: number) => opts.xMode === "phase" ? phaseX(tr, axis, t) : t;
@@ -132,7 +153,7 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
   const out: string[] = [];
   out.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '" font-family="-apple-system,Segoe UI,Inter,Roboto,sans-serif">');
   out.push('<rect width="100%" height="100%" fill="#0b0d12"/>');
-  out.push('<text x="' + left + '" y="52" fill="#f2f4f8" font-size="32" font-weight="800">' + esc(opts.title) + "</text>");
+  if (!compact) out.push('<text x="' + left + '" y="52" fill="#f2f4f8" font-size="32" font-weight="800">' + esc(opts.title) + "</text>");
   const stepGB = yMaxGB <= 4 ? 0.5 : yMaxGB <= 10 ? 1 : 2;
   for (let g = 0; g <= yMaxGB + 1e-9; g += stepGB) {
     const y = ys(g * 1024);
@@ -151,7 +172,7 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
     const x = opts.xMode === "phase" ? xs(i + 1) : xs(markerTrace.markers.find((m) => m.name === name)!.t);
     out.push('<line x1="' + x + '" x2="' + x + '" y1="' + top + '" y2="' + (top + plotH) + '" stroke="#4a5266" stroke-dasharray="4 6"/>');
     const nearRight = x > left + plotW - 90;
-    const row = x - lastLabelX < 90 && lastRow === 0 ? 1 : 0;
+    const row = compact ? (x - lastLabelX < 80 ? (lastRow + 1) % 4 : 0) : x - lastLabelX < 90 && lastRow === 0 ? 1 : 0;
     lastLabelX = x; lastRow = row;
     out.push('<text x="' + (nearRight ? x - 6 : x + 6) + '" y="' + (top + 22 + row * 24) + '" fill="#c7cede" font-size="18" font-weight="700" text-anchor="' + (nearRight ? "end" : "start") + '">' + MARKER_LABEL[name] + "</text>");
   });
@@ -179,13 +200,14 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
   let ly = top + plotH + (opts.xMode === "time" ? 100 : 50);
   traces.forEach((tr, i) => {
     out.push('<rect x="' + left + '" y="' + (ly - 14) + '" width="28" height="8" rx="4" fill="' + COLORS[i % COLORS.length] + '"/>');
-    const killed = tr.killed ? "; " + tr.killed.process + " killed at " + tr.killed.MB + " MB" : "";
-    out.push('<text x="' + (left + 40) + '" y="' + ly + '" fill="#f2f4f8" font-size="19"><tspan font-weight="700">' + esc(tr.label) + "</tspan>  " + esc([tr.build === tr.label ? "" : tr.build, tr.browser, tr.machine, tr.flags].filter(Boolean).join(" · ") + killed) + "</text>");
-    ly += 30;
+    legendLines[i].forEach((line, j) => {
+      const split = j === 0 ? line.indexOf("\u00a0\u00a0") : -1;
+      const body = split < 0 ? esc(line) : "<tspan font-weight=\"700\">" + esc(line.slice(0, split)) + "</tspan>  " + esc(line.slice(split + 2));
+      out.push('<text x="' + (left + 40) + '" y="' + ly + '" fill="#f2f4f8" font-size="19">' + body + "</text>");
+      ly += 30;
+    });
   });
-  const styleKey = opts.series.length === 1 ? SERIES_LABEL[opts.series[0]] : opts.series.map((se) => SERIES_LABEL[se] + (SERIES_DASH[se] ? " (" + (se === "renderer" ? "dashed" : se === "gpu" ? "dotted" : se === "heap" ? "fine dots" : "dash-dot") + ")" : " (solid)")).join(", ");
-  out.push('<text x="' + left + '" y="' + (ly + 4) + '" fill="#8d96ab" font-size="17">Lines: ' + esc(styleKey) + (opts.xMode === "time" && traces.length > 1 ? ". Phase markers are from " + esc(markerTrace.label) + "." : "") + "</text>");
-  if (traces.some((tr) => tr.launcher === "playwright")) out.push('<text x="' + left + '" y="' + (ly + 30) + '" fill="#8d96ab" font-size="17">Playwright-launched runs: totals after Play may be inflated by the launcher.</text>');
+  noteLines.forEach((line, i) => out.push('<text x="' + left + '" y="' + (ly + 4 + i * 26) + '" fill="#8d96ab" font-size="17">' + esc(line) + "</text>"));
   out.push("</svg>");
   return out.join("\n");
 }

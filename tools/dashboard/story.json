@@ -1,0 +1,177 @@
+{
+  "title": "What changed and why it matters",
+  "lead": "Kong Royale runs in a web browser, so the computer has to fit the whole game in memory while you play. This page starts with the changes that matter most, says in plain words what you will notice in the game, and links to the technical tabs for the detail. Every number names what was measured and where.",
+  "firstWords": [
+    {
+      "term": "Memory",
+      "plain": "The working space a program uses while it runs. A browser tab that uses too much of it gets slow, or gets closed."
+    },
+    {
+      "term": "Killed for memory",
+      "plain": "Safari (and other browsers) close a tab that grows past a limit instead of letting the whole computer slow down. For a player, the game simply disappears mid-match."
+    },
+    {
+      "term": "WebContent",
+      "plain": "The part of Safari that runs the game's page. Its size is the number to watch, because it is the part Safari closes."
+    },
+    {
+      "term": "Location (streaming a location)",
+      "plain": "A named place on the island, such as a harbor or a temple. The game builds each one as the player gets close, which is called streaming it in. A location the game has built and still holds is called resident."
+    },
+    {
+      "term": "Texture",
+      "plain": "A picture wrapped around a 3D object, like the stone pattern on a temple wall. Big textures look sharper and use more memory, mostly on the graphics card (GPU memory)."
+    },
+    {
+      "term": "Frame time",
+      "plain": "How long the computer takes to draw one picture of the game. Smaller is smoother, and a long one shows up as a stutter. The Performance tab is full of these."
+    }
+  ],
+  "cards": [
+    {
+      "head": "A 16 GB Mac can play a whole match in Safari",
+      "plain": "Before, the game kept every location it had built, so memory only went up. Safari closed the tab (killed for memory) about 80 seconds after the player landed. The game now keeps at most four locations at a time and drops the farthest ones as the player moves on. In the newest test below it reached the results screen both times, with peak memory about 1 GB lower than the version before it.",
+      "notice": "What you'll notice: on a 16 GB Mac in Safari, the match no longer ends with the tab closing on you.",
+      "prs": [
+        140,
+        149,
+        157,
+        160
+      ],
+      "method": "Mac mini M4, 16 GB, Safari 27, quality Auto (picked Low), ?seed=42, scripted moving player, production build served locally. Newest: main 3248912, 2 runs. Before: main 1ee1f52, 1 run. Details in the Safari panel below."
+    },
+    {
+      "head": "Textures are stored smaller, with no visible loss at the default",
+      "plain": "The game now shrinks the textures (the pictures wrapped around 3D objects, like the stone on a temple wall) to 1024 pixels on their longest side, or to 512 pixels in Safari and on low-memory computers. In a test with four heavy locations loaded at the title, texture memory fell from 1,751 and 1,735 MB (cap off, two runs) to 1,543 and 1,515 MB at the default, and to 1,387 MB at 512.",
+      "notice": "What you'll notice: at 1024 pixels we saw no visible loss when comparing views at 3× zoom. At 512 pixels there is slight softening up close only (for example the nearest container logo at 3× zoom), not at normal size.",
+      "prs": [
+        154,
+        156,
+        158
+      ],
+      "method": "Memory: memory.mts without a GPU (SwiftShader, 640×360) at the title, 4 heavy locations, runs interleaved; WebGL textures 1751.4 and 1735.4 MB off, 1542.8 and 1514.8 MB default, 1387.1 MB at 512 (fork #158). Look: Kong RTX on Windows (D3D11), views compared at 3× crops (RAY-140, RAY-141)."
+    },
+    {
+      "head": "Coming back to the game after minimising is faster in Safari",
+      "plain": "Safari stops drawing frames for a hidden window, and the game used to wait for those frames before it carried on loading. It now keeps going without them. After a window had been minimised for 120 seconds, the time until the game was ready again went from 9.9 s to 2.2 s.",
+      "notice": "What you'll notice: switching away and back lands you in the game in about 2 seconds instead of about 10.",
+      "prs": [
+        37
+      ],
+      "method": "A/B of fork #37 in Safari, recorded on RAY-112 (minimised for 120 s, time to ready). The machine and number of runs are on that issue, not on this page."
+    },
+    {
+      "head": "Chrome and Windows numbers",
+      "plain": "The earlier work on Chrome and Windows (title screen load, first frame of a match, whole-browser memory, server work per tick) is in the Summary and Performance tabs, each with a before and after.",
+      "notice": "What you'll notice: a faster title screen and a smoother start to each match; the Summary tab lists each one in the same words.",
+      "prs": [],
+      "method": "Each number on those tabs carries its own method and source."
+    }
+  ],
+  "safari": {
+    "title": "Safari on a 16 GB Mac mini: whole-match survival, before and after",
+    "plain": "One scripted player (it drops near the harbor, then keeps moving toward the next safe place) was played until the match ended or Safari closed the tab. Landing came at 103 to 106 s in every run. Peak WebContent is the size of the part of Safari that runs the game's page, which is the part Safari closes. Times below are seconds since the test started.",
+    "columns": [
+      "Build",
+      "How it ended",
+      "Time",
+      "Peak WebContent",
+      "Locations held"
+    ],
+    "rows": [
+      {
+        "build": "Newest: main 3248912 (#160), run 1",
+        "end": "Reached Results",
+        "time": "896 s",
+        "peak": "7.3 GB",
+        "pois": "4 at most"
+      },
+      {
+        "build": "Newest: main 3248912 (#160), run 2",
+        "end": "Reached Results",
+        "time": "814 s",
+        "peak": "6.9 GB",
+        "pois": "4 at most"
+      },
+      {
+        "build": "Earlier: main b49187b, run 1",
+        "end": "Reached Results",
+        "time": "892 s",
+        "peak": "8.4 GB",
+        "pois": "4 (5 for about a second)"
+      },
+      {
+        "build": "Earlier: main b49187b, run 2",
+        "end": "Reached Results",
+        "time": "930 s",
+        "peak": "7.8 GB",
+        "pois": "4 (5 for about a second)"
+      },
+      {
+        "build": "Before: main 1ee1f52 (1 run)",
+        "end": "Killed for memory, 82 s after landing",
+        "time": "185 s",
+        "peak": "8.5 GB",
+        "pois": "10"
+      }
+    ],
+    "steps": "In between: the version from #149 (e24cb9c) reached Results in 1 of 2 runs, and a version of #157 (14ecb8b) in 1 of 3. The other runs were killed for memory.",
+    "caveat": "Two runs on one Mac are a signal, not a guarantee. The peaks, 7.3 and 6.9 GB, sit about 1 GB below the earlier build and at least about 0.7 GB below the lowest memory at which we saw a kill on this Mac (8.0 to 8.8 GB). That is better than before, but still not a wide margin. In run 1 the scripted player died once after getting stuck on a patch of terrain; that is a limit of the script, and the run still reached Results.",
+    "method": "Mac mini M4, 16 GB, Safari 27, ?seed=42&perfhud, quality Auto (picked Low), production build served locally, peak WebContent = highest per-phase peak (warm-up, plane, glide, on foot). Sources: handoffs/safari-growth/pr160, pr157, pr149-v2 and raw in the project drive; fixes in fork #140, #149, #157 and #160."
+  },
+  "journey": {
+    "title": "The journey so far",
+    "items": [
+      {
+        "pr": 37,
+        "text": "Safari keeps loading when its window is hidden, instead of waiting for frames it will not draw."
+      },
+      {
+        "pr": 140,
+        "text": "Low-memory mode builds the locations in view from the starting islet and the plane, and measures range along the ground."
+      },
+      {
+        "pr": 149,
+        "text": "Low-memory mode drops the farthest locations once a match is in play, so memory stops climbing."
+      },
+      {
+        "pr": 154,
+        "text": "A texture size cap is added behind a flag (off by default)."
+      },
+      {
+        "pr": 156,
+        "text": "The harbor locations' painted textures follow the same cap."
+      },
+      {
+        "pr": 157,
+        "text": "Locations are ranked by where the player will be in 5 seconds, and builds are spaced out while moving fast."
+      },
+      {
+        "pr": 158,
+        "text": "The texture cap turns on by default: 1024 pixels, or 512 in Safari and on low-memory computers."
+      },
+      {
+        "pr": 160,
+        "text": "Building a location and dropping one now use the same ranking. In the Safari test, both runs reached Results and peak memory fell by about 1 GB."
+      }
+    ]
+  },
+  "links": [
+    [
+      "summary",
+      "Summary: what players get"
+    ],
+    [
+      "performance",
+      "Performance: before and after for each change"
+    ],
+    [
+      "memory",
+      "Memory: charts of whole-browser memory over time"
+    ],
+    [
+      "play",
+      "Play experience: today's number and goal for each moment"
+    ]
+  ]
+}
