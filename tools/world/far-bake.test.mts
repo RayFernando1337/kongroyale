@@ -22,5 +22,5 @@ for (const id of broken) console.error(`far impostor ${id}: ${FAR_DIR}/${id}.bin
 for (const id of missing) console.log(`far impostor ${id}: not baked yet (${FAR_DIR}/${id}.bin or its index entry is missing)`);
 for (const id of stale) console.log(`far impostor ${id}: its POI sources, the POI kit or the bake tool changed since the bake`);
 if (stale.length || missing.length || broken.length) console.log(`rebake on a running prod build: npx tsx tools/world/bake-far.mts --only ${[...stale, ...missing, ...broken].join(",")}`);
-console.log(`far impostors: ${n} baked, ${stale.length} stale, ${missing.length} not baked (report only while farimp is off by default)`);
+console.log(`far impostors: ${n} baked, ${stale.length} stale, ${missing.length} not baked (report only until far impostors are on by default)`);
 process.exit(broken.length ? 1 : 0);
