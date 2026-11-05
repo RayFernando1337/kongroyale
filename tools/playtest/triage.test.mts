@@ -37,8 +37,9 @@ const clean = (s: string) => { for (const w of [...callsigns, ...words]) assert.
   assert.equal(saf.config.os, "macOS");
   assert.equal(saf.config.gpuVendor, "apple");
   assert.equal(saf.location.phase, "play", "a crash is placed where the dead session was");
-  assert.equal(saf.location.poi, null, "the heartbeat's POI is the nearest one at any distance, so it isn't trusted");
-  assert.equal(saf.fingerprint, "crash|play|-|-|Safari|high");
+  assert.equal(saf.location.poi, "banana-temple", "a crash takes the heartbeat's POI");
+  assert.equal(saf.location.cell, "-1,-2", "and its cell from the heartbeat's x and z");
+  assert.equal(saf.fingerprint, "crash|play|banana-temple|-|Safari|high");
 
   const c1 = by.get("KB-CHR1")!;
   assert.equal(c1.kind, "report");
@@ -158,6 +159,11 @@ const clean = (s: string) => { for (const w of [...callsigns, ...words]) assert.
   assert.equal(entryOf(travelled).location.poi, "banana-temple", "the stall's own path row decides, not where they were when they reported");
   assert.equal(entryOf(travelled).location.cell, "-1,-2");
 
+  const crashed = base();
+  crashed.ctx.diag.prev = { sid: "old", phase: 2, poi: "buy-now", x: null, z: null, clean: false };
+  assert.equal(entryOf(crashed).location.poi, null, "a heartbeat POI that isn't on the map is ignored");
+  assert.equal(entryOf(crashed).location.cell, null, "a crash outside a match has no cell, and takes none from the new session");
+
   const stale = base();
   stale.ctx.diag.path.rows = [];
   stale.bundle.timeline.rows[11][stale.bundle.timeline.fields.indexOf("t")] = 600;
@@ -193,7 +199,7 @@ const clean = (s: string) => { for (const w of [...callsigns, ...words]) assert.
   hostileText.ctx.diag.events = [[40, "module-failed", 15, "exits"], [41, "module-built", 80, "exits"]];
   assert.ok(!entryOf(hostileText).symptoms.includes("error"), "a module that failed and then built isn't an error");
   hostileText.ctx.diag.events = [[5.8, "module-failed", 15, "exits"], [30, "module-built", 80, "exits"]];
-  assert.equal(entryOf(hostileText).attribution, null, "nor the cause of a stall");
+  assert.equal(entryOf(hostileText).attribution, "Module failed exits", "but it still explains the stall it overlapped");
   hostileText.ctx.diag.events = [[40, "module-built", 80, "exits"], [41, "module-failed", 15, "exits"]];
   assert.equal(entryOf(hostileText).errorKey, "module build failed exits", "a failure after the last build still counts");
   hostileText.ctx.diag.events = [[6.1, "poi-built", 420, "poi:banana-temple"]];

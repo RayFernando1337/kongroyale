@@ -84,8 +84,8 @@ npx tsx tools/playtest/cli.mts watch [--dir DIR] [--ticker FILE]   # a line per 
   Text (read from file) source on that file.
 - Frame-rate symptoms (stall, low-fps, hitching) are skipped for SwiftShader bundles, as the rules below say. Only POI
   ids from `shared/world/map.ts` reach the output, and attribution text is cut down to plain characters.
-- A crash is placed by the dead session's phase only. Its heartbeat names the nearest POI at any distance, so triage
-  leaves the POI unknown. A `module-failed` event that a later `module-built` of the same module cancelled is ignored.
+- A crash is placed by the dead session's heartbeat (phase, POI and the cell of its x and z), never by the new session.
+  A `module-failed` event that a later `module-built` of the same module cancelled is not an error, but still explains a stall it overlapped.
 - A bundle.json that is cut off or not a bundle is skipped with a warning; `watch` retries it on the next poll, so a
   bundle caught mid-write still shows up.
 

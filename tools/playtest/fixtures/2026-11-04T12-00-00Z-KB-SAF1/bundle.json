@@ -55,6 +55,8 @@
         "upS": 600,
         "phase": 2,
         "poi": "banana-temple",
+        "x": -42,
+        "z": -128,
         "heapMB": 1500,
         "textures": 300,
         "geometries": 400,

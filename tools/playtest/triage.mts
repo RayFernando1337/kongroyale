@@ -116,7 +116,7 @@ function diagEvents(ctx: Rec | null): DiagEvent[] {
     const t = finite(e[0]);
     if (t !== null) out.push({ t, kind: e[1].slice(0, 20), n: finite(e[2]) ?? 0, text: text(e[3], 200) ?? "" });
   }
-  return out.filter((e) => e.kind !== "module-failed" || !out.some((b) => b.kind === "module-built" && b.text === e.text && b.t > e.t));
+  return out;
 }
 
 const knownPoi = (v: unknown) => { const id = text(v, 40)?.replace(/^poi:/, ""); return id && POIS.some((p) => p.id === id) ? id : null; };
@@ -147,7 +147,7 @@ function attributionOf(events: DiagEvent[], at: number) {
 }
 
 function errorKeyOf(s: Saved, events: DiagEvent[]) {
-  const failed = events.find((e) => e.kind === "module-failed");
+  const failed = events.find((e) => e.kind === "module-failed" && !events.some((b) => b.kind === "module-built" && b.text === e.text && b.t > e.t));
   const diag = events.find((e) => e.kind === "error" || e.kind === "rejection");
   const log = s.logs.find((l) => l.level === "error" && /^\[(?:uncaught|unhandled rejection)\]/.test(l.text));
   if (!diag && !log && failed) return `module build failed ${moduleName(failed.text)}`;
@@ -240,9 +240,10 @@ export function triageBundle(s: Saved): { entry: IndexEntry; note: string | null
   const prevPhase = prev ? phaseName(prev.phase) : null;
   const phase = prevPhase ?? worstStall?.phase ?? phaseName(dig(ctx, "game", "match", "phase")) ?? "title";
   const reportT = sr.t.length ? Math.max(...sr.t) : null;
-  const position = prev ? null : positionAt(ctx, worstStall?.t ?? null, reportT);
+  const prevX = finite(prev?.x), prevZ = finite(prev?.z);
+  const position = prev ? (prevX !== null && prevZ !== null ? [prevX, prevZ] as [number, number] : null) : positionAt(ctx, worstStall?.t ?? null, reportT);
   const stale = worstStall !== null && (reportT === null || reportT - worstStall.t > STALL_RECENT_S);
-  const location = { phase, poi: prev ? null : (position ? poiAt(position) : stale ? null : knownPoi(dig(ctx, "game", "player", "poi", "id"))), cell: position ? `${Math.floor(position[0] / GRID_M)},${Math.floor(position[1] / GRID_M)}` : null };
+  const location = { phase, poi: prev ? knownPoi(prev.poi) : (position ? poiAt(position) : stale ? null : knownPoi(dig(ctx, "game", "player", "poi", "id"))), cell: position ? `${Math.floor(position[0] / GRID_M)},${Math.floor(position[1] / GRID_M)}` : null };
 
   const attribution = worstStall ? attributionOf(events, worstStall.t) : null;
   const slot = attribution ? stripVolatile(attribution) : top === "error" ? errorKey : null;
