@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export type MarkerName = "title" | "play" | "plane" | "landing" | "results" | "leave";
 export type TraceSample = { t: number; totalMB: number; browserMB?: number; rendererMB?: number; gpuMB?: number; heapMB?: number };
@@ -19,7 +20,7 @@ export type MemoryTrace = {
 };
 
 type Series = "total" | "browser" | "renderer" | "gpu" | "heap";
-type PerfTimelinePoint = { atS: number; totalMB: number; byType: Record<string, number>; heapUsedMB: number; phase: number; stage: string };
+type PerfTimelinePoint = { atS: number; totalMB: number; byType: Record<string, number>; unmeasured: string[]; phase: number };
 type PerfResult = {
   tool: string;
   source?: { commit?: string };
@@ -52,30 +53,33 @@ function finite(n: unknown): n is number {
 
 function fromPerfResult(r: PerfResult, file: string): MemoryTrace {
   const timeline = r.timeline ?? [];
-  if (!timeline.length) fail(file + " has no timeline samples");
-  const samples: TraceSample[] = timeline.map((p) => ({ t: p.atS, totalMB: p.totalMB, browserMB: p.byType.browser, rendererMB: p.byType.renderer, gpuMB: p.byType.GPU, heapMB: p.heapUsedMB }));
+  const samples: TraceSample[] = timeline.filter((p) => !p.unmeasured.length).map((p) => ({ t: p.atS, totalMB: p.totalMB, browserMB: p.byType.browser, rendererMB: p.byType.renderer, gpuMB: p.byType.GPU }));
+  if (!samples.length) fail(file + " has no timeline samples with every process measured");
   const markers: MemoryTrace["markers"] = [];
   const caseAt = (id: string) => r.cases?.find((c) => c.scenario.id === id)?.windows.atS;
   const title = caseAt("memory/title");
   if (finite(title)) markers.push({ t: title, name: "title" });
-  const firstPhase = (min: number) => timeline.find((p) => p.phase >= min)?.atS;
-  const play = firstPhase(0);
-  if (finite(play)) markers.push({ t: play, name: "play" });
-  const plane = caseAt("memory/plane") ?? firstPhase(1);
-  if (finite(plane)) markers.push({ t: plane, name: "plane" });
-  const landing = firstPhase(2);
-  if (finite(landing)) markers.push({ t: landing, name: "landing" });
-  const results = firstPhase(3);
-  if (finite(results)) markers.push({ t: results, name: "results" });
-  const inMatch = timeline.findIndex((p) => p.phase >= 0);
-  const left = inMatch >= 0 ? timeline.slice(inMatch).find((p) => p.phase < 0)?.atS : undefined;
-  if (finite(left)) markers.push({ t: left, name: "leave" });
+  const matchStart = timeline.findIndex((p) => p.phase >= 0);
+  if (matchStart >= 0) {
+    const leaveAt = timeline.findIndex((p, i) => i > matchStart && p.phase < 0);
+    const firstMatch = timeline.slice(matchStart, leaveAt < 0 ? timeline.length : leaveAt);
+    const firstPhase = (phase: number) => firstMatch.find((p) => p.phase >= phase)?.atS;
+    markers.push({ t: timeline[matchStart].atS, name: "play" });
+    const plane = caseAt("memory/plane") ?? firstPhase(1);
+    if (finite(plane)) markers.push({ t: plane, name: "plane" });
+    const landing = firstPhase(2);
+    if (finite(landing)) markers.push({ t: landing, name: "landing" });
+    const results = firstPhase(3);
+    if (finite(results)) markers.push({ t: results, name: "results" });
+    if (leaveAt >= 0) markers.push({ t: timeline[leaveAt].atS, name: "leave" });
+  }
   const commit = r.source?.commit ? "harness " + r.source.commit.slice(0, 7) : "unknown build";
+  const profile = r.config?.profile;
   return {
     schema: "kong-memory-trace", version: 1,
     label: path.basename(path.dirname(file)),
     build: commit,
-    browser: "Chrome" + (r.config?.profile ? " (" + r.config.profile + " profile)" : ""),
+    browser: (profile === "nogpu" ? "Chromium" : "Chrome") + (profile ? " (" + profile + " profile)" : ""),
     machine: [r.environment?.cpu, r.environment?.memoryMB ? Math.round(r.environment.memoryMB / 1024) + " GB" : ""].filter(Boolean).join(", ") || "unknown machine",
     flags: r.config?.url ?? "",
     launcher: "playwright",
@@ -121,6 +125,7 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
     xMax = Math.max(xMax, xOf(tr, s.t));
     for (const se of opts.series) { const v = s[SERIES_KEY[se]]; if (finite(v)) yMax = Math.max(yMax, v); }
   }
+  for (const tr of traces) if (tr.killed) { xMax = Math.max(xMax, xOf(tr, tr.killed.t)); yMax = Math.max(yMax, tr.killed.MB); }
   const yMaxGB = Math.max(1, Math.ceil((yMax / 1024) * 1.08));
   const xs = (x: number) => left + (xMax ? (x / xMax) * plotW : 0);
   const ys = (mb: number) => top + plotH - (mb / 1024 / yMaxGB) * plotH;
@@ -155,8 +160,16 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
   traces.forEach((tr, i) => {
     const color = COLORS[i % COLORS.length];
     for (const se of opts.series) {
-      const pts = tr.samples.filter((s) => finite(s[SERIES_KEY[se]])).map((s) => xs(xOf(tr, s.t)).toFixed(1) + "," + ys(s[SERIES_KEY[se]] as number).toFixed(1));
-      if (pts.length) out.push('<polyline fill="none" stroke="' + color + '" stroke-width="' + (se === "total" ? 4 : 2.5) + '" stroke-linejoin="round" stroke-dasharray="' + SERIES_DASH[se] + '" points="' + pts.join(" ") + '"/>');
+      const runs: string[][] = [[]];
+      for (const s of tr.samples) {
+        const v = s[SERIES_KEY[se]];
+        if (finite(v)) runs[runs.length - 1].push(xs(xOf(tr, s.t)).toFixed(1) + "," + ys(v).toFixed(1));
+        else if (runs[runs.length - 1].length) runs.push([]);
+      }
+      for (const pts of runs) {
+        if (pts.length === 1) { const [cx, cy] = pts[0].split(","); out.push('<circle cx="' + cx + '" cy="' + cy + '" r="' + (se === "total" ? 5 : 3.5) + '" fill="' + color + '"/>'); }
+        else if (pts.length) out.push('<polyline fill="none" stroke="' + color + '" stroke-width="' + (se === "total" ? 4 : 2.5) + '" stroke-linejoin="round" stroke-dasharray="' + SERIES_DASH[se] + '" points="' + pts.join(" ") + '"/>');
+      }
     }
     if (tr.killed) out.push('<text x="' + xs(xOf(tr, tr.killed.t)) + '" y="' + (ys(tr.killed.MB) - 12) + '" fill="' + color + '" font-size="26" font-weight="800" text-anchor="middle">✕</text>');
   });
@@ -208,7 +221,7 @@ async function main(): Promise<void> {
   const emit = opt("--emit");
   if (emit) {
     fs.mkdirSync(emit, { recursive: true });
-    traces.forEach((tr) => fs.writeFileSync(path.join(emit, tr.label.replace(/[^\w.-]+/g, "-") + ".json"), JSON.stringify(tr, null, 2) + "\n"));
+    traces.forEach((tr, i) => fs.writeFileSync(path.join(emit, String(i + 1).padStart(2, "0") + "-" + tr.label.replace(/[^\w.-]+/g, "-") + ".json"), JSON.stringify(tr, null, 2) + "\n"));
   }
   const out = opt("--out");
   if (!out) { if (emit) return; fail("--out <file.svg> is required"); }
@@ -230,4 +243,4 @@ async function main(): Promise<void> {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) await main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
