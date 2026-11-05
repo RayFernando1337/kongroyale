@@ -17,7 +17,7 @@
 EXTENDS Integers, FiniteSets
 
 CONSTANTS Squads, W, Lead, Cap, PlaneLen, R,
-          EndAfterResults,   \* TRUE for a lobby match (server/index.ts Lobby.start), FALSE for practice
+          EndAfterResults,   \* TRUE for a lobby match (server/lobby.ts Lobby.start), FALSE for practice
           Trios              \* TRUE: a squad wipe is final at once (Match.kill: no redeploy without a living squadmate)
 
 VARIABLES phase, over, t, wall, held, skip, streaming, storm, res, sq

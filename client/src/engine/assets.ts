@@ -6,6 +6,7 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { releaseAfterUpload } from "./texture-release";
 import { capped } from "./tex-cap";
+import { flag } from "../flags";
 
 const BASE = import.meta.env.BASE_URL || "/";
 /** resolve a public/ path ("assets/x.glb" or "/assets/x.glb") against the deploy base */
@@ -22,6 +23,7 @@ async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
 }
 
 const DECODER_IDLE_MS = 10000;
+const KTX2 = flag("ktx2");
 
 export class Assets {
   private gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -80,8 +82,9 @@ export class Assets {
     const { srgb = true, repeat = true, aniso = true } = o;
     return this.once(`tex:${path}:${srgb}:${repeat}`, async () => {
       const load = () => retry(() => this.tex.loadAsync(assetUrl(path)));
-      const t = releaseAfterUpload(await load(), async () => capped((await load()).image));
-      (t as THREE.Texture).image = capped(t.image);
+      const k = KTX2 ? await (await import("./ktx2-tex")).ktx2Texture(path, (p) => retry(() => this.compressedTexture(p))) : null;
+      const t: THREE.Texture = k ?? releaseAfterUpload(await load(), async () => capped((await load()).image));
+      if (!k) (t as THREE.Texture).image = capped(t.image as HTMLImageElement);
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
       if (aniso) t.anisotropy = this.maxAniso;
