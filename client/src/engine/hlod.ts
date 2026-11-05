@@ -165,7 +165,7 @@ export class FarMerge {
     if (p.late()) { p.readyAt = f + 90; return false; }
     this.prepare(p);
     if (this.building || this.pois.some((q) => q.state === "wait")) return false;
-    releaseShaderRecorder();
+    if (!this.engine.streaming) releaseShaderRecorder();
     return true;
   }
 
