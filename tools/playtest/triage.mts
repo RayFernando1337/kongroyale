@@ -243,7 +243,7 @@ export function triageBundle(s: Saved): { entry: IndexEntry; note: string | null
   const prevX = finite(prev?.x), prevZ = finite(prev?.z);
   const position = prev ? (prevX !== null && prevZ !== null ? [prevX, prevZ] as [number, number] : null) : positionAt(ctx, worstStall?.t ?? null, reportT);
   const stale = worstStall !== null && (reportT === null || reportT - worstStall.t > STALL_RECENT_S);
-  const location = { phase, poi: prev ? knownPoi(prev.poi) : (position ? poiAt(position) : stale ? null : knownPoi(dig(ctx, "game", "player", "poi", "id"))), cell: position ? `${Math.floor(position[0] / GRID_M)},${Math.floor(position[1] / GRID_M)}` : null };
+  const location = { phase, poi: prev ? (position ? poiAt(position) : knownPoi(prev.poi)) : (position ? poiAt(position) : stale ? null : knownPoi(dig(ctx, "game", "player", "poi", "id"))), cell: position ? `${Math.floor(position[0] / GRID_M)},${Math.floor(position[1] / GRID_M)}` : null };
 
   const attribution = worstStall ? attributionOf(events, worstStall.t) : null;
   const slot = attribution ? stripVolatile(attribution) : top === "error" ? errorKey : null;

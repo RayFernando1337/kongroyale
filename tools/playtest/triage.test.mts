@@ -164,6 +164,10 @@ const clean = (s: string) => { for (const w of [...callsigns, ...words]) assert.
   assert.equal(entryOf(crashed).location.poi, null, "a heartbeat POI that isn't on the map is ignored");
   assert.equal(entryOf(crashed).location.cell, null, "a crash outside a match has no cell, and takes none from the new session");
 
+  crashed.ctx.diag.prev = { sid: "old", phase: 2, poi: "the-wreck", x: -1200, z: 90, clean: false };
+  assert.equal(entryOf(crashed).location.poi, null, "a crash far from every POI is placed by its coordinates, not by the heartbeat's nearest POI");
+  assert.equal(entryOf(crashed).location.cell, "-12,0");
+
   const stale = base();
   stale.ctx.diag.path.rows = [];
   stale.bundle.timeline.rows[11][stale.bundle.timeline.fields.indexOf("t")] = 600;
