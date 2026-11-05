@@ -508,6 +508,7 @@ function checkBudgets(r: RunResult, file: string): boolean {
   const b = JSON.parse(fs.readFileSync(file, "utf8")) as { config: Record<string, string | number>; underPct: number; headroomPct: number; budgets: Record<string, Record<string, number>> };
   const wrongConfig = Object.entries(b.config).filter(([k, v]) => r.config[k] !== v).map(([k, v]) => `${k} ${String(r.config[k])} (budgets are for ${v})`);
   if (wrongConfig.length) { console.log(`FAIL ${file} doesn't apply to this run: ${wrongConfig.join(", ")}`); return false; }
+  if (r.errors.length) { console.log(`FAIL the run had errors:\n  ${r.errors.join("\n  ")}`); return false; }
   let ok = true;
   for (const [phase, metrics] of Object.entries(b.budgets)) {
     const c = r.cases.find((x) => x.scenario.id === `memory/${phase}`);
