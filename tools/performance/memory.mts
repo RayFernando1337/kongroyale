@@ -178,6 +178,9 @@ const PROBE = `(function () {
     var t = 0, b = 0, k = window.__kr || {}, cm = k.game && k.game.cm;
     M.tex.forEach(function (rr) { for (var key in rr.levels) t += rr.levels[key]; });
     M.buf.forEach(function (x) { b += x.bytes; });
+    M.rb.forEach(function (x) { b += x.bytes; });
+    M.ctx.forEach(function (gl) { var at = gl.getContextAttributes() || {}, px = gl.drawingBufferWidth * gl.drawingBufferHeight, ms = at.antialias ? 4 : 0;
+      b += px * 4 * (1 + ms) + (at.depth || at.stencil ? px * 4 * Math.max(1, ms) : 0) + (at.preserveDrawingBuffer ? px * 4 : 0); });
     return { textureBytes: t, textures: M.tex.size, bufferBytes: b, phase: cm ? cm.phase | 0 : -1, stage: String(k.stage || ""), streamStage: String(k.streamStage || "") };
   };
   M.sample = function (top) {
@@ -546,7 +549,6 @@ function table() {
   }
 }
 
-if (cmd === "run") await run();
+if (cmd === "run") { await run(); process.exit(process.exitCode ?? 0); }
 else if (cmd === "table") table();
-if (cmd === "run") process.exit(process.exitCode ?? 0);
 else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--heap] | table result.json... [--md]"); process.exitCode = cmd === "help" ? 0 : 2; }
