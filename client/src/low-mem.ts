@@ -207,6 +207,8 @@ async function loadImpostors(engine: Engine, w: World, out: Map<string, THREE.Me
       mesh.visible = !w.modOf.has("poi:" + id) || streamMs["poi:" + id] === undefined;
       group.add(mesh);
       out.set("poi:" + id, mesh);
+      const far = engine.far.pois.find((q) => q.id === "poi:" + id);
+      if (far && !w.modOf.has("poi:" + id)) engine.far.drop(far);
     } catch (e) { w.report("far-impostor:" + id, e); }
   }));
 }
