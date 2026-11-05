@@ -1,3 +1,4 @@
+import * as dmath from "./dmath";
 // CLIMBING: ladders on the buildings / hulls / decks and rope-wrapped giant jungle trunks up to a
 // sniper perch. A climb is a vertical line on a face: walk into it (facing it) to grab on, W / S (or the stick) climbs
 // — looking up / down or facing away flips which way W goes, like every FPS ladder — jump kicks off, the top pulls you
@@ -43,6 +44,6 @@ export const CLIMB = {
 
 /** a ladder against a face (the usual case): exit = into the face */
 export function ladder(x: number, z: number, y0: number, y1: number, nx: number, nz: number, hw = 0.42, off = 0.56): Climb {
-  const l = Math.hypot(nx, nz) || 1;
+  const l = dmath.hypot(nx, nz) || 1;
   return { x, z, y0, y1, nx: nx / l, nz: nz / l, hw, ex: -nx / l, ez: -nz / l, kind: 0, off };
 }
