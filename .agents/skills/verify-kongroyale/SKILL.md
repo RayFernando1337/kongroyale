@@ -147,8 +147,8 @@ list: commands land over time, and a newer one beats a recipe here.
 On Windows: `tools/run-tests.mjs` spawns `npm` and `npx` through a shell (#17), and the swimming and walk-graph tests
 read files through file URLs (#16). If a check still fails there, run it alone with `npm test -- --only <id>` and say
 in the PR which checks you could not run; CI on Linux runs them all. `npm start` and `npm run kongbot:db` use POSIX shell syntax and
-do not run from cmd or PowerShell: use `up --prod` to serve `dist/`. `node tools/shot.mjs` launches Playwright's own
-Chromium unless `KR_CHROME` names a browser; set it to Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`).
+do not run from cmd or PowerShell: use `up --prod` to serve `dist/`. `node tools/shot.mjs` launches the installed Google
+Chrome unless `KR_CHROME` names another browser, and starts its dev server with `node node_modules/vite/bin/vite.js`.
 `tools/verify-boot.mts` runs its `npm run build` step through a shell on Windows. Playwright's bundled headless shell is an x64 build, so on Windows on ARM
 also pass `--chrome` with that Chrome path. The run is still SwiftShader: there the title was ready about 180 s after
 load, and the whole run passed in about 6 minutes. `tools/verify-online-match.mts` prints `FAIL (1)` on Windows even when
