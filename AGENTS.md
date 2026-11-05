@@ -130,6 +130,8 @@ catching it; turn it into a check when the same mistake shows up twice.
 | `import type` for type-only imports | Lint rule `import-type` (also flags unused imports) |
 | Download size only goes down | `npm test` (`size` step): gzip bytes for entry, boot, worker and lazy JS against `tools/size-budgets.json`. Over budget fails, and so does more than 5% under until the budget is lowered |
 | Memory at the title only goes down | CI job "no-GPU boot smoke" (`memory.mts --budgets tools/memory-budgets.json`): WebGL bytes, textures, buffers and CPU copies the game holds at the playable title on SwiftShader. Over budget fails, and so does more than 5% under until the budget is lowered |
+| A match leaves nothing behind | CI job "no-GPU match-to-match memory" (`memory.mts --warmup --budgets tools/memory-leak-budgets.json`): three practice matches entered and left in their warm-up. WebGL bytes, textures, geometries and ledger bytes may not grow from the second to the third past the `leak` ceilings, and the match scope must be closed after leaving |
+| The renderer holds no unowned resource | The same job with `?resaudit`: geometries, textures and render targets the renderer holds that no resource scope owns stay under the `left3` ceiling, which is lowered as owners move to scopes |
 | URL flags are read through `client/src/flags.ts` | Lint rule `url-flags`: no `location.search` read anywhere in `client/src/` outside the registry. Lint rule `url-params`: no reads of the page URL's `searchParams`. Both rules have empty baselines, so any raw read fails |
 | Wire ids are `const enum`s | Review only |
 | No new dependencies without discussion | Review only (`package.json` is on the Ask first list) |

@@ -105,6 +105,28 @@ budget (the measured value plus `headroomPct`, 2%), so a cut lands together with
 so a budget never applies to a different viewport or profile. Process totals are not budgeted: they move by a gigabyte
 between runs.
 
+## Match to match and resource ownership
+
+[tools/memory-leak-budgets.json](../../../tools/memory-leak-budgets.json) is checked by CI's "no-GPU match-to-match
+memory" job:
+
+```sh
+npx tsx tools/performance/memory.mts run --url "http://127.0.0.1:3140/?resaudit&modules=atmos,terrain,water,veg,poi:lobby-islet,showcase,weapons-showcase,gameplay-stage" \
+  --warmup --matches 3 --max-mb 9000 --budgets tools/memory-leak-budgets.json
+```
+
+`--warmup` samples each match in its warm-up (phase 0) and leaves it at once, and fails a sample taken in any other
+phase. `?resaudit` loads `engine/res/audit.ts`, which records every geometry, texture and render target the renderer
+holds, and `__kr.resAudit()` splits them into what a resource scope owns and what it doesn't. That adds `ownedMB`,
+`unownedMB`, `unownedCount` and `ledger.<category>MB` to every sample. The run also adds a `memory/leak` case: what grew
+from the second-to-last left sample to the last one, never negative. It prints the unowned resources that grew by name
+or geometry type. Compare the last two matches, not the first two: the island is still streaming during the first one,
+so left1 to left2 moves by 0 to 46 geometries from run to run, while left2 to left3 moves by 0 to 2.
+
+Keep this to the title modules and the warm-up. On SwiftShader the browser passes 10 GB once Peel Harbor streams in,
+which kills a 16 GB runner. Always pass `--max-mb`. The file sets `underPct` to 100 because growth is zero when nothing
+leaks, so these numbers are ceilings: lower `left3` by hand when an owner moves to a scope.
+
 ## Gotchas
 
 - `(not in the scene)` textures are real allocations the scene walk can't name. The `sites` table shows the call
