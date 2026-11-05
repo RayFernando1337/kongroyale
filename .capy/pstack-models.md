@@ -13,7 +13,7 @@
 | feature, refactoring | claude-code/claude-sonnet-5-5 · high |
 | bug-fix | claude-code/claude-opus-5-5 · medium |
 | perf-issue | claude-code/claude-opus-5-5 · medium |
-| hillclimb | claude-code/claude-sonnet-5-5 · high |
+| hillclimb | claude-code/claude-opus-5-5 · high |
 | judgment and prose | claude-code/claude-sonnet-5-5 · high |
 | hardest tasks | claude-code/claude-opus-5-5 · xhigh |
 | how explorer | xai/grok-4.7 · medium fast |
