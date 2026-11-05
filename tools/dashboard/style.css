@@ -73,3 +73,6 @@ footer{color:var(--muted);text-align:center;padding:32px;font-size:.85rem;border
 .card.remeasuring{opacity:.75}
 .card.remeasuring .delta{color:var(--muted)}
 .card.remeasuring .bar.after{background:#6b7387}
+.chart{margin-top:16px;border-radius:16px;overflow:hidden}
+.chart svg{display:block;width:100%;height:auto}
+.card.memory.pending{opacity:.75}
