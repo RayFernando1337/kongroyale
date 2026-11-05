@@ -70,7 +70,7 @@ const PAN_RATE = 0.6, PAN_PITCH = -0.08, SEED = 42, WARM_WINDOW_S = 15;
 const HEADED = process.argv.includes("--headed");
 const SHOTS = arg("--shots", ""), TRACE = arg("--trace", ""), TRACE_S = Number(arg("--trace-s", "30"));
 const HEAPPROF = arg("--heap-profile", ""), CENSUS = process.argv.includes("--census");
-const census: Record<string, Array<[string, number]>> = {};
+const census: Record<string, { frames: number; draws: Array<[string, number]> }> = {};
 const EXTRA = arg("--query", "");
 const ANGLE = arg("--angle", process.platform === "win32" ? "d3d11" : process.platform === "darwin" ? "metal" : "vulkan");
 const CHROME = arg("--chrome", process.env.KR_CHROME ?? "");
@@ -378,6 +378,26 @@ try {
         if (s.landed && !landedAt) {
           landedAt = Date.now(); route.landed = { x: s.x, z: s.z };
           log("landed at " + s.x + ", " + s.z + ": the " + ROUTE + " starts (" + SEGS.map((q) => q.id).join(", ") + ")");
+          // --census: every 20th measured frame, count the frame's draws by pass and object (diagnostic: the wrapper costs time)
+          if (CENSUS) await page.evaluate(() => {
+            const kr = (window as any).__kr, r = kr.engine.renderer, orig = r.renderBufferDirect, eng = kr.engine, step = eng.step;
+            const agg: Record<number, { frames: number; m: Map<string, number> }> = {}; kr.census = agg;
+            let on = false, fr = 0, cur: { frames: number; m: Map<string, number> } | null = null;
+            r.renderBufferDirect = function (cam: any, scene: any, geo: any, mat: any, obj: any) {
+              if (on && cur) {
+                const rt = r.getRenderTarget(), pass = scene === null ? "shadow" : rt ? "rt " + rt.width + "x" + rt.height : "screen";
+                const names: string[] = []; for (let o = obj; o && names.length < 8; o = o.parent) if (o.name) names.push(o.name);
+                const k = pass + " | " + (obj.isInstancedMesh ? "inst " : obj.isSkinnedMesh ? "skin " : obj.isBatchedMesh ? "batch " : "") + names.slice(-2).reverse().join("/") + " | " + mat.type + (mat.name ? ":" + mat.name : "");
+                cur.m.set(k, (cur.m.get(k) ?? 0) + 1);
+              }
+              return orig.apply(this, arguments as any);
+            };
+            eng.step = function (dt: number) {
+              const run = kr.tourRun; on = !!run?.measuring && ++fr % 20 === 0;
+              if (on) { cur = agg[run.index] ??= { frames: 0, m: new Map() }; cur.frames++; }
+              try { return step.call(this, dt); } finally { on = false; }
+            };
+          });
           await page.evaluate(startTour, { segs: SEGS, R: K.PLAYER_R, H: K.PLAYER_H, maxHp: K.MAX_HP, ar: MAP.WEAPONS.indexOf("ar"), arMag: K.WEAPON_DEFS.ar.mag, arAmmo: ammoIndex(K.WEAPON_DEFS.ar.ammo) });
         }
         const tag = s.seg + " " + s.segPhase;
@@ -388,17 +408,6 @@ try {
             const n1 = await page.evaluate(() => (window as any).__kr.gpuCollector.n as number), f = path.resolve(HEAPPROF + "-" + profiling + ".heapprofile");
             fs.writeFileSync(f, JSON.stringify({ frames: n1 - profN0, ...(profile as object) })); artifacts.push(f); log("  heap profile of " + profiling + ": " + (n1 - profN0) + " frames, " + f); profiling = "";
           }
-          if (CENSUS && s.segPhase === "run") census[SEGS[s.seg].id] = await page.evaluate(() => new Promise<Array<[string, number]>>((res) => {
-            const r = (window as any).__kr.engine.renderer, orig = r.renderBufferDirect, m = new Map<string, number>();
-            r.renderBufferDirect = function (cam: any, scene: any, geo: any, mat: any, obj: any) {
-              const rt = r.getRenderTarget(), pass = scene === null ? "shadow" : rt ? "rt " + rt.width + "x" + rt.height : "screen";
-              const names: string[] = []; for (let o = obj; o && names.length < 8; o = o.parent) if (o.name) names.push(o.name);
-              const k = pass + " | " + (obj.isInstancedMesh ? "inst " : obj.isSkinnedMesh ? "skin " : "") + names.slice(-3).reverse().join("/") + " | " + mat.type + (mat.name ? ":" + mat.name : "");
-              m.set(k, (m.get(k) ?? 0) + 1);
-              return orig.apply(this, arguments as any);
-            };
-            requestAnimationFrame(() => requestAnimationFrame(() => { r.renderBufferDirect = orig; res([...m].sort((a, b) => b[1] - a[1]).slice(0, 80)); }));
-          }));
           if (cdp && s.segPhase === "run") {
             await cdp.send("HeapProfiler.startSampling", { samplingInterval: 32768, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true } as never);
             profiling = SEGS[s.seg].id; profN0 = await page.evaluate(() => (window as any).__kr.gpuCollector.n as number);
@@ -426,6 +435,7 @@ try {
     return { panT0: c.panT0 as number, PN: a(c.PN), n, invalid: c.invalid, disjoints: c.disjoints, timer: c.timer, T: a(c.T), CPU: a(c.CPU), GPU: a(c.GPU), PH: a(c.PH), ST: a(c.ST), SR: a(c.SR), loaf: c.loaf, ...attrib } as any;
   }, [...ATTRIB]);
   if (ROUTE !== "pan") tour = await page.evaluate(() => { const r = (window as any).__kr.tourRun; return r ? { results: r.results, log: r.log } : null; });
+  if (CENSUS) for (const [k, v] of Object.entries(await page.evaluate(() => Object.fromEntries(Object.entries((window as any).__kr.census ?? {}).map(([k, v]: [string, any]) => [k, { frames: v.frames, draws: [...v.m].sort((a: any, b: any) => b[1] - a[1]).slice(0, 150) }]))) as Record<string, { frames: number; draws: Array<[string, number]> }>)) census[SEGS[Number(k)].id] = { frames: v.frames, draws: v.draws.map(([n, c]) => [n, +(c / v.frames).toFixed(2)] as [string, number]) };
   pageInfo.krErrors = await page.evaluate(() => (window as any).__kr.errors.slice(0, 20));
   pageInfo.renderScale = await page.evaluate(() => (window as any).__kr.engine.renderScale);
   pageInfo.streamedAt = await page.evaluate(() => (window as any).__kr.streamedAt ?? null);
