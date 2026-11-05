@@ -116,7 +116,7 @@ for (const job of jobs) {
     await page.evaluate(() => document.querySelectorAll("vite-error-overlay").forEach((el) => el.remove())).catch(() => {});
     await page.screenshot({ path: file, type: "png" });
     res.file = path.relative(root, file);
-    if (flag("--bench")) res.bench = await page.evaluate(() => ({ ...window.__kr.bench(90), info: window.__kr.info(), buildMs: window.__kr.buildMs, terrainMs: window.__kr.terrainMs }));
+    if (flag("--bench")) res.bench = await page.evaluate(async () => ({ ...(await window.__kr.bench(90)), info: window.__kr.info(), buildMs: window.__kr.buildMs, terrainMs: window.__kr.terrainMs }));
     if (flag("--compare")) res.compare = path.relative(root, (await compare(job.view, file, path.join(outDir, "compare", `${job.view}.png`))) ?? "") || null;
     res.errors = (await page.evaluate(() => window.__kr.errors)).concat(consoleErrors);
   } catch (e) {

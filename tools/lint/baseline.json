@@ -96,7 +96,7 @@
     "client/src/engine/cull.ts": 137,
     "client/src/engine/display.ts": 70,
     "client/src/engine/dither.ts": 35,
-    "client/src/engine/engine.ts": 189,
+    "client/src/engine/engine.ts": 187,
     "client/src/engine/exact-index.ts": 3,
     "client/src/engine/fly.ts": 1,
     "client/src/engine/frame.ts": 13,
