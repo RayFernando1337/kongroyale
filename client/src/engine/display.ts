@@ -154,6 +154,7 @@ export class Display {
   readonly gpu: string;
   readonly gpuLevel: Level;
   firstVisit: boolean;
+  private recalibrating = false;
   /** first-visit bench result (tools) */
   bench: { gpuMs: number; fps: number; from: Level; to: Level; timer: boolean } | null = null;
   /** what veg reported for the last apply (tools read it per preset) */
@@ -172,6 +173,7 @@ export class Display {
     const saved = store.get();
     const reclassified = !!saved && saved.preset === "auto" && !saved.stepped && saved.auto !== this.gpuLevel;
     this.firstVisit = !saved || reclassified;
+    this.recalibrating = reclassified;
     this.settings = saved && !reclassified ? saved : { ...presetSettings(this.gpuLevel, this.backingPx(), { ...saved, auto: this.gpuLevel }, true), dynres: saved?.dynres ?? false };
     if (!saved || reclassified) this.settings.preset = "auto";
     // the FOV used to live on the pause card too (kr-settings.fov, re-synced to this store at every boot and then moved by
@@ -181,7 +183,7 @@ export class Display {
     this.settings.fov = Number.isFinite(this.settings.fov) ? Math.max(60, Math.min(90, this.settings.fov)) : 72;
     this.applyFov();
     if (this.settings.res3d < 0) this.settings.res3d = presetRes(this.settings.auto, this.backingPx());
-    if (migrated || reclassified || (saved && Number.isFinite(legacyFov))) store.set(this.settings);
+    if (migrated || (saved && Number.isFinite(legacyFov))) store.set(this.settings);
     engine.onRefresh(() => this.applyCap());
   }
 
@@ -282,7 +284,7 @@ export class Display {
     // (a refresh measured under a starved main thread reads far below 60 Hz — e.g. "7 Hz" → a 140 ms budget that
     // never stepped down; a display is 60-120 Hz for this purpose)
     const hz = Math.min(Math.max(e.refreshHz || 60, 60), 120);
-    const budget = 1000 / hz;
+    const budget = 1000 / (e.frameCap > 0 ? Math.min(hz, e.frameCap) : hz);
     const from = this.settings.auto;
     let to = from;
     const gpuOk = r.gpuMs > 0 && r.timer;
@@ -299,6 +301,7 @@ export class Display {
       this.set({ stepped: st });
       this.onStepped(st);
     } else if (to !== from) this.settings = { ...this.settings, auto: to };
+    else if (this.recalibrating) store.set(this.settings);
   }
   /** the player saw the step-down notice */
   ackStepped() { if (this.settings.stepped && !this.settings.stepped.ack) this.set({ stepped: { ...this.settings.stepped, ack: true } }); }
