@@ -37,6 +37,7 @@ import { Display, bootQuality } from "./engine/display";
 import { WARMUP_S } from "../../shared/sim/const";
 import { afterPaint as nextFrame, noFrameWaitCount } from "./engine/frame";
 import { flag } from "./flags";
+import { resources, type Scope } from "./engine/res/scope";
 
 const shot = flag("shot");
 const errors: string[] = [];
@@ -206,6 +207,7 @@ let buildGate: { active: boolean } | null = null;
 const buildGates = new Map<string, { gate: { active: boolean }; adds: THREE.Object3D[] }>();
 onStructure((parent, child, added) => { if (added && child && buildAdds && parent === engine.scene && !engine.inStep) { buildAdds.push(child); if (buildGate) gate(child, buildGate); } });
 const modOf = new Map<string, WorldModule>();
+const scopeOf = new Map<string, Scope>();
 
 /** build one module; returns it (or null on error) with the scene roots it added */
 async function buildOne(id: string, streamed: boolean): Promise<WorldModule | null> {
@@ -220,14 +222,16 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   engine.beginSlice();
   const t0 = performance.now();
   let m: WorldModule | null = null;
+  const scope = resources.root.child(`region:${id}`);
   try {
     m = await imports.get(id)!;
-    await m.build(engine);
+    await m.build(engine, scope);
+    scopeOf.set(id, scope);
     loaded.push(m);
     modOf.set(id, m);
     kr.modules = loaded.map((x) => x.id);
     Object.assign(views, m.views ?? {});
-  } catch (e) { report(`build:${id}`, e); m = null; }
+  } catch (e) { report(`build:${id}`, e); m = null; scope.dispose(); }
   buildMs[id] = Math.round(performance.now() - t0);
   buildAdds = null; buildGate = null;
   // behind the loading screen: start the parallel compile of what this module drew right away — the driver compiles on

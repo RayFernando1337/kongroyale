@@ -86,6 +86,14 @@ children first.
 | `match` | one match, from start to leaving | `game/index.ts` | `GameRender` and everything it creates: views, FX, markers, the storm volume |
 | `transient` | one call | the function that opens it | bake targets, readback buffers, worker pools for one build |
 
+A world module gets its region scope as the second argument to `build(ctx, scope)`. `buildOne` creates it as
+`region:<module id>` (`region:poi:peel-harbor`), keeps it for as long as the module is resident, and disposes it when the
+build throws. Eviction is the caller's job: it takes off the scene roots and `ctx.onUpdate` hooks the build added, calls
+the module's optional `release(ctx)`, then disposes the scope. `release` undoes only what the caller can't see, such as
+module-level caches and fields that hold built objects. After it returns, `build` can run again on the same module
+object, because modules are singletons. A region scope never owns a resource another module shares: a kit's cached
+materials and textures, used by several towns, belong to a kit scope or the app scope.
+
 The API is `client/src/engine/res/scope.ts`. A scope takes ownership of an object you have just made and returns it,
 so the call site reads like the code it replaces:
 
