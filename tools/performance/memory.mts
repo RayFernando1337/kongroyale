@@ -401,7 +401,7 @@ async function run() {
   const pageCdp = await ctx.newCDPSession(page);
   const waitS = nogpu ? 900 : 180;
   const traceS = Number(opt("--trace-secs", "15")), maxMB = Number(opt("--max-mb", String(Math.round(os.totalmem() / MB * 0.7))));
-  const timeline: Array<{ atS: number; totalMB: number; byType: Record<string, number>; heapUsedMB: number; webglMB: number; textures: number; phase: number; stage: string; streamStage: string }> = [];
+  const timeline: Array<{ atS: number; totalMB: number; byType: Record<string, number>; unmeasured: string[]; heapUsedMB: number; webglMB: number; textures: number; phase: number; stage: string; streamStage: string }> = [];
   let lastTrace = 0;
   const trace = async () => {
     if (Date.now() - lastTrace < traceS * 1000) return;
@@ -409,18 +409,20 @@ async function run() {
     const procs = await processes(browserCdp);
     const byType: Record<string, number> = {};
     for (const p of procs) byType[p.type] = Math.round(((byType[p.type] ?? 0) + (procMB(p) ?? 0)) * 10) / 10;
-    const totalMB = Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0));
+    const totalMB = Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0)), unmeasured = procs.filter((p) => procMB(p) === null).map((p) => `${p.type} ${p.pid}`);
     const heap = await pageCdp.send("Runtime.getHeapUsage") as { usedSize: number };
     const g = await page.evaluate(() => (window as unknown as { __krMem: { totals(): { textureBytes: number; textures: number; bufferBytes: number; phase: number; stage: string; streamStage: string } } }).__krMem.totals());
-    const point = { atS: Math.round((performance.now() - t0) / 1000), totalMB, byType, heapUsedMB: mb(heap.usedSize), webglMB: mb(g.textureBytes + g.bufferBytes), textures: g.textures, phase: g.phase, stage: g.stage, streamStage: g.streamStage };
+    const point = { atS: Math.round((performance.now() - t0) / 1000), totalMB, byType, unmeasured, heapUsedMB: mb(heap.usedSize), webglMB: mb(g.textureBytes + g.bufferBytes), textures: g.textures, phase: g.phase, stage: g.stage, streamStage: g.streamStage };
     timeline.push(point);
     console.log(`    ${point.atS} s: ${totalMB} MB (GPU ${byType.GPU ?? 0}, renderer ${byType.renderer ?? 0}), JS heap ${point.heapUsedMB}, WebGL ${point.webglMB} in ${g.textures} textures, phase ${g.phase} ${g.stage} ${g.streamStage}`);
   };
   const notes: string[] = [];
   let overCap = "";
+  const watchdogBlind = new Set<number>();
   const watchdog = setInterval(() => {
     void processes(browserCdp).then((procs) => {
       const total = Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0));
+      for (const p of procs) if (procMB(p) === null && !watchdogBlind.has(p.pid)) { watchdogBlind.add(p.pid); errors.push(`the watchdog has no memory reading for ${p.type} ${p.pid}, so --max-mb can't see it`); }
       if (total <= maxMB || overCap) return;
       overCap = `the browser passed --max-mb ${maxMB} MB (${total} MB at ${Math.round((performance.now() - t0) / 1000)} s); stopped it before the machine runs out of memory`;
       errors.push(overCap);
