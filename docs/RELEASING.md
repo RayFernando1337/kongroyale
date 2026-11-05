@@ -58,19 +58,20 @@ This moves `stable` and clears the release's prerelease flag.
 
 Part of both GPU smokes: Kong Mini (Metal) and Kong RTX (D3D11). Ray reported a release that felt laggy and read badly from the plane, and every gate before this one passed it (RAY-135). This check compares `next` with the last `stable` on frame time in flight and on the plane view.
 
-1. Build both sides: `stable` in a sibling worktree, `next` in your checkout.
+1. Build both sides from their tags, each in its own worktree. `main` may have moved past the release since the cut, so never build the candidate from your checkout. Before you promote, check that the measured `next` commit is still the release tag's commit.
 2. Run `tools/performance/gpu-match.mts` five times a side, interleaved, at a fixed preset, one GPU job at a time. A run takes about 7 minutes, so plan on about 70 minutes per machine.
-3. Compare the p95 frame interval. A `worse` row in `gpu/match/plane`, `gpu/match/descent` or `gpu/match/ground-pan` blocks promotion. That means the medians differ by more than 10 % and every `next` run falls outside the `stable` range. The `warmup-15s` row is for information only.
+3. Compare the p95 frame interval. A `worse` row in `gpu/match/plane`, `gpu/match/descent` or `gpu/match/ground-pan` blocks promotion. That means the medians differ by more than 10 % and every `next` run falls outside the `stable` range. The `warmup-15s` row is for information only. `compare.mts` exits nonzero on any `worse` row, warm-up included, so gate on the three named rows in its table (also saved with `--out`), not on the exit status.
 4. Put the first `stable` and `next` plane screenshots (`*-plane.png`, 8 s into the plane) side by side in the smoke report. A plane view with visibly missing POIs, trees or detail also blocks promotion.
 
 ```sh
-git worktree add ../kr-stable stable && (cd ../kr-stable && npm ci && npm run build)
-npm run build
+git fetch --tags --force origin
+git worktree add --detach ../kr-stable stable && (cd ../kr-stable && npm ci && npm run build)
+git worktree add --detach ../kr-next next && (cd ../kr-next && npm ci && npm run build && git rev-parse HEAD)
 for i in 1 2 3 4 5; do
   npx tsx tools/performance/gpu-match.mts --root ../kr-stable --preset high --shots shots/flight --out reports/flight/stable-$i.json
-  npx tsx tools/performance/gpu-match.mts --preset high --shots shots/flight --out reports/flight/next-$i.json
+  npx tsx tools/performance/gpu-match.mts --root ../kr-next --preset high --shots shots/flight --out reports/flight/next-$i.json
 done
-npx tsx tools/performance/compare.mts --base reports/flight/stable-*.json --cand reports/flight/next-*.json --metrics frameIntervalMs --stats p95 --threshold 10
+npx tsx tools/performance/compare.mts --base reports/flight/stable-*.json --cand reports/flight/next-*.json --metrics frameIntervalMs --stats p95 --threshold 10 --out reports/flight/compare.json
 ```
 
 `gpu-match.mts` drives Chrome only. On the Metal smoke, also open the Safari survival match with `?seed=42&perfhud`, press F8 8 s into the plane for the plane screenshot, and press F8 again after 15 s on the ground. Report the per-phase frame p95 (plane, descent, the first 15 s on the ground) from the second bundle, beside `stable`'s; a bundle only holds the timeline up to the moment F8 was pressed. The Safari numbers are for information until Safari has a repeatable five-run tool. A software renderer fails `gpu-match.mts`, so the cloud machines can't run this check.
