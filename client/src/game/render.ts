@@ -37,6 +37,7 @@ import type { Terrain } from "../../../shared/world/terrain";
 import { releasePlanePaint, restorePlanePaint, type PlaneProps } from "../actors/plane";
 import type { GliderProps } from "../actors/glider";
 import { outfitFor } from "../actors/outfit-pick";
+import { fullKongMaps } from "../actors/kong-asset";
 import type { LightBalancer } from "./lights";
 import { AmmoBoxes } from "./ammobox";
 import { resources, type Scope } from "../engine/res/scope";
@@ -691,7 +692,7 @@ export class GameRender implements EventSink {
         if (this.deadAt >= 0 && this.resCountdown != null && !this.range && this.cm.phase !== 0) this.resCountdown = null;
         break;
       }
-      case ANN.Victory: { const win = a === this.cm.pred.team; if (win) { this.announce("KONG ROYALE VICTORY", "#1", "victory"); this.sfx("ui:victory"); this.placement = 1; this.victoryAt = performance.now(); this.onVictory?.(); } else if (this.deadAt < 0) { this.placement = 2; this.onEliminated?.(); } else if (this.spec.active(this.cm)) this.spectatorVictory(a); break; }
+      case ANN.Victory: { const win = a === this.cm.pred.team; if (win) { this.announce("KONG ROYALE VICTORY", "#1", "victory"); this.sfx("ui:victory"); this.placement = 1; this.victoryAt = performance.now(); void fullKongMaps(); this.onVictory?.(); } else if (this.deadAt < 0) { this.placement = 2; this.onEliminated?.(); } else if (this.spec.active(this.cm)) this.spectatorVictory(a); break; }
       // (economy) bounties and buy-backs: a / b carry teams (or kong ids) — this squad's news only
       case ANN_ECON.Bounty: { const t = this.cm.pred.team; if (a === (t & 0xff)) { this.announce("BOUNTY CONTRACT ACTIVE", "the marked squad is on your map — 90 s", "kill"); this.sfx("ui:countdown"); } else if (b === (t & 0xff)) { this.announce("YOU HAVE A BOUNTY", "a squad is hunting you — survive 90 s for $500", "warn"); this.sfx("storm:shrink"); } break; }
       case ANN_ECON.BountyDone: { const t = this.cm.pred.team; if (a === (t & 0xff)) { this.announce("BOUNTY COMPLETE", "+$1,500 each · the reward dropped where they fell", "victory"); this.sfx("ui:victory"); } else if (b === (t & 0xff)) this.announce("YOUR BOUNTY WAS CLAIMED", "the hunters got one of you", "warn"); break; }
