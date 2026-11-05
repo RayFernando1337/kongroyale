@@ -392,7 +392,7 @@ if (!gameMode) {
       applyView(engine.camera, spec, engine.terrain);
     } else await setView(viewId!);
   } catch (e) { report("view", e); }
-  if (flag("fly")) void import("./engine/fly").then((m) => m.enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn)), (e) => report("fly", e));
+  if (flag("fly")) void import("./engine/dev-probes").then((m) => m.enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn)), (e) => report("fly", e));
   engine.start();
 } else {
   kr.stage = "game";
@@ -649,6 +649,10 @@ const releaseFresh = (m: THREE.Material) => { const h = heldFresh.get(m); if (!h
  * textures uploaded one per slice, and only then shown. Nothing a streamed module adds can stall a frame.
  */
 async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], buildGate?: Gate, openGate?: () => void) {
+  while (!await integrateOnce(urgent, roots, buildGate, openGate));
+}
+
+async function integrateOnce(urgent: boolean, roots: THREE.Object3D[], buildGate?: Gate, openGate?: () => void): Promise<boolean> {
   while (engine.contextLost) await nextFrame();
   const r = engine.renderer;
   const props = r.properties as unknown as { get(o: object): Record<string, unknown> };
@@ -683,7 +687,7 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], bui
     }
     if (hit) objs.push(o);
   });
-  if (!fresh.size && !roots.length) return;
+  if (!fresh.size && !roots.length) return true;
   // a context loss resets every program, so an integration in flight would wait on compiles that never finish and
   // keep its materials hidden: the restore resolves `restored`, the integration stops, and `finally` shows them again
   const epoch = contextEpoch();
@@ -716,7 +720,7 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], bui
     // textures FIRST, one per slice (a first draw uploads every texture it meets in that one task — the
     // hitch log had 130-320 ms 'integrate:*:draw' gaps in the warm-up and the plane), then the first draw in chunks of
     // ≤ 24 meshes (a top-level group can hold hundreds), then the programs' first use.
-    if (gone()) return;
+    if (gone()) return false;
     phase("textures");
     const seen = new Set<THREE.Texture>();
     const upload = (m: THREE.Material) => {
@@ -736,7 +740,7 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], bui
     for (const [m] of fresh) for (const t of upload(m)) { try { r.initTexture(t); } catch { /* skip */ } if (!urgent) await engine.yield(); }
     // first draw of this module's content (all LOD levels) offscreen: buffers / VAOs / first use, now — not on the frame the
     // player first looks at it (the arrival hitch). Restored before any frame runs.
-    if (gone()) return;
+    if (gone()) return false;
     phase("draw");
     if (roots.length) {
       // (a streamed module's build gate is still shut: open for each synchronous offscreen draw only)
@@ -761,7 +765,7 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], bui
       }
     }
     // first use: uniform / attribute tables of the new programs (a sync driver round trip — the compile is done now)
-    if (gone()) return;
+    if (gone()) return false;
     openGate?.();
     phase("first-use");
     for (const pr of (r.info.programs ?? []) as unknown as Array<{ getUniforms?: () => unknown; getAttributes?: () => unknown; isReady?: () => boolean }>) {
@@ -772,6 +776,7 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], bui
     engine.cull.reveal(objs.slice(roots.length));
     const log = (kr.integrateLog as Array<unknown> | undefined) ?? (kr.integrateLog = []) as Array<unknown>;
     log.push({ materials: fresh.size, textures: seen.size, ms: Math.round(performance.now() - t0) });
+    return true;
 
   } finally {
     stopWatching();
