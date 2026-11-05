@@ -300,8 +300,8 @@ uploads geometry and textures again from their CPU copies. On its own that leave
 A deletion of an object made before the loss is skipped (`ignoreStaleDeletes`), so three.js's leftover listeners are
 harmless. A bake must not sample its own target: the terrain's far albedo clears `tFar` while it redraws.
 
-What enforces it: `tools/verify-context-loss.mts`, run by hand for now (a CI job "no-GPU context restore" is proposed
-separately), on SwiftShader with the title modules. It calls `WEBGL_lose_context.loseContext()` and then `restoreContext()` twice: once at the title, and
+What enforces it: the CI job "no-GPU context restore" runs `tools/verify-context-loss.mts` on SwiftShader with the
+title modules. It calls `WEBGL_lose_context.loseContext()` and then `restoreContext()` twice: once at the title, and
 once in the warm-up of a practice match. Each time it sets a marker on `window` before the loss and requires the same
 document afterwards (no reload), a higher `__kr.restores`, the frame loop running, no `__kr.errors`, no page error and
 no WebGL or three.js console warning, and a picture at least 60% as bright as before the loss (an empty bake shows as
@@ -321,7 +321,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | A match leaves nothing behind | The same CI job: three practice matches, each entered and left in its warm-up, with only the title modules (`?modules=`), because on SwiftShader the browser passes 10 GB once Peel Harbor streams in. What grows from the second left sample to the third (WebGL bytes, textures, geometries, unowned resources, ledger bytes per category) stays under `leak` in `tools/memory-leak-budgets.json`, and the run fails if the match scope is still open after leaving. The first match is not compared: the island keeps streaming through it. `--max-mb` stops the browser before the runner runs out of memory |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
 | Only the cache frees what it lends | Development builds throw on `dispose()` of a cached resource from outside the cache |
-| The game survives a WebGL context loss | Review only until a CI job runs `tools/verify-context-loss.mts`: `loseContext()` then `restoreContext()` at the title and again in a match's warm-up, the same document, a higher `__kr.restores`, no page, WebGL or three.js error and the picture as bright as before (see [Context loss](#context-loss)) |
+| The game survives a WebGL context loss | CI job "no-GPU context restore" (`tools/verify-context-loss.mts`): `loseContext()` then `restoreContext()` at the title and again in a match's warm-up, the same document, a higher `__kr.restores`, no page, WebGL or three.js error and the picture as bright as before (see [Context loss](#context-loss)) |
 
 Geometry constructors are not in the lint rule. Most of the roughly 1,400 `new THREE.*Geometry` calls build temporary
 inputs that are merged and never reach the GPU, so a lint would mostly flag harmless code. The "no unowned resource"
