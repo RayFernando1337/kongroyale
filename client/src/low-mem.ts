@@ -33,11 +33,13 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
   let best: string | null = null, bestD = Infinity;
+  const limitM = buildLimitM();
   pickedByView = false;
   for (const id of pending) {
     const p = pois.find((x) => `poi:${x.id}` === id);
     if (!p) { pickedByView = false; return id; }
     const d = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
+    if (d >= limitM) continue;
     const near = (airborne ? Math.hypot(d, e[13] - (p.padY ?? 0)) : d) < radiusM;
     const seen = overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M)));
     if (!seen && !near) continue;
@@ -101,26 +103,62 @@ export async function evictStreamed(engine: Engine, w: World, id: string) {
   (kr.evictions ??= []).push({ id, at: Math.round(performance.now()), ...freed });
 }
 
+type Resident = { id: string; d: number; mb: number };
+const costOf = new Map<string, number>();
+let residents: (() => Resident[]) | null = null;
+
+function costMB(roots: readonly THREE.Object3D[]): number {
+  const bufs = new Set<object>(), tex = new Set<THREE.Texture>();
+  for (const r of roots) r.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.geometry) for (const b of buffersOf(m.geometry)) bufs.add(b);
+    if (m.material) for (const x of Array.isArray(m.material) ? m.material : [m.material]) texturesOf(x, tex);
+  });
+  let bytes = 0;
+  for (const b of bufs) bytes += (b as { array?: ArrayBufferView }).array?.byteLength ?? 0;
+  for (const t of tex) { const im = t.image as { width?: number; height?: number } | null; if (im?.width && im.height) bytes += im.width * im.height * 4 * (t.generateMipmaps ? 4 / 3 : 1); }
+  return bytes / 1e6;
+}
+
+function over(list: Resident[], room: number): boolean {
+  return list.length + room > flag("lowmemcap") || list.reduce((a, r) => a + r.mb, 0) > flag("lowmembudget");
+}
+
+function victimOf(list: Resident[]): Resident | null {
+  const v = list[list.length - 1];
+  return list.length > 1 && v.d > 0 ? v : null;
+}
+
+function buildLimitM(): number {
+  const list = residents?.() ?? [];
+  if (!over(list, 1)) return Infinity;
+  const v = victimOf(list);
+  return v ? v.d - flag("lowmemhyst") : -Infinity;
+}
+
 let trimming = Promise.resolve();
 
 export function trimStreamed(engine: Engine, w: World, room: number, pending: string[], streamMs: Record<string, number>, pois: readonly Poi[]) {
+  residents ??= () => {
+    const e = engine.camera.matrixWorld.elements, list: Resident[] = [];
+    for (const id of w.modOf.keys()) {
+      if (!id.startsWith("poi:") || streamMs[id] === undefined) continue;
+      const p = pois.find((x) => `poi:${x.id}` === id);
+      let mb = costOf.get(id);
+      if (mb === undefined) costOf.set(id, (mb = costMB(w.roots(id))));
+      list.push({ id, d: p ? Math.hypot(e[12] - p.x, e[14] - p.z) - p.r : 0, mb });
+    }
+    return list.sort((a, b) => a.d - b.d);
+  };
   return (trimming = trimming.then(async () => {
-    const kr = (globalThis as unknown as { __kr?: Session }).__kr;
-    if (kr?.game?.inMatch && (kr.game.cm?.phase ?? -1) < Phase.Play) return;
     for (;;) {
-      const resident = [...w.modOf.keys()].filter((x) => x.startsWith("poi:") && streamMs[x] !== undefined);
-      if (resident.length + room <= flag("lowmemcap")) return;
-      const e = engine.camera.matrixWorld.elements;
-      let victim: string | null = null, bestD = flag("lowmemr") + flag("lowmemhyst");
-      for (const id of resident) {
-        const p = pois.find((x) => `poi:${x.id}` === id);
-        const d = p ? Math.hypot(e[12] - p.x, e[14] - p.z) - p.r : 0;
-        if (d > bestD) { victim = id; bestD = d; }
-      }
+      const list = residents!();
+      const victim = over(list, room) ? victimOf(list) : null;
       if (!victim) return;
-      await evictStreamed(engine, w, victim);
-      pending.push(victim);
-      delete streamMs[victim];
+      await evictStreamed(engine, w, victim.id);
+      costOf.delete(victim.id);
+      pending.push(victim.id);
+      delete streamMs[victim.id];
     }
   }).catch((e) => w.report("lowmem-trim", e)));
 }
