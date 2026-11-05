@@ -433,3 +433,12 @@ export function drawBananaBunch(c: CanvasRenderingContext2D, cx: number, cy: num
   if (o.outline) { c.lineWidth = Math.max(1.5, len * 0.02); c.strokeStyle = o.outline; c.stroke(); }
   c.restore();
 }
+
+/** a worker-painted bitmap downscaled to poicap; the original is closed */
+export async function cappedBitmap(bm: ImageBitmap): Promise<ImageBitmap> {
+  const c = capped(bm);
+  if (c === bm) return bm;
+  const out = await createImageBitmap(c, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
+  bm.close();
+  return out;
+}

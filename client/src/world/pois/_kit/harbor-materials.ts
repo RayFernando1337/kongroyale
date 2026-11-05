@@ -6,9 +6,9 @@
 // tile, `weather()` injects a world-space shader layer: macro tone variation (kills visible tiling), grime that
 // accumulates toward the ground plane, and roughness response — the atmos area's CSM/aerial patch chains after it.
 import * as THREE from "three";
-import { canvas, edgeShade, hazardStripes, noiseTile, normalFromHeight, paintNoise, rng, scratches, splotches, streaks, tex, type TexOpts } from "./harbor-paint";
+import { canvas, edgeShade, hazardStripes, noiseTile, normalFromHeight, paintNoise, rng, scratches, splotches, streaks, tex, type TexOpts, cappedBitmap } from "./harbor-paint";
 import { workerPool } from "../../../engine/worker-pool";
-import { capped, cappedBitmap } from "../../../engine/tex-cap";
+import { capped } from "../../../engine/tex-cap";
 import { presetImageMean, setPaletteMaterial } from "./harbor-geo";
 
 export interface HarborMats {
