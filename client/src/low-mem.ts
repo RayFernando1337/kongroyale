@@ -95,8 +95,12 @@ export function moduleCtx(engine: Engine, w: World, id: string): Engine {
         for (const x of ids) await evictStreamed(engine, w, x);
         void (async () => {
           while (engine.contextLost) await new Promise((r) => setTimeout(r, 50));
-          for (const x of ids) await (await w.build(x)).integrated;
-        })().catch((e) => w.report("restore-rebuild", e));
+          for (const x of ids) {
+            await (await w.build(x)).integrated;
+            if (!w.modOf.has(x)) throw new Error("rebuild of " + x + " after a context restore failed");
+          }
+          (engine.shared.get("atmos") as { bakeShadows?: () => void } | undefined)?.bakeShadows?.();
+        })().catch((e) => { w.report("restore-rebuild", e); location.reload(); });
       },
     });
   }
