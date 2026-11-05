@@ -87,9 +87,10 @@ claim a win until their scenario produces repeatable baseline/candidate comparis
 6. **Do not confuse render throughput with live latency.** `__kr.bench()` forces completion with `readPixels`.
    Keep it for controlled rendering comparisons. **Done:** normal-rAF in-match measurement exists in
    `gpu-match.mts` (#18) and the `?perfhud` timeline (#97).
-7. **Unify GPU query ownership.** **Open (KONG-68).** Timer queries are still owned separately by the engine
-   (`client/src/engine/engine.ts:715-760`), display calibration (`client/src/engine/display.ts:360-373`), the storm
-   volume (`client/src/game/storm/volume.ts:615`) and the water grab (`client/src/world/water/grab.ts:97`). One bounded
+7. **Unify GPU query ownership.** **Open (KONG-68).** Elapsed-time queries are still owned separately by the
+   engine (`client/src/engine/engine.ts:715-760`), display calibration (`client/src/engine/display.ts:360-373`) and the
+   storm volume (`client/src/game/storm/volume.ts:615`). The water grab's query (`client/src/world/water/grab.ts:97`) is
+   an `ANY_SAMPLES_PASSED_CONSERVATIVE` occlusion query, not a timer, so the timer owner doesn't need to serve it. One bounded
    query owner should serve calibration, dynamic resolution, profiling and collection. Avoid overlapping elapsed-time
    queries; use exclusive pass-profiling leases. Retain raw valid samples, explicitly mark unsupported timing and
    discard disjoint results. The existing smoothed controller estimate is not a suitable raw regression distribution.

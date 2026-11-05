@@ -86,7 +86,8 @@ checks landed in #10, #11 and #12, and the `perf` skill (`.agents/skills/perf/`)
 prompt above for the open items, with this scope:
 
 - PERF-02, PERF-04 and the GI samples experiment go to KONG-68. PERF-01 is done (#187).
-- One GPU timer owner goes to KONG-68. Propose it before changing the engine, display, storm and water query paths.
+- One GPU timer owner goes to KONG-68. Propose it before changing the engine, display and storm timer paths; the water
+  grab's occlusion query is not a timer.
 - PERF-03 and the ray collider dedup have no lane. Assign a simulation owner, and gate the change on RAY-152's
   determinism checks and the `sim` step's golden hashes.
 - The remaining FND scenarios (storm/endgame, multiple lobbies), network tail gates and the Windows server wrapper have
