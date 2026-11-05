@@ -579,6 +579,7 @@ async function stream(): Promise<void> {
     if (m) await runAfterBuild(m, true);
     registerStatics(id, true);
     registerFar(id, m, true);
+    if (LOW_MEM) startFarBuild();
     registerOcclusion(id, true);
     kr.streamStage = `integrate:${id}`;
     try { atmos()?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
