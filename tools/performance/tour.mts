@@ -198,7 +198,7 @@ export function tourRunner(segs: Segment[], api: TourApi, steerFn: typeof steer)
             if (r.stuck % 3 === 0) { r.skipped++; if (seg.kind !== "drive" && seg.kind !== "fly") api.teleport(w[0], w[1], look); wi++; if (wi >= seg.path.length) { go("next"); break; } }
           }
           const nw = seg.path[Math.min(wi + 1, seg.path.length - 1)];
-          steerFn(seg.kind, p, look, w[0], w[1], nw[0], nw[1], seg.cruise ?? 60, Math.min(dt, 0.1), ctl);
+          steerFn(seg.kind, p, look, w[0], w[1], nw[0], nw[1], seg.cruise ?? 60, dt, ctl);
           if (unstick > 0) {
             unstick -= dt;
             if (seg.kind === "drive") { ctl.fwd = false; ctl.back = true; const l = ctl.left; ctl.left = ctl.right; ctl.right = l; }
