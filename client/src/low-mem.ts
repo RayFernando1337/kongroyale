@@ -1,5 +1,6 @@
-import type * as THREE from "three";
+import * as THREE from "three";
 import type { Poi } from "../../shared/world/map";
+import { Phase } from "../../shared/sim/match";
 
 export function lowMemoryDevice(forced: string | null, fullPrepare: boolean): boolean {
   const ua = navigator.userAgent;
@@ -10,28 +11,42 @@ export function lowMemoryDevice(forced: string | null, fullPrepare: boolean): bo
   return on;
 }
 
-function inSession(): boolean {
-  const kr = (globalThis as unknown as { __kr?: { game?: { inMatch?: boolean }; caster?: { casting?: boolean } } }).__kr;
-  return !!kr?.game?.inMatch || !!kr?.caster?.casting;
-}
+type Session = { game?: { inMatch?: boolean; cm?: { phase: number } | null }; caster?: { casting?: boolean } };
 
-function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number): string | null {
-  if (!inSession()) return null;
+const VIEW_HALF_H_M = 150;
+const OFFSCREEN_RANK_M = 1e6;
+let viewBuilds = 0, pickedByView = false;
+const view = new THREE.Frustum(), viewProj = new THREE.Matrix4(), poiSphere = new THREE.Sphere();
+
+function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number, viewCap: number): string | null {
+  const kr = (globalThis as unknown as { __kr?: Session }).__kr;
+  const casting = !!kr?.caster?.casting;
+  if (!kr?.game?.inMatch && !casting) return null;
+  const phase = kr?.game?.cm?.phase ?? Phase.Play;
+  const airborne = !casting && phase <= Phase.Plane;
+  if (phase !== Phase.Plane) viewBuilds = 0;
+  const overview = !casting && phase === Phase.Plane && viewBuilds < viewCap;
+  if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
-  let best: string | null = null, bestD = radiusM;
+  let best: string | null = null, bestD = Infinity;
+  pickedByView = false;
   for (const id of pending) {
     const p = pois.find((x) => `poi:${x.id}` === id);
-    if (!p) return id;
-    const d = Math.hypot(e[12] - p.x, e[13] - (p.padY ?? 0), e[14] - p.z) - p.r;
-    if (d < bestD) { best = id; bestD = d; }
+    if (!p) { pickedByView = false; return id; }
+    const d = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
+    const near = (airborne ? Math.hypot(d, e[13] - (p.padY ?? 0)) : d) < radiusM;
+    const seen = overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M)));
+    if (!seen && !near) continue;
+    const rank = overview && !seen ? d + OFFSCREEN_RANK_M : d;
+    if (rank < bestD) { best = id; bestD = rank; pickedByView = !near; }
   }
   return best;
 }
 
-export async function nextNearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number): Promise<string> {
+export async function nextNearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number, viewCap: number): Promise<string> {
   for (;;) {
-    const id = nearModule(pending, camera, pois, radiusM);
-    if (id) { pending.splice(pending.indexOf(id), 1); return id; }
+    const id = nearModule(pending, camera, pois, radiusM, viewCap);
+    if (id) { if (pickedByView) viewBuilds++; pending.splice(pending.indexOf(id), 1); return id; }
     await new Promise((r) => setTimeout(r, 250));
   }
 }

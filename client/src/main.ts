@@ -567,7 +567,7 @@ async function stream(): Promise<void> {
   { const graceUntil = performance.now() + flag("streamgrace");
     while (!urgent && !inMatch() && performance.now() < graceUntil) await new Promise((r) => setTimeout(r, 50)); }
   while (streamList.length) {
-    const id = LOW_MEM ? await postBuild!.nextNearModule(streamList, engine.camera, POIS, flag("lowmemr")) : streamList.shift()!;
+    const id = LOW_MEM ? await postBuild!.nextNearModule(streamList, engine.camera, POIS, flag("lowmemr"), flag("lowmemview")) : streamList.shift()!;
     streamNow = id;
     // in the title / lobby: one module per idle gap at the title's slice budget. In a match (warm-up) the plane must
     // not see an unbuilt POI: go flat out, and once the plane phase starts build the rest back to back.
