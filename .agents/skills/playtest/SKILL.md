@@ -13,6 +13,14 @@ While it's on, every KONGBOT report (`/`, then `/kongbot <what went wrong>`) car
 once, with an automatic message ("F8 mark in match at 3:12"). F8 is the way to mark a lag spike without typing. Marks
 are at least 5 s apart and share KONGBOT's per-address rate limit (20 reports per 10 minutes).
 
+**Player diagnostics** (`?diag`, or a build made with `VITE_KR_DIAG=1`; `?diag=0` turns it off) records the same
+timeline and replay without the HUD, for players on a stream (RAY-162). It also keeps `__kr.diag.snapshot()`:
+`events` (long animation frames with the script that ran longest, phase changes, world modules streamed in or
+evicted, shader-program jumps, 3D-resolution steps, heap drops over 50 MB, context loss, visibility, fullscreen, errors; times in page seconds,
+the timeline's `t`), `path` (position and view once a second in a match) and `prev`, the last heartbeat of a session
+that died without closing (a killed tab; Web Locks tell a dead session from a live tab, see docs/statecharts/diagnostics.md from #204). GPU timer queries run as they do under `?perfhud`. The
+player's send sheet (a later PR) sends the snapshot as `ctx.diag`; the typed `/kongbot` bar and F8 don't.
+
 ## Where bundles land
 
 The game server writes bundles to disk when `KR_PLAYTEST_BUNDLES` says so. `npm run server` (detected by npm's script name, so it works on every OS) and `tools/serve-channel.mts`
@@ -59,10 +67,43 @@ What the summary means:
 The raw timeline is `bundle.timeline` (`fields` plus one row per second). `ctx`, `logs` and `trail` are the
 usual KONGBOT report (`client/src/kongbot/context.ts`).
 
+## Triage
+
+Once there are more bundles than you can read one by one, rank them. Triage is deterministic: no model call, no network.
+
+```sh
+npx tsx tools/playtest/triage.mts [--dir DIR] [--out DIR]    # writes index.jsonl, clusters.json, clusters.md (into DIR unless --out)
+npx tsx tools/playtest/cli.mts watch [--dir DIR] [--ticker FILE]   # a line per new bundle, and the OBS ticker
+```
+
+- `index.jsonl`: one line per bundle with its build, kind (crash, F8 mark or report), symptoms (crash, stall, low-fps,
+  hitchy, lag, memory, slow-load, error, other), config (browser, OS, GPU vendor and tier, preset, dpr and memory
+  buckets, non-default flags), where it happened (phase, POI, 100 m grid cell), the worst stall and the diag event
+  that overlaps it (a long frame's script, new shader programs, a stream module build or failure such as `Module build BANANA TEMPLE`, a heap drop or a context loss), a fingerprint and a severity. The install is a hash, never the raw id. The thresholds are named
+  constants at the top of `triage.mts`.
+- `clusters.json`: bundles grouped by fingerprint, ranked by distinct players x worst severity x recency (full weight
+  for the last 24 h of the newest report, halved for every extra day), with up to three representative report ids.
+  It also holds the players' own notes, for the step that files issues.
+- `clusters.md`: the same ranking for reading and sharing. It has structured fields only: no callsigns, notes or
+  screenshots. Rerunning on the same bundles writes the same files.
+- `watch` polls the folder every 2 s, prints time, symptom, config, POI and report id for each new bundle (never the
+  message or callsign) and keeps a one-line ticker file (`ticker.txt` in the folder by default), for example
+  `37 reports this hour · top: Stall at banana-temple, Safari (6) · latest: Low FPS, Chrome, Windows`. In OBS add a
+  Text (read from file) source on that file.
+- Frame-rate symptoms (stall, low-fps, hitching) are skipped for SwiftShader bundles, as the rules below say. Only POI
+  ids from `shared/world/map.ts` reach the output, and attribution text is cut down to plain characters.
+- A crash is placed by the dead session's heartbeat (phase, and the POI and grid cell of its x and z, with the usual 150 m limit), never by the new session.
+  A `module-failed` event that a later `module-built` of the same module cancelled is not an error, but still explains a stall it overlapped.
+- A bundle.json that is cut off or not a bundle is skipped with a warning; `watch` retries it on the next poll, so a
+  bundle caught mid-write still shows up.
+
+`npm test -- --only triage` checks all of this against the hand-written bundles in `tools/playtest/fixtures/`.
+
 ## Rules
 
 - A bundle from SwiftShader (`ctx.gpu.renderer` mentions SwiftShader) says nothing about frame rate. Use it for
   errors and logic only.
 - Compare like with like. Check `bundle.build`, the flags, `ctx.video` and the GPU before you call one bundle
   faster than another, and follow the `perf` skill before you report a speedup.
-- Bundles contain the player's callsign and a screenshot. Keep them out of commits and public text.
+- Bundles contain the player's callsign and a screenshot. Keep them out of commits and public text. `clusters.md` and
+  the `watch` output are safe to show on stream; `clusters.json` notes and `cli.mts show` are not.

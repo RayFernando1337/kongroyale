@@ -361,7 +361,7 @@ async function loadOnce(d: Driver, start: Start, url: string, out: string, proxy
     points.push(s);
   };
   if (s.ready) await snap("title");
-  artifacts.push(await d.shot(path.join(out, "title-" + start)));
+  try { artifacts.push(await d.shot(path.join(out, "title-" + start))); } catch (e) { console.error("title screenshot skipped: " + String(e).split(String.fromCharCode(10))[0]); }
   const boot: Snap = JSON.parse(await d.run(COLLECT));
   if (!s.ready) failure = "the title never became ready (stage " + s.stage + ")";
   if (s.ready && matchSecs > 0) {
