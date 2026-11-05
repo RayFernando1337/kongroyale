@@ -44,10 +44,10 @@
         "time": 100
       },
       "player": {
-        "pos": [250, 10, -130],
+        "pos": [600, 10, 360],
         "poi": {
-          "id": "rusty-docks",
-          "name": "rusty-docks",
+          "id": "peel-harbor",
+          "name": "peel-harbor",
           "dist": 20,
           "inside": true
         }

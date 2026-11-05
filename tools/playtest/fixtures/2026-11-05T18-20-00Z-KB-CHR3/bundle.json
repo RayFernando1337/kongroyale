@@ -44,7 +44,7 @@
         "time": 100
       },
       "player": {
-        "pos": [250, 10, -130],
+        "pos": [-40, 10, -130],
         "poi": {
           "id": "banana-temple",
           "name": "banana-temple",

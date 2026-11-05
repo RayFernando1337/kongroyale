@@ -71,7 +71,7 @@ npx tsx tools/playtest/cli.mts watch [--dir DIR] [--ticker FILE]   # a line per 
 - `index.jsonl`: one line per bundle with its build, kind (crash, F8 mark or report), symptoms (crash, stall, low-fps,
   hitchy, lag, memory, slow-load, error, other), config (browser, OS, GPU vendor and tier, preset, dpr and memory
   buckets, non-default flags), where it happened (phase, POI, 100 m grid cell), the worst stall and the diag event
-  that overlaps it, a fingerprint and a severity. The install is a hash, never the raw id. The thresholds are named
+  that overlaps it (a long frame's script, new shader programs, a stream module build or failure such as `Module build BANANA TEMPLE`, a heap drop or a context loss), a fingerprint and a severity. The install is a hash, never the raw id. The thresholds are named
   constants at the top of `triage.mts`.
 - `clusters.json`: bundles grouped by fingerprint, ranked by distinct players x worst severity x recency (full weight
   for the last 24 h of the newest report, halved for every extra day), with up to three representative report ids.
@@ -82,7 +82,10 @@ npx tsx tools/playtest/cli.mts watch [--dir DIR] [--ticker FILE]   # a line per 
   message or callsign) and keeps a one-line ticker file (`ticker.txt` in the folder by default), for example
   `37 reports this hour · top: Stall at banana-temple, Safari (6) · latest: Low FPS, Chrome, Windows`. In OBS add a
   Text (read from file) source on that file.
-- A bundle.json that is cut off or not a bundle is skipped with a warning.
+- Frame-rate symptoms (stall, low-fps, hitching) are skipped for SwiftShader bundles, as the rules below say. Only POI
+  ids from `shared/world/map.ts` reach the output, and attribution text is cut down to plain characters.
+- A bundle.json that is cut off or not a bundle is skipped with a warning; `watch` retries it on the next poll, so a
+  bundle caught mid-write still shows up.
 
 `npm test -- --only triage` checks all of this against the hand-written bundles in `tools/playtest/fixtures/`.
 

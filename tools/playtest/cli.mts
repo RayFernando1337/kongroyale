@@ -60,21 +60,26 @@ if (cmd === "list") {
   console.log(argv.includes("--json") ? JSON.stringify(a, null, 2) : markdown(a, f));
 } else if (cmd === "watch") {
   const ticker = path.resolve(opt("--ticker") ?? path.join(dir, "ticker.txt"));
-  const seen = new Map<string, IndexEntry | null>();
+  const seen = new Map<string, IndexEntry>(), warned = new Set<string>();
   let lastTicker: string | null = null, started = false;
   const poll = () => {
     const fresh: IndexEntry[] = [];
     for (const f of bundleFolders(dir)) {
       if (seen.has(f)) continue;
-      const s = open(f);
-      seen.set(f, s ? triageBundle(s).entry : null);
-      const e = seen.get(f);
-      if (e) fresh.push(e);
+      const r = loadBundle(dir, f);
+      if (!r.ok) {
+        if (!warned.has(f)) console.error(`warning: ${f} not readable yet: ${r.reason}`);
+        warned.add(f);
+        continue;
+      }
+      const e = triageBundle(r.value).entry;
+      seen.set(f, e);
+      fresh.push(e);
     }
     if (!started) console.log(`watching ${dir}: ${fresh.length} bundles so far, ticker ${ticker}`);
     else for (const e of fresh) console.log(`${new Date(e.receivedAt).toLocaleTimeString("en-GB")}  ${e.symptoms[0].padEnd(9)}  ${configLabel(e)}  ${e.location.poi ?? e.location.phase}  ${e.id}`);
     started = true;
-    const line = tickerLine([...seen.values()].filter((e): e is IndexEntry => e !== null), Date.now());
+    const line = tickerLine([...seen.values()], Date.now());
     if (line !== lastTicker) { fs.mkdirSync(path.dirname(ticker), { recursive: true }); fs.writeFileSync(ticker, line + "\n"); lastTicker = line; }
   };
   poll();

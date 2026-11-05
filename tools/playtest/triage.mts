@@ -13,6 +13,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { PHASES, PHASE_PLAY, analyse, bundleFolders, dig, finite, isRec, loadBundle, resolveDir, series, text } from "./analysis.mts";
 import type { Rec, Saved } from "./analysis.mts";
+import { POIS } from "../../shared/world/map";
 
 /** a frame this long while playing is a stall */
 export const STALL_MS = 100;
@@ -33,6 +34,8 @@ export const SLOW_LOAD_MS = 40_000;
 export const ATTRIBUTION_WINDOW_S = 1;
 /** a path row this close (page seconds) to the stall gives the stall's position */
 export const PATH_MATCH_S = 5;
+/** with no path row at the stall, where the player was when they reported stands in for it only if the stall was this recent (page seconds) */
+export const STALL_RECENT_S = 10;
 export const GRID_M = 100;
 /** the nearest POI is named only when the player is inside it or within this many metres of its edge */
 export const POI_NEAR_M = 150;
@@ -44,7 +47,7 @@ export const RECENT_HOUR_MS = 3_600_000;
 const NOTE_MAX = 300;
 
 export type Symptom = "crash" | "stall" | "low-fps" | "hitchy" | "lag" | "memory" | "slow-load" | "error" | "other";
-const SYMPTOM_ORDER: Symptom[] = ["crash", "stall", "low-fps", "lag", "memory", "slow-load", "error", "hitchy", "other"];
+const SYMPTOM_ORDER: Symptom[] = ["crash", "hitchy", "stall", "low-fps", "lag", "memory", "slow-load", "error", "other"];
 const LABEL: Record<Symptom, string> = { crash: "Crash", stall: "Stall", "low-fps": "Low FPS", hitchy: "Hitching", lag: "Lag", memory: "Memory growth", "slow-load": "Slow load", error: "Error", other: "Report" };
 const weight = (s: Symptom, stallMs: number | null) => (s === "stall" && (stallMs ?? 0) > STALL_BAD_MS ? SEVERITY.stallBad : SEVERITY[s]);
 
@@ -116,24 +119,38 @@ function diagEvents(ctx: Rec | null): DiagEvent[] {
   return out;
 }
 
-const ATTRIBUTION_ORDER = [["loaf", "longtask"], ["programs"], ["poi-built"], ["gc"], ["context-lost"]];
+const knownPoi = (v: unknown) => { const id = text(v, 40)?.replace(/^poi:/, ""); return id && POIS.some((p) => p.id === id) ? id : null; };
+/** a stream module id ("poi:<map id>" or a plain id such as "exits") as a name safe to print; the POI's name for a map POI */
+function moduleName(id: string) {
+  const poi = knownPoi(id);
+  if (poi) return POIS.find((p) => p.id === poi)!.name;
+  return /^[a-z0-9][a-z0-9_-]{0,31}$/.test(id) ? id : "unknown";
+}
+
+/** attribution reaches clusters.md and the ticker: keep only the characters a script name and position need */
+const printable = (s: string) => s.replace(/[^A-Za-z0-9 @._:/+-]/g, "").slice(0, 80);
+
+const ATTRIBUTION_ORDER = [["loaf", "longtask"], ["programs"], ["module-failed"], ["module-built"], ["gc"], ["context-lost"]];
 function attributionOf(events: DiagEvent[], at: number) {
   const near = events.filter((e) => Math.abs(e.t - at) <= ATTRIBUTION_WINDOW_S);
   for (const kinds of ATTRIBUTION_ORDER) {
     const pick = near.filter((e) => kinds.includes(e.kind)).sort((a, b) => b.n - a.n)[0];
     if (!pick) continue;
     if (pick.kind === "programs") return `shader programs +${Math.round(pick.n)}`;
-    if (pick.kind === "poi-built") return `POI build ${pick.text.replace(/^poi:/, "")}`;
+    if (pick.kind === "module-failed") return `Module failed ${moduleName(pick.text)}`;
+    if (pick.kind === "module-built") return `Module build ${moduleName(pick.text)}`;
     if (pick.kind === "gc") return `GC -${Math.round(pick.n)} MB`;
     if (pick.kind === "context-lost") return "context lost";
-    return pick.text || `${pick.kind} ${Math.round(pick.n)} ms`;
+    return printable(pick.text) || `${pick.kind} ${Math.round(pick.n)} ms`;
   }
   return null;
 }
 
 function errorKeyOf(s: Saved, events: DiagEvent[]) {
+  const failed = events.find((e) => e.kind === "module-failed");
   const diag = events.find((e) => e.kind === "error" || e.kind === "rejection");
   const log = s.logs.find((l) => l.level === "error" && /^\[(?:uncaught|unhandled rejection)\]/.test(l.text));
+  if (!diag && !log && failed) return `module build failed ${moduleName(failed.text)}`;
   const raw = diag ? diag.text : log ? log.text : null;
   return raw === null ? null : stripVolatile(firstLine(raw)) || "unknown error";
 }
@@ -143,35 +160,39 @@ function phaseName(v: unknown) {
   return typeof v === "string" && v ? word(v) : null;
 }
 
-const cellOf = (x: unknown, z: unknown) => { const a = finite(x), b = finite(z); return a === null || b === null ? null : `${Math.floor(a / GRID_M)},${Math.floor(b / GRID_M)}`; };
-
-function cellAt(ctx: Rec | null, at: number | null) {
+/** where the player was at page second `at` (the diag path row nearest it), else where they were when they sent the report (at `now`) if `at` is null or recent */
+function positionAt(ctx: Rec | null, at: number | null, now: number | null): [number, number] | null {
   const fields = dig(ctx, "diag", "path", "fields"), rows = dig(ctx, "diag", "path", "rows");
   if (at !== null && Array.isArray(fields) && Array.isArray(rows)) {
     const ti = fields.indexOf("t"), xi = fields.indexOf("x"), zi = fields.indexOf("z");
-    let best: unknown[] | null = null, gap = PATH_MATCH_S;
+    let best: [number, number] | null = null, gap = PATH_MATCH_S;
     if (ti >= 0 && xi >= 0 && zi >= 0) for (const r of rows.slice(0, 20_000)) {
-      const t = Array.isArray(r) ? finite(r[ti]) : null;
-      if (t !== null && Math.abs(t - at) <= gap) { gap = Math.abs(t - at); best = r as unknown[]; }
+      const t = Array.isArray(r) ? finite(r[ti]) : null, x = Array.isArray(r) ? finite(r[xi]) : null, z = Array.isArray(r) ? finite(r[zi]) : null;
+      if (t !== null && x !== null && z !== null && Math.abs(t - at) <= gap) { gap = Math.abs(t - at); best = [x, z]; }
     }
-    const cell = best ? cellOf(best[xi], best[zi]) : null;
-    if (cell) return cell;
+    if (best) return best;
   }
+  if (at !== null && (now === null || now - at > STALL_RECENT_S)) return null;
   const pos = dig(ctx, "game", "player", "pos");
-  return Array.isArray(pos) ? cellOf(pos[0], pos[2]) : null;
+  const x = Array.isArray(pos) ? finite(pos[0]) : null, z = Array.isArray(pos) ? finite(pos[2]) : null;
+  return x !== null && z !== null ? [x, z] : null;
 }
 
-function poiOf(ctx: Rec | null) {
-  const poi = dig(ctx, "game", "player", "poi");
-  const id = text(dig(poi, "id"), 40), dist = finite(dig(poi, "dist")), inside = dig(poi, "inside") === true;
-  return id && (inside || (dist !== null && dist <= POI_NEAR_M)) ? id : null;
+/** the POI the position is inside or within POI_NEAR_M of the edge of (the closest edge wins); only ids from the map */
+function poiAt(pos: [number, number]) {
+  let best: string | null = null, edge = POI_NEAR_M;
+  for (const p of POIS) {
+    const e = Math.hypot(pos[0] - p.x, pos[1] - p.z) - p.r;
+    if (e <= edge) { edge = e; best = p.id; }
+  }
+  return best;
 }
 
 /** the fingerprint, symptoms and the rest of one bundle; note is the player's own words (kept out of the index) */
 export function triageBundle(s: Saved): { entry: IndexEntry; note: string | null } {
   const sr = series(s), a = analyse(s, sr), ctx = s.ctx;
   const events = diagEvents(ctx), prevRaw = dig(ctx, "diag", "prev");
-  const prev = isRec(prevRaw) && Object.keys(prevRaw).length > 0 ? prevRaw : null;
+  const prev = isRec(prevRaw) && prevRaw.clean !== true && Object.keys(prevRaw).length > 0 ? prevRaw : null;
   const kind = prev || /^crash/i.test(s.message.trim()) ? "crash" : s.bundle.mark ? "mark" : "report";
 
   const playSeconds = sr.live.filter((i) => sr.phase[i] === PHASE_PLAY);
@@ -191,21 +212,6 @@ export function triageBundle(s: Saved): { entry: IndexEntry; note: string | null
   const errorKey = errorKeyOf(s, events);
   const readyAtMs = finite(dig(ctx, "boot", "readyAtMs"));
 
-  const found = new Set<Symptom>();
-  if (kind === "crash") found.add("crash");
-  if (playStalls.length) found.add("stall");
-  if (playSeconds.length >= MIN_PLAY_S && fps.p50 !== null && fps.p50 < LOW_FPS) found.add("low-fps");
-  if (playSeconds.length >= HITCHY_MIN_PLAY_S && playStalls.length / (playSeconds.length / 600) > HITCHY_STALL_S_PER_10_MIN) found.add("hitchy");
-  if (a.network.lagSpikeSeconds >= LAG_MIN_S) found.add("lag");
-  if ((a.memory.heapSlopeMBPerMin ?? 0) > MEMORY_SLOPE_MB_PER_MIN || (heapLimit !== null && heapLimit > 0 && heapPeakMB !== null && heapPeakMB >= heapLimit * HEAP_LIMIT_SHARE)) found.add("memory");
-  if (readyAtMs !== null && readyAtMs > SLOW_LOAD_MS) found.add("slow-load");
-  if (errorKey !== null) found.add("error");
-  if (!found.size) found.add("other");
-
-  const stallMs = worstStall && playStalls.length ? worstStall.maxMs : null;
-  const symptoms = SYMPTOM_ORDER.filter((x) => found.has(x)).sort((x, y) => weight(y, stallMs) - weight(x, stallMs));
-  const top = symptoms[0];
-
   const ua = text(dig(ctx, "env", "ua"), 400) ?? "";
   const browser = browserOf(ua);
   const nonDefaultFlags = Object.entries(s.bundle.flags).filter(([k]) => !IGNORED_FLAGS.includes(k)).map(([k, v]) => (v ? `${k}=${v}` : k)).sort();
@@ -215,10 +221,29 @@ export function triageBundle(s: Saved): { entry: IndexEntry; note: string | null
   };
   const configKey = [browser.family + (browser.major === null ? "" : " " + browser.major), config.os, config.gpuVendor, config.gpuTier, config.preset, config.dprBucket, config.memoryBucket, nonDefaultFlags.join("+") || "-"].join("|");
 
+  const software = config.gpuVendor === "software";
+  const found = new Set<Symptom>();
+  if (kind === "crash") found.add("crash");
+  if (playStalls.length && !software) found.add("stall");
+  if (!software && playSeconds.length >= MIN_PLAY_S && fps.p50 !== null && fps.p50 < LOW_FPS) found.add("low-fps");
+  if (!software && playSeconds.length >= HITCHY_MIN_PLAY_S && playStalls.length / (playSeconds.length / 600) > HITCHY_STALL_S_PER_10_MIN) found.add("hitchy");
+  if (a.network.lagSpikeSeconds >= LAG_MIN_S) found.add("lag");
+  if ((a.memory.heapSlopeMBPerMin ?? 0) > MEMORY_SLOPE_MB_PER_MIN || (heapLimit !== null && heapLimit > 0 && heapPeakMB !== null && heapPeakMB >= heapLimit * HEAP_LIMIT_SHARE)) found.add("memory");
+  if (readyAtMs !== null && readyAtMs > SLOW_LOAD_MS) found.add("slow-load");
+  if (errorKey !== null) found.add("error");
+  if (!found.size) found.add("other");
+
+  const stallMs = found.has("stall") && worstStall ? worstStall.maxMs : null;
+  const symptoms = SYMPTOM_ORDER.filter((x) => found.has(x)).sort((x, y) => weight(y, stallMs) - weight(x, stallMs));
+  const top = symptoms[0];
+
   const prevPhase = prev ? phaseName(prev.phase) : null;
   const phase = prevPhase ?? worstStall?.phase ?? phaseName(dig(ctx, "game", "match", "phase")) ?? "title";
-  const prevPoi = (prev && text(prev.poi, 40)?.replace(/^poi:/, "")) || null;
-  const location = { phase, poi: prevPoi ?? poiOf(ctx), cell: cellAt(ctx, worstStall?.t ?? null) };
+  const prevPoi = prev ? knownPoi(prev.poi) : null;
+  const reportT = sr.t.length ? Math.max(...sr.t) : null;
+  const position = positionAt(ctx, worstStall?.t ?? null, reportT);
+  const stale = worstStall !== null && (reportT === null || reportT - worstStall.t > STALL_RECENT_S);
+  const location = { phase, poi: prevPoi ?? (position ? poiAt(position) : stale ? null : knownPoi(dig(ctx, "game", "player", "poi", "id"))), cell: position ? `${Math.floor(position[0] / GRID_M)},${Math.floor(position[1] / GRID_M)}` : null };
 
   const attribution = worstStall ? attributionOf(events, worstStall.t) : null;
   const slot = attribution ? stripVolatile(attribution) : top === "error" ? errorKey : null;
