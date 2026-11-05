@@ -59,10 +59,38 @@ What the summary means:
 The raw timeline is `bundle.timeline` (`fields` plus one row per second). `ctx`, `logs` and `trail` are the
 usual KONGBOT report (`client/src/kongbot/context.ts`).
 
+## Triage
+
+Once there are more bundles than you can read one by one, rank them. Triage is deterministic: no model call, no network.
+
+```sh
+npx tsx tools/playtest/triage.mts [--dir DIR] [--out DIR]    # writes index.jsonl, clusters.json, clusters.md (into DIR unless --out)
+npx tsx tools/playtest/cli.mts watch [--dir DIR] [--ticker FILE]   # a line per new bundle, and the OBS ticker
+```
+
+- `index.jsonl`: one line per bundle with its build, kind (crash, F8 mark or report), symptoms (crash, stall, low-fps,
+  hitchy, lag, memory, slow-load, error, other), config (browser, OS, GPU vendor and tier, preset, dpr and memory
+  buckets, non-default flags), where it happened (phase, POI, 100 m grid cell), the worst stall and the diag event
+  that overlaps it, a fingerprint and a severity. The install is a hash, never the raw id. The thresholds are named
+  constants at the top of `triage.mts`.
+- `clusters.json`: bundles grouped by fingerprint, ranked by distinct players x worst severity x recency (full weight
+  for the last 24 h of the newest report, halved for every extra day), with up to three representative report ids.
+  It also holds the players' own notes, for the step that files issues.
+- `clusters.md`: the same ranking for reading and sharing. It has structured fields only: no callsigns, notes or
+  screenshots. Rerunning on the same bundles writes the same files.
+- `watch` polls the folder every 2 s, prints time, symptom, config, POI and report id for each new bundle (never the
+  message or callsign) and keeps a one-line ticker file (`ticker.txt` in the folder by default), for example
+  `37 reports this hour · top: Stall at banana-temple, Safari (6) · latest: Low FPS, Chrome, Windows`. In OBS add a
+  Text (read from file) source on that file.
+- A bundle.json that is cut off or not a bundle is skipped with a warning.
+
+`npm test -- --only triage` checks all of this against the hand-written bundles in `tools/playtest/fixtures/`.
+
 ## Rules
 
 - A bundle from SwiftShader (`ctx.gpu.renderer` mentions SwiftShader) says nothing about frame rate. Use it for
   errors and logic only.
 - Compare like with like. Check `bundle.build`, the flags, `ctx.video` and the GPU before you call one bundle
   faster than another, and follow the `perf` skill before you report a speedup.
-- Bundles contain the player's callsign and a screenshot. Keep them out of commits and public text.
+- Bundles contain the player's callsign and a screenshot. Keep them out of commits and public text. `clusters.md` and
+  the `watch` output are safe to show on stream; `clusters.json` notes and `cli.mts show` are not.
