@@ -2,17 +2,19 @@ export type Phase = "source" | "bake";
 type Hook = () => void | Promise<void>;
 type ModuleRestore = { can(id: string): boolean; rebuild(ids: readonly string[]): Promise<void> };
 
-const hooks: Record<Phase, Set<Hook>> = { source: new Set(), bake: new Set() };
-const missing = new Map<string | null, number>();
-let epoch = 0;
-let owner: string | null = null;
-let modules: ModuleRestore = { can: () => false, rebuild: async () => {} };
+export const restoreState = {
+  hooks: { source: new Set<Hook>(), bake: new Set<Hook>() } as Record<Phase, Set<Hook>>,
+  missing: new Map<string | null, number>(),
+  epoch: 0,
+  owner: null as string | null,
+  modules: { can: () => false, rebuild: async () => {} } as ModuleRestore,
+};
 
-export const contextEpoch = () => epoch;
+export const contextEpoch = () => restoreState.epoch;
 
 export function onRestore(phase: Phase, fn: Hook): () => void {
-  hooks[phase].add(fn);
-  return () => { hooks[phase].delete(fn); };
+  restoreState.hooks[phase].add(fn);
+  return () => { restoreState.hooks[phase].delete(fn); };
 }
 
 export function bake(fn: () => void): () => void {
@@ -21,13 +23,13 @@ export function bake(fn: () => void): () => void {
 }
 
 export async function asOwner<T>(id: string, fn: () => Promise<T>): Promise<T> {
-  const prev = owner;
-  owner = id;
-  try { return await fn(); } finally { owner = prev; }
+  const prev = restoreState.owner;
+  restoreState.owner = id;
+  try { return await fn(); } finally { restoreState.owner = prev; }
 }
 
 export function unrestorable(): () => void {
-  const by = owner;
+  const by = restoreState.owner, missing = restoreState.missing;
   missing.set(by, (missing.get(by) ?? 0) + 1);
   let open = true;
   return () => {
@@ -37,35 +39,24 @@ export function unrestorable(): () => void {
   };
 }
 
-export function restoreModulesWith(m: ModuleRestore) { modules = m; }
+export function restoreModulesWith(m: ModuleRestore) { restoreState.modules = m; }
 
-export function lostModules(): { rebuild: string[]; blocked: string[] } {
-  const rebuild: string[] = [], blocked: string[] = [];
-  for (const [id, n] of missing) {
-    if (n <= 0) continue;
-    if (id !== null && modules.can(id)) rebuild.push(id);
-    else blocked.push(id ?? "(no module)");
-  }
-  return { rebuild, blocked };
-}
-
-export async function restoreAll(): Promise<void> {
-  const { rebuild, blocked } = lostModules();
-  if (blocked.length) throw new Error("no restore path for resources of " + blocked.join(", "));
-  epoch++;
-  for (const fn of [...hooks.source]) await fn();
-  await modules.rebuild(rebuild);
-  for (const fn of [...hooks.bake]) await fn();
-}
-
-export function ignoreStaleDeletes(gl: WebGL2RenderingContext) {
-  const born = new WeakMap<object, number>();
-  let losses = 0;
-  gl.canvas.addEventListener("webglcontextlost", () => { losses++; });
-  const g = gl as unknown as Record<string, (...a: unknown[]) => unknown>;
-  for (const kind of ["Buffer", "Framebuffer", "Renderbuffer", "Texture", "VertexArray", "Program", "Shader", "Query", "Sampler", "TransformFeedback"]) {
-    const make = g["create" + kind].bind(gl), drop = g["delete" + kind].bind(gl);
-    g["create" + kind] = (...a) => { const o = make(...a); if (o) born.set(o as object, losses); return o; };
-    g["delete" + kind] = (o) => o && (born.get(o as object) ?? 0) !== losses ? undefined : drop(o);
-  }
+export function watchContext(canvas: HTMLCanvasElement, engine: { renderer: { getContext(): WebGLRenderingContext | WebGL2RenderingContext }; contextLost: boolean; restores: number }) {
+  let timer = 0, losses = 0;
+  const reloadIn = (ms: number) => { clearTimeout(timer); timer = window.setTimeout(() => location.reload(), ms); };
+  const run = () => import("./restore-run");
+  canvas.addEventListener("webglcontextlost", () => {
+    engine.contextLost = true;
+    losses++;
+    reloadIn(10000);
+    run().then((m) => m.ignoreStaleDeletes(engine.renderer.getContext() as WebGL2RenderingContext), () => {});
+  });
+  canvas.addEventListener("webglcontextrestored", () => {
+    reloadIn(30000);
+    const loss = losses;
+    run().then((m) => m.restoreAll()).then(() => {
+      if (loss !== losses) return;
+      clearTimeout(timer); engine.restores++; engine.contextLost = false;
+    }, (e) => { if (loss !== losses) return; console.error("[context restore]", e); location.reload(); });
+  });
 }

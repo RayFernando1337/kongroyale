@@ -13,10 +13,8 @@ import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
 import { afterPaint } from "./frame";
 import { flag } from "../flags";
-import { contextEpoch, ignoreStaleDeletes, restoreAll } from "./res/restore";
+import { contextEpoch, watchContext } from "./res/restore";
 
-const RESTORE_WAIT_MS = 10000;
-const REBUILD_WAIT_MS = 30000;
 const STREAM_SLICE_MS: readonly number[] = flag("streamslice") ?? [];
 
 // engine fades dissolve instead of scaling — three's shared chunks are patched before the first compile
@@ -45,6 +43,7 @@ export interface WorldCtx {
   shared: Map<string, unknown>;
   /** per-frame hook; dt seconds, t = animation time seconds */
   onUpdate(fn: (dt: number, t: number) => void): void;
+  readonly rebuilding: boolean;
   /** replace the final render (post-processing). Default: renderer.render(scene, camera). */
   setPost(p: PostPipeline): void;
   /** Current main-view height for screen-size selection; independent of active offscreen passes. */
@@ -88,7 +87,7 @@ export class Engine implements WorldCtx {
   /** animation time; frozen in shot mode unless ?t is advanced by the caller */
   time = 0;
   timeScale = 1;
-  private updates: Array<(dt: number, t: number) => void> = [];
+  readonly updates: Array<(dt: number, t: number) => void> = [];
   private failed = new Set<number>();
   private post: PostPipeline | null = null;
   private holds = new Map<number, string>();
@@ -130,7 +129,7 @@ export class Engine implements WorldCtx {
     this.renderer.toneMappingExposure = 1;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.watchContext();
+    watchContext(this.canvas, this);
     // ?dpr=N overrides the device pixel ratio (A/B of the fill-rate share). The canvas backing store is the
     // screen's NATIVE pixels (devicePixelRatio, e.g. 1.5 on a 150 %-scaled 4K monitor, 2 on a Retina MacBook; capped at
     // 2 for phones); the "3D resolution" setting scales the scene inside the post chain (TAAU), never the canvas
@@ -240,13 +239,15 @@ export class Engine implements WorldCtx {
     this.post?.setSize(w, h);
   }
 
+  rebuilding = false;
   onUpdate(fn: (dt: number, t: number) => void) {
     this.updates.push(fn);
     // (hitch attribution: the stage that registered the hook — main.ts sets __kr.stage / streamStage per module build)
     const kr = (globalThis as { __kr?: { stage?: string; streamStage?: string } }).__kr;
     this.updLabels.push(String(kr?.streamStage || kr?.stage || "?"));
   }
-  private updLabels: string[] = [];
+  readonly updLabels: string[] = [];
+
   /** tools set `engine.hitchLog = []` → every frame whose step takes > 30 ms,
    *  or whose interval is > 50 ms, is logged with the costliest update hooks (by registering stage), idle work, render */
   hitchLog: Array<Record<string, unknown>> | null = null;
@@ -610,26 +611,6 @@ export class Engine implements WorldCtx {
   suspended = false;
   contextLost = false;
   restores = 0;
-  private lostTimer = 0;
-  private losses = 0;
-  private watchContext() {
-    ignoreStaleDeletes(this.renderer.getContext() as WebGL2RenderingContext);
-    this.canvas.addEventListener("webglcontextlost", () => {
-      this.contextLost = true;
-      this.losses++;
-      clearTimeout(this.lostTimer);
-      this.lostTimer = window.setTimeout(() => location.reload(), RESTORE_WAIT_MS);
-    });
-    this.canvas.addEventListener("webglcontextrestored", () => {
-      clearTimeout(this.lostTimer);
-      this.lostTimer = window.setTimeout(() => location.reload(), REBUILD_WAIT_MS);
-      const loss = this.losses;
-      restoreAll().then(() => {
-        if (loss !== this.losses) return;
-        clearTimeout(this.lostTimer); this.restores++; this.contextLost = false;
-      }, (e) => { if (loss !== this.losses) return; console.error("[context restore]", e); location.reload(); });
-    });
-  }
   start() {
     if (this.started) return;
     this.started = true;

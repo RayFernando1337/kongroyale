@@ -16,6 +16,7 @@ repository root (Node 22.12+):
 npm run build
 node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs up --prod --port 3140
 npx tsx tools/performance/memory.mts run --url http://127.0.0.1:3140            # profile from the OS: nogpu on Linux, mac, win
+npx tsx tools/performance/memory.mts run --url http://127.0.0.1:3140 --matches 1 # cloud SwiftShader: one match (see Gotchas)
 npx tsx tools/performance/memory.mts table shots/memory/<stamp>/result.json --md
 node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs down
 ```
@@ -135,8 +136,12 @@ leaks, so these numbers are ceilings: lower `left3` by hand when an owner moves 
 - Never read the page with Playwright's `page.evaluate` while a match loads. On SwiftShader it drove the browser
   process from 50 MB to 7 GB and the renderer to 12 GB within two minutes of Play, and runs passed 28 GB. With the
   same reads sent as plain `Runtime.evaluate` over the page's CDP session (what `memory.mts` does since scenario
-  version 3), the same match peaked at 8.8 GB and the browser process stayed at 47 MB. Players never see this, and the
-  title phase is unaffected, but process totals from the plane on in results before version 3 are not trustworthy.
+  version 3), the same match peaked at 8.8 GB and the browser process stayed at 47 MB. Process totals from the plane
+  on in results before version 3 are not trustworthy. Version 3 doesn't remove the growth entirely: a two-match run at
+  640x360 grew the same way in its second match, while the whole island streamed in (browser process 4.5 GB, 25.9 GB
+  total). The cause is unknown. It has only appeared on SwiftShader under automation and only while non-title POIs
+  stream: Metal kept the browser process at about 83 MB through two matches, and warm-up runs limited to title modules
+  (`--warmup` with `?modules=`, the CI leak job) peak at 5-5.7 GB. Keep full-island cloud runs to one match.
 - `nogpu` runs add `?vegsplat=0`, which makes the game bake impostor banks that a player with splats on (the
   default) never gets: 331-547 MB more textures. Cloud texture totals overstate player memory by about that much, so
   rank texture costs with splats on wherever the run allows it. The CI budget is still a fair ratchet because every run

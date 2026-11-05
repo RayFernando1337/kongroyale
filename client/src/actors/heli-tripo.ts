@@ -15,6 +15,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { assetUrl } from "../engine/assets";
 import { releaseAfterUpload } from "../engine/texture-release";
 import { onRestore } from "../engine/res/restore";
+import { resources } from "../engine/res/scope";
 import { flag } from "../flags";
 import type { TukDraw, TukView } from "./tuktuk";
 import { VF, VS } from "../../../shared/sim/vehicle";
@@ -103,7 +104,7 @@ function dress(scene: THREE.Group, burnt: Map<THREE.Material, THREE.Material>, g
     m.castShadow = true; m.receiveShadow = true; m.userData.farShadow = false;
     if (m.name === "glass" || (m.material as THREE.Material).name === "glass") { m.material = glass; m.castShadow = false; m.renderOrder = 3; return; }
     const src = m.material as THREE.MeshStandardMaterial;
-    for (const slot of SLOTS) { const t = src[slot]; if (t) releaseAfterUpload(t, () => sourceAgain(url, at, slot)); }
+    for (const slot of SLOTS) { const t = src[slot]; if (t && !resources.ownerOf(t)) resources.root.texture("tex.actor", releaseAfterUpload(t, () => sourceAgain(url, at, slot))); }
     if (src.name === "fin_decal") {
       // the BANANA CO logo on the fin: an overlay 4 mm proud of the paint (no polygon offset: it pulled the far side's
       // logo through the fin), blended, never writing depth
