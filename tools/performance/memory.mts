@@ -418,11 +418,15 @@ async function run() {
   };
   const notes: string[] = [];
   let overCap = "";
-  const watchdogBlind = new Set<number>();
+  const watchdogBlind = new Map<number, number>();
   const watchdog = setInterval(() => {
     void processes(browserCdp).then((procs) => {
       const total = Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0));
-      for (const p of procs) if (procMB(p) === null && !watchdogBlind.has(p.pid)) { watchdogBlind.add(p.pid); errors.push(`the watchdog has no memory reading for ${p.type} ${p.pid}, so --max-mb can't see it`); }
+      for (const p of procs) {
+        const misses = procMB(p) === null ? (watchdogBlind.get(p.pid) ?? 0) + 1 : 0;
+        watchdogBlind.set(p.pid, misses);
+        if (misses === 2) errors.push(`the watchdog has no memory reading for ${p.type} ${p.pid} on two checks in a row, so --max-mb can't see it`);
+      }
       if (total <= maxMB || overCap) return;
       overCap = `the browser passed --max-mb ${maxMB} MB (${total} MB at ${Math.round((performance.now() - t0) / 1000)} s); stopped it before the machine runs out of memory`;
       errors.push(overCap);
