@@ -28,7 +28,7 @@
   "writes": [
     {
       "what": "the phase, the end of a match, START NOW, the warm-up hold, redeploys",
-      "pattern": "this\\.(phase|over|skipWarmup|resurgenceOn)\\s*=(?!=)\\s*[^\\s;]+|\\.holdWarmup\\s*=(?!=)\\s*[^\\s;]+",
+      "pattern": "\\.(phase|over|skipWarmup|resurgenceOn|warmWall|phaseT)\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)\\s*[^\\s;]+|\\.holdWarmup\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)\\s*[^\\s;]+|\\.(phaseT|warmWall)\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*[\\w.]+\\.(phaseT|warmWall)\\b",
       "files": [
         "shared/sim/",
         "shared/net/",
@@ -37,7 +37,7 @@
     },
     {
       "what": "a squad's elimination",
-      "pattern": "\\.eliminated\\s*=(?!=)\\s*[^\\s;]+",
+      "pattern": "\\.eliminated\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)\\s*[^\\s;]+",
       "files": [
         "shared/sim/",
         "server/"
@@ -58,10 +58,45 @@
         ".holdWarmup = ()"
       ],
       "why": "a replay plays back the holds a recorded match saw"
+    },
+    {
+      "at": "shared/net/host.hot.ts#writeSnapshotFor",
+      "writes": [
+        ".phase = m.phase"
+      ],
+      "why": "copies the match's phase into a snapshot header sent to clients; it writes the header, not the match"
+    },
+    {
+      "at": "shared/net/host.ts#writeCastSnapshot",
+      "writes": [
+        ".phase = m.phase"
+      ],
+      "why": "copies the match's phase into the caster's snapshot header; it writes the header, not the match"
+    },
+    {
+      "at": "shared/net/proto.ts#readSnapHeader",
+      "writes": [
+        ".phase = r.u8()"
+      ],
+      "why": "reads a snapshot header on the client into its own header object; the server's match is what the model checks"
+    },
+    {
+      "at": "shared/net/proto.ts#readCastHeader",
+      "writes": [
+        ".phase = r.u8()"
+      ],
+      "why": "reads the caster's snapshot header into its own header object; the server's match is what the model checks"
+    },
+    {
+      "at": "shared/sim/match.ts#Match.stepRange",
+      "writes": [
+        ".phaseT += DT"
+      ],
+      "why": "the firing range's step: Match.step hands a range match to it before any phase logic, and a range never changes phase, so its phaseT is only the range's own clock"
     }
   ],
   "verified": {
-    "model": "e0942eb52bd2c461",
+    "model": "f593d691dcc9f537",
     "regions": {
       "shared/sim/match.ts#Match.step": "7dca769aad2c92c6",
       "shared/sim/match.ts#Match.startNow": "b779ef6260e29677",
