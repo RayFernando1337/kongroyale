@@ -146,7 +146,6 @@ export class Engine implements WorldCtx {
     this.occlusion = new PoiOcclusion(!flag("noocc") && !opts.shotMode, this.scene, () => this.terrain);
     onStructure((parent) => { this.structGen++; this.cull.touched(parent); });
     if (this.far.enabled) installShaderRecorder(this.renderer.getContext() as WebGL2RenderingContext);
-    if (flag("texprof")) void import("./dev-probes").then((m) => m.installTexProf(this));
     // point lights that join the live scene (a streamed POI's braziers) are reported before the next frame renders, so
     // the game's light balancer keeps the light count — part of every lit program's key — constant (no recompiles)
     onStructure((parent, child, added) => {

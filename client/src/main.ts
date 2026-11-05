@@ -92,6 +92,7 @@ const engine = (() => {
   catch (e) { bootFail("engine", e); throw e; }
 })();
 kr.engine = engine;
+if (flag("texprof")) await import("./engine/dev-probes").then((m) => m.installTexProf(engine));
 // the video settings (engine/display.ts): frame cap / 3D resolution now, the rest once atmos + veg exist
 const display = gameMode && !shot ? new Display(engine) : null;
 kr.display = display;
