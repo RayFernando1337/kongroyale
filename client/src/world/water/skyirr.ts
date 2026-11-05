@@ -24,27 +24,16 @@ export class SkyIrradianceProbe {
     this.cam.position.set(0, 5, 0); this.cam.up.set(0, 0, -1); this.cam.lookAt(0, 0, 0); this.cam.updateMatrixWorld(true);
   }
 
-  /** re-measure when the scene's environment changed; resolves once `value` matches the current environment */
+  /** re-measure when the scene's environment changed; resolves once `value` holds the measured environment */
   update(renderer: THREE.WebGLRenderer, scene: THREE.Scene): Promise<void> | null {
-    if (this.busy || this.measured(scene)) return null;
+    const env = scene.environment as THREE.Texture | null, ei = scene.environmentIntensity ?? 1;
+    if (this.busy || (env === this.env && ei === this.envI)) return null;
     this.busy = true;
-    return this.measureUntilCurrent(renderer, scene).finally(() => { this.busy = false; });
+    return this.measure(renderer, env, ei).then(() => { this.env = env; this.envI = ei; }).finally(() => { this.busy = false; });
   }
 
-  private measured(scene: THREE.Scene): boolean {
-    return scene.environment === this.env && (scene.environmentIntensity ?? 1) === this.envI;
-  }
-
-  private async measureUntilCurrent(renderer: THREE.WebGLRenderer, scene: THREE.Scene): Promise<void> {
-    while (!this.measured(scene)) {
-      const env = scene.environment as THREE.Texture | null, ei = scene.environmentIntensity ?? 1;
-      this.env = null; this.envI = -1;
-      if (env) await this.measure(renderer, env, ei); else this.value.setRGB(0, 0, 0);
-      this.env = env; this.envI = ei;
-    }
-  }
-
-  private async measure(renderer: THREE.WebGLRenderer, env: THREE.Texture, ei: number): Promise<void> {
+  private async measure(renderer: THREE.WebGLRenderer, env: THREE.Texture | null, ei: number): Promise<void> {
+    if (!env) { this.value.setRGB(0, 0, 0); return; }
     this.scene.environment = env;
     this.scene.environmentIntensity = ei;
     await this.onProbeTarget(renderer, () => renderer.compileAsync(this.scene, this.cam));
@@ -57,8 +46,6 @@ export class SkyIrradianceProbe {
     const prevRT = renderer.getRenderTarget(), prevTM = renderer.toneMapping, prevXR = renderer.xr.enabled;
     renderer.xr.enabled = false;
     renderer.setRenderTarget(this.rt);
-    const out = draw();
-    renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTM; renderer.xr.enabled = prevXR;
-    return out;
+    try { return draw(); } finally { renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTM; renderer.xr.enabled = prevXR; }
   }
 }
