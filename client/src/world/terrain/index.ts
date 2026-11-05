@@ -145,6 +145,8 @@ function bakeFarAlbedo(ctx: import("../../engine/engine").WorldCtx, lod: Terrain
     const maxL = Math.max(...lod.nodes.map((n) => n.level));
     const restore = lod.showLevel(maxL, lod.material);   // full 2 m detail everywhere
     const r = ctx.renderer, shadows = r.shadowMap.enabled, prevRT = r.getRenderTarget();
+    const far = uniforms.tFar.value;
+    uniforms.tFar.value = null;
     uniforms.uBakeMode.value = 1;
     r.shadowMap.enabled = false;
     r.setRenderTarget(rt); r.setClearColor(0x102838, 1); r.clear();
@@ -152,6 +154,7 @@ function bakeFarAlbedo(ctx: import("../../engine/engine").WorldCtx, lod: Terrain
     r.setRenderTarget(prevRT);
     r.shadowMap.enabled = shadows;
     uniforms.uBakeMode.value = 0;
+    uniforms.tFar.value = far;
     parent?.add(lod.group);
     restore();
     lod.update(ctx.camera, ctx.renderer.getDrawingBufferSize(new THREE.Vector2()).y || 1440, true);

@@ -13,7 +13,7 @@ import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
 import { afterPaint } from "./frame";
 import { flag } from "../flags";
-import { contextEpoch, restoreAll } from "./res/restore";
+import { contextEpoch, ignoreStaleDeletes, restoreAll } from "./res/restore";
 
 const RESTORE_WAIT_MS = 10000;
 const STREAM_SLICE_MS: readonly number[] = flag("streamslice") ?? [];
@@ -610,6 +610,7 @@ export class Engine implements WorldCtx {
   restores = 0;
   private lostTimer = 0;
   private watchContext() {
+    ignoreStaleDeletes(this.renderer.getContext() as WebGL2RenderingContext);
     this.canvas.addEventListener("webglcontextlost", () => {
       this.contextLost = true;
       this.lostTimer = window.setTimeout(() => location.reload(), RESTORE_WAIT_MS);

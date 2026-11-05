@@ -57,3 +57,15 @@ export async function restoreAll(): Promise<void> {
   await modules.rebuild(rebuild);
   for (const fn of [...hooks.bake]) await fn();
 }
+
+export function ignoreStaleDeletes(gl: WebGL2RenderingContext) {
+  const born = new WeakMap<object, number>();
+  let losses = 0;
+  gl.canvas.addEventListener("webglcontextlost", () => { losses++; });
+  const g = gl as unknown as Record<string, (...a: unknown[]) => unknown>;
+  for (const kind of ["Buffer", "Framebuffer", "Renderbuffer", "Texture", "VertexArray", "Program", "Shader", "Query", "Sampler", "TransformFeedback"]) {
+    const make = g["create" + kind].bind(gl), drop = g["delete" + kind].bind(gl);
+    g["create" + kind] = (...a) => { const o = make(...a); if (o) born.set(o as object, losses); return o; };
+    g["delete" + kind] = (o) => o && (born.get(o as object) ?? 0) !== losses ? undefined : drop(o);
+  }
+}
