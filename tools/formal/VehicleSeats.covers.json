@@ -30,7 +30,7 @@
   "writes": [
     {
       "what": "a vehicle's seats, a rider's vehicle and seat, and every kong-state write (a rider leaves the Ride state only together with its seat); vehicle states (VS.*) are not kong states",
-      "pattern": "seats\\[[^\\]]*\\]\\s*=(?!=)\\s*[^\\s;]+|\\.(veh|seat)\\s*=(?!=)\\s*[^\\s;]+|\\.st\\s*=(?!=)(?!\\s*VS\\.)\\s*[^\\s;]+",
+      "pattern": "seats\\[[^\\]]*\\]\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)\\s*[^\\s;]+|\\.(veh|seat)\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)\\s*[^\\s;]+|\\.st\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)(?!\\s*VS\\.)\\s*[^\\s;]+",
       "files": [
         "shared/sim/",
         "shared/net/",
@@ -209,7 +209,7 @@
     }
   ],
   "verified": {
-    "model": "9fad33c96212325d",
+    "model": "40f4b33c657a90ca",
     "regions": {
       "shared/sim/vehicle.ts#freeSeat": "706a387d7a9bfacb",
       "shared/sim/vehicle.ts#enterVehicle": "5da2594d416b51fb",
