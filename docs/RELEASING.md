@@ -46,13 +46,34 @@ A hotfix is always a patch in the base's line (`A.B`). Delete the `hotfix-base/*
 
 ## Promote
 
-After Kong Mini (the M4 with 16 GB; Kong Mac is the fallback) and Kong RTX (D3D11) pass the `verify-kongroyale` smoke on `next`, plus a profiler A/B when the release claims perf. The Metal smoke must include boot, Play and a full practice match in Safari 27 on that Mac (the 16 GB Mini; if Kong Mac stands in, say how much memory it has), (the Safari steps are in the profile-kongroyale-load skill) and report the peak WebContent memory and whether the tab was killed or survived. A kill blocks promotion.
+After Kong Mini (the M4 with 16 GB; Kong Mac is the fallback) and Kong RTX (D3D11) pass the `verify-kongroyale` smoke on `next`, plus a profiler A/B when the release claims perf. The Metal smoke must include boot, Play and a full practice match in Safari 27 on that Mac (the 16 GB Mini; if Kong Mac stands in, say how much memory it has), (the Safari steps are in the profile-kongroyale-load skill) and report the peak WebContent memory and whether the tab was killed or survived. A kill blocks promotion. Both smokes also run the [flight check](#flight-check).
 
 ```sh
 npx tsx tools/release.mts promote kong-vX.Y.Z
 ```
 
 This moves `stable` and clears the release's prerelease flag.
+
+## Flight check
+
+Part of both GPU smokes: Kong Mini (Metal) and Kong RTX (D3D11). Ray reported a release that felt laggy and read badly from the plane, and every gate before this one passed it (RAY-135). This check compares `next` with the last `stable` on frame time in flight and on the plane view.
+
+1. Build both sides: `stable` in a sibling worktree, `next` in your checkout.
+2. Run `tools/performance/gpu-match.mts` five times a side, interleaved, at a fixed preset, one GPU job at a time. A run takes about 7 minutes, so plan on about 70 minutes per machine.
+3. Compare the p95 frame interval. A `worse` row in `gpu/match/plane`, `gpu/match/descent` or `gpu/match/ground-pan` blocks promotion. That means the medians differ by more than 10 % and every `next` run falls outside the `stable` range. The `warmup-15s` row is for information only.
+4. Put the first `stable` and `next` plane screenshots (`*-plane.png`, 8 s into the plane) side by side in the smoke report. A plane view with visibly missing POIs, trees or detail also blocks promotion.
+
+```sh
+git worktree add ../kr-stable stable && (cd ../kr-stable && npm ci && npm run build)
+npm run build
+for i in 1 2 3 4 5; do
+  npx tsx tools/performance/gpu-match.mts --root ../kr-stable --preset high --shots shots/flight --out reports/flight/stable-$i.json
+  npx tsx tools/performance/gpu-match.mts --preset high --shots shots/flight --out reports/flight/next-$i.json
+done
+npx tsx tools/performance/compare.mts --base reports/flight/stable-*.json --cand reports/flight/next-*.json --metrics frameIntervalMs --stats p95 --threshold 10
+```
+
+`gpu-match.mts` drives Chrome only. On the Metal smoke, also open the Safari survival match with `?seed=42&perfhud`, press F8 8 s into the plane, and report the per-phase frame p95 from the bundle (plane, descent, the first 15 s on the ground) beside `stable`'s, with the plane screenshot. The Safari numbers are for information until Safari has a repeatable five-run tool. A software renderer fails `gpu-match.mts`, so the cloud machines can't run this check.
 
 ## Roll back
 
