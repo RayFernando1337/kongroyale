@@ -185,39 +185,39 @@
       "id": "heap-title",
       "area": "loading",
       "name": "Memory used at the title screen",
-      "plain": "Compared with v0.2.0, the game holds about 180 MB more memory when the title appears. It's front-loaded: by 30 seconds into a match, memory is level with v0.2.0. The new measurement caught it, and it is being fixed.",
+      "plain": "An early reading showed about 180 MB more memory at the title than v0.2.0. It was taken without clearing out garbage first, so it's being measured again before we count it either way.",
       "unit": "MB",
       "before": 1025,
       "after": 1205,
-      "regression": true,
       "issue": "RAY-104",
       "metric": "performance.memory.usedJSHeapSize with precise memory info at __kr.ready, median of 3, [949-1106] to [1145-1341]. 30 s into the match: 2410 to 2381 MB, level",
       "machine": "Windows PC, Chrome, D3D11",
       "date": "2026-11-04T19:10:00Z",
       "prs": [],
-      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative",
+      "remeasuring": true
     },
     {
       "id": "heap-plane",
       "area": "graphics",
       "name": "Memory used on the plane",
-      "plain": "On the drop plane the game holds about 220 MB more than v0.2.0, though runs varied a lot. Once the match is 30 seconds in, the gap is gone.",
+      "plain": "An early reading showed about 220 MB more on the drop plane. Same problem: no garbage clean-up first, so it's being measured again.",
       "unit": "MB",
       "before": 2337,
       "after": 2557,
-      "regression": true,
       "issue": "RAY-104",
       "metric": "usedJSHeapSize with precise memory info at the first poll in the Plane phase, median of 3, [2157-2670] to [2440-3236] (wide range)",
       "machine": "Windows PC, Chrome, D3D11",
       "date": "2026-11-04T19:10:00Z",
       "prs": [],
-      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative",
+      "remeasuring": true
     },
     {
       "id": "geo-title",
       "area": "graphics",
       "name": "3D shapes loaded at the title screen",
-      "plain": "About 210 more 3D shapes are loaded when the title appears, which fits the extra up-front memory: more of the island is built before you can play.",
+      "plain": "About 210 more 3D shapes are loaded when the title appears than in v0.2.0, and about 420 more 30 seconds into a match.",
       "unit": "geometries",
       "before": 580,
       "after": 794,
@@ -466,6 +466,82 @@
         25
       ],
       "source": "fork PR #25 body; handoffs/upstream/boot-settle-issue.md"
+    },
+    {
+      "id": "browser-mem-match",
+      "area": "graphics",
+      "name": "Whole-browser memory 30 s into a match (Windows)",
+      "plain": "The browser uses about 470 MB less memory in a match on v0.4.1 than on v0.4.0, mostly because the game keeps fewer copies of textures.",
+      "unit": "MB",
+      "before": 13188,
+      "after": 12719,
+      "metric": "memory totalMB at match +30 s, median of 3 a side, [13168-13202] to [12695-12851]; renderer CPU texture copies 1779 to 1316 MB",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-05T01:00:00Z",
+      "prs": [],
+      "source": "project drive handoffs/release-kong-v0.4.1-d3d11/README.md (3 runs a side, whole browser) and handoffs/heap-v041/README.md"
+    },
+    {
+      "id": "browser-mem-plane",
+      "area": "graphics",
+      "name": "Whole-browser memory on the plane (Windows)",
+      "plain": "On the drop plane the browser uses about 650 MB less memory on v0.4.1 than on v0.4.0.",
+      "unit": "MB",
+      "before": 13510,
+      "after": 12862,
+      "metric": "memory totalMB in the Plane phase, median of 3 a side, [13361-13519] to [12833-12959]",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-05T01:00:00Z",
+      "prs": [],
+      "source": "project drive handoffs/release-kong-v0.4.1-d3d11/README.md (3 runs a side, whole browser) and handoffs/heap-v041/README.md"
+    },
+    {
+      "id": "main-script-mac",
+      "area": "loading",
+      "name": "Start-up script, Mac (Chrome)",
+      "plain": "On a Mac the code that runs first finishes more than a third sooner.",
+      "unit": "ms",
+      "before": 1913,
+      "after": 1188,
+      "metric": "phase.mainScriptMs, median of 5 a side, [1898-1944] to [1183-1192]; title time is unchanged at the default because the saved time builds one more location",
+      "machine": "Mac mini M4 16 GB, Chrome, Metal",
+      "date": "2026-11-05T00:00:00Z",
+      "prs": [
+        28
+      ],
+      "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
+    },
+    {
+      "id": "prewarm-mac",
+      "area": "loading",
+      "name": "Graphics warm-up while loading, Mac (Chrome)",
+      "plain": "Painting the island map in the background makes the loading warm-up a fifth shorter on a Mac.",
+      "unit": "ms",
+      "before": 3010,
+      "after": 2405,
+      "metric": "prewarmMs, median of 5 a side, [2981-3050] to [2362-2432]",
+      "machine": "Mac mini M4 16 GB, Chrome, Metal",
+      "date": "2026-11-05T00:00:00Z",
+      "prs": [
+        41
+      ],
+      "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
+    },
+    {
+      "id": "settle-mac",
+      "area": "loading",
+      "name": "Final settle before the title, Mac (Chrome)",
+      "plain": "Not waiting for a cosmetic tree effect makes the last loading step 28% shorter on a Mac.",
+      "unit": "ms",
+      "before": 3214,
+      "after": 2314,
+      "metric": "settleMs, median of 5 a side, [3027-3383] to [2156-2474]",
+      "machine": "Mac mini M4 16 GB, Chrome, Metal",
+      "date": "2026-11-05T00:00:00Z",
+      "prs": [
+        25
+      ],
+      "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
     }
   ],
   "play": {
@@ -526,6 +602,16 @@
       },
       {
         "category": "load",
+        "name": "First visit to title screen, Mac mini (Chrome)",
+        "value": 21.0,
+        "unit": "s",
+        "target": null,
+        "status": "measured",
+        "detail": "Median of 5 cold loads on a Mac mini M4 16 GB. With the test setting that skips pre-building locations (?readyby=0) it is 12.4 s, with an emptier island behind the title.",
+        "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
+      },
+      {
+        "category": "load",
         "name": "Firing Range ready, Mac (Chrome)",
         "value": 24.3,
         "unit": "s",
@@ -540,9 +626,9 @@
         "value": null,
         "unit": "s",
         "target": null,
-        "status": "not measured yet",
-        "detail": "No Safari load time has been recorded for the current build.",
-        "source": "none"
+        "status": "fixing",
+        "detail": "On the 16 GB Mac mini, Safari closes the game for using too much memory: today's build at the title, v0.2.0 30 s into a match. Fixes are in progress (RAY-104 to RAY-106).",
+        "source": "Captain, from RAY-112 Safari half; RAY-104 to RAY-106"
       },
       {
         "category": "load",
@@ -553,7 +639,7 @@
         "target": 0,
         "targetNote": "the project scorecard",
         "status": "not measured yet",
-        "detail": "5 of 5 stalled before. The fix (#37) shipped; Safari hasn't been re-measured.",
+        "detail": "5 of 5 stalled before. The fix (#37) shipped; Safari hasn't been re-measured. In a visible Chrome window on the Mac the fix is neutral, as expected.",
         "source": "plans/why-it-matters.md scorecard; fork PR #37"
       },
       {
@@ -580,12 +666,12 @@
       {
         "category": "load",
         "name": "Memory used at the title screen",
-        "value": 1205,
+        "value": null,
         "unit": "MB",
         "target": null,
-        "status": "regressed",
-        "detail": "Up about 180 MB from v0.2.0 (1025 MB), with precise memory readings. The extra is front-loaded and gone by 30 s into a match. The memory lane (RAY-104) is fixing it.",
-        "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+        "status": "remeasuring",
+        "detail": "An earlier reading of 1205 MB (180 MB over v0.2.0) was taken without clearing out garbage first, so it's being measured again. With garbage cleared, the JS heap at the title measured about 210 MB on both v0.4.0 and v0.4.1.",
+        "source": "RAY-94; handoffs/heap-v041/README.md"
       },
       {
         "category": "enter",
@@ -663,12 +749,32 @@
       {
         "category": "match",
         "name": "Memory used 30 s into a match",
-        "value": 2381,
+        "value": null,
         "unit": "MB",
         "target": null,
-        "status": "level",
-        "detail": "Level with v0.2.0 (2410 MB), with precise memory readings. 3D shapes are still up about 420 (3047 to 3464), tracked in RAY-104.",
-        "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+        "status": "remeasuring",
+        "detail": "The earlier 2381 MB reading didn't clear out garbage first, so it's being measured again. The whole browser 30 s into a match is in the next row.",
+        "source": "RAY-94; handoffs/heap-v041/README.md"
+      },
+      {
+        "category": "match",
+        "name": "Whole-browser memory 30 s into a match, Windows PC",
+        "value": 12719,
+        "unit": "MB",
+        "target": null,
+        "status": "improved",
+        "detail": "v0.4.1, median of 3. It was 13188 MB on v0.4.0.",
+        "source": "project drive handoffs/release-kong-v0.4.1-d3d11/README.md (3 runs a side, whole browser) and handoffs/heap-v041/README.md"
+      },
+      {
+        "category": "match",
+        "name": "Whole-browser memory, Mac mini 16 GB (Chrome)",
+        "value": 12.4,
+        "unit": "GB",
+        "target": null,
+        "status": "baseline",
+        "detail": "About 12.4 GB once a match settles (graphics process about 6.6 GB, page about 5.5 GB); about 10 GB at the title. The Mac starts swapping. This is the baseline we're burning down so 16 GB machines play without swapping.",
+        "source": "captain-kong-cloud-release NOTES.md (Mac mini 16 GB Chrome footprint); reports/KONG-46.md"
       },
       {
         "category": "server",
@@ -945,9 +1051,9 @@
   ],
   "inProgress": [
     {
-      "name": "Fix the extra memory used at the title",
-      "estimate": "about 180 MB more than v0.2.0 when the title appears, level by 30 s into a match (tracked as RAY-104)",
-      "source": "RAY-94; RAY-104"
+      "name": "Cut memory so 16 GB Macs play without swapping",
+      "estimate": "Chrome uses about 12.4 GB today, and Safari runs out of memory (tracked as RAY-104 to RAY-106)",
+      "source": "RAY-104; RAY-105; RAY-106; NOTES.md"
     },
     {
       "name": "Prepare the storm effect during loading",
@@ -969,8 +1075,8 @@
       "title-since-v020",
       "first-frame-cpu",
       "server-tick",
+      "browser-mem-match",
       "slow-boots",
-      "water",
       "warmup-worst"
     ],
     "plain": "In its first day, the project shipped its first release and made the game faster to load, smoother to start and cheaper to run, with every change measured before and after."
