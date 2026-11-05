@@ -660,7 +660,7 @@ export function decodeRate(id: string): number | null {
 export function lazyGroup(g: string): boolean {
   // (every ambience one-shot too — each place's sprinkles decode when you get there, the first one of a kind only
   // asks for its group; and the legacy whole-reload takes, which play only while a keyframe set is missing)
-  return g.startsWith("amb/") || g.startsWith("amb1/") || g.startsWith("storm/") || /^air\/(plane|freefall|glider(?!-open)|flap|creak|rattle|bay-wind|dive|flutter)/.test(g) || /^w\/[a-z]+\/reload$/.test(g);
+  return g.startsWith("amb/") || g.startsWith("amb1/") || g.startsWith("storm/") || /^air\/(plane|freefall|glider(?!-open)|flap|creak|rattle|bay-wind|dive|flutter)/.test(g) || /^w\/[a-z]+\/reload$/.test(g) || /^(loot\/chest-hum(-b)?|veh\/(idle|drive|skid|fire|fuse)|heli\/(rotor|turbine|alarm)|w\/zip\/ride|gun\/(fire|fire-w|hot|spin))$/.test(g);
 }
 /** lazy groups prefetched at load. The PLANE (cabin layers, exterior drone, rattles — ~9 MB of PCM): it must sound the
  * frame the plane phase starts, whatever the main thread is doing (fetched from idle slices, a stalled match rode a
@@ -671,6 +671,7 @@ export function prefetchGroup(g: string): boolean {
 }
 /** requested together the moment the plane phase starts (the whole drop: cabin, flyover, freefall, glider) */
 export const DROP_GROUPS = ["air/plane-int", "air/plane-int-b", "air/plane-int-c", "air/plane-ext", "air/rattle", "air/freefall", "air/freefall-b", "air/flap", "air/glider", "air/glider-b", "air/creak", "air/bay-wind", "air/dive", "air/flutter"];
+export const HELI_GUN_GROUPS = ["gun/fire", "gun/fire-w", "gun/hot", "gun/spin"];
 
 // ---------------------------------------------------------------- ambience beds (see ambience.ts)
 export const AMB_DB: Record<string, number> = {
