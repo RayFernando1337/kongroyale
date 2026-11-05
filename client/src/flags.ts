@@ -167,7 +167,7 @@ const FLAGS = {
   studio: { kind: text, owner: "weapons", purpose: "weapon studio light overrides as key:value,key:value" },
   sun: { kind: numbers, owner: "atmos", purpose: "sun elevation,azimuth in degrees instead of the preset's" },
   t: { kind: num(12), owner: "boot", purpose: "time of day (hours) for views and captures" },
-  texfree: { kind: on, owner: "engine", purpose: "drop a texture's CPU copy (bitmap, canvas, typed array) once it is on the GPU, where its owner opted in" },
+  texfree: { kind: on, owner: "engine", purpose: "drop a texture's CPU copy once it is on the GPU, where its owner opted in" },
   texprof: { kind: present, owner: "engine", purpose: "profile texture uploads" },
   tfar: { kind: on, owner: "terrain", purpose: "far terrain material beyond 350 m" },
   townxfade: { kind: on, owner: "pois", purpose: "town materials crossfade between LOD tiers" },
