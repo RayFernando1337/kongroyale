@@ -1950,9 +1950,10 @@ export class AtmosPost implements PostPipeline {
     if (!vm) return;
     const cam = this.ctx.camera, scene = this.ctx.scene;
     if (!this.vmRT) {
-      this.vmRT = new THREE.WebGLRenderTarget(this.outW, this.outH, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, stencilBuffer: false, generateMipmaps: false });
+      this.vmRT = new THREE.WebGLRenderTarget(this.fullW, this.fullH, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, stencilBuffer: false, generateMipmaps: false });
       this.vmRT.texture.colorSpace = THREE.NoColorSpace;
-    } else if (this.vmRT.width !== this.outW || this.vmRT.height !== this.outH) this.vmRT.setSize(this.outW, this.outH);
+    }
+    if (this.vmRT.width !== this.outW || this.vmRT.height !== this.outH) this.vmRT.setSize(this.outW, this.outH);
     // the scene's lights (same count → the viewmodel's programs are the ones the scene render uses; rescanned ~1 / s)
     if (++this.vmLightAge > 60) {
       this.vmLightAge = 0; this.vmLights = [];
