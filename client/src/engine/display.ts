@@ -85,6 +85,7 @@ const RULES: Array<[RegExp, Level]> = [
   [/apple m[4-9] pro|apple m\d max|apple m\d ultra|rtx 20[7-8]0|rtx 30[6]0|rtx 40[6]0|rtx 50[5-6]0|gtx 10[7-8]0|rx 6[6-7]00|rx 7[6]00|arc a7|arc b/i, "high"],
   [/rtx 30[7-9]0|rtx 40[7-9]0|rtx 50[7-9]0|rtx a\d000|rx 6[8-9]00|rx 7[7-9]00|rx 9\d{3}|titan/i, "epic"],
 ];
+const macDesktop = () => /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints < 2;
 export function gpuString(gl: WebGLRenderingContext | WebGL2RenderingContext): string {
   try {
     const ext = gl.getExtension("WEBGL_debug_renderer_info");
@@ -92,7 +93,8 @@ export function gpuString(gl: WebGLRenderingContext | WebGL2RenderingContext): s
     return String(s ?? "");
   } catch { return ""; }
 }
-export function classifyGpu(gpu: string): Level {
+export function classifyGpu(gpu: string, mac = false): Level {
+  if (mac && /^apple gpu$/i.test(gpu.trim())) return "high";
   let lvl: Level | null = null;
   for (const [re, l] of RULES) if (re.test(gpu)) lvl = l; // later (stronger) rules win: "rtx 3070 laptop" → epic
   if (lvl) return lvl;
@@ -128,16 +130,16 @@ function legacyPauseFov() {
 /** the world-module build tier for this boot (?q= wins): Low / Medium presets build the lighter water / clouds / AO */
 export function bootQuality(): Quality | null {
   const s = store.get();
-  const lvl = !s ? detectLevel() : s.preset === "custom" || s.preset === "auto" ? (s.post ?? s.auto) : s.preset;
+  const lvl = !s || (s.preset === "auto" && !s.stepped) ? detectLevel() ?? s?.auto : s.preset === "custom" || s.preset === "auto" ? (s.post ?? s.auto) : s.preset;
   return ({ low: "low", medium: "medium", high: "high", epic: "ultra" } as const)[lvl as Level] ?? null;
 }
 
 function detectLevel(): Level | null {
   const spoof = flag("gpu");
-  if (spoof) return classifyGpu(spoof);
+  if (spoof) return classifyGpu(spoof, macDesktop());
   const gl = document.createElement("canvas").getContext("webgl2", { powerPreference: "high-performance", antialias: false, stencil: false });
   if (!gl) return null;
-  const level = classifyGpu(gpuString(gl));
+  const level = classifyGpu(gpuString(gl), macDesktop());
   gl.getExtension("WEBGL_lose_context")?.loseContext();
   return level;
 }
@@ -166,11 +168,12 @@ export class Display {
   constructor(private engine: Engine) {
     this.gpu = gpuString(engine.renderer.getContext());
     const spoof = flag("gpu"); // tools: ?gpu=<renderer string>
-    this.gpuLevel = classifyGpu(spoof || this.gpu);
+    this.gpuLevel = classifyGpu(spoof || this.gpu, macDesktop());
     const saved = store.get();
-    this.firstVisit = !saved;
-    this.settings = saved ?? presetSettings(this.gpuLevel, this.backingPx(), { auto: this.gpuLevel }, true);
-    if (!saved) this.settings.preset = "auto";
+    const reclassified = !!saved && saved.preset === "auto" && !saved.stepped && saved.auto !== this.gpuLevel;
+    this.firstVisit = !saved || reclassified;
+    this.settings = saved && !reclassified ? saved : presetSettings(this.gpuLevel, this.backingPx(), { ...saved, auto: this.gpuLevel }, true);
+    if (!saved || reclassified) this.settings.preset = "auto";
     // the FOV used to live on the pause card too (kr-settings.fov, re-synced to this store at every boot and then moved by
     // that slider): it holds the FOV last in effect — adopt it once; the first write of this store retires it
     const legacyFov = store.fovMoved() ? NaN : legacyPauseFov();
@@ -178,7 +181,7 @@ export class Display {
     this.settings.fov = Number.isFinite(this.settings.fov) ? Math.max(60, Math.min(90, this.settings.fov)) : 72;
     this.applyFov();
     if (this.settings.res3d < 0) this.settings.res3d = presetRes(this.settings.auto, this.backingPx());
-    if (migrated || (saved && Number.isFinite(legacyFov))) store.set(this.settings);
+    if (migrated || reclassified || (saved && Number.isFinite(legacyFov))) store.set(this.settings);
     engine.onRefresh(() => this.applyCap());
   }
 
