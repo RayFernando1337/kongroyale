@@ -14,6 +14,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { assetUrl } from "../engine/assets";
 import { releaseAfterUpload } from "../engine/texture-release";
+import { flag } from "../flags";
 import type { TukDraw, TukView } from "./tuktuk";
 import { VF, VS } from "../../../shared/sim/vehicle";
 
@@ -143,7 +144,13 @@ export function loadHeli(): Promise<Kit> {
     return (KIT = K);
   })());
 }
-if (typeof document !== "undefined") void loadHeli().catch((e) => console.error("[heli] model failed", e));
+function loadsLazily() {
+  const f = flag("helilazy");
+  if (f !== null) return f === "1";
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  return mem < 8 || /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
+}
+if (typeof document !== "undefined" && !loadsLazily()) void loadHeli().catch((e) => console.error("[heli] model failed", e));
 
 interface Inst {
   model: THREE.Group;
@@ -313,6 +320,7 @@ export function createHeli(late?: (o: THREE.Object3D) => void): TukView & { muzz
   return view;
 }
 
+let PANEL: { geo: THREE.BoxGeometry; mat: THREE.MeshStandardMaterial } | null = null;
 /** loose pieces for the bang: the rotor's blades, the tail fan, the door gun, a panel — fresh objects, the caller owns
  * them (client/src/game/tuk-fx.ts throws them about). Empty until the model has loaded. */
 export function heliDebris(): THREE.Object3D[] {
@@ -325,7 +333,8 @@ export function heliDebris(): THREE.Object3D[] {
     g.add(c); out.push(g);
   };
   piece("rotor_blades"); piece("tailfan"); piece("gun_pitch");
-  const panel = new THREE.Group(); panel.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 1.6), new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.8 }))); out.push(panel);
+  PANEL ??= { geo: new THREE.BoxGeometry(0.7, 0.6, 1.6), mat: new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.8 }) };
+  const panel = new THREE.Group(); panel.add(new THREE.Mesh(PANEL.geo, PANEL.mat)); out.push(panel);
   return out;
 }
 /** one of each (fresh + wreck) for the prewarm compile — empty if the model has not landed yet (then it compiles on

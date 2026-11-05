@@ -20,6 +20,7 @@ export class TukFx {
   private readonly aPos = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 4), 4);
   private readonly aCol = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 4), 4);
   private readonly pieces: Piece[] = [];
+  private readonly mat: THREE.ShaderMaterial;
   private seed = 1337;
   constructor(scene: THREE.Scene, private readonly ground: (x: number, z: number) => number) {
     this.geo.setAttribute("position", new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0], 3));
@@ -27,7 +28,7 @@ export class TukFx {
     this.aPos.setUsage(THREE.DynamicDrawUsage); this.aCol.setUsage(THREE.DynamicDrawUsage);
     this.geo.setAttribute("iPos", this.aPos); this.geo.setAttribute("iCol", this.aCol);
     this.geo.instanceCount = 0;
-    const mat = new THREE.ShaderMaterial({
+    const mat = this.mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, depthTest: true, toneMapped: true, fog: false,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
       blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
@@ -145,5 +146,5 @@ export class TukFx {
       if (q.life < 1) o.scale.setScalar(Math.max(0.01, q.life));
     }
   }
-  dispose() { this.object.removeFromParent(); this.geo.dispose(); for (const q of this.pieces) q.o.removeFromParent(); this.pieces.length = 0; }
+  dispose() { this.object.removeFromParent(); this.geo.dispose(); this.mat.dispose(); for (const q of this.pieces) q.o.removeFromParent(); this.pieces.length = 0; }
 }
