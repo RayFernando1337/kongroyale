@@ -51,7 +51,9 @@ pieces fit; read it before changing networking, the simulation or world loading.
    who wins. Never trust a value the client sends without checking it on the server.
 2. **`shared/` runs on both sides, so it must stay deterministic.** Same inputs, same result, on Node and in every
    browser. No DOM APIs, no Node APIs (`node:*`, `process`), no `Math.random()` (use `Rng` from `shared/sim/rng.ts`
-   with the match seed), and no wall-clock time in game logic. Keep hot paths (`stepPlayer`, collision, hit tests)
+   with the match seed), no wall-clock time in game logic, and no built-in `Math.sin`, `cos`, `tan`, `atan2`, `exp`,
+   `pow`, `hypot`, `**` or other libm functions: they differ in the last bit between CPUs and JS engines, so call them
+   through `shared/sim/dmath.ts`. Keep hot paths (`stepPlayer`, collision, hit tests)
    free of per-tick allocations.
 3. **Never commit secrets.** No `.env` files, keys, tokens or `.admin-key`. CI scans every pull request for them.
 4. **Every asset needs a source and a licence.** Art, models, sounds and fonts must be your own or clearly free to use
@@ -116,6 +118,7 @@ catching it; turn it into a check when the same mistake shows up twice.
 |---|---|
 | 1. The server is authoritative | Review only. The `redteam` step of `npm test` attacks the admin lobby. |
 | 2. `shared/` is deterministic: no `Math.random`, wall-clock time, Node or DOM APIs | Lint rule `shared-determinism`; the `sim` step of `npm test` fails when the headless match's state hash changes |
+| 2. `shared/` math gives the same bits everywhere: transcendental functions, `hypot` and `**` go through `shared/sim/dmath.ts` | Lint rule `shared-math` (empty baseline); the `dmath` step of `npm test` checks every dmath function bit for bit against recorded vectors |
 | 2. Hot paths don't allocate | Lint rule `hot-alloc` over `*.hot.ts` and `tools/lint/hot.json` |
 | 3. Never commit secrets | CI job "no secrets" (key and env file check, gitleaks) |
 | 4. Every asset needs a source and a licence | `npm test` (`assets` step): no new unattributed asset beyond `tools/verify-assets.baseline.json`, which only shrinks |

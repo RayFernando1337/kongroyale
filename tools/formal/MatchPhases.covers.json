@@ -63,11 +63,11 @@
   "verified": {
     "model": "e0942eb52bd2c461",
     "regions": {
-      "shared/sim/match.ts#Match.step": "1b3bbf9c9482c88a",
+      "shared/sim/match.ts#Match.step": "7dca769aad2c92c6",
       "shared/sim/match.ts#Match.startNow": "b779ef6260e29677",
       "shared/sim/match.ts#Match.warmupHeld": "7a326d0c62acd4d9",
       "shared/sim/match.ts#Match.enterWarmup": "7618bee68a8f4a70",
-      "shared/sim/match.ts#Match.enterPlane": "56395fe9f9f1a57b",
+      "shared/sim/match.ts#Match.enterPlane": "531ea3b536fe627d",
       "shared/sim/match.ts#Match.stepPlane": "d777e44ffd0e3119",
       "shared/sim/match.ts#Match.enterPlay": "54b19b3b8d41e962",
       "shared/sim/match.ts#Match.enterResults": "adeaad451dcf9f21",
@@ -75,7 +75,7 @@
       "shared/sim/match.ts#Match.squadsLeft": "bd2e00243de0893f",
       "shared/sim/match.ts#Match.kill": "acb855d8aeec42e9",
       "shared/sim/match.ts#Match.eliminate": "41a4964069225946",
-      "shared/sim/match.ts#Match.stepRespawns": "d7ad146ff6f89650",
+      "shared/sim/match.ts#Match.stepRespawns": "e952cbe4f8040ffe",
       "shared/sim/match.ts#Match.econHost": "6a3def1a6f8a4eeb",
       "shared/sim/player.ts#resetForMatch": "6066e6d9b3148c1f",
       "shared/sim/storm.ts#PHASE_REF": "e0a75d3d1b14fd57",
