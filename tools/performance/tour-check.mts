@@ -22,6 +22,8 @@ import { arg } from "./common.mts";
 const TRACE = process.argv.includes("--trace");
 const ONLY = arg("--only", "").split(",").filter(Boolean);
 const segs: Segment[] = ONLY.length ? TOUR.filter((s) => ONLY.includes(s.id)) : TOUR;
+const unknown = ONLY.filter((id) => !TOUR.some((s) => s.id === id));
+if (unknown.length) throw Error("--only " + unknown.join(",") + ": no such segment (" + TOUR.map((s) => s.id).join(", ") + ")");
 const b = fs.readFileSync(new URL("../../public/assets/terrain/island.bin", import.meta.url));
 const td = decodeTerrainFile(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
 const { world } = await buildStaticWorld(new Terrain(td.heights, td.biome), td);

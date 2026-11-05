@@ -110,7 +110,7 @@ export function tourRunner(segs: Segment[], api: TourApi, steerFn: typeof steer)
   const ctl: Ctl = { yaw: 0, pitch: 0, fwd: false, back: false, left: false, right: false, sprint: false, jump: false, down: false, use: false, fire: false };
   const log: string[] = [];
   const res = segs.map((s) => ({ id: s.id, ok: false, stuck: 0, skipped: 0, waypoints: 0, of: s.path.length, runS: 0, note: "" }));
-  let si = -1, phase = "next", t = 0, wi = 0, look = 0, best = Infinity, bestT = 0, unstick = 0, frames = 0, tries = 0;
+  let si = -1, phase = "next", t = 0, wi = 0, look = 0, best = Infinity, bestT = 0, unstick = 0, frames = 0, tries = 0, placed = 0;
   const say = (m: string) => { log.push(si + ":" + (segs[si]?.id ?? "-") + " " + phase + " " + m); };
   const go = (ph: string) => { phase = ph; t = 0; };
   return {
@@ -145,11 +145,12 @@ export function tourRunner(segs: Segment[], api: TourApi, steerFn: typeof steer)
           ctl.yaw = look;
           if (Math.hypot(p.x - seg.at[0], p.z - seg.at[1]) < 4 && p.onGround) {
             if (seg.kind === "drive" || seg.kind === "fly") go("board");
-            else { if (seg.kind === "fight") r.note = "bots " + api.bringBots(seg.bots ?? 6, p.x, p.z, seg.ring?.[0] ?? 10, seg.ring?.[1] ?? 20); go("settle"); }
+            else { if (seg.kind === "fight") { placed = api.bringBots(seg.bots ?? 6, p.x, p.z, seg.ring?.[0] ?? 10, seg.ring?.[1] ?? 20); r.note = "bots " + placed + "/" + (seg.bots ?? 6); } go("settle"); }
           } else if (t > 4) { if (++tries > 2) { say("never arrived"); go("next"); } else { api.teleport(seg.at[0], seg.at[1], seg.yaw); t = 0; } }
           break;
         }
         case "board": {
+          if (p.riding) { look = p.heading; if (wi > 0) { go("run"); bestT = 0; best = Infinity; } else go("settle"); break; }
           const v = wi > 0 ? api.vehicle(seg.kind === "fly" ? 1 : 0, p.x, p.z) : api.vehicle(seg.kind === "fly" ? 1 : 0, seg.at[0], seg.at[1]);
           if (!v) { say("no vehicle"); go("next"); break; }
           if (t === dt) say("boarding the vehicle at " + v.x.toFixed(0) + "," + v.z.toFixed(0));
@@ -158,8 +159,7 @@ export function tourRunner(segs: Segment[], api: TourApi, steerFn: typeof steer)
           ctl.yaw = Math.atan2(-(v.x - p.x), -(v.z - p.z)); ctl.pitch = Math.atan2(v.y + 0.8 - (p.y + 1.6), Math.max(0.5, d));
           look = ctl.yaw;
           ctl.use = t % 0.6 < 0.3;
-          if (p.riding) { look = p.heading; if (wi > 0) { go("run"); bestT = 0; best = Infinity; } else go("settle"); }
-          else if (t > 8) { say("couldn't board"); go("next"); }
+          if (t > 8) { say("couldn't board"); go("next"); }
           break;
         }
         case "settle": {
@@ -181,7 +181,7 @@ export function tourRunner(segs: Segment[], api: TourApi, steerFn: typeof steer)
             const e = api.enemy();
             if (e) { ctl.yaw = Math.atan2(-(e.x - p.x), -(e.z - p.z)); ctl.pitch = Math.atan2(e.y - (p.y + 1.6), Math.max(0.5, Math.hypot(e.x - p.x, e.z - p.z))); ctl.fire = true; look = ctl.yaw; }
             else { look += 0.8 * dt; ctl.yaw = look; ctl.pitch = -0.08; }
-            if (t >= seg.seconds) { r.ok = true; go("next"); }
+            if (t >= seg.seconds) { r.ok = placed >= (seg.bots ?? 6); go("next"); }
             break;
           }
           const w = seg.path[wi], d = Math.hypot(w[0] - p.x, w[1] - p.z);
@@ -198,14 +198,14 @@ export function tourRunner(segs: Segment[], api: TourApi, steerFn: typeof steer)
             if (r.stuck % 3 === 0) { r.skipped++; if (seg.kind !== "drive" && seg.kind !== "fly") api.teleport(w[0], w[1], look); wi++; if (wi >= seg.path.length) { go("next"); break; } }
           }
           const nw = seg.path[Math.min(wi + 1, seg.path.length - 1)];
-          steerFn(seg.kind, p, look, w[0], w[1], nw[0], nw[1], seg.cruise ?? 60, dt, ctl);
+          steerFn(seg.kind, p, look, w[0], w[1], nw[0], nw[1], seg.cruise ?? 60, Math.min(dt, 0.1), ctl);
           if (unstick > 0) {
             unstick -= dt;
             if (seg.kind === "drive") { ctl.fwd = false; ctl.back = true; const l = ctl.left; ctl.left = ctl.right; ctl.right = l; }
             else ctl.jump = seg.kind === "fly" || unstick > 1.2;
           }
           look = ctl.yaw;
-          if (t >= seg.seconds) { r.ok = r.stuck === 0; r.note = "timed out at wp " + wi + "/" + seg.path.length; go("next"); }
+          if (t >= seg.seconds) { r.ok = false; r.note = "timed out at wp " + wi + "/" + seg.path.length; go("next"); }
           break;
         }
       }

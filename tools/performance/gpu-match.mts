@@ -181,7 +181,7 @@ function install(cfg: { maxFrames: number; panRate: number; panPitch: number; pl
     if (c.on && !c.pan && !c.landed && cm && cm.phase >= 2 && cm.pred.st === 0) { if (pan) { c.pan = true; c.panT0 = performance.now(); } else c.landed = true; }
     const panning = c.pan && !!cm && cm.pred.st === 0;
     if (panning) { g.input.yaw += cfg.panRate * Math.min(dt, 0.1); g.input.pitch = cfg.panPitch; }
-    if (c.on && kr.tourTick) kr.tourTick(Math.min(dt, 0.1));
+    if (c.on && kr.tourTick) kr.tourTick(dt);
     // the drop: hold JUMP from the plane time at which its line passes closest to the first safe circle's centre (the
     // door opens at 6 s and the game ignores JUMP before that) until the player is out, so every run lands in the same
     // spot inside the circle. The player state can turn Plane a frame before the phase message brings the flight
@@ -456,7 +456,7 @@ function routeCase(seg: Segment, k: number, idx: number[]): CaseResult {
   const dist = (v: number[], unit: Unit = "ms"): Metric => v.length ? { status: "ok", unit, better: "lower", summary: stats(v) } : { status: "invalid", unit, reason: "no frames" };
   const secs = Number(c.windows.seconds) || 1;
   let alloc = 0, gcs = 0;
-  for (const i of idx) { if (i === 0 || d.SEG[i - 1] !== k) continue; const dh = d.HEAP[i] - d.HEAP[i - 1]; if (dh > 0) alloc += dh; else if (dh < -1) gcs++; }
+  for (const i of idx) { if (i === 0 || d.SEG[i - 1] !== k || d.MEAS[i - 1] !== 1) continue; const dh = d.HEAP[i] - d.HEAP[i - 1]; if (dh > 0) alloc += dh; else if (dh < -1) gcs++; }
   // long animation frames (> 50 ms) that ended inside the window: the scripts Chrome blames, by function
   const inWin = new Set(idx), byFn = new Map<string, { ms: number; n: number }>();
   let longN = 0;
