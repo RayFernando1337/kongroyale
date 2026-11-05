@@ -8,7 +8,7 @@
 //
 // log: one cold Chrome load (dpr 2, 1600x900) through a logging reverse proxy, so worker-initiated fetches count
 // (a page-level CDP request log misses every Worker fetch). Writes every request (url, start/end ms, wire bytes,
-// status) and the ready time (the game's own __kr.readyAt, on the proxy's clock); a request counts as before ready when it STARTS before it; --after S (5) keeps logging S seconds past ready, for what the prefab warm-up fetches. replay: fetches the unique URLs requested (started) before ready through a shared link
+// status) and the ready time (the game's own __kr.readyAt, on the proxy's clock); a request counts as before ready when it STARTS before it, and its whole response is counted on that side (bytes of a response that straddles ready are not split); --after S (5) keeps logging S seconds past ready, for what the prefab warm-up fetches. replay: fetches the unique URLs requested (started) before ready through a shared link
 // (--net MBPS,RTT_MS; 6 connections, one round trip before each response) and prints the download seconds. It
 // fetches everything at once, so it is a lower bound: the game discovers its requests over the boot.
 // Only local servers (AGENTS.md rule 7): both steps refuse any host but 127.0.0.1 / localhost.
@@ -65,7 +65,7 @@ if (cmd === "log") {
   fs.mkdirSync(out.replace(/[^/]*$/, "") || ".", { recursive: true });
   fs.writeFileSync(out, JSON.stringify({ readyAt, log } satisfies Log));
   const pre = log.filter((r) => r.t <= readyAt), mb = (rs: Req[]) => (rs.reduce((s, r) => s + r.bytes, 0) / 1e6).toFixed(2);
-  console.log(JSON.stringify({ readyAt, requests: log.length, preReadyMB: mb(pre), afterReadyMB: mb(log.filter((r) => r.t > readyAt)), out }));
+  console.log(JSON.stringify({ readyAt, requests: log.length, startedBeforeReadyMB: mb(pre), startedAfterReadyMB: mb(log.filter((r) => r.t > readyAt)), out }));
   await ctx.close();
   fs.rmSync(profile, { recursive: true, force: true });
   proxy.close();
