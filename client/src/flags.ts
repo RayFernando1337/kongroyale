@@ -112,6 +112,7 @@ const FLAGS = {
   outfits: { kind: text, owner: "actors", purpose: "kong outfit dev view (=N picks the count; empty = 1)" },
   painttex: { kind: present, owner: "pois", purpose: "paint coast textures at load instead of loading the baked ones" },
   perfhud: { kind: present, owner: "ui", purpose: "playtest perf HUD (fps, frame p95, GPU ms, ping, jitter, heap, textures, geometries, programs) and a per-second metrics timeline for the session" },
+  pixcap: { kind: one, owner: "atmos", purpose: "=1 sizes the post chain's screen-sized targets (TAA history, velocity, viewmodel, scene buffers) from the quality tier's pixel cap instead of the canvas, and stretches the result to the canvas in the final blit" },
   playtest: { kind: text, owner: "ui", purpose: "playtest title with one Play button: present or =1 on, =0 off" },
   prepare: { kind: text, owner: "boot", purpose: "=full builds everything behind the match card instead of streaming" },
   prewarm: { kind: text, owner: "game", purpose: "=full prewarms every prefab before ready instead of after" },
