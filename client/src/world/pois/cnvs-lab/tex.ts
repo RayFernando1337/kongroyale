@@ -20,7 +20,7 @@ function wrap(name: string, k: string, img: ImageBitmap | HTMLCanvasElement | Of
   t.needsUpdate = true;
   return releaseAfterUpload(t, () => {
     const c = LAB_PAINT[name]()[k as "map" | "normalMap" | "emissiveMap"] as HTMLCanvasElement;
-    return bitmap ? createImageBitmap(c) : c;
+    return bitmap ? createImageBitmap(c, { imageOrientation: "flipY", premultiplyAlpha: "none" }) : c;
   });
 }
 function paintHere(name: string): TexSet {

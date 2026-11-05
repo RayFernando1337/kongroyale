@@ -16,6 +16,7 @@ import { flag } from "../flags";
 import { contextEpoch, ignoreStaleDeletes, restoreAll } from "./res/restore";
 
 const RESTORE_WAIT_MS = 10000;
+const REBUILD_WAIT_MS = 30000;
 const STREAM_SLICE_MS: readonly number[] = flag("streamslice") ?? [];
 
 // engine fades dissolve instead of scaling — three's shared chunks are patched before the first compile
@@ -617,7 +618,8 @@ export class Engine implements WorldCtx {
     });
     this.canvas.addEventListener("webglcontextrestored", () => {
       clearTimeout(this.lostTimer);
-      restoreAll().then(() => { this.restores++; this.contextLost = false; }, (e) => { console.error("[context restore]", e); location.reload(); });
+      this.lostTimer = window.setTimeout(() => location.reload(), REBUILD_WAIT_MS);
+      restoreAll().then(() => { clearTimeout(this.lostTimer); this.restores++; this.contextLost = false; }, (e) => { console.error("[context restore]", e); location.reload(); });
     });
   }
   start() {

@@ -68,7 +68,7 @@ export interface TerrainGpuArrays { dat: Uint8Array; w: Uint8Array; res: number 
 export function gpuDataFromArrays(a: TerrainGpuArrays, again: () => TerrainGpuArrays): TerrainGpuData {
   let fresh: TerrainGpuArrays | null = null;
   onRestore("bake", () => { fresh = null; });
-  const mk = (arr: Uint8Array, layers: number, pick: (g: TerrainGpuArrays) => Uint8Array) => {
+  const mk = (a: { res: number }, arr: Uint8Array, layers: number, pick: (g: TerrainGpuArrays) => Uint8Array) => {
     const tex = new THREE.DataArrayTexture(arr, a.res, a.res, layers);
     tex.format = THREE.RGBAFormat; tex.type = THREE.UnsignedByteType;
     tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
@@ -78,7 +78,8 @@ export function gpuDataFromArrays(a: TerrainGpuArrays, again: () => TerrainGpuAr
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.needsUpdate = true;
     return releaseAfterUpload(tex, () => { fresh ??= again(); return { data: pick(fresh), width: a.res, height: a.res, depth: layers }; });
   };
-  return { dat: mk(a.dat, 4, (g) => g.dat), w: mk(a.w, 3, (g) => g.w), res: a.res };
+  const size = { res: a.res };
+  return { dat: mk(size, a.dat, 4, (g) => g.dat), w: mk(size, a.w, 3, (g) => g.w), res: a.res };
 }
 export function stepSplatFrom(a: TerrainGpuArrays): { w: Uint8Array; path: Uint8Array; res: number } {
   const N = a.res * a.res, L2 = 2 * N * 4, path = new Uint8Array(N * 3);
