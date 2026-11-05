@@ -317,7 +317,7 @@ export class Library {
 
   releaseLoaded(keep: (group: string) => boolean) {
     for (const [g, ids] of this.groups) {
-      if (!this.isLazy(g) || keep(g) || ids.some((id) => this.pending.has(id)) || !ids.some((id) => this.buffers.has(id))) continue;
+      if (g !== groupOf(g) || !this.isLazy(g) || keep(g) || ids.some((id) => this.pending.has(id)) || !ids.some((id) => this.buffers.has(id))) continue;
       this.release(g);
     }
   }
@@ -327,6 +327,7 @@ export class Library {
     for (const id of this.groups.get(group) ?? []) {
       if (this.buffers.delete(id)) this.loaded--;
       this.pending.delete(id);
+      this.groupLoads.delete(id);
     }
     this.groupLoads.delete(group);
     this.lazyEvicted++;
