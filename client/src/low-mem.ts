@@ -204,15 +204,15 @@ async function loadImpostors(engine: Engine, w: World, out: Map<string, THREE.Me
       const mesh = new THREE.Mesh(g, mat);
       mesh.name = "far-impostor:" + id;
       mesh.matrixAutoUpdate = false;
-      mesh.visible = streamMs["poi:" + id] === undefined;
+      mesh.visible = !w.modOf.has("poi:" + id) || streamMs["poi:" + id] === undefined;
       group.add(mesh);
       out.set("poi:" + id, mesh);
     } catch (e) { w.report("far-impostor:" + id, e); }
   }));
 }
 
-export function showImpostors(streamMs: Record<string, number>) {
-  if (impostors) for (const [id, mesh] of impostors) mesh.visible = streamMs[id] === undefined;
+export function showImpostors(modOf: ReadonlyMap<string, unknown>, streamMs: Record<string, number>) {
+  if (impostors) for (const [id, mesh] of impostors) mesh.visible = !modOf.has(id) || streamMs[id] === undefined;
 }
 
 let trimming = Promise.resolve();
@@ -234,14 +234,14 @@ export function trimStreamed(engine: Engine, w: World, incoming: string | null, 
   };
   if (!impostors && flag("farimp")) { impostors = new Map(); void loadImpostors(engine, w, impostors, streamMs).catch((e) => w.report("far-impostors", e)); }
   return (trimming = trimming.then(async () => {
-    showImpostors(streamMs);
+    showImpostors(w.modOf, streamMs);
     for (;;) {
       const list = residents!();
       if (incoming) list.push({ id: incoming, d: -Infinity, mb: costOf.get(incoming) ?? UNKNOWN_POI_MB });
       const victim = evictionsFor(list)[0];
       if (!victim) break;
       await evictStreamed(engine, w, victim.id);
-      showImpostors(streamMs);
+      showImpostors(w.modOf, streamMs);
       pending.push(victim.id);
       delete streamMs[victim.id];
     }
