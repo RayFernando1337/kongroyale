@@ -34,7 +34,7 @@ import { ANN, HELD_STOWED, SURF_PLAYER } from "../../../shared/net/proto";
 import { Biome, CONSUMABLES, POIS, WEAPONS, type WeaponId } from "../../../shared/world/map";
 import type { Surface } from "../../../shared/world/colliders";
 import type { Terrain } from "../../../shared/world/terrain";
-import type { PlaneProps } from "../actors/plane";
+import { releasePlanePaint, restorePlanePaint, type PlaneProps } from "../actors/plane";
 import type { GliderProps } from "../actors/glider";
 import { outfitFor } from "../actors/outfit-pick";
 import type { LightBalancer } from "./lights";
@@ -227,6 +227,7 @@ export class GameRender implements EventSink {
   constructor(readonly engine: Engine, readonly cm: ClientMatch, readonly kits: Kits, readonly input: GameInput) {
     const before = new Set(engine.scene.children);
     this.matchScope.defer(() => this.releaseViews());
+    this.matchScope.defer(() => void restorePlanePaint());
     this.hud = makeHudState();
     engine.camera.add(kits.viewModel.object);
     engine.scene.add(kits.plane.object);
@@ -2212,7 +2213,7 @@ export class GameRender implements EventSink {
     const cm = this.cm, pl = this.kits.plane;
     const inPlanePhase = cm.phase === 1;
     pl.object.visible = inPlanePhase;
-    if (!inPlanePhase) { this.stopLoop("plane:drone"); return; }
+    if (!inPlanePhase) { this.stopLoop("plane:drone"); if (cm.phase === 2) releasePlanePaint(); else if (cm.phase > 2) void restorePlanePaint(); return; }
     this.planePosSmooth(PP);
     // the drone follows the plane: cabin sound while riding, a flyover from the ground once you jumped
     POS3[0] = PP.x; POS3[1] = PLANE_ALT + 2; POS3[2] = PP.z; this.loops.add("plane:drone");

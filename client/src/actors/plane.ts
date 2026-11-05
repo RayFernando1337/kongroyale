@@ -14,6 +14,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import type { WorldCtx } from "../engine/engine";
 import type { CamSpec } from "../engine/views";
 import { shareGeometries } from "../engine/geo-share";
+import { flag } from "../flags";
 import { actorLook } from "./look";
 import { createKong, type KongActorEx } from "./kong";
 import { KongAnimator } from "./kong-rig";
@@ -1335,6 +1336,60 @@ function buildDetails(metalM: THREE.Material, darkM: THREE.Material, redM: THREE
 // ============================================================================ assembly
 type TexSet = { fT: Tex; wT: Tex; sT: Tex; finT: Tex; cT: Tex; nT: Tex; spT: Tex; tyT: Tex; trT: Tex; inT: Tex; webT: Tex; hazT: THREE.Texture; pgT: THREE.Texture; crT: Tex; discT: THREE.Texture };
 let TEX: TexSet | null = null;
+let paintGen = 0, paintReleased = false;
+let restoring: Promise<void> | null = null;
+const PAINT_FREE = flag("planefree");
+
+async function paintAll(): Promise<TexSet> {
+  const yieldT = () => new Promise<void>((r) => setTimeout(r, 0));
+  const t = {} as Partial<TexSet>;
+  t.fT = paintFuselage(); await yieldT();
+  t.wT = paintLift(2048, 512, { half: WING_HALF, tipBrown: WING_TIP_BROWN, seams: [2.25, 5.0, 6.6, 11.0, 15.2], hingeXc: 0.72, hingeFrom: 2.25, hingeTo: 15.2, ribs: 1.15, stripe: true, seed: 101 }); await yieldT();
+  t.sT = paintLift(1024, 256, { half: STAB_HALF, tipBrown: STAB_HALF - 0.85, seams: [0.7, 2.9, 5.4], hingeXc: 0.68, hingeFrom: 0.7, hingeTo: 5.4, ribs: 0.9, seed: 202 });
+  t.finT = paintFin(); await yieldT();
+  t.cT = paintCowl(); t.nT = paintNacelle(); t.spT = paintSponson(); t.tyT = paintTyre(); await yieldT();
+  t.trT = paintTreadplate(); t.inT = paintCabinWall(); t.webT = paintWebbing(); await yieldT();
+  t.hazT = paintHazard(); t.pgT = paintPortholeGlass(); t.crT = paintCrate(); t.discT = propDiscTexture(); await yieldT();
+  return t as TexSet;
+}
+
+function paintTextures(set: TexSet): THREE.Texture[] {
+  const out: THREE.Texture[] = [];
+  for (const v of Object.values(set) as Array<Tex | THREE.Texture>) {
+    if ((v as THREE.Texture).isTexture) out.push(v as THREE.Texture);
+    else out.push((v as Tex).map, (v as Tex).normal, (v as Tex).rough);
+  }
+  return out;
+}
+
+function swapImage(t: THREE.Texture, image: HTMLCanvasElement) {
+  t.image = image;
+  t.dispose();
+  t.needsUpdate = true;
+}
+
+export function releasePlanePaint() {
+  if (!PAINT_FREE || !TEX || paintReleased) return;
+  paintReleased = true; paintGen++;
+  for (const t of paintTextures(TEX)) {
+    const one = mkCanvas(1, 1);
+    one.getContext("2d")!.drawImage(t.image as HTMLCanvasElement, 0, 0, 1, 1);
+    swapImage(t, one);
+  }
+}
+
+export function restorePlanePaint(): Promise<void> {
+  if (!TEX || !paintReleased) return Promise.resolve();
+  return restoring ??= (async () => {
+    const gen = paintGen;
+    const fresh = await paintAll();
+    if (gen !== paintGen || !TEX) return;
+    paintReleased = false;
+    const cur = paintTextures(TEX), next = paintTextures(fresh);
+    for (let i = 0; i < cur.length; i++) swapImage(cur[i], next[i].image as HTMLCanvasElement);
+  })().finally(() => { restoring = null; });
+}
+
 export async function createPlane(ctx: WorldCtx, opts: { crew?: boolean } = {}): Promise<PlaneProps> {
   const object = new THREE.Group();
   object.name = "plane";
@@ -1342,18 +1397,8 @@ export async function createPlane(ctx: WorldCtx, opts: { crew?: boolean } = {}):
   // ---- textures + materials
   // painted once per page and shared by every plane (the lobby's parked plane + the flight plane)
   // (painted in slices with a yield between them — no single main-thread task > ~50 ms)
+  if (!TEX) { const t = await paintAll(); TEX ??= t; }
   const yieldT = () => new Promise<void>((r) => setTimeout(r, 0));
-  if (!TEX) {
-    const t = {} as Partial<TexSet>;
-    t.fT = paintFuselage(); await yieldT();
-    t.wT = paintLift(2048, 512, { half: WING_HALF, tipBrown: WING_TIP_BROWN, seams: [2.25, 5.0, 6.6, 11.0, 15.2], hingeXc: 0.72, hingeFrom: 2.25, hingeTo: 15.2, ribs: 1.15, stripe: true, seed: 101 }); await yieldT();
-    t.sT = paintLift(1024, 256, { half: STAB_HALF, tipBrown: STAB_HALF - 0.85, seams: [0.7, 2.9, 5.4], hingeXc: 0.68, hingeFrom: 0.7, hingeTo: 5.4, ribs: 0.9, seed: 202 });
-    t.finT = paintFin(); await yieldT();
-    t.cT = paintCowl(); t.nT = paintNacelle(); t.spT = paintSponson(); t.tyT = paintTyre(); await yieldT();
-    t.trT = paintTreadplate(); t.inT = paintCabinWall(); t.webT = paintWebbing(); await yieldT();
-    t.hazT = paintHazard(); t.pgT = paintPortholeGlass(); t.crT = paintCrate(); t.discT = propDiscTexture(); await yieldT();
-    TEX ??= t as TexSet;
-  }
   const { fT, wT, sT, finT, cT, nT, spT, tyT, trT, inT, webT, hazT, pgT, crT, discT } = TEX as TexSet;
   const paint = (t: Tex, o: THREE.MeshPhysicalMaterialParameters = {}) => new THREE.MeshPhysicalMaterial({
     map: t.map, normalMap: t.normal, normalScale: new THREE.Vector2(0.9, 0.9), roughnessMap: t.rough, roughness: 1, metalness: 0,
