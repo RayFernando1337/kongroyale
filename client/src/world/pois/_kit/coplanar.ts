@@ -148,6 +148,7 @@ function* passGen(R: CoBox[], only: Set<number> | null, out: { pairs: number; mo
     // the face's new plane: two small faces that both stepped off one big face can now share THAT plane — revisit it
     const nx = ax * m.sg, ny = ay * m.sg, nz = az * m.sg, nk = keyOf(nx, ny, nz, Math.round((nx * b.c[0] + ny * b.c[1] + nz * b.c[2] + b.h[m.k]) / Q));
     out.again.add(nk); out.again.add(nk - 1);
+    if (performance.now() - clock.t > clock.slice) yield;
   }
   out.moved = act.size;
 }
