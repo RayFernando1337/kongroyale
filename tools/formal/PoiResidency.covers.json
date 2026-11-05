@@ -33,7 +33,7 @@
     }
   ],
   "verified": {
-    "model": "c6ceeeaedda75c97",
+    "model": "6d2c87116d2eb653",
     "regions": {
       "client/src/low-mem.ts#nearModule": "51ae29ea9b2f6da8",
       "client/src/low-mem.ts#nextNearModule": "ec86e5a21cca6356",

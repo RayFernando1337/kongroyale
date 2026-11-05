@@ -11,7 +11,7 @@
     "why": "low-mem.ts nearModule: the inMatch || casting check is gone",
     "find": "/\\ loop = \"pick\" /\\ inMatch",
     "replace": "/\\ loop = \"pick\"",
-    "expect": "Invariant NothingBuiltOutsideMatch is violated"
+    "expect": "Invariant NothingPickedOutsideMatch is violated"
   },
   {
     "name": "no back-pressure on integrations",

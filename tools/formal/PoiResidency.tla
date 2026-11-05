@@ -4,12 +4,13 @@
    (low-mem-device.ts); this is what keeps a 16 GB Mac's Safari tab alive. Desktop Chrome builds every POI once and
    keeps it (no eviction), so it is not modelled.
 
-   Abstracted: distances are four classes per POI (the camera is inside it, near enough to build, nearer or farther),
+   Abstracted: distances are three classes per POI (the camera is inside it, near enough to build, far),
    the camera moves arbitrarily between ticks, and memory cost is a count (lowmemcap) rather than MB (lowmembudget,
    whose estimate starts at 400 MB a POI). Evicted is "queued again" (low-mem.ts:257). *)
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Pois, Cap
+CONSTANTS Pois, Cap,
+  MaxInside   \* how many POI circles the camera can stand in at once: 1, or 2 where two circles overlap on the map
 
 VARIABLES
   st,       \* per POI: queued | trimming (picked, eviction pass running) | building | integrating | live
@@ -17,34 +18,36 @@ VARIABLES
   inMatch,  \* kr.game.inMatch (nextNearModule picks only in a match)
   loop,     \* the stream loop: "pick" (nextNearModule) | "trim" | "build" | "wait" (inflight back-pressure)
   thrown,   \* (for the rules) a POI was evicted while still building or fading in
-  outside   \* (for the rules) a POI was picked to build outside a match
-vars == <<st, dist, inMatch, loop, thrown, outside>>
+  outside,  \* (for the rules) a POI was picked to build outside a match
+  late      \* (for the rules) a build started outside a match (picked in one, left before its trim finished)
+vars == <<st, dist, inMatch, loop, thrown, outside, late>>
 
 Held == {p \in Pois : st[p] \in {"building", "integrating", "live"}}   \* hold GPU/CPU memory
-\* what residents() counts (low-mem.ts:231-244): in modOf and live, or in building; a POI inside its own build()
-\* is not in modOf yet (main.ts:237) but is in building (added low-mem.ts:260), so it counts
-Counted == {p \in Pois : st[p] \in {"building", "integrating", "live"}}
+\* what residents() counts (low-mem.ts trimStreamed): POIs in modOf that are live or still in building; a POI inside
+\* its own build() is not in modOf yet (main.ts buildOne sets it when build() returns), so it does not count
+Counted == {p \in Pois : st[p] \in {"integrating", "live"}}
 \* evictionsFor (low-mem.ts:165-169): only live POIs (integrating ones are -Infinity) the camera is not inside
 Evictable == {p \in Pois : st[p] = "live" /\ dist[p] # "inside"}
 Integrating == {p \in Pois : st[p] = "integrating"}
 
 Init ==
   /\ st = [p \in Pois |-> "queued"]
-  /\ dist \in [Pois -> {"inside", "near", "far"}] /\ Cardinality({p \in Pois : dist[p] = "inside"}) <= 1
+  /\ dist \in [Pois -> {"inside", "near", "far"}] /\ Cardinality({p \in Pois : dist[p] = "inside"}) <= MaxInside
   /\ inMatch = FALSE
   /\ loop = "pick"
-  /\ thrown = FALSE /\ outside = FALSE
+  /\ thrown = FALSE /\ outside = FALSE /\ late = FALSE
 
-(* the camera moves: any POI's distance class changes; the camera is inside at most one POI *)
+(* the camera moves: any POI's distance class changes. A POI the camera stands in is never evicted (evictionsFor keeps
+   d <= 0), and some POI circles overlap, so MaxInside = 2 lets the camera stand in two at once *)
 Move ==
   /\ \E p \in Pois, d \in {"inside", "near", "far"} :
        /\ dist' = [dist EXCEPT ![p] = d]
-       /\ Cardinality({q \in Pois : dist'[q] = "inside"}) <= 1
-  /\ UNCHANGED <<st, inMatch, loop, thrown, outside>>
+       /\ Cardinality({q \in Pois : dist'[q] = "inside"}) <= MaxInside
+  /\ UNCHANGED <<st, inMatch, loop, thrown, outside, late>>
 
-EnterMatch == ~inMatch /\ inMatch' = TRUE /\ UNCHANGED <<st, dist, loop, thrown, outside>>
+EnterMatch == ~inMatch /\ inMatch' = TRUE /\ UNCHANGED <<st, dist, loop, thrown, outside, late>>
 \* exitToRoom / leaveAll: nothing in main.ts or low-mem.ts listens (residents stay, builds in flight go on)
-LeaveMatch == inMatch /\ inMatch' = FALSE /\ UNCHANGED <<st, dist, loop, thrown, outside>>
+LeaveMatch == inMatch /\ inMatch' = FALSE /\ UNCHANGED <<st, dist, loop, thrown, outside, late>>
 
 (* nextNearModule: in a match, a queued POI near the camera; the admission test (low-mem.ts:63-65) skips one that,
    counted lowmemhyst farther, would itself be evicted: in this abstraction, one that is not nearer than an evictable
@@ -56,24 +59,26 @@ Pick ==
        /\ ~(Cardinality(Counted) >= Cap /\ dist[p] = "near" /\ \A q \in Evictable : dist[q] = "near")
        /\ st' = [st EXCEPT ![p] = "trimming"]
   /\ loop' = "trim" /\ outside' = (outside \/ ~inMatch)
-  /\ UNCHANGED <<dist, inMatch, thrown>>
+  /\ UNCHANGED <<dist, inMatch, thrown, late>>
 
 Incoming == CHOOSE p \in Pois : st[p] = "trimming"
 
-(* trimStreamed(incoming), one pass of the loop (low-mem.ts:250-259): while the list with the incoming POI is over the
-   cap, evict the farthest evictable resident; then building.add(incoming) *)
+(* trimStreamed(incoming), one pass of the loop: while the list with the incoming POI is over the cap, evict the
+   farthest evictable resident (evictionsFor sorts by distance and pops the farthest); then building.add(incoming).
+   stream() does not check the match again after the trim *)
+Farthest(v) == dist[v] = "far" \/ \A q \in Evictable : dist[q] # "far"
 TrimEvict ==
   /\ loop = "trim"
   /\ Cardinality(Counted) + 1 > Cap
   /\ \E v \in Evictable :
-       /\ \A q \in Evictable : dist[q] = "far" \/ dist[v] # "far"   \* the farthest first
+       /\ Farthest(v)
        /\ st' = [st EXCEPT ![v] = "queued"] /\ thrown' = (thrown \/ st[v] # "live")
-  /\ UNCHANGED <<dist, inMatch, loop, outside>>
+  /\ UNCHANGED <<dist, inMatch, loop, outside, late>>
 TrimDone ==
   /\ loop = "trim"
   /\ (Cardinality(Counted) + 1 <= Cap \/ Evictable = {})
   /\ st' = [st EXCEPT ![Incoming] = "building"]
-  /\ loop' = "build"
+  /\ loop' = "build" /\ late' = (late \/ ~inMatch)
   /\ UNCHANGED <<dist, inMatch, thrown, outside>>
 
 (* buildStreamed: build() returns, then integrateFresh runs in the background; the loop waits only when two
@@ -82,20 +87,20 @@ Built ==
   /\ loop = "build"
   /\ \E p \in Pois : st[p] = "building" /\ st' = [st EXCEPT ![p] = "integrating"]
   /\ loop' = IF Cardinality(Integrating) + 1 > 1 THEN "wait" ELSE "pick"
-  /\ UNCHANGED <<dist, inMatch, thrown, outside>>
+  /\ UNCHANGED <<dist, inMatch, thrown, outside, late>>
 Integrated ==
   /\ \E p \in Integrating : st' = [st EXCEPT ![p] = "live"]
   /\ loop' = IF loop = "wait" /\ Cardinality(Integrating) - 1 <= 1 THEN "pick" ELSE loop
-  /\ UNCHANGED <<dist, inMatch, thrown, outside>>
+  /\ UNCHANGED <<dist, inMatch, thrown, outside, late>>
 
 (* the 2 s timer: trim(null), in a match or not (main.ts:590); serialized with the loop's own trim *)
 Timer ==
   /\ loop # "trim"
   /\ Cardinality(Counted) > Cap
   /\ \E v \in Evictable :
-       /\ \A q \in Evictable : dist[q] = "far" \/ dist[v] # "far"
+       /\ Farthest(v)
        /\ st' = [st EXCEPT ![v] = "queued"] /\ thrown' = (thrown \/ st[v] # "live")
-  /\ UNCHANGED <<dist, inMatch, loop, outside>>
+  /\ UNCHANGED <<dist, inMatch, loop, outside, late>>
 
 Next == Move \/ EnterMatch \/ LeaveMatch \/ Pick \/ TrimEvict \/ TrimDone \/ Built \/ Integrated \/ Timer
 
@@ -108,6 +113,8 @@ AtMostCap == Cardinality(Held) <= Cap
 AtMostCapPlusOne == Cardinality(Held) <= Cap + 1
 \* A location is never thrown away while it is still building or fading in.
 NoEvictWhileBuilding == ~thrown
-\* Nothing new is built outside a match (title, room, results lobby).
-NothingBuiltOutsideMatch == ~outside
+\* Nothing new is picked to build outside a match (title, room, results lobby).
+NothingPickedOutsideMatch == ~outside
+\* No build starts outside a match.
+NothingBuiltOutsideMatch == ~late
 =============================================================================
