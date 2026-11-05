@@ -224,7 +224,7 @@ function createSheet() {
   box.append(title, consent, chips, note, opts, details, btns, status);
   root.appendChild(box);
   document.body.appendChild(root);
-  let chip: string | null = null, mode: Mode = "report", moment: Moment = { ctx: null, shot: null }, returnTo: HTMLElement | null = null, sending = false, opens = 0;
+  let chip: string | null = null, mode: Mode = "report", moment: Moment = { ctx: null, shot: null }, returnTo: HTMLElement | null = null, sending = false, opens = 0, captured = false;
   for (const name of CHIPS) {
     const b = el("button", "", name);
     b.type = "button"; b.setAttribute("aria-pressed", "false");
@@ -248,7 +248,7 @@ function createSheet() {
       toast("SENT, THANKS" + (id ? " · " + id : ""));
     } catch (e) {
       status.className = "kd-status err"; status.textContent = "Not sent: " + notSent(e);
-    } finally { sending = false; sendBtn.disabled = false; }
+    } finally { sending = false; sendBtn.disabled = !captured; }
   });
   root.addEventListener("keydown", (e) => {
     e.stopPropagation();
@@ -265,10 +265,10 @@ function createSheet() {
       if (withName) withName.checked = false;
       root.hidden = false;
       const n = ++opens;
-      moment = { ctx: null, shot: null }; sendBtn.disabled = true; list.replaceChildren(); note.focus();
+      moment = { ctx: null, shot: null }; captured = false; sendBtn.disabled = true; list.replaceChildren(); note.focus();
       const got = await capture(m !== "crash");
       if (n !== opens || root.hidden) return;
-      moment = got; sendBtn.disabled = false;
+      moment = got; captured = true; sendBtn.disabled = sending;
       refresh();
     },
   };
@@ -292,7 +292,7 @@ async function quickSend(sheet: ReturnType<typeof createSheet>, button: HTMLButt
 /** the title card after a session that died */
 function crashCard(sheet: ReturnType<typeof createSheet>, prev: { phase?: number }): void {
   const card = el("div", "kd-card"), text = el("div", "", (prev.phase ?? -1) >= 0 ? "Your last session closed unexpectedly during a match. Send what we know about it?" : "Your last session closed unexpectedly. Send what we know about it?");
-  const btns = el("div", "kd-btns"), no = el("button", "", "NO THANKS"), yes = el("button", "kd-send", "SEND");
+  const btns = el("div", "kd-btns"), no = el("button", "close", "NO THANKS"), yes = el("button", "kd-send", "SEND");
   no.type = yes.type = "button";
   btns.append(no, yes);
   card.append(text, btns);
