@@ -36,10 +36,11 @@ function source(file) {
   return sf;
 }
 
-const nameOf = (n) => n.name?.text;
-const named = (n) => ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n) || ts.isMethodDeclaration(n) || ts.isPropertyDeclaration(n) || ts.isVariableDeclaration(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n);
+const nameOf = (n) => (ts.isConstructorDeclaration(n) ? "constructor" : n.name?.text);
+const named = (n) => ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n) || ts.isMethodDeclaration(n) || ts.isConstructorDeclaration(n) || ts.isPropertyDeclaration(n) || ts.isVariableDeclaration(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n);
 
-/** the nodes a symbol names: "fn", "Class.member", or "fn/case \"x\"" (one clause of a switch inside fn) */
+/** the nodes a symbol names: "fn", "Class.member" ("Class.constructor" too), "fn.inner" (a function declared in fn's
+ *  body), or "fn/case \"x\"" (one clause of a switch inside fn) */
 function find(sf, symbol) {
   const [decl, clause] = symbol.split("/");
   const parts = decl.split(".");

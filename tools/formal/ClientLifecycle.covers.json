@@ -1,0 +1,77 @@
+{
+  "skill": ".agents/skills/verify-client-lifecycle/SKILL.md",
+  "note": "main.ts sets __kr.prepare at top level after ready (main.ts: kr.prepare = ...), which no region can name; the model's Play guard (before ready: no prepare) depends on it.",
+  "regions": [
+    "client/src/game/index.ts#startGame.online",
+    "client/src/game/index.ts#startGame.prepareIsland",
+    "client/src/game/index.ts#startGame.offline",
+    "client/src/game/index.ts#startGame.wire",
+    "client/src/game/index.ts#startGame.onJSON",
+    "client/src/game/index.ts#startGame.enterMatch",
+    "client/src/game/index.ts#startGame.exitToRoom",
+    "client/src/game/index.ts#startGame.leaveAll",
+    "client/src/game/index.ts#startGame.backToRoom",
+    "client/src/game/index.ts#startGame.linkLost",
+    "client/src/game/render.ts#GameRender.matchScope",
+    "client/src/game/render.ts#GameRender.constructor",
+    "client/src/game/render.ts#GameRender.dispose",
+    "client/src/engine/res/restore.ts#watchContext",
+    "client/src/engine/res/restore-run.ts#restoreAll",
+    "server/lobby.ts#Lobby.housekeeping",
+    "server/lobby.ts#Lobby.unseat",
+    "server/lobby.ts#Lobby.leave",
+    "server/lobby.ts#Lobby.pump",
+    "server/lobby.ts#Lobby.endMatch"
+  ],
+  "writes": [
+    {
+      "what": "whether the client is in a match, or back in the room while its old match runs",
+      "pattern": "(?<!let |const )\\b(inMatch|staleMatch)\\s*=(?!=)\\s*[^\\s;]+",
+      "files": [
+        "client/src/game/index.ts"
+      ]
+    },
+    {
+      "what": "whether the WebGL context is lost",
+      "pattern": "\\.contextLost\\s*=(?!=)\\s*[^\\s;]+",
+      "files": [
+        "client/src/engine/",
+        "client/src/engine/res/"
+      ]
+    }
+  ],
+  "allow": [
+    {
+      "at": "client/src/game/index.ts#startGame.reconnectTry",
+      "writes": [
+        "staleMatch = false"
+      ],
+      "why": "The reconnect card after a link drops mid-match is left out of the model (see its header). Its one write clears staleMatch just before exitToRoom, the same rewire MatchOver models."
+    }
+  ],
+  "verified": {
+    "model": "c5733217a822b381",
+    "regions": {
+      "client/src/game/index.ts#startGame.online": "1527455257c5daee",
+      "client/src/game/index.ts#startGame.prepareIsland": "ab6e79e0e15b3e76",
+      "client/src/game/index.ts#startGame.offline": "b98b9176c358e63d",
+      "client/src/game/index.ts#startGame.wire": "a771e6ac1d89834f",
+      "client/src/game/index.ts#startGame.onJSON": "477338984638c38e",
+      "client/src/game/index.ts#startGame.enterMatch": "83540ec309c5c948",
+      "client/src/game/index.ts#startGame.exitToRoom": "acf1a2d410b3d561",
+      "client/src/game/index.ts#startGame.leaveAll": "c480d73a5128830f",
+      "client/src/game/index.ts#startGame.backToRoom": "f55c72b57b73c5f6",
+      "client/src/game/index.ts#startGame.linkLost": "013484ad658a065a",
+      "client/src/game/render.ts#GameRender.matchScope": "37d0632f4688664e",
+      "client/src/game/render.ts#GameRender.constructor": "2564dbcee0bfe07c",
+      "client/src/game/render.ts#GameRender.dispose": "88f096247ab99765",
+      "client/src/engine/res/restore.ts#watchContext": "5f932889142b9a0d",
+      "client/src/engine/res/restore-run.ts#restoreAll": "141e503445c9d03b",
+      "server/lobby.ts#Lobby.housekeeping": "8e3999786117c4de",
+      "server/lobby.ts#Lobby.unseat": "9d1d17bed69c77af",
+      "server/lobby.ts#Lobby.leave": "0c2f408c8901706c",
+      "server/lobby.ts#Lobby.pump": "c2c3268e6d1dd55b",
+      "server/lobby.ts#Lobby.endMatch": "d65ba7025ff9eed3"
+    }
+  }
+}
