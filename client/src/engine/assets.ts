@@ -26,11 +26,12 @@ export class Assets {
   private tex = new THREE.TextureLoader();
   private cache = new Map<string, Promise<unknown>>();
   readonly maxAniso: number;
+  readonly ktx2: KTX2Loader;
 
   constructor(renderer: THREE.WebGLRenderer, private hold: (label: string) => () => void) {
     const draco = new DRACOLoader().setDecoderPath(assetUrl("assets/decoders/draco/"));
-    const ktx2 = new KTX2Loader().setTranscoderPath("https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/libs/basis/").detectSupport(renderer);
-    this.gltf.setMeshoptDecoder(MeshoptDecoder).setDRACOLoader(draco).setKTX2Loader(ktx2);
+    this.ktx2 = new KTX2Loader().setTranscoderPath(assetUrl("assets/actors/basis/")).setWorkerLimit(4).detectSupport(renderer);
+    this.gltf.setMeshoptDecoder(MeshoptDecoder).setDRACOLoader(draco).setKTX2Loader(this.ktx2);
     this.maxAniso = renderer.capabilities.getMaxAnisotropy();
   }
 
@@ -52,7 +53,8 @@ export class Assets {
   texture(path: string, o: { srgb?: boolean; repeat?: boolean; aniso?: boolean } = {}): Promise<THREE.Texture> {
     const { srgb = true, repeat = true, aniso = true } = o;
     return this.once(`tex:${path}:${srgb}:${repeat}`, async () => {
-      const t = releaseAfterUpload(await retry(() => this.tex.loadAsync(assetUrl(path))));
+      const load = () => retry(() => this.tex.loadAsync(assetUrl(path)));
+      const t = releaseAfterUpload(await load(), async () => capped((await load()).image));
       (t as THREE.Texture).image = capped(t.image);
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;

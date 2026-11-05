@@ -38,6 +38,7 @@ import { WARMUP_S } from "../../shared/sim/const";
 import { afterPaint as nextFrame, noFrameWaitCount } from "./engine/frame";
 import { flag } from "./flags";
 import { resources, type Scope } from "./engine/res/scope";
+import { asOwner } from "./engine/res/restore";
 
 const shot = flag("shot");
 const errors: string[] = [];
@@ -229,7 +230,8 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   const ctx = streamed && postBuild ? postBuild.moduleCtx(engine, world, id) : engine;
   try {
     m = await imports.get(id)!;
-    await m.build(ctx, scope);
+    const mod = m;
+    await asOwner(id, async () => mod.build(ctx, scope));
     scopeOf.set(id, scope);
     loaded.push(m);
     modOf.set(id, m);
