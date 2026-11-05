@@ -253,7 +253,7 @@ function main(): void {
     data.play.categories.map((c) => {
       const items = data.play.items.filter((i) => i.category === c.id);
       return '<div class="card"><h3>' + esc(c.name) + '</h3><p class="plain">' + esc(c.blurb) + '</p><table class="play"><thead><tr><th>Experience</th><th>Now</th><th>Goal</th><th>Status</th></tr></thead><tbody>' +
-        items.map((i) => "<tr><td><details><summary>" + esc(i.name) + '</summary><p class="tech">' + esc(i.detail) + "</p></details></td><td class=\"now\">" + (i.value === null ? '<span class="muted">not measured yet</span>' : num(i.value) + " " + esc(i.unit)) + "</td><td>" + (i.target === null ? '<span class="muted">not set</span>' : num(i.target) + " " + esc(i.unit)) + '</td><td><span class="pill ' + statusClass(i.status) + '">' + esc(i.status) + "</span></td></tr>").join("") +
+        items.map((i) => "<tr><td><details><summary>" + esc(i.name) + '</summary><p class="tech">' + esc(i.detail) + "</p></details></td><td class=\"now\" data-label=\"Now\">" + (i.value === null ? '<span class="muted">not measured yet</span>' : num(i.value) + " " + esc(i.unit)) + "</td><td data-label=\"Goal\">" + (i.target === null ? '<span class="muted">not set</span>' : num(i.target) + " " + esc(i.unit)) + '</td><td data-label="Status"><span class="pill ' + statusClass(i.status) + '">' + esc(i.status) + "</span></td></tr>").join("") +
         "</tbody></table></div>";
     }).join("");
 
@@ -270,7 +270,7 @@ function main(): void {
     const sources = traces.map((t) => "<li>" + esc(t.label) + ": " + esc(t.source) + "</li>").join("");
     return '<div class="card memory' + (traces.length ? "" : " pending") + '"><div class="perf-head"><h3>' + esc(c.title) + "</h3>" + (c.warning ? '<span class="pill s-waiting">' + esc(c.warning) + "</span>" : traces.length ? "" : '<span class="pill s-unmeasured">not measured yet</span>') + "</div>" +
       '<p class="plain">' + esc(c.caption) + "</p>" + (c.note ? '<p class="muted">' + esc(c.note) + "</p>" : "") +
-      (traces.length ? '<div class="chart">' + renderSvg(traces, { title: c.title, series: c.series ?? ["total"], xMode: c.x ?? "time", killMB: c.killMB, killLabel: c.killLabel }) + "</div>" : "") +
+      (traces.length ? '<div class="chart chart-wide">' + renderSvg(traces, { title: c.title, series: c.series ?? ["total"], xMode: c.x ?? "time", killMB: c.killMB, killLabel: c.killLabel }) + '</div><div class="chart chart-compact">' + renderSvg(traces, { title: c.title, series: c.series ?? ["total"], xMode: c.x ?? "time", killMB: c.killMB, killLabel: c.killLabel, compact: true }) + "</div>" : "") +
       '<details><summary>Where the numbers come from</summary><ul class="list tech">' + sources + "<li>" + esc(c.source) + "</li></ul></details></div>";
   };
   const memoryPage = '<h2>Memory over time</h2><p class="lead">' + esc(memoryData.plain) + "</p>" + memoryData.charts.map(memoryCard).join("");
@@ -281,7 +281,7 @@ function main(): void {
     '<header><div class="brand">' + esc(data.title) + '</div><nav>' + pages.map((p) => '<a href="#' + p[0] + '" data-page="' + p[0] + '">' + p[1] + "</a>").join("") + "</nav></header><main>" +
     pages.map((p) => '<section id="' + p[0] + '" class="page">' + p[2] + "</section>").join("") +
     '</main><footer>Updated ' + stamp(now.toISOString()) + ". Counts are live from GitHub. Measurements come from tools/dashboard/data.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
-    "<script>function show(){var id=(location.hash||'#summary').slice(1);if(!document.getElementById(id))id='summary';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){a.classList.toggle('on',a.dataset.page===id)});scrollTo(0,0)}addEventListener('hashchange',show);show();</script></body></html>";
+    "<script>function show(){var id=(location.hash||'#summary').slice(1);if(!document.getElementById(id))id='summary';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){var on=a.dataset.page===id;a.classList.toggle('on',on);if(on){a.setAttribute('aria-current','page');var n=a.parentNode;n.scrollLeft=a.offsetLeft-(n.clientWidth-a.offsetWidth)/2}else a.removeAttribute('aria-current')});scrollTo(0,0)}addEventListener('hashchange',show);show();</script></body></html>";
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, "index.html"), html);
   console.log("dashboard: " + path.join(out, "index.html") + " (" + merged.length + " merged, " + open.length + " open, " + upOpen.length + " upstream open, " + totalCommits + " commits)");
