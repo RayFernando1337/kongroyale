@@ -4,6 +4,8 @@
 import type { Engine } from "../engine/engine";
 import { CAPACITY_S, FIELDS, WIDTH, cursor, pauseClock, recordFrame, ring, rollSecond } from "./metrics.hot";
 
+export { ring };
+
 export interface Timeline { fields: readonly string[]; rows: number[][]; dropped: number }
 
 /** the ring as rows, oldest first */

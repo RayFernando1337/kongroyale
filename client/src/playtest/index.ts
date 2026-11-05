@@ -50,7 +50,7 @@ export function installPlaytest(engine: Engine, game: boolean): void {
   kr().recordReplay = true;
   kr().playtestBundle = bundle;
   void Promise.all([import("./recorder"), hud ? import("./perf-hud") : null, diag ? import("./diag") : null]).then(([rec, hudMod, diagMod]) => {
-    const draw = hudMod?.installPerfHud(), sample = diagMod?.installDiag(engine);
+    const draw = hudMod?.installPerfHud(rec.ring), sample = diagMod?.installDiag(engine, rec.ring);
     if (diagMod) kr().diag = { snapshot: diagMod.snapshot };
     rec.startRecorder(engine, (at) => { draw?.(at); sample?.(at); });
   });

@@ -10,14 +10,14 @@
 //   heartbeat  one record per session in localStorage, written at load and every 5 s, marked clean on pagehide and
 //              running again on a back/forward-cache pageshow. Each live page holds a Web Lock named after its session,
 //              so a later load knows a session with no clean exit and no lock died (tab killed, browser crashed); it
-//              claims that record under one lock and keeps it as `prev`, so one crash is reported once.
+//              claims that record under one lock and keeps it as `prev`, so one crash is reported once. Browsers without
+//              Web Locks keep no heartbeat.
 // snapshot() is __kr.diag.snapshot(); a report sends it as ctx.diag, which the server cleans and stores as it is.
 import type { Engine } from "../engine/engine";
 import { BUILD } from "../build";
 import { POIS } from "../../../shared/world/map";
-import { ring } from "./metrics.hot";
 
-const MAX_EVENTS = 500, PATH_S = 3600, PATH_W = 7, LONG_MS = 100, GC_DROP_MB = 50, BEAT_S = 5, DEAD_AFTER_MS = 12_000, KEEP_MS = 7 * 86_400_000;
+const MAX_EVENTS = 500, PATH_S = 3600, PATH_W = 7, LONG_MS = 100, GC_DROP_MB = 50, BEAT_S = 5, KEEP_MS = 7 * 86_400_000;
 const BEAT_KEY = "kr.diag.hb.", CLAIM_KEY = "kr.diag.claim", NEAR_POI_M = 150;
 const PATH_FIELDS = ["t", "x", "y", "z", "yawDeg", "pitchDeg", "phase"] as const;
 
@@ -29,6 +29,8 @@ interface KrGame { inMatch?: boolean; cm?: { pred?: { x: number; y: number; z: n
  *  modules = the modules resident now (a lowmem eviction removes one) */
 type Kr = Record<string, unknown> & { ready?: boolean; game?: KrGame; streamMs?: Record<string, number>; modules?: string[] };
 const kr = () => (window as unknown as { __kr: Kr }).__kr;
+interface Locks { request(name: string, task: () => Promise<unknown>): Promise<unknown>; query(): Promise<{ held?: Array<{ name?: string }> }> }
+const locks = (navigator as unknown as { locks?: Locks }).locks;
 
 const events: DiagEvent[] = [];
 const path = new Float32Array(PATH_S * PATH_W);
@@ -45,9 +47,12 @@ function push(kind: string, n: number, text = "", t = pageS()): void {
 }
 
 interface LoafScript { duration: number; invoker?: string; sourceURL?: string; sourceFunctionName?: string; sourceCharPosition?: number }
+const fileOf = (url = "") => url.split(/[?#]/)[0].split("/").pop() || "?";
+/** the script's invoker, function and file; a classic script's invoker is its URL, cut to the file so no origin or
+ *  query string leaves the browser */
 function script(s: LoafScript): string {
-  const file = (s.sourceURL ?? "").split(/[?#]/)[0].split("/").pop() || "?";
-  return `${s.invoker ?? "?"} ${s.sourceFunctionName || "anonymous"}@${file}:${s.sourceCharPosition ?? -1} ${Math.round(s.duration)} ms`;
+  const by = s.invoker?.includes("//") ? fileOf(s.invoker) : s.invoker ?? "?";
+  return `${by} ${s.sourceFunctionName || "anonymous"}@${fileOf(s.sourceURL)}:${s.sourceCharPosition ?? -1} ${Math.round(s.duration)} ms`;
 }
 function observeLongFrames(): void {
   const types = (PerformanceObserver as unknown as { supportedEntryTypes?: readonly string[] }).supportedEntryTypes ?? [];
@@ -65,6 +70,7 @@ function observeLongFrames(): void {
 }
 
 function writeBeat(b: Beat): void {
+  if (!locks) return;
   try { localStorage.setItem(BEAT_KEY + b.sid, JSON.stringify(b)); } catch { /* storage full or blocked: no crash evidence */ }
 }
 function readBeats(): Beat[] {
@@ -79,38 +85,25 @@ function readBeats(): Beat[] {
   } catch { /* blocked storage */ }
   return out;
 }
-interface Locks { request(name: string, task: () => Promise<unknown>): Promise<unknown>; query(): Promise<{ held?: Array<{ name?: string }> }> }
-const locks = (navigator as unknown as { locks?: Locks }).locks;
 
 /** hold this session's Web Lock for the page's whole life, then write its first beat: a session whose page holds no
- *  lock is not running. Without Web Locks the first beat is written at once. */
-function goLive(first: Beat): Promise<void> {
-  if (!locks) { writeBeat(first); return Promise.resolve(); }
+ *  lock is not running */
+function goLive(locks: Locks, first: Beat): Promise<void> {
   return new Promise((live) => { void locks.request(BEAT_KEY + sid, () => { writeBeat(first); live(); return new Promise(() => {}); }); });
 }
 
 /** a session that never marked clean and whose page holds no lock died. The claim runs under one lock and deletes what
- *  it takes, so two tabs loading together never report the same crash. Without Web Locks: a session that stopped
- *  beating for DEAD_AFTER_MS while visible (a hidden tab's timers may be frozen). Model: tools/formal/DiagHeartbeat.tla
- *  and docs/statecharts/diagnostics.md (#204). */
-async function findDeadSession(): Promise<void> {
+ *  it takes, so two tabs loading together never report the same crash. Model: tools/formal/DiagHeartbeat.tla and
+ *  docs/statecharts/diagnostics.md (#204). */
+async function findDeadSession(locks: Locks): Promise<void> {
   const now = Date.now();
   for (const b of readBeats()) if (b.clean || now - b.at > KEEP_MS) localStorage.removeItem(BEAT_KEY + b.sid);
-  let dead: Beat[];
-  if (locks) {
-    dead = (await locks.request(CLAIM_KEY, async () => {
-      const held = new Set(((await locks.query()).held ?? []).map((l) => l.name));
-      const out = readBeats().filter((b) => !b.clean && !held.has(BEAT_KEY + b.sid));
-      for (const b of out) localStorage.removeItem(BEAT_KEY + b.sid);
-      return out;
-    })) as Beat[];
-  } else {
-    const open = readBeats().filter((b) => !b.clean && !b.hidden);
-    await new Promise((r) => setTimeout(r, DEAD_AFTER_MS));
-    const later = new Map(readBeats().map((b) => [b.sid, b]));
-    dead = open.filter((b) => later.get(b.sid)?.at === b.at);
-    for (const b of dead) localStorage.removeItem(BEAT_KEY + b.sid);
-  }
+  const dead = (await locks.request(CLAIM_KEY, async () => {
+    const held = new Set(((await locks.query()).held ?? []).map((l) => l.name));
+    const out = readBeats().filter((b) => !b.clean && !held.has(BEAT_KEY + b.sid));
+    for (const b of out) localStorage.removeItem(BEAT_KEY + b.sid);
+    return out;
+  })) as Beat[];
   for (const b of dead) if (!prev || b.at > prev.at) prev = b;
   if (prev) push("prev-session", Math.round((Date.now() - prev.at) / 1000), prev.phase >= 0 ? "died in a match" : "died outside a match");
 }
@@ -127,7 +120,7 @@ function poiAt(x: number, z: number): string | null {
 }
 
 /** start sampling; returns the per-second hook for the recorder (it gets the new row's offset in the metrics ring) */
-export function installDiag(engine: Engine): (at: number) => void {
+export function installDiag(engine: Engine, ring: Float32Array): (at: number) => void {
   observeLongFrames();
   const canvas = engine.renderer.domElement;
   canvas.addEventListener("webglcontextlost", () => push("context-lost", 0));
@@ -139,7 +132,7 @@ export function installDiag(engine: Engine): (at: number) => void {
   const resident = new Set<string>(), failed = new Set<string>();
   const last = { phase: -2, programs: -1, scale: -1, heap: -1 };
   let beat: Beat = { v: 1, sid, sha: BUILD.sha, at: Date.now(), upS: 0, phase: -1, x: null, z: null, poi: null, heapMB: -1, textures: 0, geometries: 0, fps: 0, hidden: false, clean: false };
-  void goLive(beat).then(findDeadSession);
+  if (locks) void goLive(locks, beat).then(() => findDeadSession(locks));
   addEventListener("pagehide", () => { beat.clean = true; beat.at = Date.now(); writeBeat(beat); });
   addEventListener("pageshow", (e) => { if (e.persisted) { beat.clean = false; writeBeat(beat); } });
   addEventListener("visibilitychange", () => {
