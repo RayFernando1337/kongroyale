@@ -61,7 +61,8 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
     const p = pois.find((x) => `poi:${x.id}` === id);
     if (!p) { pickedByView = false; return id; }
     const d = distM(camera, p);
-    if (d >= buildLimitM(resident, id)) continue;
+    const me = { id, d: d + flag("lowmemhyst"), mb: costOf.get(id) ?? UNKNOWN_POI_MB };
+    if (evictionsFor([...resident, me]).includes(me)) continue;
     const near = (airborne ? Math.hypot(d, e[13] - (p.padY ?? 0)) : d) < radiusM;
     const seen = overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M)));
     if (!seen && !near) continue;
@@ -138,7 +139,7 @@ export async function evictStreamed(engine: Engine, w: World, id: string) {
 }
 
 type Resident = { id: string; d: number; mb: number };
-const costOf = new Map<string, number>();
+const costOf = new Map<string, number>(), building = new Set<string>();
 let residents: (() => Resident[]) | null = null;
 
 function costMB(roots: readonly THREE.Object3D[]): number {
@@ -156,20 +157,14 @@ function costMB(roots: readonly THREE.Object3D[]): number {
 
 const UNKNOWN_POI_MB = 400;
 
-function over(list: Resident[], incoming: string | null): boolean {
-  const extra = incoming === null ? 0 : costOf.get(incoming) ?? UNKNOWN_POI_MB;
-  return list.length + (incoming === null ? 0 : 1) > flag("lowmemcap") || list.reduce((a, r) => a + r.mb, extra) > flag("lowmembudget");
+function over(list: readonly Resident[]): boolean {
+  return list.length > flag("lowmemcap") || list.reduce((a, r) => a + r.mb, 0) > flag("lowmembudget");
 }
 
-function victimOf(list: Resident[], incoming: string | null): Resident | null {
-  const v = list[list.length - 1];
-  return v && v.d > 0 && (incoming !== null || list.length > 1) ? v : null;
-}
-
-function buildLimitM(list: Resident[], id: string): number {
-  if (!over(list, id)) return Infinity;
-  const v = victimOf(list, id);
-  return v ? v.d - flag("lowmemhyst") : -Infinity;
+function evictionsFor(list: readonly Resident[]): Resident[] {
+  const kept = [...list].sort((a, b) => a.d - b.d), out: Resident[] = [];
+  while (kept.length > 1 && kept[kept.length - 1].d > 0 && over(kept)) out.push(kept.pop()!);
+  return out;
 }
 
 let trimming = Promise.resolve();
@@ -178,24 +173,28 @@ export function trimStreamed(engine: Engine, w: World, incoming: string | null, 
   residents ??= () => {
     const list: Resident[] = [];
     for (const id of w.modOf.keys()) {
-      if (!id.startsWith("poi:") || streamMs[id] === undefined) continue;
+      if (!id.startsWith("poi:")) continue;
+      const live = streamMs[id] !== undefined;
+      if (live) building.delete(id);
+      else if (!building.has(id)) continue;
       const p = pois.find((x) => `poi:${x.id}` === id);
       let mb = costOf.get(id);
-      if (mb === undefined) costOf.set(id, (mb = costMB(w.roots(id))));
-      list.push({ id, d: p ? distM(engine.camera, p) : 0, mb });
+      if (mb === undefined && live) costOf.set(id, (mb = costMB(w.roots(id))));
+      list.push({ id, d: !live ? -Infinity : p ? distM(engine.camera, p) : 0, mb: mb ?? UNKNOWN_POI_MB });
     }
-    return list.sort((a, b) => a.d - b.d);
+    return list;
   };
   return (trimming = trimming.then(async () => {
     for (;;) {
       const list = residents!();
-      const victim = over(list, incoming) ? victimOf(list, incoming) : null;
+      if (incoming) list.push({ id: incoming, d: -Infinity, mb: costOf.get(incoming) ?? UNKNOWN_POI_MB });
+      const victim = evictionsFor(list)[0];
       if (!victim) break;
       await evictStreamed(engine, w, victim.id);
       pending.push(victim.id);
       delete streamMs[victim.id];
     }
-    if (incoming) motion.builtAt = performance.now();
+    if (incoming) { building.add(incoming); motion.builtAt = performance.now(); }
   }).catch((e) => w.report("lowmem-trim", e)));
 }
 
