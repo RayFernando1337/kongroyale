@@ -117,6 +117,7 @@ const FLAGS = {
   readyest: { kind: one, owner: "boot", purpose: "pre-ready planner uses the measured post-build estimate (stored per device) and never plans past readyby" },
   rockMerge: { kind: on, owner: "pois", purpose: "Mist Falls merges its near rock sets into meshes; =0 = the old instanced sets" },
   rocks: { kind: on, owner: "terrain", purpose: "draw the terrain rocks" },
+  resaudit: { kind: present, owner: "engine", purpose: "track every geometry, texture and render target the renderer holds and expose __kr.resAudit() for the memory harness" },
   scale: { kind: num(0), owner: "engine", purpose: "pin the 3D resolution scale; 0 = not pinned" },
   sculpt: { kind: present, owner: "pois", purpose: "town statue sculpts live instead of loading its baked mesh" },
   seed: { kind: num(0), owner: "game", purpose: "practice match seed (plane line, storm, loot); 0 = random" },

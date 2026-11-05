@@ -4,6 +4,7 @@ import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { chromium, type CDPSession, type Page } from "playwright";
 import { env, save, source } from "./common.mts";
+import type { Audit } from "../../client/src/engine/res/audit.ts";
 import { RESULT_SCHEMA, RESULT_VERSION, parseResult, type CaseResult, type Metric, type RunResult } from "./schema.ts";
 
 const argv = process.argv.slice(2);
@@ -355,6 +356,7 @@ async function takeSample(name: string, browserCdp: CDPSession, pageCdp: CDPSess
   const heap = await pageCdp.send("Runtime.getHeapUsage") as { usedSize: number; totalSize: number };
   const procs = await processes(browserCdp);
   const game = await page.evaluate(() => (window as unknown as { __krMem: { sample(top: number): unknown } }).__krMem.sample(80)) as GameSample;
+  const audit = await page.evaluate(() => (window as unknown as { __kr?: { resAudit?: () => unknown } }).__kr?.resAudit?.() ?? null) as Audit | null;
   const kr = await page.evaluate(() => { const k = (window as unknown as { __kr?: { stage?: string; game?: { inMatch?: boolean; cm?: { phase?: number } } } }).__kr; return { stage: String(k?.stage), inMatch: !!k?.game?.inMatch, phase: k?.game?.cm?.phase ?? -1 }; });
   const byType: Record<string, number> = {};
   for (const p of procs) byType[p.type] = Math.round(((byType[p.type] ?? 0) + (procMB(p) ?? 0)) * 10) / 10;
@@ -367,7 +369,7 @@ async function takeSample(name: string, browserCdp: CDPSession, pageCdp: CDPSess
     webglMB: mb(game.textures.bytes + bufferBytes + game.renderbuffers.bytes + game.drawing), textureMB: mb(game.textures.bytes), textureCount: game.textures.count,
     bufferMB: mb(bufferBytes), renderbufferMB: mb(game.renderbuffers.bytes), drawingMB: mb(game.drawing),
     geometryCpuMB: mb(game.cpu.geometry), textureCpuMB: mb(Object.values(game.cpu.textureCopies).reduce((a, c) => a + c.bytes, 0)), audioMB: mb(game.audio.bytes), audioCount: game.audio.count,
-    game, heap: null as Awaited<ReturnType<typeof heapSnapshot>> | null,
+    game, audit, heap: null as Awaited<ReturnType<typeof heapSnapshot>> | null,
   };
   console.log(`  ${name.padEnd(7)} ${s.atS} s: total ${s.totalMB} MB (${Object.entries(byType).map(([k, v]) => `${k} ${v}`).join(", ")}), JS heap ${s.heapUsedMB}, WebGL ${s.webglMB} (textures ${s.textureMB} in ${s.textureCount}, buffers ${s.bufferMB}), CPU copies: geometry ${s.geometryCpuMB} textures ${s.textureCpuMB}, audio ${s.audioMB}`);
   return s;
@@ -382,6 +384,7 @@ async function run() {
   if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) throw Error(`refusing ${url.hostname}: only servers you run (AGENTS.md rule 7)`);
   const profile = profileOf(), nogpu = profile === "nogpu";
   const [vw, vh] = opt("--viewport", nogpu ? "640x360" : "1600x900").split("x").map(Number);
+  const warmup = flag("--warmup");
   const dpr = Number(opt("--dpr", "1")), seed = Number(opt("--seed", "42")), matchSecs = Number(opt("--match-secs", "60")), matches = Number(opt("--matches", "2"));
   url.searchParams.set("seed", String(seed));
   if (nogpu && !url.searchParams.has("vegsplat")) url.searchParams.set("vegsplat", "0");
@@ -453,10 +456,17 @@ async function run() {
       const suffix = m === 1 ? "" : String(m);
       await page.locator("button.tn-play-cta").click({ timeout: 120_000, force: true });
       if (!await waitFor("the match (inMatch)", "!!(window.__kr.game && window.__kr.game.inMatch)", waitS)) break;
+      if (warmup) {
+        await hold(5000);
+        const s = await takeSample(`warmup${suffix}`, browserCdp, pageCdp, page, t0);
+        samples.push(s);
+        if (s.kr.phase !== 0) errors.push(`${s.name}: sampled in phase ${s.kr.phase}, not the warm-up`);
+      } else {
       if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", waitS, true)) samples.push(await takeSample("plane", browserCdp, pageCdp, page, t0));
       if (!await waitFor("the play phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 2", nogpu ? 1200 : 240)) break;
       await hold(matchSecs * 1000);
       samples.push(await takeSample(`match${suffix}`, browserCdp, pageCdp, page, t0));
+      }
       await page.evaluate(() => (window as unknown as { __kr: { game: { leave(): void } } }).__kr.game.leave());
       if (!await waitFor("the title after leaving", "!(window.__kr.game && window.__kr.game.inMatch)", 60)) break;
       await hold(10_000);
@@ -471,6 +481,7 @@ async function run() {
     await browser.close().catch(() => undefined);
   }
   for (const s of samples) if (s.unmeasured.length) errors.push(`${s.name}: no memory reading for ${s.unmeasured.join(", ")}`);
+  for (const s of samples) if (s.name.startsWith("left") && s.audit) for (const p of Object.keys(s.audit.ledger.byScope).filter((p) => p.startsWith("app/match"))) errors.push(`${s.name}: scope ${p} is still open after leaving the match`);
   const value = (v: number, unit: "MB" | "count" = "MB"): Metric => ({ status: "ok", unit, better: "lower", value: v });
   const cases: CaseResult[] = samples.map((s) => ({
     scenario: { id: `memory/${s.name}`, version: SCENARIO_VERSION, seed, workload: "page-load" },
@@ -481,10 +492,14 @@ async function run() {
       ...Object.fromEntries(Object.entries(s.byType).map(([k, v]) => [`${k}MB`, value(v)])), heapUsedMB: value(s.heapUsedMB),
       webglMB: value(s.webglMB), textureMB: value(s.textureMB), bufferMB: value(s.bufferMB), renderbufferMB: value(s.renderbufferMB), drawingMB: value(s.drawingMB),
       geometryCpuMB: value(s.geometryCpuMB), textureCpuMB: value(s.textureCpuMB), audioMB: value(s.audioMB), textureCount: value(s.textureCount, "count"),
+      ...(s.audit ? { ownedMB: value(mb(s.audit.owned.bytes)), unownedMB: value(mb(s.audit.unowned.bytes)), unownedCount: value(s.audit.unowned.count, "count"),
+        ...Object.fromEntries(Object.entries(s.audit.ledger.byCategory).map(([k, v]) => [`ledger.${k}MB`, value(mb(v.bytes))])) } : {}),
     },
     gates: [],
-    detail: { kr: s.kr, processes: s.processes, game: s.game, heap: s.heap },
+    detail: { kr: s.kr, processes: s.processes, game: s.game, audit: s.audit, heap: s.heap },
   }));
+  const growth = leakCase(samples, seed);
+  if (growth) cases.push(growth);
   const delta = (a: string, b: string) => {
     const x = samples.find((s) => s.name === a), y = samples.find((s) => s.name === b);
     const d = (k: "totalMB" | "heapUsedMB" | "webglMB" | "geometryCpuMB" | "audioMB") => x && y ? Math.round((y[k] - x[k]) * 10) / 10 : 0;
@@ -493,15 +508,31 @@ async function run() {
   const result = {
     schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "memory", startedAt, durationMs: Math.round(performance.now() - t0),
     source: source(process.cwd()), environment: { ...env(), gpu: gpu || null },
-    config: { url: url.pathname + url.search, profile, viewport: `${vw}x${vh}`, dpr, seed, matchSecs, matches, heap: flag("--heap") },
+    config: { url: url.pathname + url.search, profile, viewport: `${vw}x${vh}`, dpr, seed, matchSecs, matches, warmup, heap: flag("--heap") },
     cases, errors, notes, timeline, artifacts: [],
-    leaks: [delta("left1", "left2"), delta("match", "match2"), delta("title", "left1")].filter(Boolean),
+    leaks: [delta("left1", "left2"), delta("match", "match2"), delta("warmup", "warmup2"), delta("title", "left1")].filter(Boolean),
   } satisfies RunResult & { leaks: unknown[]; notes: string[]; timeline: unknown[] };
   const file = path.join(out, "result.json");
   save(file, result);
   console.log(`wrote ${file}${errors.length ? `\nerrors:\n  ${errors.join("\n  ")}` : ""}`);
   const budgets = opt("--budgets", "");
   process.exitCode = errors.length || !samples.length ? 1 : budgets && !checkBudgets(result, budgets) ? 1 : 0;
+}
+
+function leakCase(samples: Sample[], seed: number): CaseResult | null {
+  const left = samples.filter((s) => s.name.startsWith("left")), a = left.at(-2), b = left.at(-1);
+  if (!a?.audit || !b?.audit) return null;
+  const x = a.audit, y = b.audit;
+  const grew = (from: number, to: number, unit: "MB" | "count" = "MB"): Metric => ({ status: "ok", unit, better: "lower", value: Math.max(0, Math.round((to - from) * 10) / 10) });
+  const metrics: Record<string, Metric> = {
+    webglMB: grew(a.webglMB, b.webglMB), textureCount: grew(a.textureCount, b.textureCount, "count"),
+    unownedMB: grew(mb(x.unowned.bytes), mb(y.unowned.bytes)), unownedCount: grew(x.unowned.count, y.unowned.count, "count"),
+    geometryCount: grew(x.info.geometries, y.info.geometries, "count"),
+  };
+  for (const [k, v] of Object.entries(y.ledger.byCategory)) metrics[`ledger.${k}MB`] = grew(mb(x.ledger.byCategory[k as keyof typeof x.ledger.byCategory].bytes), mb(v.bytes));
+  const names = Object.entries(y.names).map(([name, t]) => ({ name, count: t.count - (x.names[name]?.count ?? 0), bytes: t.bytes - (x.names[name]?.bytes ?? 0) })).filter((n) => n.count > 0).sort((p, q) => q.bytes - p.bytes);
+  for (const n of names.slice(0, 20)) console.log(`  ${a.name} -> ${b.name} unowned +${n.count} ${n.name} (${mb(n.bytes)} MB)`);
+  return { scenario: { id: "memory/leak", version: SCENARIO_VERSION, seed, workload: "page-load" }, windows: { from: a.name, to: b.name }, load: {}, metrics, gates: [], detail: { names } };
 }
 
 function checkBudgets(r: RunResult, file: string): boolean {
@@ -557,4 +588,4 @@ function table() {
 
 if (cmd === "run") { await run(); process.exit(process.exitCode ?? 0); }
 else if (cmd === "table") table();
-else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--heap] | table result.json... [--md]"); process.exitCode = cmd === "help" ? 0 : 2; }
+else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--warmup] [--budgets FILE] [--max-mb N] [--heap] | table result.json... [--md]"); process.exitCode = cmd === "help" ? 0 : 2; }
