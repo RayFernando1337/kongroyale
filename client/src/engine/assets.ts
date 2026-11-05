@@ -5,6 +5,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { releaseAfterUpload } from "./texture-release";
+import { flag } from "../flags";
 
 const BASE = import.meta.env.BASE_URL || "/";
 /** resolve a public/ path ("assets/x.glb" or "/assets/x.glb") against the deploy base */
@@ -18,6 +19,18 @@ async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
   for (let i = 0; ; i++) {
     try { return await f(); } catch (e) { if (i >= tries - 1) throw e; await new Promise((r) => setTimeout(r, 400 * 3 ** i)); }
   }
+}
+
+const CAP_PX = flag("poicap");
+function capped(img: HTMLImageElement): HTMLImageElement | HTMLCanvasElement {
+  const s = CAP_PX / Math.max(img.width, img.height);
+  if (!CAP_PX || s >= 1) return img;
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+  const g = c.getContext("2d")!;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(img, 0, 0, c.width, c.height);
+  return c;
 }
 
 export class Assets {
@@ -52,6 +65,7 @@ export class Assets {
     const { srgb = true, repeat = true, aniso = true } = o;
     return this.once(`tex:${path}:${srgb}:${repeat}`, async () => {
       const t = releaseAfterUpload(await retry(() => this.tex.loadAsync(assetUrl(path))));
+      (t as THREE.Texture).image = capped(t.image);
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
       if (aniso) t.anisotropy = this.maxAniso;
