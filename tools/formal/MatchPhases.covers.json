@@ -1,0 +1,85 @@
+{
+  "skill": ".agents/skills/verify-match-phases/SKILL.md",
+  "regions": [
+    "shared/sim/match.ts#Match.step",
+    "shared/sim/match.ts#Match.startNow",
+    "shared/sim/match.ts#Match.warmupHeld",
+    "shared/sim/match.ts#Match.enterWarmup",
+    "shared/sim/match.ts#Match.enterPlane",
+    "shared/sim/match.ts#Match.stepPlane",
+    "shared/sim/match.ts#Match.enterPlay",
+    "shared/sim/match.ts#Match.enterResults",
+    "shared/sim/match.ts#Match.checkEnd",
+    "shared/sim/match.ts#Match.squadsLeft",
+    "shared/sim/match.ts#Match.kill",
+    "shared/sim/match.ts#Match.eliminate",
+    "shared/sim/match.ts#Match.stepRespawns",
+    "shared/sim/match.ts#Match.econHost",
+    "shared/sim/player.ts#resetForMatch",
+    "shared/sim/storm.ts#PHASE_REF",
+    "shared/sim/storm.ts#stormAt",
+    "shared/net/host.ts#MatchHost.holdForStream",
+    "server/index.ts#onJSON/case \"start\"",
+    "server/index.ts#onJSON/case \"stream\"",
+    "server/lobby.ts#Lobby.start",
+    "server/lobby.ts#Lobby.pump",
+    "server/lobby.ts#Lobby.endMatch"
+  ],
+  "writes": [
+    {
+      "what": "the phase, the end of a match, START NOW, the warm-up hold, redeploys",
+      "pattern": "this\\.(phase|over|skipWarmup|resurgenceOn)\\s*=(?!=)|\\.holdWarmup\\s*=(?!=)",
+      "files": [
+        "shared/sim/",
+        "shared/net/",
+        "server/"
+      ]
+    },
+    {
+      "what": "a squad's elimination",
+      "pattern": "\\.eliminated\\s*=(?!=)",
+      "files": [
+        "shared/sim/",
+        "server/"
+      ]
+    }
+  ],
+  "allow": [
+    {
+      "at": "shared/sim/match.ts#Match.setupRange",
+      "why": "the firing range never ends and is not modelled"
+    },
+    {
+      "at": "shared/net/replay.ts#replayMatch",
+      "why": "a replay plays back the holds a recorded match saw"
+    }
+  ],
+  "verified": {
+    "model": "753d080dbb2945f0",
+    "regions": {
+      "shared/sim/match.ts#Match.step": "1b3bbf9c9482c88a",
+      "shared/sim/match.ts#Match.startNow": "b779ef6260e29677",
+      "shared/sim/match.ts#Match.warmupHeld": "7a326d0c62acd4d9",
+      "shared/sim/match.ts#Match.enterWarmup": "7618bee68a8f4a70",
+      "shared/sim/match.ts#Match.enterPlane": "56395fe9f9f1a57b",
+      "shared/sim/match.ts#Match.stepPlane": "d777e44ffd0e3119",
+      "shared/sim/match.ts#Match.enterPlay": "54b19b3b8d41e962",
+      "shared/sim/match.ts#Match.enterResults": "adeaad451dcf9f21",
+      "shared/sim/match.ts#Match.checkEnd": "89160c7e3710c80d",
+      "shared/sim/match.ts#Match.squadsLeft": "bd2e00243de0893f",
+      "shared/sim/match.ts#Match.kill": "acb855d8aeec42e9",
+      "shared/sim/match.ts#Match.eliminate": "41a4964069225946",
+      "shared/sim/match.ts#Match.stepRespawns": "d7ad146ff6f89650",
+      "shared/sim/match.ts#Match.econHost": "6a3def1a6f8a4eeb",
+      "shared/sim/player.ts#resetForMatch": "6066e6d9b3148c1f",
+      "shared/sim/storm.ts#PHASE_REF": "e0a75d3d1b14fd57",
+      "shared/sim/storm.ts#stormAt": "5d1b4498bd9062af",
+      "shared/net/host.ts#MatchHost.holdForStream": "a48e271bba913cc6",
+      "server/index.ts#onJSON/case \"start\"": "3cb259f2160ec2a4",
+      "server/index.ts#onJSON/case \"stream\"": "2d53e376bbcf7c50",
+      "server/lobby.ts#Lobby.start": "85af5dc311125c13",
+      "server/lobby.ts#Lobby.pump": "c2c3268e6d1dd55b",
+      "server/lobby.ts#Lobby.endMatch": "d65ba7025ff9eed3"
+    }
+  }
+}

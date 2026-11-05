@@ -1,0 +1,87 @@
+{
+  "skill": ".agents/skills/verify-vehicle-seats/SKILL.md",
+  "regions": [
+    "shared/sim/vehicle.ts#freeSeat",
+    "shared/sim/vehicle.ts#enterVehicle",
+    "shared/sim/vehicle.ts#exitVehicle",
+    "shared/sim/vehicle.ts#switchSeat",
+    "shared/sim/vehicle.ts#takeSeat",
+    "shared/sim/vehicle.ts#flipVehicle",
+    "shared/sim/vehicle.ts#stepRighting",
+    "shared/sim/vehicle.ts#spawnVehicle",
+    "shared/sim/vehicle.ts#VehicleSet.reset",
+    "shared/sim/match.ts#Match.useVehicle",
+    "shared/sim/match.ts#Match.ejectAll",
+    "shared/sim/match.ts#Match.tukEvents",
+    "shared/sim/match.ts#Match.blowTuk",
+    "shared/sim/match.ts#Match.stepVehicles",
+    "shared/sim/match.ts#Match.spawnTuks",
+    "shared/sim/match.ts#Match.kill",
+    "shared/sim/match.ts#Match.enterWarmup",
+    "shared/sim/match.ts#Match.enterPlane",
+    "shared/sim/match.ts#Match.stepRespawns",
+    "shared/sim/match.ts#Match.spawnWarmup",
+    "shared/sim/player.hot.ts#stepRide",
+    "shared/sim/player.ts#resetForMatch"
+  ],
+  "writes": [
+    {
+      "what": "a vehicle's seats, and a rider's ride state, vehicle and seat",
+      "pattern": "seats\\[[^\\]]*\\]\\s*=(?!=)|\\.st\\s*=\\s*PS\\.Ride\\b|\\.(veh|seat)\\s*=(?!=)",
+      "files": [
+        "shared/sim/",
+        "shared/net/",
+        "server/"
+      ]
+    }
+  ],
+  "allow": [
+    {
+      "at": "shared/sim/vehicle.ts#VehicleSet.bind",
+      "why": "world.veh is the vehicle set, not a rider's vehicle"
+    },
+    {
+      "at": "shared/net/proto.ts#readSelf",
+      "why": "decodes a snapshot into the client's copy of its own kong; the server's seats are what the model checks"
+    },
+    {
+      "at": "shared/net/proto.ts#readPlayer",
+      "why": "decodes a snapshot into the client's copy of another kong"
+    },
+    {
+      "at": "server/lobby.ts#Lobby.castJoin",
+      "why": "a commentator seat (Client.seat), not a vehicle seat"
+    },
+    {
+      "at": "server/lobby.ts#Lobby.castLeave",
+      "why": "a commentator seat (Client.seat), not a vehicle seat"
+    }
+  ],
+  "verified": {
+    "model": "060f226063d4f649",
+    "regions": {
+      "shared/sim/vehicle.ts#freeSeat": "706a387d7a9bfacb",
+      "shared/sim/vehicle.ts#enterVehicle": "5da2594d416b51fb",
+      "shared/sim/vehicle.ts#exitVehicle": "3e3a9830f6a9a02b",
+      "shared/sim/vehicle.ts#switchSeat": "15705ecc77387291",
+      "shared/sim/vehicle.ts#takeSeat": "9c4340edfb0f2e0f",
+      "shared/sim/vehicle.ts#flipVehicle": "3b726b15a30dd54f",
+      "shared/sim/vehicle.ts#stepRighting": "6fcd1dbb13c1d1ed",
+      "shared/sim/vehicle.ts#spawnVehicle": "75f57b80fa828623",
+      "shared/sim/vehicle.ts#VehicleSet.reset": "9df4e76f0587f841",
+      "shared/sim/match.ts#Match.useVehicle": "dfce8deb9fa95eb2",
+      "shared/sim/match.ts#Match.ejectAll": "576ea7a83e6cacbf",
+      "shared/sim/match.ts#Match.tukEvents": "934c72cb26ee417a",
+      "shared/sim/match.ts#Match.blowTuk": "1f72097815d13564",
+      "shared/sim/match.ts#Match.stepVehicles": "e9de7d1a0c2b63a6",
+      "shared/sim/match.ts#Match.spawnTuks": "bfc04241a89d8d63",
+      "shared/sim/match.ts#Match.kill": "acb855d8aeec42e9",
+      "shared/sim/match.ts#Match.enterWarmup": "7618bee68a8f4a70",
+      "shared/sim/match.ts#Match.enterPlane": "56395fe9f9f1a57b",
+      "shared/sim/match.ts#Match.stepRespawns": "d7ad146ff6f89650",
+      "shared/sim/match.ts#Match.spawnWarmup": "57d541bd72048c2c",
+      "shared/sim/player.hot.ts#stepRide": "6053d1f64dfe44c6",
+      "shared/sim/player.ts#resetForMatch": "6066e6d9b3148c1f"
+    }
+  }
+}
