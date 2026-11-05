@@ -274,7 +274,7 @@ export class GameRender implements EventSink {
   /** bombs carried last frame, until when the pick-up hint shows, the fuse's next tick (s) */
   private bombSeen = 0; private bombHintUntil = 0; private fuseTickAt = 0;
   // ---- (economy) the Banana Stands, the shop prompt, the wallet
-  private standViews: THREE.Object3D[] = [];
+  private standViews: THREE.Object3D[] = []; private standScope: Scope | null = null;
   /** the stand in reach (its index) — E opens its buy menu (index.ts owns the menu) */
   standNear = -1; private lastE = false; private bountyTeam = -1;
   onShop: ((stand: number) => void) | null = null;
@@ -282,9 +282,12 @@ export class GameRender implements EventSink {
   cashGain(amount: number) { this.cashGainAt = performance.now(); this.cashGainAmt = amount; }
   private syncStands() {
     if (this.standViews.length === this.cm.stands.length) return;
-    for (const o of this.standViews) o.removeFromParent();
+    this.standScope?.dispose();
+    const res = this.standScope = this.matchScope.child("stands");
     const proto = bananaStand().root;
-    this.standViews = this.cm.stands.map((s) => { const o = proto.clone(true); o.position.set(s.x, s.y, s.z); o.rotation.y = s.yaw; o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); this.engine.scene.add(o); patchTree(this.engine, o); return o; });
+    proto.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) res.geometry("geo.world", m.geometry); });
+    const views = this.standViews = this.cm.stands.map((s) => { const o = proto.clone(true); o.position.set(s.x, s.y, s.z); o.rotation.y = s.yaw; o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); this.engine.scene.add(o); patchTree(this.engine, o); return o; });
+    res.defer(() => { for (const o of views) o.removeFromParent(); });
   }
   /** the buy menu's view of the offers for this kong right now (the server re-checks every rule) */
   shopView(): import("../ui/shop").ShopView {
@@ -2368,7 +2371,7 @@ export class GameRender implements EventSink {
     this.matchScope.dispose();
   }
   private releaseViews() {
-    for (const o of this.standViews) o.removeFromParent(); this.standViews = [];
+    this.standViews = []; this.standScope = null;
     this.range?.dispose(); this.range = null;
     for (const a of this.actors.values()) { if (this.kits.releaseKong) this.kits.releaseKong(a.actor, a.id % 6); else a.actor.dispose(); a.glider?.object.removeFromParent(); }
     for (const v of this.lootViews.values()) v.dispose();
