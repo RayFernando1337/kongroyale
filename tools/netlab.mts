@@ -20,9 +20,10 @@
 //           the RTT, jitter and loss (the RTT list, --jitter and --loss are ignored). --serve runs the host side (Match +
 //           MatchHost, as the server does) on PORT and waits for one --connect process, which runs both players' clients
 //           (with --aux, two sockets each, like the game) and prints the result line with the measured RTT. One duel per
-//           --serve. Only against a --serve you started yourself:
-//             npx tsx tools/netlab.mts --serve 5800 --weapon shotgun
-//             npx tsx tools/netlab.mts --connect ws://10.77.0.1:5800 --aux --weapon shotgun --secs 30
+//           --serve. --serve prints a random token (or takes --token) that every socket must present; --check judges
+//           the duel at its measured RTT. Only against a --serve you started yourself:
+//             npx tsx tools/netlab.mts --serve 5800 --weapon shotgun --token T
+//             npx tsx tools/netlab.mts --connect ws://10.77.0.1:5800 --token T --aux --weapon shotgun --secs 30
 //           Both sides need the same --weapon, --secs and --kill.
 //   --kill: B is KILLABLE (100 hp + 50 shield, respawns on the spot 3 s later, warm-up rules) — measures kill races: pellets
 //           fired at a target our own in-flight bullets already killed must not show a (ghost) hit marker
@@ -54,12 +55,13 @@ import { stats } from "./performance/common.mts";
 import { ClientMatch } from "../client/src/game/client";
 import type { Link } from "../client/src/game/net";
 import { WebSocket, WebSocketServer } from "ws";
+import { randomBytes } from "node:crypto";
 
 const argv = process.argv.slice(2);
 const opt = (k: string, d: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const rtts = (argv[0] && !argv[0].startsWith("--") ? argv[0] : "20,80,160,250,320").split(",").map(Number);
 const jitter = Number(opt("--jitter", "0")), secs = Number(opt("--secs", "20")), weapon = opt("--weapon", "ar") as WeaponId, killable = argv.includes("--kill"), check = argv.includes("--check");
-const loss = Number(opt("--loss", "0")) / 100, aux = argv.includes("--aux"), servePort = Number(opt("--serve", "0")), connectUrl = opt("--connect", "");
+const loss = Number(opt("--loss", "0")) / 100, aux = argv.includes("--aux"), servePort = Number(opt("--serve", "0")), connectUrl = opt("--connect", ""), token = opt("--token", "");
 /** how much later a lost TCP message arrives: the sender resends it once a later segment's SACK shows the gap (RACK-TLP).
  *  netpath.py, 1% loss, 20 ms jitter, Linux cubic + SACK + RACK: stall peaks 68-100 ms at 50 ms RTT, 167-201 ms at 150 ms,
  *  305-336 ms at 250 ms */
@@ -230,57 +232,60 @@ async function run(rtt: number) {
   return { rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, ...C.tails() };
 }
 
-/** --serve: the host side of one duel over real WebSockets */
-async function serve(port: number) {
+/** --serve: the host side of one duel over real WebSockets. Every socket must say hello with the duel's token before
+ *  anything it sends counts; malformed text closes it. Exits non-zero when a player leaves before the duel ends. */
+async function serve(port: number, token: string) {
   const H = makeHost(), socks: WebSocket[][] = [[], []];
-  const wss = new WebSocketServer({ port, perMessageDeflate: false });
+  const wss = new WebSocketServer({ port, perMessageDeflate: false, maxPayload: 4096 });
   for (let pid = 0; pid < 2; pid++) H.host.peers.push({ pid, invSeq: 0, send: (u8) => { const b = Buffer.from(u8); for (const ws of socks[pid]) if (ws.readyState === WebSocket.OPEN) ws.send(b); } });
-  console.error(`netlab: serving one duel on :${port} (${weapon}, ${secs} s)`);
-  let started = false, finished = false;
-  await new Promise<void>((resolve, reject) => {
-    wss.on("connection", (ws) => {
-      let pid = -1;
-      ws.on("message", (data: Buffer, binary: boolean) => {
-        realTime();
-        if (!binary) {
-          const j = JSON.parse(String(data));
-          if (typeof j.pid === "number" && pid < 0 && (j.pid === 0 || j.pid === 1)) {
+  console.error(`netlab: serving one duel on :${port} (${weapon}, ${secs} s); connect with --token ${token}`);
+  let finished = false;
+  const close = () => { wss.close(); for (const s of socks.flat()) s.terminate(); };
+  try {
+    await new Promise<void>((resolve, reject) => {
+      wss.on("connection", (ws) => {
+        let pid = -1;
+        ws.on("message", (data: Buffer, binary: boolean) => {
+          realTime();
+          if (binary) { if (pid >= 0) H.host.receive(H.host.peers[pid], new Uint8Array(data.buffer, data.byteOffset, data.byteLength), (r) => ws.send(Buffer.from(r))); return; }
+          let j: { pid?: unknown; token?: unknown; t?: unknown };
+          try { j = JSON.parse(String(data)); } catch { ws.terminate(); return; }
+          if (pid < 0) {
+            if (j.token !== token || (j.pid !== 0 && j.pid !== 1)) { ws.terminate(); return; }
             pid = j.pid; socks[pid].push(ws);
             // the first socket of a player is its main socket: it gets the match info, like the server's JSON
             if (socks[pid].length === 1) ws.send(JSON.stringify({ ...matchInfo(H.m, 7, { [pid + 1]: pid }), myUid: pid + 1 }));
-            if (!started && socks[0].length && socks[1].length) { started = true; wall0 = wall(); resolve(); }
-          } else if (j.t === "done") {
-            ws.send(JSON.stringify({ t: "verdicts", serv: H.serv, clamped: H.clamped, deaths: H.deaths }), () => { finished = true; });
-          }
-          return;
-        }
-        if (pid >= 0) H.host.receive(H.host.peers[pid], new Uint8Array(data.buffer, data.byteOffset, data.byteLength), (r) => ws.send(Buffer.from(r)));
+            if (socks[0].length && socks[1].length) resolve();
+          } else if (j.t === "done") ws.send(JSON.stringify({ t: "verdicts", serv: H.serv, clamped: H.clamped, deaths: H.deaths }), () => { finished = true; });
+        });
+        ws.on("close", () => { if (!finished && pid >= 0) { finished = true; reject(Error("a client left before the duel ended")); } });
       });
-      ws.on("close", () => { if (!finished && pid >= 0) { finished = true; console.error("netlab: a client left before the duel ended"); process.exitCode = 1; } });
+      wss.on("error", reject);
     });
-    wss.on("error", reject);
-  });
-  // server loop: 60 Hz on the wall clock, catching up at most 8 ticks after a stall
-  let nextTick = 0;
-  while (!finished) {
-    realTime();
-    for (let n = 0; now >= nextTick && n < 8; n++) { H.tick(); nextTick += DT * 1000; }
-    if (now - nextTick > 200) nextTick = now;
-    await new Promise((r) => setTimeout(r, Math.max(0, nextTick - now - 1)));
-  }
-  wss.close(); for (const s of socks.flat()) s.terminate();
+    // server loop: 60 Hz on the wall clock from the moment both players are in, catching up at most 8 ticks after a stall
+    let nextTick = realTime();
+    while (!finished) {
+      realTime();
+      for (let n = 0; now >= nextTick && n < 8; n++) { H.tick(); nextTick += DT * 1000; }
+      if (now - nextTick > 200) nextTick = now;
+      await new Promise((r) => setTimeout(r, Math.max(0, nextTick - now - 1)));
+    }
+  } finally { close(); }
 }
 
 /** --connect: both players' clients of one duel over real WebSockets; returns the result line */
-async function connect(url: string) {
+async function connect(url: string, token: string) {
   const sockets: WebSocket[][] = [[], []];
   const C = makeClients((pid, u8) => { for (const ws of sockets[pid]) if (ws.readyState === WebSocket.OPEN) ws.send(u8); });
   let verdict: { serv: number[]; clamped: number; deaths: number } | null = null;
+  // one clock origin for the whole duel, set before the first socket opens: frames that arrive during the handshake
+  // (the main sockets get the match info and snapshots while the aux sockets are still connecting) never see time go back
+  wall0 = wall(); realTime();
   await Promise.all([0, 1].flatMap((pid) => (aux ? [0, 1] : [0]).map((k) => new Promise<void>((resolve, reject) => {
     // a player's main socket says hello first, so it is the one the server sends the match info on
     setTimeout(() => {
       const ws = new WebSocket(url, { perMessageDeflate: false });
-      ws.on("open", () => { sockets[pid].push(ws); ws.send(JSON.stringify({ pid })); resolve(); });
+      ws.on("open", () => { sockets[pid].push(ws); ws.send(JSON.stringify({ pid, token })); resolve(); });
       ws.on("message", (data: Buffer, binary: boolean) => {
         realTime();
         if (binary) return C.receive(pid, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
@@ -290,9 +295,8 @@ async function connect(url: string) {
       ws.on("error", reject);
     }, k * 300);
   }))));
-  wall0 = wall(); realTime();
   // client loop: 144 frames a second on the wall clock; a late frame takes the real elapsed time as its dt
-  let nextFrame = 0, last = 0;
+  let nextFrame = now, last = now;
   while (!C.done(1500)) {
     realTime();
     if (now >= nextFrame) { C.frame(Math.max(1e-4, (now - last) / 1000)); last = now; nextFrame = Math.max(nextFrame + 1000 / 144, now - 50); }
@@ -305,13 +309,17 @@ async function connect(url: string) {
   return { transport: "ws", url, rtt: t.rttMs.p50, jitter: "real", weapon, ...(killable ? { kills: v.deaths } : {}), ...verdicts(C.pred, v.serv), clamped: v.clamped, rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, ...t };
 }
 
-if (servePort) { await serve(servePort); process.exit(); }
-if (connectUrl) { console.log(JSON.stringify(await connect(connectUrl))); process.exit(); }
+if (servePort) {
+  try { await serve(servePort, token || randomBytes(8).toString("hex")); } catch (e) { console.error(`netlab: ${(e as Error).message}`); process.exit(1); }
+  process.exit();
+}
 
 const CHECK_MAX_RTT_MS = 250, CHECK_MIN_CONFIRM_PCT = 99;
 const failures: string[] = [];
-for (const rtt of rtts) {
-  const r = await run(rtt);
+// --connect: one duel over the real network, judged at its measured RTT; otherwise one simulated duel per RTT
+const runs = connectUrl ? [() => connect(connectUrl, token)] : rtts.map((rtt) => () => run(rtt));
+for (const go of runs) {
+  const r = await go(), rtt = r.rtt;
   console.log(JSON.stringify(r));
   if (!check) continue;
   const problems: string[] = [];
@@ -320,7 +328,7 @@ for (const rtt of rtts) {
   if (r.confirmPct < CHECK_MIN_CONFIRM_PCT) problems.push(`confirm ${r.confirmPct}% < ${CHECK_MIN_CONFIRM_PCT}%`);
   if (r.ghost > 0) problems.push(`${r.ghost} ghost hits`);
   if (!problems.length) continue;
-  const label = `${weapon} rtt=${rtt}ms jitter=${jitter}${killable ? " kill" : ""}: ${problems.join(", ")}`;
+  const label = `${weapon} rtt=${rtt}ms jitter=${r.jitter}${killable ? " kill" : ""}: ${problems.join(", ")}`;
   if (rtt > CHECK_MAX_RTT_MS) console.log(`KNOWN ISSUE (not failed, rtt > ${CHECK_MAX_RTT_MS} ms): ${label}`);
   else failures.push(label);
 }
@@ -328,3 +336,4 @@ if (check) {
   if (failures.length) { console.error("NETLAB CHECK FAILED:\n  " + failures.join("\n  ")); process.exit(1); }
   console.log("NETLAB CHECK PASSED");
 }
+if (connectUrl) process.exit();
