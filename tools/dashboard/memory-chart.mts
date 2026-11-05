@@ -158,7 +158,7 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
   if (finite(opts.killMB)) {
     const y = ys(opts.killMB);
     out.push('<line x1="' + left + '" x2="' + (left + plotW) + '" y1="' + y + '" y2="' + y + '" stroke="#ff6b6b" stroke-width="2.5" stroke-dasharray="12 8"/>');
-    out.push('<text x="' + (left + plotW - 8) + '" y="' + (y - 10) + '" fill="#ff6b6b" font-size="19" font-weight="700" text-anchor="end">' + esc(opts.killLabel ?? "kill line") + "</text>");
+    out.push('<text x="' + (left + plotW - 8) + '" y="' + (y - top < 70 ? y + 26 : y - 10) + '" fill="#ff6b6b" font-size="19" font-weight="700" text-anchor="end">' + esc(opts.killLabel ?? "kill line") + "</text>");
   }
   traces.forEach((tr, i) => {
     const color = COLORS[i % COLORS.length];
