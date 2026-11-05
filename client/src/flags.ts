@@ -77,6 +77,7 @@ const FLAGS = {
   jungleCheck: { kind: present, owner: "pois", purpose: "check the baked jungle layout still matches the terrain" },
   jungleNoVeg: { kind: present, owner: "pois", purpose: "jungle POIs plant no vegetation" },
   kong: { kind: text, owner: "actors", purpose: "kong asset: v1, v2 or alt; absent = v2" },
+  konghalf: { kind: one, owner: "actors", purpose: "=1 loads the kong's near-tier normal maps and its clothing and sneaker colour at 1024² (body and face colour stay 2048²)" },
   kongproxy: { kind: maybeNum, owner: "actors", purpose: "kong shadow proxy shrink (cm); 0 = no kong shadows" },
   kongtier: { kind: text, owner: "actors", purpose: "force every kong into LOD tier 0, 1 or 2" },
   kongv: { kind: one, owner: "actors", purpose: "the procedural kong instead of the asset" },
