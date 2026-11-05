@@ -1,9 +1,9 @@
-import * as dmath from "./dmath";
 // CLIMBING: ladders on the buildings / hulls / decks and rope-wrapped giant jungle trunks up to a
 // sniper perch. A climb is a vertical line on a face: walk into it (facing it) to grab on, W / S (or the stick) climbs
 // — looking up / down or facing away flips which way W goes, like every FPS ladder — jump kicks off, the top pulls you
 // over onto the floor (the mantle), the bottom lets you step off. Server-authoritative + predicted (shared/sim/player.ts
 // PS.Climb). Pure data + math; the static world carries the list (StaticWorld.climbs, built by buildStaticWorld).
+import * as dmath from "./dmath";
 
 /** one climbable line */
 export interface Climb {
