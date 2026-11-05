@@ -89,6 +89,8 @@ const FLAGS = {
   lowmem: { kind: text, owner: "boot", purpose: "build POIs only near the player: =1 on, =0 off, absent = auto" },
   lowmemr: { kind: num(450), owner: "boot", purpose: "lowmem build distance (m, horizontal; in the warm-up and the plane it counts height above the pad too, and in the plane up to lowmemview POIs in view build as well, ahead of nearby ones out of view)" },
   lowmemview: { kind: num(2), owner: "boot", purpose: "lowmem: at most this many far POIs build because they are in view during the plane; the rest stay terrain until landing" },
+  lowmemcap: { kind: num(3), owner: "boot", purpose: "lowmem: streamed POIs kept built once the match is in play; beyond it the farthest past lowmemr + lowmemhyst is evicted" },
+  lowmemhyst: { kind: num(100), owner: "boot", purpose: "lowmem: a POI is evicted only beyond lowmemr plus this (m)" },
   manual: { kind: present, owner: "caster", purpose: "caster camera starts in manual instead of autopilot" },
   map: { kind: one, owner: "ui", purpose: "open the full-screen map (view-camera captures)" },
   mode: { kind: text, owner: "caster", routing: true, purpose: "mode of the lobby a caster creates: trios, else solo" },

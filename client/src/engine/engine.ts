@@ -41,6 +41,7 @@ export interface WorldCtx {
   shared: Map<string, unknown>;
   /** per-frame hook; dt seconds, t = animation time seconds */
   onUpdate(fn: (dt: number, t: number) => void): void;
+  readonly rebuilding: boolean;
   /** replace the final render (post-processing). Default: renderer.render(scene, camera). */
   setPost(p: PostPipeline): void;
   /** Current main-view height for screen-size selection; independent of active offscreen passes. */
@@ -235,13 +236,26 @@ export class Engine implements WorldCtx {
     this.post?.setSize(w, h);
   }
 
+  readonly hooksOf = new Map<string, Array<(dt: number, t: number) => void>>();
+  readonly evicted = new Set<string>();
+  private updateSink: Array<(dt: number, t: number) => void> | null = null;
+  rebuilding = false;
+  trackUpdates(id: string | null) {
+    if (id && !this.hooksOf.has(id)) this.hooksOf.set(id, []);
+    this.updateSink = id ? this.hooksOf.get(id)! : null;
+    this.rebuilding = !!id && this.evicted.has(id);
+  }
   onUpdate(fn: (dt: number, t: number) => void) {
     this.updates.push(fn);
+    if (this.updateSink && !this.inStep) this.updateSink.push(fn);
     // (hitch attribution: the stage that registered the hook — main.ts sets __kr.stage / streamStage per module build)
     const kr = (globalThis as { __kr?: { stage?: string; streamStage?: string } }).__kr;
     this.updLabels.push(String(kr?.streamStage || kr?.stage || "?"));
   }
   private updLabels: string[] = [];
+  removeUpdates(fns: ReadonlySet<(dt: number, t: number) => void>) {
+    for (let i = this.updates.length - 1; i >= 0; i--) if (fns.has(this.updates[i])) { this.updates.splice(i, 1); this.updLabels.splice(i, 1); }
+  }
   /** tools set `engine.hitchLog = []` → every frame whose step takes > 30 ms,
    *  or whose interval is > 50 ms, is logged with the costliest update hooks (by registering stage), idle work, render */
   hitchLog: Array<Record<string, unknown>> | null = null;

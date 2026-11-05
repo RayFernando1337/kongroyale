@@ -363,9 +363,9 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
         const s = Math.min(1, Math.max(0, (d + 0.2) / 12.2));
         return LEVEL + liftAt(x, z) * 0.5 + swellHeight(x, z, t, (uniforms.wtrWaveAmp.value as number) * (0.05 + 0.95 * s * s * (3 - 2 * s)));
       },
-      registerFoamCircle: (x, z, r, s) => mask.circle(x, z, r, s),
-      registerFoamCapsule: (x1, z1, x2, z2, r, s) => mask.capsule(x1, z1, x2, z2, r, s),
-      registerFoamRect: (x, z, hx, hz, yaw, ring, s) => mask.rect(x, z, hx, hz, yaw, ring, s),
+      registerFoamCircle: (x, z, r, s) => { if (!ctx.rebuilding) mask.circle(x, z, r, s); },
+      registerFoamCapsule: (x1, z1, x2, z2, r, s) => { if (!ctx.rebuilding) mask.capsule(x1, z1, x2, z2, r, s); },
+      registerFoamRect: (x, z, hx, hz, yaw, ring, s) => { if (!ctx.rebuilding) mask.rect(x, z, hx, hz, yaw, ring, s); },
       clearFoam: () => mask.clear(),
       rebakeObstacles: () => obstacles.bake(),
       isUnderwater: () => under.active,

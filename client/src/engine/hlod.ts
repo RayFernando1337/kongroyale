@@ -38,6 +38,7 @@ interface FarPoi {
   /** snapshot meshes that appeared since registration; true if there were any (the build then waits 90 frames) */
   late(): boolean;
   tries: number;
+  evicted?: boolean;
 }
 
 /** the proxy preparation (scene walk + merge) runs in slices of ~this many ms, one per frame (a far POI's merge in one
@@ -103,6 +104,8 @@ export class FarMerge {
   /** register a POI (module roots + centre). `near` = distance (m) inside which the POI renders as built. */
   register(id: string, roots: THREE.Object3D[], centre: { x: number; y: number; z: number }, near: number) {
     if (!this.enabled || !roots.length) return;
+    const old = this.pois.find((q) => q.id === id);
+    if (old) this.drop(old);
     if (!this.group.parent) this.engine.scene.add(this.group);
     // world-matrix snapshot of every mesh now; compared when the proxy is built (≥ 90 frames later): whatever moved
     // in between is animated and keeps drawing on its own
@@ -121,6 +124,20 @@ export class FarMerge {
       return n > 0;
     };
     this.pois.push({ id, roots, cx: centre.x, cy: centre.y, cz: centre.z, near, gate: { active: false }, proxies: [], sources: [], state: "wait", readyAt: this.engine.frames + 90, moved, late, tries: 0 });
+  }
+
+  evict(id: string) {
+    const p = this.pois.find((q) => q.id === id);
+    if (!p) return;
+    if (p.state !== "built") { this.drop(p); return; }
+    p.roots = []; p.sources = []; p.evicted = true;
+    p.moved = () => true; p.late = () => false;
+  }
+
+  private drop(p: FarPoi) {
+    this.pois.splice(this.pois.indexOf(p), 1);
+    p.state = "none"; p.roots = []; p.sources = [];
+    for (const o of [...this.group.children]) if (o.userData.krFar === p.id) { this.outgoing.delete(o); o.removeFromParent(); (o as THREE.Mesh).geometry.dispose(); }
   }
 
   /** diagnostics: why a POI's visible meshes did / did not merge (reason → count) */
@@ -292,6 +309,7 @@ export class FarMerge {
       // first draw offscreen now (vertex buffers / VAOs of the merged geometry): the frame a POI first goes far never
       // uploads megabytes of merged vertices (a landing / teleport hitch otherwise)
       try { this.engine.warmDraw(list); } catch (e) { console.warn("[far-merge] warm", e); }
+      if (!this.pois.includes(p)) { for (const [proxy] of made) { proxy.removeFromParent(); proxy.geometry.dispose(); } return; }
       for (const [proxy, meshes] of made) { p.proxies.push(proxy); for (const m of meshes) { gateVisible(m, p.gate); p.sources.push(m); } }
       p.state = "built";
     });
@@ -307,7 +325,7 @@ export class FarMerge {
     for (const p of this.pois) {
       if (p.state !== "built") continue;
       const d = Math.hypot(c.x - p.cx, c.y - p.cy, c.z - p.cz);
-      const want = p.gate.active ? d > p.near : d > p.near + HYST;
+      const want = p.evicted || (p.gate.active ? d > p.near : d > p.near + HYST);
       // the module's own POI-level culling wins: no proxy while any POI root is hidden
       let rootsVisible = true;
       for (const r of p.roots) if (!r.visible || !r.parent) { rootsVisible = false; break; }

@@ -139,6 +139,14 @@ export class StaticCache {
     e.frozen = []; e.overridden = []; e.manual = []; e.always = [];
   }
 
+  unregister(root: THREE.Object3D) {
+    const e = (root as unknown as Record<string, Entry | undefined>)[ROOT_KEY];
+    if (!e) return;
+    this.unfreeze(e);
+    delete (root as unknown as Record<string, Entry | undefined>)[ROOT_KEY];
+    this.entries.splice(this.entries.indexOf(e), 1);
+  }
+
   /** give a root back to three for good (its structure churns: re-collecting it would cost more than it saves) */
   private release(e: Entry) {
     this.unfreeze(e);

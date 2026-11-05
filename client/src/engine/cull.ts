@@ -127,8 +127,19 @@ export class DetailCull {
     for (let p: THREE.Object3D | null = parent; p; p = p.parent) if ((p as unknown as Record<string, unknown>)[ROOT]) { this.stale.add(p); this.touchedAt.set(p, this.frame); if (!this.staleSince.has(p)) this.staleSince.set(p, this.frame); return; }
   }
 
+  unregister(root: THREE.Object3D) {
+    if (!this.roots.includes(root)) return;
+    this.drop(root);
+    this.stale.delete(root); this.touchedAt.delete(root); this.staleSince.delete(root);
+  }
+
   /** a root whose structure churns (> 12 re-collects in 240 frames) is left alone for good */
   private release(root: THREE.Object3D) {
+    this.drop(root);
+    this.released++;
+  }
+
+  private drop(root: THREE.Object3D) {
     for (const it of this.items) if ((it.culled || it.dir !== 0) && isBelow(it.o, root)) this.uncull(it);
     this.items = this.items.filter((it) => !isBelow(it.o, root));
     for (const x of this.inst) if (x.off && isBelow(x.o, root)) x.o.layers.mask |= x.mask;
@@ -136,7 +147,6 @@ export class DetailCull {
     this.roots.splice(this.roots.indexOf(root), 1);
     delete (root as unknown as Record<string, unknown>)[ROOT];
     this.unwrapVis(root); this.reconcile();
-    this.released++;
   }
   released = 0;
 
