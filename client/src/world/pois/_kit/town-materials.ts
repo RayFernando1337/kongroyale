@@ -7,6 +7,8 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { WorldCtx } from "../../../engine/engine";
 import { townTex, TOWN_TEX_SETS as S, blobTexture, netTexture, canvasTexture, signCanvas, type TownTex } from "./town-tex";
 import { flag } from "../../../flags";
+import { releaseBatchAfterUpload } from "../../../engine/geometry-release";
+import { isGlassMat } from "../../glass-fx";
 export { preloadTownTex } from "./town-tex";
 
 export interface TownMats {
@@ -551,6 +553,7 @@ export class TownLod {
       // (town-xfade) the colour texture exists from the start: the batch compiles its fade variant at load, not mid-drop
       if (TOWN_XFADE && grp.name !== ("shadow" as BinName) && grp.list.length) bm.setColorAt(0, _c4.set(1, 1, 1, 1));
       bm.computeBoundingSphere(); bm.computeBoundingBox();
+      if (!isGlassMat(grp.mat)) releaseBatchAfterUpload(bm);
       bm.matrixAutoUpdate = false;
       group.add(bm); this.batches.push(bm); n++;
       yield;

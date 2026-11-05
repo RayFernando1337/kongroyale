@@ -128,9 +128,18 @@ function legacyPauseFov() {
 /** the world-module build tier for this boot (?q= wins): Low / Medium presets build the lighter water / clouds / AO */
 export function bootQuality(): Quality | null {
   const s = store.get();
-  if (!s) return null;
-  const lvl = s.preset === "custom" || s.preset === "auto" ? (s.post ?? s.auto) : s.preset;
+  const lvl = !s ? detectLevel() : s.preset === "custom" || s.preset === "auto" ? (s.post ?? s.auto) : s.preset;
   return ({ low: "low", medium: "medium", high: "high", epic: "ultra" } as const)[lvl as Level] ?? null;
+}
+
+function detectLevel(): Level | null {
+  const spoof = flag("gpu");
+  if (spoof) return classifyGpu(spoof);
+  const gl = document.createElement("canvas").getContext("webgl2", { powerPreference: "high-performance", antialias: false, stencil: false });
+  if (!gl) return null;
+  const level = classifyGpu(gpuString(gl));
+  gl.getExtension("WEBGL_lose_context")?.loseContext();
+  return level;
 }
 
 interface AtmosVideoApi { video?(v: { aa: AAMode; ao: boolean; post: Level; shadows: Level; effects: Level }): { aa: AAMode; ao: boolean } }

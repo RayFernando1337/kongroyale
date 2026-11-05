@@ -41,7 +41,7 @@ const BROWSERS = ["chrome", "edge", "safari", "webkit"] as const;
 type Browser = (typeof BROWSERS)[number];
 type Start = "cold" | "warm";
 /** the scenario version: bump it when what a load does (flags, the match drive, the windows) changes */
-const SCENARIO_VERSION = 1;
+const SCENARIO_VERSION = 2;
 const READY_TIMEOUT_MS = 240_000, MATCH_TIMEOUT_MS = 120_000, MATCH_SNAP_MS = 30_000, PLANE_PHASE = 1;
 const SNAP_POINTS = ["title", "plane", "match30"] as const;
 type SnapPoint = (typeof SNAP_POINTS)[number];
@@ -118,6 +118,7 @@ const PROBE = `(function () {
   } catch (e) {}
 })();`;
 const STATUS = `JSON.stringify({ ready: !!(window.__kr && window.__kr.ready), stage: window.__kr ? String(window.__kr.stage) : "none", inMatch: !!(window.__kr && window.__kr.game && window.__kr.game.inMatch), phase: window.__kr && window.__kr.game && window.__kr.game.cm ? window.__kr.game.cm.phase : -1, probe: !!window.__krProbe })`;
+const HEAP = `JSON.stringify({ at: performance.now(), mb: performance.memory ? performance.memory.usedJSHeapSize / 1e6 : null })`;
 const snapExpr = (point: SnapPoint) => `(function (point) {
   var k = window.__kr || {}, s = { point: point, at: performance.now(), jsHeapMB: null, uaWhy: null, info: null };
   if (performance.memory) s.jsHeapMB = performance.memory.usedJSHeapSize / 1e6;
@@ -216,7 +217,7 @@ function startProxy(target: URL, shape: { mbps: number; rttMs: number } | null, 
 }
 
 // ---------------------------------------------------------------- browsers
-interface Driver { browser: Browser; version: string; headless: boolean; open(url: string): Promise<void>; run(expr: string): Promise<string>; click(sel: string): Promise<void>; shot(base: string): Promise<string>; trace?: { start(): Promise<void>; stop(): Promise<Buffer> }; close(): Promise<void> }
+interface Driver { browser: Browser; version: string; headless: boolean; open(url: string): Promise<void>; run(expr: string): Promise<string>; click(sel: string): Promise<void>; shot(base: string): Promise<string>; trace?: { start(): Promise<void>; stop(): Promise<Buffer> }; gc?(): Promise<void>; close(): Promise<void> }
 interface Opts { viewport: [number, number]; dpr: number; headed: boolean; trace: boolean; inspect: boolean; sdPort: number }
 
 async function playwrightDriver(kind: "chrome" | "edge" | "webkit", o: Opts): Promise<Driver> {
@@ -239,6 +240,10 @@ async function playwrightDriver(kind: "chrome" | "edge" | "webkit", o: Opts): Pr
     shot: async (base) => { const file = base + ".jpg"; await page.screenshot({ path: file, type: "jpeg", quality: 70 }); return file; },
     close: async () => { await ctx.close(); fs.rmSync(dir, { recursive: true, force: true }); },
   };
+  if (kind !== "webkit") {
+    const heap = await ctx.newCDPSession(page);
+    d.gc = async () => { await heap.send("HeapProfiler.collectGarbage"); await heap.send("HeapProfiler.collectGarbage"); };
+  }
   if (kind !== "webkit" && o.trace) {
     // CDP Tracing from the page's session: the trace is browser-wide (renderer, GPU process, workers)
     const cdp = await ctx.newCDPSession(page);
@@ -308,7 +313,7 @@ const LOCKED = "the screen is locked: a headed Safari window renders no frames t
 // ---------------------------------------------------------------- one load
 interface Snap { now: number; nav: Record<string, number> | null; res: Array<[string, number, number, number, number, number]>; kr: Record<string, any>; mem: Record<string, { pending?: boolean; bytes?: number; error?: string }> | null; errors: string[]; probe: Probe | null; gl: Record<string, any> | null; splat: unknown; dpr: number; inner: number[]; ua: string }
 interface Probe { at: number; set: Array<[number, string, string]>; gaps: Array<[number, number]>; frames: number[]; gl: Record<string, [number, number, number]>; glSlow: Array<[number, string, number]>; marks: Record<string, number>; longtasks: Array<[number, number]>; loaf: unknown[]; hidden: number; entryTypes: string[] }
-interface PointSnap { point: SnapPoint; at: number; jsHeapMB: number | null; uaWhy: string | null; info: { geometries: number; textures: number; programs: number | null } | null }
+interface PointSnap { point: SnapPoint; at: number; jsHeapMB: number | null; jsHeapGcMB?: number | null; gc?: [number, number]; uaWhy: string | null; info: { geometries: number; textures: number; programs: number | null } | null }
 interface Load { start: Start; boot: Snap; fin: Snap; points: PointSnap[]; hits: Hit[]; trace: TraceSummary | null; artifacts: string[]; failure?: string }
 
 interface Status { ready: boolean; stage: string; inMatch: boolean; phase: number }
@@ -330,7 +335,16 @@ async function loadOnce(d: Driver, start: Start, url: string, out: string, proxy
   await d.open(url);
   const s = await poll(d, (x) => x.ready || x.stage === "failed", READY_TIMEOUT_MS);
   const points: PointSnap[] = [];
-  const snap = async (p: SnapPoint) => { points.push(JSON.parse(await d.run(snapExpr(p)))); };
+  const snap = async (p: SnapPoint) => {
+    const s = JSON.parse(await d.run(snapExpr(p))) as PointSnap;
+    if (d.gc) {
+      const before = JSON.parse(await d.run(HEAP)) as { at: number; mb: number | null };
+      await d.gc();
+      const after = JSON.parse(await d.run(HEAP)) as { at: number; mb: number | null };
+      s.jsHeapGcMB = after.mb; s.gc = [before.at, after.at];
+    }
+    points.push(s);
+  };
   if (s.ready) await snap("title");
   artifacts.push(await d.shot(path.join(out, "title-" + start)));
   const boot: Snap = JSON.parse(await d.run(COLLECT));
@@ -558,6 +572,7 @@ function toCase(L: Load, seed: number, matchSecs: number): CaseResult {
     const ua = fin.mem?.[p];
     metrics["mem." + p + ".uaMB"] = !s ? notReached("MB", why) : typeof ua?.bytes === "number" ? num(ua.bytes / 1e6, "MB") : unsupported("MB", s.uaWhy ?? ua?.error ?? "the measurement had not resolved when the load ended");
     metrics["mem." + p + ".jsHeapMB"] = !s ? notReached("MB", why) : s.jsHeapMB !== null ? num(s.jsHeapMB, "MB") : unsupported("MB", "performance.memory is Chrome and Edge only");
+    metrics["mem." + p + ".jsHeapGcMB"] = !s ? notReached("MB", why) : typeof s.jsHeapGcMB === "number" ? num(s.jsHeapGcMB, "MB") : unsupported("MB", "a forced GC needs a CDP session and performance.memory: Chrome and Edge only");
     for (const k of ["geometries", "textures", "programs"] as const) {
       const v = s?.info?.[k];
       metrics["three." + p + "." + k] = !s ? notReached("count", why) : typeof v === "number" ? num(v, "count") : unsupported("count", "window.__kr.engine.renderer.info is not exposed by this build");
@@ -604,13 +619,15 @@ function toCase(L: Load, seed: number, matchSecs: number): CaseResult {
     metrics["match.startMs"] = ms(click !== undefined && inMatch !== undefined ? inMatch - click : undefined);
     metrics["match.prepareMs"] = ms(inMatch !== undefined ? Number(fin.kr.prepareMs ?? 0) : undefined);
     const w = inMatch !== undefined ? [inMatch, inMatch + matchSecs * 1000] : null;
+    const gcs = L.points.flatMap((x) => (x.gc ? [x.gc] : []));
+    const inGc = (a: number, b: number) => gcs.some(([s, e]) => a < e && b > s);
     const fr = w ? P.frames.filter((t) => t >= w[0] && t <= w[1]) : [];
-    const dts = fr.slice(1).map((t, i) => t - fr[i]).sort((a, b) => a - b);
+    const dts = fr.slice(1).flatMap((t, i) => (inGc(fr[i], t) ? [] : [t - fr[i]])).sort((a, b) => a - b);
     metrics["match.frames"] = num(dts.length, "count");
     metrics["match.framesOver100"] = num(dts.filter((d) => d > 100).length, "count");
     metrics["match.p99FrameMs"] = ms(dts.length ? dts[Math.min(dts.length - 1, Math.ceil(dts.length * 0.99) - 1)] : undefined);
     metrics["match.maxFrameMs"] = ms(dts.length ? dts[dts.length - 1] : undefined);
-    metrics["match.blockedMs"] = ms(w ? P.gaps.filter(([t, d]) => d >= LONG_MS && t >= w[0] && t < w[1]).reduce((a, [, d]) => a + d, 0) : undefined);
+    metrics["match.blockedMs"] = ms(w ? P.gaps.filter(([t, d]) => d >= LONG_MS && t >= w[0] && t < w[1] && !inGc(t, t + d)).reduce((a, [, d]) => a + d, 0) : undefined);
     metrics["match.shaderMs"] = ms(gl("match", "shaderCompile", "shaderLink", "shaderStatus", "shaderFirstUse"));
   }
   metrics.streamedMs = ms(typeof fin.kr.streamedAt === "number" ? fin.kr.streamedAt : undefined);

@@ -105,11 +105,42 @@ budget (the measured value plus `headroomPct`, 2%), so a cut lands together with
 so a budget never applies to a different viewport or profile. Process totals are not budgeted: they move by a gigabyte
 between runs.
 
+## Match to match and resource ownership
+
+[tools/memory-leak-budgets.json](../../../tools/memory-leak-budgets.json) is checked by CI's "no-GPU match-to-match
+memory" job:
+
+```sh
+npx tsx tools/performance/memory.mts run --url "http://127.0.0.1:3140/?resaudit&modules=atmos,terrain,water,veg,poi:lobby-islet,showcase,weapons-showcase,gameplay-stage" \
+  --warmup --matches 3 --max-mb 9000 --budgets tools/memory-leak-budgets.json
+```
+
+`--warmup` samples each match in its warm-up (phase 0) and leaves it at once, and fails a sample taken in any other
+phase. `?resaudit` loads `engine/res/audit.ts`, which records every geometry, texture and render target the renderer
+holds, and `__kr.resAudit()` splits them into what a resource scope owns and what it doesn't. That adds `ownedMB`,
+`unownedMB`, `unownedCount` and `ledger.<category>MB` to every sample. The run also adds a `memory/leak` case: what grew
+from the second-to-last left sample to the last one, never negative. It prints the unowned resources that grew by name
+or geometry type. Compare the last two matches, not the first two: the island is still streaming during the first one,
+so left1 to left2 moves by 0 to 46 geometries from run to run, while left2 to left3 moves by 0 to 2.
+
+Keep this to the title modules and the warm-up. On SwiftShader the browser passes 10 GB once Peel Harbor streams in,
+which kills a 16 GB runner. Always pass `--max-mb`. The file sets `underPct` to 100 because growth is zero when nothing
+leaks, so these numbers are ceilings: lower `left3` by hand when an owner moves to a scope.
+
 ## Gotchas
 
 - `(not in the scene)` textures are real allocations the scene walk can't name. The `sites` table shows the call
   site, but in the production build every three.js upload comes from one chunk; measure the dev client
   (`kr-verify up`, port 5417) to see source names, and never quote its totals.
+- Never read the page with Playwright's `page.evaluate` while a match loads. On SwiftShader it drove the browser
+  process from 50 MB to 7 GB and the renderer to 12 GB within two minutes of Play, and runs passed 28 GB. With the
+  same reads sent as plain `Runtime.evaluate` over the page's CDP session (what `memory.mts` does since scenario
+  version 3), the same match peaked at 8.8 GB and the browser process stayed at 47 MB. Players never see this, and the
+  title phase is unaffected, but process totals from the plane on in results before version 3 are not trustworthy.
+- `nogpu` runs add `?vegsplat=0`, which makes the game bake impostor banks that a player with splats on (the
+  default) never gets: 331-547 MB more textures. Cloud texture totals overstate player memory by about that much, so
+  rank texture costs with splats on wherever the run allows it. The CI budget is still a fair ratchet because every run
+  measures the same thing.
 - WebGL in workers (OffscreenCanvas) is not wrapped; the bytes still show in the process totals.
 - `--heap` on a 4-vCPU machine pauses the page for a minute; take it in its own run, never in one you time.
 - Chrome may discard decoded images and purge GPU memory under pressure; a 64 GB workstation and a 16 GB laptop
