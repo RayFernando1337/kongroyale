@@ -120,7 +120,7 @@ const FLAGS = {
   perfhud: { kind: present, owner: "ui", purpose: "playtest perf HUD (fps, frame p95, GPU ms, ping, jitter, heap, textures, geometries, programs) and a per-second metrics timeline for the session" },
   pixcap: { kind: one, owner: "atmos", purpose: "=1 sizes the post chain's screen-sized targets (TAA history, velocity, viewmodel, scene buffers) from the quality tier's pixel cap instead of the canvas, and stretches the result to the canvas in the final blit" },
   planefree: { kind: on, owner: "actors", purpose: "the plane's painted canvases and their GPU copies are freed after the drop and repainted when the match ends; =0 keeps them" },
-  poicap: { kind: num(0), owner: "engine", purpose: "longest edge (px) of every image file loaded through Assets.texture() (the POI texture sets): larger files are downscaled once at load; 0 = no cap" },
+  poicap: { kind: num(0), owner: "engine", purpose: "longest edge (px) of every image file loaded through Assets.texture() (the POI texture sets) and of every harbor-kit painted texture (Peel Harbor, the containers, The Wreck): larger ones are downscaled once before upload; 0 = no cap" },
   playtest: { kind: text, owner: "ui", purpose: "playtest title with one Play button: present or =1 on, =0 off" },
   prepare: { kind: text, owner: "boot", purpose: "=full builds everything behind the match card instead of streaming" },
   prewarm: { kind: text, owner: "game", purpose: "=full prewarms every prefab before ready instead of after" },

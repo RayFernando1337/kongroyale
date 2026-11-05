@@ -5,7 +5,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { releaseAfterUpload } from "./texture-release";
-import { flag } from "../flags";
+import { capped } from "./tex-cap";
 
 const BASE = import.meta.env.BASE_URL || "/";
 /** resolve a public/ path ("assets/x.glb" or "/assets/x.glb") against the deploy base */
@@ -19,18 +19,6 @@ async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
   for (let i = 0; ; i++) {
     try { return await f(); } catch (e) { if (i >= tries - 1) throw e; await new Promise((r) => setTimeout(r, 400 * 3 ** i)); }
   }
-}
-
-const CAP_PX = flag("poicap");
-function capped(img: HTMLImageElement): HTMLImageElement | HTMLCanvasElement {
-  const s = CAP_PX / Math.max(img.width, img.height);
-  if (!(s > 0 && s < 1)) return img;
-  const c = document.createElement("canvas");
-  c.width = Math.max(1, Math.round(img.width * s)); c.height = Math.max(1, Math.round(img.height * s));
-  const g = c.getContext("2d")!;
-  g.imageSmoothingQuality = "high";
-  g.drawImage(img, 0, 0, c.width, c.height);
-  return c;
 }
 
 export class Assets {
