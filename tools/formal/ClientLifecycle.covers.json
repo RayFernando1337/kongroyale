@@ -35,8 +35,7 @@
       "what": "whether the WebGL context is lost",
       "pattern": "\\.contextLost\\s*=(?!=)\\s*[^\\s;]+",
       "files": [
-        "client/src/engine/",
-        "client/src/engine/res/"
+        "client/src/engine/"
       ]
     }
   ],
@@ -50,7 +49,7 @@
     }
   ],
   "verified": {
-    "model": "154e0e9dd6b6fe31",
+    "model": "7961925e1a903203",
     "regions": {
       "client/src/game/index.ts#startGame.online": "1527455257c5daee",
       "client/src/game/index.ts#startGame.prepareIsland": "ab6e79e0e15b3e76",
