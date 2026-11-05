@@ -425,6 +425,9 @@ export class KongAnimator {
   /** two-bone arm IK (world space, applied after the pose): put the fist centre on `target`, elbow bent toward `pole`
    *  (a world direction). Staging only (hero aim across the body, fists on the glider risers, hands on the bar). */
   ik: { R?: ArmIK; L?: ArmIK } | ((a: KongAnimator) => { R?: ArmIK; L?: ArmIK }) | null = null;
+  /** staging: the caller post-processes the bone matrices after every apply() (glider.ts's hang pose), so the kong
+   *  re-poses every frame — kong.ts's animation budget would otherwise post-process a followed pose a second time */
+  postPose = false;
   /** socket-local foregrip point of the held gun (two-handed guns; kong.ts sets it from the weapon's GunSpec), null =
    *  one-handed: the default hold IK puts the LEFT fist on it so every rifle is held by both hands */
   foreGrip: THREE.Vector3 | null = null;

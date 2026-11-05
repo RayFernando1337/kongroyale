@@ -60,7 +60,8 @@ const NEAR_FADE = [0.5, 1.3];
 const PX_HI = 320, PX_LO = 52, HYST = 0.08, FADE_S = 0.3, PX_SHADOW_LO = 200, PX_SHADOW = 26, PX_WEAPON = 22;
 /** animation budget (s between full re-poses): a kong drawn under PX_LO (the min tier) re-poses at most every ANIM_SMALL_S,
  *  one that is neither in view nor casting a shadow into it every ANIM_HIDDEN_S; in between, its last pose follows its
- *  body (KongAnimator.follow). Bigger kongs, staged ones (IK, overlays, show poses) and stills re-pose every frame. */
+ *  body (KongAnimator.follow). Bigger kongs, staged ones (IK, overlays, show poses, post-processed bones) and stills
+ *  re-pose every frame. */
 const ANIM_SMALL_S = 1 / 30, ANIM_HIDDEN_S = 0.1;
 /** held weapons follow the kong's tier: the real (full-detail, shadow-casting) weapon object only on hi kongs; lo kongs
  *  draw an instanced ≤1.5k-tri LOD per weapon id (no shadow), min kongs a ≤0.35k-tri silhouette, hidden below PX_WEAPON */
@@ -1155,7 +1156,7 @@ export async function createKong(ctx: WorldCtx, opts: { variant?: number; lod?: 
       // the animation budget: the size and visibility from the last frame() pick how often this kong re-poses (a kong
       // seen for the first time has px 0 and re-poses at once); between re-poses the owed time accumulates
       const an = slot.anim;
-      const every = ctx.shotMode || FORCE_TIER !== null || slot.px === 0 || slot.px >= PX_LO || an.ik || an.overlay || an.showPose ? 0
+      const every = ctx.shotMode || FORCE_TIER !== null || slot.px === 0 || slot.px >= PX_LO || an.ik || an.overlay || an.showPose || an.postPose ? 0
         : slot.inView || slot.shadow ? ANIM_SMALL_S : ANIM_HIDDEN_S;
       slot.animDt += dt;
       if (slot.animDt >= every) {
