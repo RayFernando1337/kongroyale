@@ -53,7 +53,7 @@ export default defineConfig({
     // and never dotfiles such as the admin key
     fs: {
       allow: [fileURLToPath(new URL(".", import.meta.url)), ...(fs.existsSync("refs") ? [fs.realpathSync("refs")] : [])],
-      deny: [".env", ".env.*", "*.{crt,pem,key}", "**/.git/**", ".admin-key*", "**/.kongbot/**", "**/.claude/**"],
+      deny: [".env", ".env.*", "*.{crt,pem,key}", "**/.git/**", ".admin-key*", "**/.kongbot/**", "**/playtest-bundles/**", "**/.claude/**"],
     },
   },
   // module workers (every `new Worker(url, { type: "module" })` in the client): ES output lets a worker code-split —
