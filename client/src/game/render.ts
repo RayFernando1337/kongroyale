@@ -37,6 +37,7 @@ import type { Terrain } from "../../../shared/world/terrain";
 import { releasePlanePaint, restorePlanePaint, type PlaneProps } from "../actors/plane";
 import type { GliderProps } from "../actors/glider";
 import { outfitFor } from "../actors/outfit-pick";
+import { releaseKongBatchesGpu } from "../actors/kong";
 import type { LightBalancer } from "./lights";
 import { AmmoBoxes } from "./ammobox";
 import { resources, type Scope } from "../engine/res/scope";
@@ -228,6 +229,7 @@ export class GameRender implements EventSink {
     const before = new Set(engine.scene.children);
     this.matchScope.defer(() => this.releaseViews());
     this.matchScope.defer(() => void restorePlanePaint());
+    this.matchScope.defer(releaseKongBatchesGpu);
     this.hud = makeHudState();
     engine.camera.add(kits.viewModel.object);
     engine.scene.add(kits.plane.object);
