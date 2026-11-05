@@ -298,6 +298,7 @@ function crashCard(sheet: ReturnType<typeof createSheet>, prev: { phase?: number
   card.append(text, btns);
   document.body.appendChild(card);
   no.addEventListener("click", () => card.remove());
+  const gone = setInterval(() => { if (kr().game?.inMatch) card.remove(); if (!card.isConnected) clearInterval(gone); }, 1000);
   yes.addEventListener("click", () => { card.remove(); void sheet.open("crash"); });
 }
 
