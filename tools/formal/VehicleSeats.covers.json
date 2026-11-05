@@ -30,7 +30,7 @@
   "writes": [
     {
       "what": "a vehicle's seats, a rider's vehicle and seat, and every kong-state write (a rider leaves the Ride state only together with its seat); vehicle states (VS.*) are not kong states",
-      "pattern": "seats\\[[^\\]]*\\]\\s*=(?!=)\\s*[\\w.-]+|\\.(veh|seat)\\s*=(?!=)\\s*[\\w.-]+|\\.st\\s*=(?!=)(?!\\s*VS\\.)\\s*[\\w.]+",
+      "pattern": "seats\\[[^\\]]*\\]\\s*=(?!=)\\s*[^\\s;]+|\\.(veh|seat)\\s*=(?!=)\\s*[^\\s;]+|\\.st\\s*=(?!=)(?!\\s*VS\\.)\\s*[^\\s;]+",
       "files": [
         "shared/sim/",
         "shared/net/",
@@ -49,8 +49,9 @@
     {
       "at": "shared/net/proto.ts#readSelf",
       "writes": [
-        ".seat = r.u8",
-        ".st = r.u8",
+        ".seat = r.u8()",
+        ".st = r.u8()",
+        ".st = r.u8()",
         ".veh = vi"
       ],
       "why": "decodes a snapshot into the client's copy of its own kong; the server's seats are what the model checks"
@@ -58,6 +59,7 @@
     {
       "at": "shared/net/proto.ts#readPlayer",
       "writes": [
+        ".seat = 0",
         ".seat = 0",
         ".seat = s",
         ".st = 8",
@@ -83,6 +85,7 @@
     {
       "at": "shared/sim/player.hot.ts#stepPlayer",
       "writes": [
+        ".st = PS.Glide",
         ".st = PS.Glide"
       ],
       "why": "its state writes come after the Ride early return, so they never touch a rider"
@@ -97,6 +100,7 @@
     {
       "at": "shared/sim/player.hot.ts#stepMantle",
       "writes": [
+        ".st = PS.Ground",
         ".st = PS.Ground"
       ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
@@ -141,6 +145,8 @@
       "writes": [
         ".st = PS.Freefall",
         ".st = PS.Glide",
+        ".st = PS.Glide",
+        ".st = PS.Ground",
         ".st = PS.Ground"
       ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
