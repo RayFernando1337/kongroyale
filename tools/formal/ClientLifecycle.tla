@@ -42,8 +42,8 @@ WireScope == IF render THEN 0 ELSE scope            \* after render?.dispose()
 WireOk == WireScope = 0 /\ prefabs
 WireScopeAfter == IF WireScope = 0 THEN 1 ELSE WireScope
 
-(* PLAY vs bots: offline() (index.ts:251-266): leaveAll, new OfflineLink, wire, start in 50 ms. Before ready nothing
-   starts: the lobby's actions return until dataset.ready (index.ts titleReady), whatever the input *)
+(* PLAY vs bots: offline() (index.ts:251-266): leaveAll, new OfflineLink, wire, start in 50 ms. A PLAY pressed before
+   ready (Enter, a controller, a focused button) waits in prepareIsland for dataset.ready, so it is a PLAY after ready *)
 Play ==
   /\ view = "title"   \* a lost context does not disable the title's buttons (restore.ts watchContext)
   /\ prefabs   \* after ready, kr.prepare() waits for the prefabs (main.ts:502-531)
@@ -55,7 +55,7 @@ Play ==
 
 (* CREATE/JOIN: online() (index.ts:230-244) reuses any online link without checking it is open (231). Like PLAY,
    create and join await prepareIsland(), which waits for the prefabs after ready and resolves at once before it;
-   before ready the actions return at once (titleReady), invite links included *)
+   before ready they wait there for dataset.ready, invite links included *)
 Connect ==
   /\ Online /\ view = "title"
   /\ prefabs

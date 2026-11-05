@@ -186,21 +186,17 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   // the game's own full screen is asked for ON the PLAY / FIRING RANGE / CREATE / JOIN click (a user
   // gesture lasts ~5 s: asked again at match start, after the island prepared or the host pressed START, it was refused)
   const fsOnPlay = () => input.autoFullscreen();
-  // the title behind the loading screen is not playable until main.ts marks it ready: a session started earlier (Enter,
-  // a controller's A, a Tab-focused button) wires a GameRender before the prefabs exist, which throws and strands the
-  // match scope
-  const titleReady = () => document.documentElement.dataset.ready === "1";
   const actions: LobbyActions = {
     skipCoach() { coach.skip(); },
     replayCoach() { coach.replay(); coachObserver.reset(); },
     setName(name) { link?.sendJSON({ t: "hello", name }); },
-    async create(mode) { if (!titleReady()) return; fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "create", mode }); },
-    async join(code) { if (!titleReady()) return; lobbyState.ended = null; fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "join", code, tok: playerTok }); },
+    async create(mode) { fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "create", mode }); },
+    async join(code) { lobbyState.ended = null; fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "join", code, tok: playerTok }); },
     setMode(mode) { lobbyState.mode = mode; link?.sendJSON({ t: "mode", mode }); },
     start() { link?.sendJSON({ t: "start", mode: lobbyState.mode }); },
-    practice(mode, difficulty) { if (!titleReady()) return; fsOnPlay(); void offline(mode, false, difficulty ?? botDifficulty); },
+    practice(mode, difficulty) { fsOnPlay(); void offline(mode, false, difficulty ?? botDifficulty); },
     setDifficulty(difficulty) { botDifficulty = difficulty; lobbyState.difficulty = difficulty; try { localStorage.setItem("kr-bot-difficulty", difficulty); } catch { /* private mode */ } lobby.update(lobbyState); },
-    range() { if (!titleReady()) return; fsOnPlay(); offline("solo", true); },
+    range() { fsOnPlay(); offline("solo", true); },
     leave() { leaveAll(); },
     pickTeam(team) { link?.sendJSON({ t: "team", team }); },
   };
@@ -248,9 +244,16 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   }
   // (perf) a match never starts on a half-built island: while the world still streams in after the title, the first
   // PRACTICE / CREATE / JOIN finishes it at full speed behind a "preparing" card (main.ts __kr.prepare)
-  function prepareIsland(): Promise<void> {
+  // a session asked for before main.ts marks the title ready (Enter, a controller's A or a focused button behind the
+  // loading screen) waits for it: wiring a GameRender before the prefabs exist throws and strands the match scope
+  async function prepareIsland(): Promise<void> {
+    const root = document.documentElement;
+    if (root.dataset.ready !== "1") await new Promise<void>((done) => {
+      const watch = new MutationObserver(() => { if (root.dataset.ready === "1") { watch.disconnect(); done(); } });
+      watch.observe(root, { attributes: true, attributeFilter: ["data-ready"] });
+    });
     const p = (window as unknown as { __kr: { prepare?: () => Promise<void> } }).__kr.prepare;
-    return p ? p() : Promise.resolve();
+    if (p) await p();
   }
   async function offline(mode: Mode, range = false, difficulty: BotDifficulty = botDifficulty) {
     const generation = nextSessionGeneration();

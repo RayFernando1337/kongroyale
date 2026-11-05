@@ -1,6 +1,6 @@
 {
   "skill": ".agents/skills/verify-client-lifecycle/SKILL.md",
-  "note": "main.ts sets __kr.prepare at top level after ready (main.ts: kr.prepare = ...), which no region can name; the model's Play guard (before ready: no prepare) depends on it. The lobby actions' titleReady gate (index.ts startGame's actions object waits for dataset.ready) is what keeps PLAY and CREATE/JOIN from running before ready; the actions object is not a named function, so no region hashes it: read it when those actions change.",
+  "note": "main.ts sets __kr.prepare at top level after ready (main.ts: kr.prepare = ...), which no region can name; the model's Play guard (before ready: no prepare) depends on it. prepareIsland (a region) waits for dataset.ready, which main.ts sets at top level just before it installs __kr.prepare with no await between them; the model's PLAY and CREATE/JOIN guards depend on that order.",
   "regions": [
     "client/src/game/index.ts#startGame.online",
     "client/src/game/index.ts#startGame.prepareIsland",
@@ -49,10 +49,10 @@
     }
   ],
   "verified": {
-    "model": "27ae8b3bf9b57490",
+    "model": "40e841c83d6d4fad",
     "regions": {
       "client/src/game/index.ts#startGame.online": "1527455257c5daee",
-      "client/src/game/index.ts#startGame.prepareIsland": "ab6e79e0e15b3e76",
+      "client/src/game/index.ts#startGame.prepareIsland": "fe894fefb8e8d72b",
       "client/src/game/index.ts#startGame.offline": "b98b9176c358e63d",
       "client/src/game/index.ts#startGame.wire": "a771e6ac1d89834f",
       "client/src/game/index.ts#startGame.onJSON": "477338984638c38e",
