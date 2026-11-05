@@ -35,6 +35,7 @@ const FLAGS = {
   cavesLamp: { kind: finite(0.7), owner: "pois", purpose: "Coco Caves lamp irradiance gain" },
   cavesSky: { kind: finite(0.32), owner: "pois", purpose: "Coco Caves sky visibility at which the outside look is fully back" },
   codebug: { kind: present, owner: "pois", purpose: "log the coplanar-face fixes the town and coast kits make" },
+  coworker: { kind: on, owner: "pois", purpose: "resolve the town kit's coplanar faces in a Web Worker; =0 resolves them on the main thread, time-sliced" },
   craneproxy: { kind: present, owner: "pois", purpose: "Peel Harbor cranes swap to their proxy at 150 m (the old behaviour)" },
   ctLod: { kind: num(18), owner: "pois", purpose: "Peel Harbor container LOD distance (m)" },
   ctMid: { kind: num(0), owner: "pois", purpose: "Peel Harbor container mid LOD distance (m); 0 = none" },
