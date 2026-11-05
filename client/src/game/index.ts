@@ -80,6 +80,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
 
   // ---- kits (contracts)
   const weapons = createWeaponsKit(engine);
+  if (!DEFER_PREFABS) void weapons.prepareLoot();
   gameStage("kits:viewmodel", 0.12);
   // (perf: the first-person viewmodel — ~1.7 s of weapon LOD / merge work — only ever draws in a match: with
   // DEFER_PREFABS it is made right after the title is ready, in the prefab warm-up every PRACTICE / CREATE / JOIN waits
@@ -814,7 +815,8 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   if (DEFER_PREFABS) { const kr = (window as unknown as { __kr: Record<string, unknown> }).__kr; kr.prefabWarmP = (async () => {
     while (!kr.ready) await new Promise((r) => setTimeout(r, 100));
     if (!kits.viewModel) { const t = performance.now(); const vm = await weapons.createViewModel(); vm.object.visible = false; engine.camera.add(vm.object); kits.viewModel = vm; kr.viewModelMs = Math.round(performance.now() - t); }
-    await prewarmPrefabs(engine, kits, () => inMatch); await prewarmMatch(engine, kits, title, () => inMatch); kr.warmDone = true; })(); }
+    const lootRoot = await weapons.prepareLoot(() => new Promise<void>((r) => (kr.prepareUrgent ? setTimeout(r, 0) : requestAnimationFrame(() => setTimeout(r, 0)))));
+    await prewarmPrefabs(engine, kits, () => inMatch, lootRoot); await prewarmMatch(engine, kits, title, () => inMatch); kr.warmDone = true; })(); }
 
   // the loot generator's spots (shared/sim/loot-spots.ts, ~1.5-2 s of probes on the static world) are
   // built in ≤ 6 ms idle slices once the title is ready, so an offline PRACTICE never waits for them (the host's Match
@@ -865,7 +867,7 @@ const DEFER_PREFABS = flag("prewarm") !== "full";
  * and held; consumables; ammo; glider; render prefabs) one at a time, then compile them in parallel and draw them ONCE
  * into an offscreen target on a private layer (never on screen, no shadows): programs, first use, textures, buffers.
  * Stops as soon as a match starts (the match then makes what it needs on demand). Nothing is disposed. */
-async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean) {
+async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean, lootRoot: THREE.Object3D) {
   const t0 = performance.now();
   const kr = (window as unknown as { __kr: Record<string, unknown> }).__kr;
   kr.prefabWarm = "make";
@@ -905,7 +907,7 @@ async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean)
   cam.layers.set(LAYER);
   const r = engine.renderer;
   const rt = new THREE.WebGLRenderTarget(256, 256, { type: THREE.HalfFloatType });
-  const list: THREE.Object3D[] = []; g.traverse((o) => list.push(o));
+  const list: THREE.Object3D[] = []; g.traverse((o) => list.push(o)); lootRoot.traverse((o) => list.push(o));
   const fake = { traverse(fn: (o: THREE.Object3D) => void) { for (const o of list) fn(o); }, traverseVisible() { /* lights: the scene's */ } } as unknown as THREE.Object3D;
   // the scene's lights must be seen by the private camera (their count is part of every program key)
   const lights: THREE.Light[] = []; engine.scene.traverse((o) => { if ((o as THREE.Light).isLight) lights.push(o as THREE.Light); });
