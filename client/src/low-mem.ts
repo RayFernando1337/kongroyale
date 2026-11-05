@@ -117,7 +117,7 @@ export async function evictStreamed(engine: Engine, w: World, id: string) {
   for (let i = u.length - 1; i >= 0; i--) if (hooks.has(u[i])) { u.splice(i, 1); engine.updLabels.splice(i, 1); }
   engine.occlusion.unregister(id);
   const far = engine.far.pois.find((q) => q.id === id);
-  if (far && impostors) engine.far.drop(far);
+  if (far && impostors?.has(id)) engine.far.drop(far);
   else if (far?.state === "built") Object.assign(far, { roots: [], sources: [], near: -Infinity, moved: () => true, late: () => false });
   else if (far) engine.far.drop(far);
   const statics = engine.statics;
@@ -190,7 +190,7 @@ function decodeImpostor(buf: ArrayBuffer): THREE.BufferGeometry {
   return g;
 }
 
-async function loadImpostors(engine: Engine, w: World, out: Map<string, THREE.Mesh>) {
+async function loadImpostors(engine: Engine, w: World, out: Map<string, THREE.Mesh>, streamMs: Record<string, number>) {
   const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "") + "/assets/far/";
   const scope = resources.root.child("far-impostors");
   const mat = scope.material(new THREE.MeshLambertMaterial({ vertexColors: true }));
@@ -204,15 +204,15 @@ async function loadImpostors(engine: Engine, w: World, out: Map<string, THREE.Me
       const mesh = new THREE.Mesh(g, mat);
       mesh.name = "far-impostor:" + id;
       mesh.matrixAutoUpdate = false;
-      mesh.visible = !w.modOf.has("poi:" + id);
+      mesh.visible = streamMs["poi:" + id] === undefined;
       group.add(mesh);
       out.set("poi:" + id, mesh);
     } catch (e) { w.report("far-impostor:" + id, e); }
   }));
 }
 
-function showImpostors(w: World) {
-  if (impostors) for (const [id, mesh] of impostors) mesh.visible = !w.modOf.has(id);
+export function showImpostors(streamMs: Record<string, number>) {
+  if (impostors) for (const [id, mesh] of impostors) mesh.visible = streamMs[id] === undefined;
 }
 
 let trimming = Promise.resolve();
@@ -232,16 +232,16 @@ export function trimStreamed(engine: Engine, w: World, incoming: string | null, 
     }
     return list;
   };
-  if (!impostors && flag("farimp")) { impostors = new Map(); void loadImpostors(engine, w, impostors).catch((e) => w.report("far-impostors", e)); }
+  if (!impostors && flag("farimp")) { impostors = new Map(); void loadImpostors(engine, w, impostors, streamMs).catch((e) => w.report("far-impostors", e)); }
   return (trimming = trimming.then(async () => {
-    showImpostors(w);
+    showImpostors(streamMs);
     for (;;) {
       const list = residents!();
       if (incoming) list.push({ id: incoming, d: -Infinity, mb: costOf.get(incoming) ?? UNKNOWN_POI_MB });
       const victim = evictionsFor(list)[0];
       if (!victim) break;
       await evictStreamed(engine, w, victim.id);
-      showImpostors(w);
+      showImpostors(streamMs);
       pending.push(victim.id);
       delete streamMs[victim.id];
     }

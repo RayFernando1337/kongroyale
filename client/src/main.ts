@@ -614,7 +614,7 @@ async function stream(): Promise<void> {
     if (!fast) await nextFrame();
     const t0 = performance.now();
     const { integrated } = await buildStreamed(id, fast);
-    const done = integrated.then(() => { streamMs[id] = Math.round(performance.now() - t0); });
+    const done = integrated.then(() => { streamMs[id] = Math.round(performance.now() - t0); if (LOW_MEM) postBuild!.showImpostors(streamMs); });
     inflight.push(done);
     if (inflight.length > 1) await inflight.shift();
     if (est(id) >= HEAVY_MS) await done; // (the PRACTICE card waits for the heavy ones — integrated, not just built)
