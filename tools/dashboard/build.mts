@@ -33,7 +33,7 @@ type Story = {
   title: string;
   lead: string;
   firstWords: { term: string; plain: string }[];
-  cards: { head: string; plain: string; notice: string; prs: number[]; method: string }[];
+  cards: { head: string; before?: string; after?: string; label?: string; line: string; plain: string; notice: string; prs: number[]; method: string }[];
   safari: { title: string; plain: string; columns: string[]; rows: { build: string; end: string; time: string; peak: string; pois: string }[]; steps: string; caveat: string; method: string };
   journey: { title: string; items: { pr: number; text: string }[] };
   links: [string, string][];
@@ -251,7 +251,7 @@ function main(): void {
     stat(Math.trunc((allDone / allTotal) * 100) + "%", "of the plan done", allDone + " of " + allTotal + " items") +
     stat(measured + " of " + data.play.items.length, "play experiences measured", "the rest say \"not measured yet\"") +
     "</div><h2>What players get</h2><div class=\"wins\">" +
-    wins.map((p) => '<div class="win"><div class="win-num">' + change(p) + '</div><div class="win-name">' + esc(p.name) + '</div><p class="plain">' + esc(p.plain) + "</p></div>").join("") +
+    wins.map((p) => '<div class="win"><div class="win-num">' + change(p) + '</div><div class="win-name">' + esc(p.name) + '</div><details><summary>What this means</summary><p class="plain">' + esc(p.plain) + "</p></details></div>").join("") +
     "</div><h2>What's next</h2><div class=\"card\"><ul class=\"list\">" + data.inProgress.map((x) => '<li><span class="plain">' + esc(x.name) + '</span> <span class="muted">' + esc(x.estimate) + "</span></li>").join("") + '<li><span class="plain">' + esc(data.releaseTrain.plain) + "</span></li></ul></div>" +
     "<h2>Waiting on people</h2><div class=\"card\"><ul class=\"list\">" + data.asks.map((a) => '<li><span class="pill who">' + esc(a.who) + '</span> <span class="plain">' + esc(a.what) + "</span></li>").join("") + '<li><span class="pill who">Max</span> <span class="plain">' + upOpen.length + " changes offered to the original game are waiting for review.</span></li></ul></div>";
 
@@ -291,11 +291,11 @@ function main(): void {
   };
   const start =
     '<div class="hero"><p class="eyebrow">Start here</p><h1>' + esc(story.title) + '</h1></div><p class="lead">' + esc(story.lead) + "</p>" +
-    '<div class="story">' + story.cards.map((c, i) => '<div class="card story-card"><span class="story-n">' + (i + 1) + "</span><h3>" + esc(c.head) + '</h3><p class="plain">' + esc(c.plain) + '</p><p class="notice">' + esc(c.notice) + '</p><p class="tech">' + esc(c.method) + "</p>" + (c.prs.length ? '<p class="tech-line">Changes: ' + c.prs.map(prLink).join(", ") + "</p>" : "") + "</div>").join("") + "</div>" +
-    '<div class="card"><h3>' + esc(story.safari.title) + '</h3><p class="plain">' + esc(story.safari.plain) + '</p><div class="table-wrap"><table class="play safari"><thead><tr>' + story.safari.columns.map((c) => "<th>" + esc(c) + "</th>").join("") + "</tr></thead><tbody>" +
+    '<div class="story">' + story.cards.map((c, i) => '<div class="card story-card"><div class="story-top"><span class="story-n">' + (i + 1) + "</span><h3>" + esc(c.head) + "</h3></div>" + (c.after ? '<div class="ba">' + (c.before ? '<span class="ba-before">' + esc(c.before) + '</span><span class="ba-arrow" aria-label="to">→</span>' : "") + '<span class="ba-after">' + esc(c.after) + "</span></div>" + (c.label ? '<p class="ba-label">' + esc(c.label) + "</p>" : "") : "") + '<p class="line">' + esc(c.line) + '</p><details><summary>How we know</summary><p class="plain">' + esc(c.plain) + '</p><p class="notice">' + esc(c.notice) + '</p><p class="tech">' + esc(c.method) + "</p>" + (c.prs.length ? '<p class="tech-line">Changes: ' + c.prs.map(prLink).join(", ") + "</p>" : "") + "</details></div>").join("") + "</div>" +
+    '<div class="card"><h3>' + esc(story.safari.title) + '</h3><div class="table-wrap"><table class="play safari"><thead><tr>' + story.safari.columns.map((c) => "<th>" + esc(c) + "</th>").join("") + "</tr></thead><tbody>" +
     story.safari.rows.map((r) => '<tr><td data-label="' + esc(story.safari.columns[0]) + '"><b>' + esc(r.build) + '</b></td><td data-label="' + esc(story.safari.columns[1]) + '">' + esc(r.end) + '</td><td data-label="' + esc(story.safari.columns[2]) + '" class="now">' + esc(r.time) + '</td><td data-label="' + esc(story.safari.columns[3]) + '" class="now">' + esc(r.peak) + '</td><td data-label="' + esc(story.safari.columns[4]) + '">' + esc(r.pois) + "</td></tr>").join("") +
-    '</tbody></table></div><p class="plain">' + esc(story.safari.steps) + '</p><p class="muted">' + esc(story.safari.caveat) + '</p><p class="tech">' + esc(story.safari.method) + "</p></div>" +
-    '<h2>Words used on this page</h2><div class="card"><dl class="words">' + story.firstWords.map((w) => "<dt>" + esc(w.term) + "</dt><dd>" + esc(w.plain) + "</dd>").join("") + "</dl></div>" +
+    '</tbody></table></div><details><summary>How we know</summary><p class="plain">' + esc(story.safari.plain) + '</p><p class="plain">' + esc(story.safari.steps) + '</p><p class="muted">' + esc(story.safari.caveat) + '</p><p class="tech">' + esc(story.safari.method) + "</p></details></div>" +
+    '<div class="card"><details><summary>Words used on this page</summary><dl class="words">' + story.firstWords.map((w) => "<dt>" + esc(w.term) + "</dt><dd>" + esc(w.plain) + "</dd>").join("") + "</dl></details></div>" +
     "<h2>" + esc(story.journey.title) + '</h2><div class="card"><ol class="timeline">' + story.journey.items.map((i) => "<li><span class=\"when\">" + mergedOn(i.pr) + "</span> " + prLink(i.pr) + " " + esc(i.text) + "</li>").join("") + "</ol></div>" +
     '<h2>Go deeper</h2><div class="card"><ul class="list">' + story.links.map((l) => '<li><a href="#' + l[0] + '">' + esc(l[1]) + "</a></li>").join("") + "</ul></div>";
 
