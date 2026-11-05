@@ -306,7 +306,8 @@ title modules. It calls `WEBGL_lose_context.loseContext()` and then `restoreCont
 once in the warm-up of a practice match. Each time it sets a marker on `window` before the loss and requires the same
 document afterwards (no reload), a higher `__kr.restores`, the frame loop running, no `__kr.errors`, no page error and
 no WebGL or three.js console warning, and a picture at least 60% as bright as before the loss (an empty bake shows as
-black). On SwiftShader the browser's memory rises by about 6 GB during a restore and falls back within a minute, so the
+black). It reads the picture from the canvas's drawing buffer right after a frame the engine drew, so a slow
+SwiftShader compositor can't time it out the way a page screenshot did. On SwiftShader the browser's memory rises by about 6 GB during a restore and falls back within a minute, so the
 run keeps to the title modules.
 
 ## Rules and what enforces them
