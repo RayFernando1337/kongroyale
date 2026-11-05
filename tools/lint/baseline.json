@@ -39,7 +39,9 @@
     "client/src/actors/outfit-pick.ts": 6,
     "client/src/actors/outfits.ts": 62,
     "client/src/actors/paint.ts": 8,
-    "client/src/actors/plane.ts": 227,
+    "client/src/actors/plane-dims.ts": 8,
+    "client/src/actors/plane-paint.ts": 80,
+    "client/src/actors/plane.ts": 138,
     "client/src/actors/showcase.ts": 3,
     "client/src/actors/story-views.ts": 57,
     "client/src/actors/swim-lab.ts": 15,
@@ -803,14 +805,6 @@
     ],
     "client/src/actors/paint.ts": [
       "const t = new THREE.CanvasTexture(el);"
-    ],
-    "client/src/actors/plane.ts": [
-      "const map = new THREE.CanvasTexture(this.cc); map.colorSpace = THREE.SRGBColorSpace;",
-      "const normal = new THREE.CanvasTexture(heightToNormal(this.hc, normalStrength)); normal.colorSpace = THREE.NoColorSpace;",
-      "const rough = new THREE.CanvasTexture(this.rc); rough.colorSpace = THREE.NoColorSpace;",
-      "const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;",
-      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;",
-      "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;"
     ],
     "client/src/actors/tp-hamlet-tex.ts": [
       "const t = new THREE.DataTexture(data, w, h, THREE.RGBAFormat, THREE.UnsignedByteType);",
