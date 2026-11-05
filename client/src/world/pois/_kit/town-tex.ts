@@ -1122,35 +1122,47 @@ export function genRipples(n = 256): Img {
 export function rippleTexture(aniso = 4): THREE.DataTexture { return tex(genRipples(), false, aniso); }
 
 let preload: Promise<void> | null = null;
+const TOWN_TEX_STALL_MS = 20000;
 /**
  * Load time: generate every town texture set in parallel WEB WORKERS (the procedural generators are pure typed-array
  * code; ~1.1 s on the main thread otherwise) and drop the results into the shared TownTex cache, so the synchronous
- * `townMats()` finds them ready. Any failure falls back to main-thread generation (townMats generates what is missing).
+ * `townMats()` finds them ready. Slow workers are waited for; only when they fail (or go silent) does the main thread
+ * generate what is still missing, one set per `pause()` slice.
  */
-export function preloadTownTex(renderer: THREE.WebGLRenderer): Promise<void> {
+export function preloadTownTex(renderer: THREE.WebGLRenderer, pause = () => new Promise<void>((r) => setTimeout(r, 0))): Promise<void> {
   if (preload) return preload;
   const tt = townTex(renderer);
   const names = Object.keys(TOWN_TEX_SETS).filter((n) => !tt.has(n));
-  if (typeof Worker === "undefined" || !names.length) return (preload = Promise.resolve());
+  preload = viaWorkers(tt, names).then(async () => {
+    for (const name of names) {
+      if (tt.has(name)) continue;
+      await pause();
+      tt.put(name, TOWN_TEX_SETS[name]());
+    }
+  });
+  return preload;
+}
+function viaWorkers(tt: TownTex, names: string[]): Promise<void> {
+  if (typeof Worker === "undefined" || !names.length) return Promise.resolve();
   const nW = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1, names.length));
-  preload = new Promise<void>((resolve) => {
-    let left = names.length, next = 0, done = false;
+  return new Promise<void>((resolve) => {
+    let left = names.length, next = 0, stall: ReturnType<typeof setTimeout> | undefined;
     const workers: Worker[] = [];
-    const finish = () => { if (done) return; done = true; for (const w of workers) w.terminate(); resolve(); };
+    const finish = () => { clearTimeout(stall); for (const w of workers) w.terminate(); resolve(); };
+    const watch = () => { clearTimeout(stall); stall = setTimeout(() => { console.warn("town-tex workers stalled — generating the rest on the main thread"); finish(); }, TOWN_TEX_STALL_MS); };
     const feed = (w: Worker) => { if (next < names.length) w.postMessage({ name: names[next++] }); };
     try {
       for (let i = 0; i < nW; i++) {
         const w = new Worker(new URL("./town-tex.worker.ts", import.meta.url), { type: "module" });
         w.onmessage = (e: MessageEvent<{ name: string; g: GenOut | null }>) => {
           if (e.data.g) tt.put(e.data.name, e.data.g);
-          if (--left <= 0) finish(); else feed(w);
+          if (--left <= 0) finish(); else { watch(); feed(w); }
         };
-        w.onerror = (e) => { console.warn("town-tex worker failed — generating on the main thread", e.message); finish(); };
+        w.onerror = (e) => { console.warn("town-tex worker failed — generating the rest on the main thread", e.message); finish(); };
         workers.push(w);
       }
       for (const w of workers) feed(w);
+      watch();
     } catch (e) { console.warn("town-tex: no workers", e); finish(); }
-    setTimeout(finish, 20000); // never hold the build hostage: townMats() generates anything still missing
   });
-  return preload;
 }
