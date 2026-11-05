@@ -51,8 +51,7 @@
     {
       "id": "lowmem",
       "title": "Low-memory mode on vs off (Chrome on Windows, D3D11)",
-      "warning": "Older measuring script: totals after Play are overstated",
-      "caption": "Low-memory mode (?lowmem=1) waits to build each location until the player gets near it, but it never unloads one. It only saves memory early on: in the plane it held about 7,100 MB against about 13,300 MB with it off. Memory climbs from the moment the kong lands. After about 2 km travelled (the plane, the drop and one leg of walking) it already holds 21 of the 26 locations, and by 4 km the two lines have met (about 14,200 MB against 13,700 MB). Both runs end at about 13,300 MB on the results screen, and the peak is only about 200 MB lower with it on. These runs read the page with the older script, so compare the two lines with each other, not with the other charts.",
+      "caption": "Low-memory mode (?lowmem=1) waits to build each location until the player gets near it, but it never unloads one. It only saves memory early on: in the plane it held about 7,100 MB against about 13,300 MB with it off. Memory climbs from the moment the kong lands. After about 2 km travelled (the plane, the drop and one leg of walking) it already holds 21 of the 26 locations, and by 4 km the two lines have met (about 14,200 MB against 13,700 MB). Both runs end at about 13,300 MB on the results screen, and the peak is only about 200 MB lower with it on. These runs used the older measuring script. On this Windows machine the fixed script gave the same totals as the older one, so the numbers hold.",
       "series": [
         "total"
       ],
@@ -67,13 +66,32 @@
           "label": "lowmem off, main b542346"
         }
       ],
-      "source": "project drive: handoffs/lowmem-growth-d3d11/README.md (distance table, module counts) and cdp/samples.csv, cdp/*/growth.json (plane-phase samples) (RAY-122); the overstatement is KONG-43"
+      "source": "project drive: handoffs/lowmem-growth-d3d11/README.md (distance table, module counts) and cdp/samples.csv, cdp/*/growth.json (plane-phase samples) (RAY-122); the overstatement is KONG-43; v3 confirmation for D3D11: project drive handoffs/memory-baseline-d3d11-v3/README.md (RAY-130)"
+    },
+    {
+      "id": "d3d11-v3",
+      "title": "Chrome on Windows (D3D11) with the fixed measuring script: main vs v0.4.1",
+      "caption": "Three runs of each build with the fixed measuring script, both standing still. At every measured phase, main 7890f3b's median was lower: 6,091 MB against 8,063 MB at the title, 12,364 MB against 12,718 MB thirty seconds into a match, and 12,631 MB against 12,812 MB after leaving the second match. The chart shows one run of each, and between those phases the two lines sometimes cross. The two builds don't run at the same quality, though. Since #125, main boots at high on Auto on this machine, while v0.4.1 boots at ultra, and that change accounts for most of the gap at the title.",
+      "series": [
+        "total"
+      ],
+      "x": "time",
+      "runs": [
+        {
+          "file": "d3d11-v3-main-7890f3b-1.json",
+          "label": "main 7890f3b (Auto boots high)"
+        },
+        {
+          "file": "d3d11-v3-v0.4.1-1.json",
+          "label": "kong-v0.4.1 (Auto boots ultra)"
+        }
+      ],
+      "source": "project drive: handoffs/memory-baseline-d3d11-v3/README.md (medians, quality tiers) and main-1, v041-1 result.json (RAY-130); the chart shows run 1 of each"
     },
     {
       "id": "d3d11-v040-v041",
       "title": "Chrome on Windows (D3D11): v0.4.0 vs v0.4.1",
-      "warning": "Older measuring script: totals after Play are overstated",
-      "caption": "The release measurements found v0.4.1 used 469 MB less than v0.4.0 thirty seconds into a match (13,188 to 12,719 MB, median of three runs each). These runs used an older version of the measuring script that overstated every total after Play, so compare the gap between the lines, not their height. Runs with the fixed script are queued.",
+      "caption": "The release measurements found v0.4.1 used 469 MB less than v0.4.0 thirty seconds into a match (13,188 to 12,719 MB, median of three runs each). These runs used the older measuring script, which overstated totals on the Mac. Rerunning v0.4.1 with the fixed script gave 12,718 MB at the same point, against 12,764 MB from the older script, so these Windows numbers hold.",
       "series": [
         "total"
       ],
@@ -88,14 +106,7 @@
           "label": "kong-v0.4.1"
         }
       ],
-      "source": "project drive: handoffs/release-kong-v0.4.1-d3d11/README.md (medians) and memory/runs/*/result.json; the overstatement is KONG-43"
-    },
-    {
-      "id": "d3d11-v3",
-      "title": "Chrome on Windows (D3D11) with the fixed measuring script",
-      "caption": "Not measured yet. These reruns replace the chart above once they land.",
-      "runs": [],
-      "source": "waiting for project drive: handoffs/memory-baseline-d3d11-v3/"
+      "source": "project drive: handoffs/release-kong-v0.4.1-d3d11/README.md (medians) and memory/runs/*/result.json; the overstatement is KONG-43; v3 confirmation: project drive handoffs/memory-baseline-d3d11-v3/README.md (RAY-130)"
     },
     {
       "id": "v020-main",
