@@ -472,10 +472,13 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     let t = tt();
     // (KHR_parallel_shader_compile: a synchronous draw that first uses a program waits for every compile queued ahead of
     // it — on Safari's cold Metal cache, seconds. The override bake waits, polling, until the queue has drained.)
-    const programs = ctx.renderer.info.programs as unknown as Array<{ isReady(): boolean }>;
-    const idle = () => new Promise<void>((done) => { const f = () => programs.every((p) => p.isReady()) ? done() : setTimeout(f, 10); f(); });
-    await idle();
-    if (ob && ob.bakes === 0) await ob.warm(async () => { await ctx.afterPaint(); await idle(); });
+    // (polled once a frame — afterPaint keeps ticking in an occluded Safari window; a lost context's programs never finish)
+    if (ob && ob.bakes === 0) {
+      const r = ctx.renderer;
+      const idle = async () => { while (!r.getContext().isContextLost() && !((r.info.programs ?? []) as unknown as Array<{ isReady(): boolean }>).every((p) => p.isReady())) await ctx.afterPaint(); };
+      await idle();
+      await ob.warm(async () => { await ctx.afterPaint(); await idle(); });
+    }
     T.warm = tt() - t; t = tt();
     ob?.maybeBake(true);
     T.bake = tt() - t;
