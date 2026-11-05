@@ -5,7 +5,7 @@
 
    One step is one function call that runs to completion inside Match.step (shared/sim/match.ts unless named):
      Enter     useVehicle: freeSeat then enterVehicle (vehicle.ts)
-     GetOut    stepRide (player.ts): E pressed, or the vehicle is not on its wheels any more: exitVehicle; a vehicle
+     GetOut    stepRide (player.hot.ts): E pressed, or the vehicle is not on its wheels any more: exitVehicle; a vehicle
                already Gone is passed as null, so its seat is not touched
      Switch    stepRide: crouch (switchSeat) or a seat key (takeSeat), vehicle.ts
      Die       kill: frees the seat if it is still this kong's, then veh = -1, st = Dead
