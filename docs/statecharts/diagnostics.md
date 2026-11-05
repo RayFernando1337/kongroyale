@@ -138,7 +138,10 @@ stateDiagram-v2
 
 The fix is two sentences in the plan: a refused send shows "Not sent: try again in a few minutes" (`RefusedShown =
 TRUE`, in `DiagSend.cfg`), and an upload with no answer within a timeout counts as refused. The model assumes the
-second (a fairness condition on the answer); its mutant "a stalled upload" takes it out, and SendEnds breaks.
+second (a fairness condition on the answer); its mutant "a stalled upload" takes it out, and SendEnds breaks. A timed-out
+upload may still have reached the server, so the bundle should carry an id the client makes once per send, and the
+server should treat a retry with the same id as the same report. The model does not tell the two kinds of refusal
+apart; that id is what keeps a retry from becoming a second report.
 
 ## What Ray should check
 
