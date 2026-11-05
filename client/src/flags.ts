@@ -22,6 +22,7 @@ const FLAGS = {
   armsab: { kind: present, owner: "weapons", purpose: "keep every hand mesh so a bench can swap v1 and v2 arms live" },
   atmos: { kind: list, owner: "atmos", purpose: "atmosphere debug switches: noao, nogr, nobloom, nosmaa, nosharpen, noshadow, noclouds, nopost, nofog, nocloudshadow, cloudmarch" },
   atmosp: { kind: text, owner: "atmos", purpose: "override preset fields as key:value,key:value (hex colours as c0ffee)" },
+  audioevict: { kind: one, owner: "audio", purpose: "free the decoded sound of on-demand groups when a match ends (memory)" },
   aux: { kind: on, owner: "game", purpose: "open the auxiliary socket next to the match socket" },
   badge: { kind: on, owner: "ui", purpose: "the build badge (channel, kong-v tag, commit) on next and dev builds; =0 hides it" },
   bananatint: { kind: on, owner: "veg", purpose: "per-plant tint variation on banana leaves" },

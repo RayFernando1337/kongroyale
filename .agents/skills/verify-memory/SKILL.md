@@ -93,6 +93,18 @@ of the machine's memory), so a runaway can't take the machine down with it.
    after the second one), the profile and the viewport. Attach the `table --md` output to the pull request.
 4. A cut that only moves bytes (from `textureCpuMB` to `GPUMB`, say) has not saved anything: check `totalMB`.
 
+## The budget
+
+[tools/memory-budgets.json](../../../tools/memory-budgets.json) holds what the game may keep at the playable title on
+`nogpu` at 640x360 and seed 42: WebGL bytes, texture bytes, buffer bytes, texture count and the CPU copies. CI's no-GPU
+boot smoke job runs `memory.mts run --matches 0 --budgets tools/memory-budgets.json` after the boot check. A number
+over its budget fails the job. A number more than `underPct` (5%) under it also fails, and the message names the new
+budget (the measured value plus `headroomPct`, 2%), so a cut lands together with its lower budget, the same way
+`tools/size-budgets.json` works. Recheck a saved run without rerunning it:
+`npx tsx tools/performance/memory.mts check shots/memory/<run>/result.json`. The file's `config` must match the run's,
+so a budget never applies to a different viewport or profile. Process totals are not budgeted: they move by a gigabyte
+between runs.
+
 ## Gotchas
 
 - `(not in the scene)` textures are real allocations the scene walk can't name. The `sites` table shows the call
