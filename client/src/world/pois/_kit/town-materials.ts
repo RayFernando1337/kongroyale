@@ -1,6 +1,7 @@
 // poi-town material set: one PBR material per surface family, all vertex-colour tinted, so a whole POI merges into
 // ~a dozen draw calls. `TownBins` = the GeoBins a POI fills, then `buildBins` adds the merged meshes to a group.
 import { Coplanar } from "./coplanar";
+import type { CoStats } from "./coplanar-solve";
 import { ctxPace, PACE_CHECK_MS, type Pace } from "./pace";
 import * as THREE from "three";
 import { GeoBin } from "./town-geo";
@@ -470,7 +471,13 @@ export class TownLod {
 
   build(ctx: WorldCtx, group: THREE.Group): number { const o = { n: 0 }; for (const _ of this.steps(ctx, group, o)) void _; return o.n; }
   /** the same build, time-sliced (ctx.yield between LOD units / batches — no main-thread task > 50 ms) */
-  async buildAsync(ctx: WorldCtx, group: THREE.Group, pace: Pace = ctxPace(ctx)): Promise<number> { const o = { n: 0 }; for (const _ of this.steps(ctx, group, o)) { void _; await pace.pause(); } return o.n; }
+  async buildAsync(ctx: WorldCtx, group: THREE.Group, pace: Pace = ctxPace(ctx)): Promise<number> {
+    if (this.co.boxes.length) { this.logCo(await this.co.resolveAsync(pace, PACE_CHECK_MS)); await pace.pause(); }
+    const o = { n: 0 };
+    for (const _ of this.steps(ctx, group, o)) { void _; await pace.pause(); }
+    return o.n;
+  }
+  private logCo(r: CoStats) { if (r.moved && flag("codebug")) console.info(`[${this.prefix}] coplanar: ${r.boxes} boxes, ${r.pairs} coplanar pairs, ${r.moved} faces moved (${r.ms} ms, longest pass ${r.maxPass} ms)`); }
   private *steps(ctx: WorldCtx, group: THREE.Group, out: { n: number }): Generator<void> {
     // 1. every non-empty (item, tier, bin) → one geometry, grouped by (material, casts)
     type Entry = { it: LodItem; tier: Tier; g: THREE.BufferGeometry };
@@ -480,7 +487,7 @@ export class TownLod {
     // the coplanar resolver first: it moves box faces inside the bins' buffers, before they become geometries
     if (this.co.boxes.length) {
       const it = this.co.steps(PACE_CHECK_MS); let st = it.next(); while (!st.done) { yield; st = it.next(); }
-      const r = st.value; if (r.moved && flag("codebug")) console.info(`[${this.prefix}] coplanar: ${r.boxes} boxes, ${r.pairs} coplanar pairs, ${r.moved} faces moved (${r.ms} ms, longest pass ${r.maxPass} ms)`);
+      this.logCo(st.value);
       yield;
     }
     for (const it of this.items.values()) {

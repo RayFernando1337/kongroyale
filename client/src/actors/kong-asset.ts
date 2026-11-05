@@ -123,11 +123,12 @@ export function loadKongAsset(renderer: THREE.WebGLRenderer): Promise<KongAsset 
       const halved = new Map<THREE.Texture, string>();
       loadFullMaps = () => Promise.all([...halved].map(async ([t, url]) => {
         const full = await tl.loadAsync(url);
-        halved.delete(t); t.dispose(); releaseAfterUpload(t).image = full.image; t.needsUpdate = true;
+        halved.delete(t); t.dispose(); releaseAfterUpload(t, async () => (await tl.loadAsync(url)).image).image = full.image; t.needsUpdate = true;
       })).then(() => undefined);
       const tex = async (name: string, srgb: boolean, half = false) => {
-        const t = releaseAfterUpload(await tl.loadAsync(BASE + name + ".webp"));
-        if (half && HALF_MAPS) { halved.set(t, BASE + name + ".webp"); (t as THREE.Texture).image = halve(t.image); }
+        const url = BASE + name + ".webp";
+        const t: THREE.Texture<HTMLImageElement> = releaseAfterUpload(await tl.loadAsync(url), async () => { const img = (await tl.loadAsync(url)).image; return halved.has(t) ? halve(img) : img; });
+        if (half && HALF_MAPS) { halved.set(t, url); (t as THREE.Texture).image = halve(t.image); }
         t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = aniso; t.needsUpdate = true;
         return t;
       };

@@ -1,3 +1,5 @@
+// Bakes GPU-compressed .ktx2 copies of attributed POI textures for the dark ?ktx2=1 path in engine/assets.ts.
+// Normal maps go to UASTC + zstd and everything else to ETC1S, and public/assets/ktx2.json lists every converted source.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

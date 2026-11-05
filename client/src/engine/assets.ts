@@ -8,10 +8,6 @@ import { releaseAfterUpload } from "./texture-release";
 import { capped, cappedMips } from "./tex-cap";
 import { flag } from "../flags";
 
-const KTX2 = flag("ktx2");
-const SOURCE_EXT = /\.(webp|jpe?g|png)$/i;
-const TRANSCODER_IDLE_MS = 2000;
-
 const BASE = import.meta.env.BASE_URL || "/";
 /** resolve a public/ path ("assets/x.glb" or "/assets/x.glb") against the deploy base */
 export const assetUrl = (p: string) => (/^(https?:|data:|blob:)/.test(p) ? p : BASE.replace(/\/$/, "") + "/" + p.replace(/^\//, ""));
@@ -26,34 +22,43 @@ async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
   }
 }
 
+const DECODER_IDLE_MS = 10000;
+const KTX2 = flag("ktx2");
+const SOURCE_EXT = /\.(webp|jpe?g|png)$/i;
+
 export class Assets {
-  private gltf = new GLTFLoader();
+  private gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   private tex = new THREE.TextureLoader();
   private cache = new Map<string, Promise<unknown>>();
-  readonly maxAniso: number;
-  readonly ktx2: KTX2Loader;
+  private decoders: { draco: DRACOLoader; ktx2: KTX2Loader } | null = null;
+  private decoding = 0;
+  private decoderIdle: ReturnType<typeof setTimeout> | undefined;
   private ktx2Sources: Promise<ReadonlySet<string>> | null = null;
-  private transcoderIdle: ReturnType<typeof setTimeout> | undefined;
+  readonly maxAniso: number;
 
-  constructor(renderer: THREE.WebGLRenderer, private hold: (label: string) => () => void) {
-    const draco = new DRACOLoader().setDecoderPath(assetUrl("assets/decoders/draco/"));
-    this.ktx2 = new KTX2Loader().setTranscoderPath(assetUrl("assets/actors/basis/")).setWorkerLimit(4).detectSupport(renderer);
-    this.gltf.setMeshoptDecoder(MeshoptDecoder).setDRACOLoader(draco).setKTX2Loader(this.ktx2);
+  constructor(private renderer: THREE.WebGLRenderer, private hold: (label: string) => () => void) {
     this.maxAniso = renderer.capabilities.getMaxAnisotropy();
   }
 
-  private compressed(path: string): Promise<boolean> {
-    if (!KTX2) return Promise.resolve(false);
-    this.ktx2Sources ??= fetch(assetUrl("assets/ktx2.json")).then((r) => r.json() as Promise<{ sources: string[] }>).then((m) => new Set(m.sources), () => new Set<string>());
-    return this.ktx2Sources.then((s) => s.has(path.replace(/^\//, "")));
+  private async decode<T>(f: (d: { draco: DRACOLoader; ktx2: KTX2Loader }) => Promise<T>): Promise<T> {
+    clearTimeout(this.decoderIdle);
+    if (!this.decoders) {
+      this.decoders = {
+        draco: new DRACOLoader().setDecoderPath(assetUrl("assets/decoders/draco/")),
+        ktx2: new KTX2Loader().setTranscoderPath(assetUrl("assets/actors/basis/")).setWorkerLimit(4).detectSupport(this.renderer),
+      };
+      this.gltf.setDRACOLoader(this.decoders.draco).setKTX2Loader(this.decoders.ktx2);
+    }
+    this.decoding++;
+    try { return await f(this.decoders); }
+    finally { if (--this.decoding === 0) this.decoderIdle = setTimeout(() => this.releaseDecoders(), DECODER_IDLE_MS); }
   }
 
-  private idleTranscoder() {
-    clearTimeout(this.transcoderIdle);
-    this.transcoderIdle = setTimeout(() => {
-      const pool = (this.ktx2 as unknown as { workerPool: { workerStatus: number; queue: unknown[]; dispose(): void } }).workerPool;
-      if (pool.workerStatus === 0 && pool.queue.length === 0) pool.dispose();
-    }, TRANSCODER_IDLE_MS);
+  private releaseDecoders() {
+    if (this.decoding > 0 || !this.decoders) return;
+    this.decoders.draco.dispose();
+    this.decoders.ktx2.dispose();
+    this.decoders = null;
   }
 
   private once<T>(key: string, make: () => Promise<T>): Promise<T> {
@@ -67,16 +72,35 @@ export class Assets {
   }
 
   model(path: string): Promise<GLTF> {
-    return this.once("gltf:" + path, () => retry(() => this.gltf.loadAsync(assetUrl(path))));
+    return this.once("gltf:" + path, () => this.decode(() => retry(() => this.gltf.loadAsync(assetUrl(path)))));
+  }
+
+  /** whether ?ktx2=1 is on and public/assets/ktx2.json lists a .ktx2 encoded from this source path */
+  private compressedListed(path: string): Promise<boolean> {
+    if (!KTX2) return Promise.resolve(false);
+    this.ktx2Sources ??= fetch(assetUrl("assets/ktx2.json")).then((r) => r.json() as Promise<{ sources: string[] }>).then((m) => new Set(m.sources), () => new Set<string>());
+    return this.ktx2Sources.then((s) => s.has(path.replace(/^\//, "")));
+  }
+
+  compressedTexture(path: string): Promise<THREE.CompressedTexture> {
+    return this.decode(({ ktx2 }) => ktx2.loadAsync(assetUrl(path)));
   }
 
   /** color textures get sRGB; pass { srgb: false } for normal/roughness/AO data maps */
   texture(path: string, o: { srgb?: boolean; repeat?: boolean; aniso?: boolean } = {}): Promise<THREE.Texture> {
     const { srgb = true, repeat = true, aniso = true } = o;
     return this.once(`tex:${path}:${srgb}:${repeat}`, async () => {
-      const t: THREE.Texture = (await this.compressed(path)) ? cappedMips(await retry(() => this.ktx2.loadAsync(assetUrl(path.replace(SOURCE_EXT, ".ktx2"))))) : await retry(() => this.tex.loadAsync(assetUrl(path))).then((x) => { (x as THREE.Texture).image = capped(x.image); return x; });
-      releaseAfterUpload(t);
-      if ((t as THREE.CompressedTexture).isCompressedTexture) this.idleTranscoder();
+      if (await this.compressedListed(path)) {
+        const load = () => retry(() => this.compressedTexture(path.replace(SOURCE_EXT, ".ktx2"))).then(cappedMips);
+        const t = releaseAfterUpload(await load(), async () => { const f = await load(); t.mipmaps.length = 0; t.mipmaps.push(...f.mipmaps); return f.image; });
+        t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+        if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        if (aniso) t.anisotropy = this.maxAniso;
+        return t;
+      }
+      const load = () => retry(() => this.tex.loadAsync(assetUrl(path)));
+      const t = releaseAfterUpload(await load(), async () => capped((await load()).image));
+      (t as THREE.Texture).image = capped(t.image);
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
       if (aniso) t.anisotropy = this.maxAniso;

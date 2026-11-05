@@ -1,6 +1,6 @@
 {
   "title": "What changed and why it matters",
-  "lead": "Kong Royale runs in a web browser, so the computer has to fit the whole game in memory while you play. This page starts with the changes that matter most, says in plain words what you will notice in the game, and links to the technical tabs for the detail. Every number names what was measured and where.",
+  "lead": "What changed in the game, in plain words. Every number has a “How we know” note.",
   "firstWords": [
     {
       "term": "Memory",
@@ -38,7 +38,11 @@
         157,
         160
       ],
-      "method": "Mac mini M4, 16 GB, Safari 27, quality Auto (picked Low), ?seed=42, scripted moving player, production build served locally. Newest: main 3248912, 2 runs. Before: main 1ee1f52, 1 run. Details in the Safari panel below."
+      "method": "Mac mini M4, 16 GB, Safari 27, quality Auto (picked Low), ?seed=42, scripted moving player, production build served locally. Newest: main 3248912, 2 runs. Before: main 1ee1f52, 1 run. Details in the Safari panel below.",
+      "before": "Tab closed after about 80 s",
+      "after": "Survives the whole match",
+      "label": "Safari on a 16 GB Mac",
+      "line": "On a 16 GB Mac in Safari, the match no longer ends with the tab closing."
     },
     {
       "head": "Textures are stored smaller, with no visible loss at the default",
@@ -49,7 +53,11 @@
         156,
         158
       ],
-      "method": "Memory: memory.mts without a GPU (SwiftShader, 640×360) at the title, 4 heavy locations, runs interleaved; WebGL textures 1751.4 and 1735.4 MB off, 1542.8 and 1514.8 MB default, 1387.1 MB at 512 (fork #158). Look: Kong RTX on Windows (D3D11), views compared at 3× crops (RAY-140, RAY-141)."
+      "method": "Memory: memory.mts without a GPU (SwiftShader, 640×360) at the title, 4 heavy locations, runs interleaved; WebGL textures 1751.4 and 1735.4 MB off, 1542.8 and 1514.8 MB default, 1387.1 MB at 512 (fork #158). Look: Kong RTX on Windows (D3D11), views compared at 3× crops (RAY-140, RAY-141).",
+      "before": "1,751 MB",
+      "after": "1,543 MB",
+      "label": "texture memory, four heavy locations",
+      "line": "At the default size we saw no visible loss; 512 pixels softens slightly up close."
     },
     {
       "head": "Coming back to the game after minimising is faster in Safari",
@@ -58,14 +66,19 @@
       "prs": [
         37
       ],
-      "method": "A/B of fork #37 in Safari, recorded on RAY-112 (minimised for 120 s, time to ready). The machine and number of runs are on that issue, not on this page."
+      "method": "A/B of fork #37 in Safari, recorded on RAY-112 (minimised for 120 s, time to ready). The machine and number of runs are on that issue, not on this page.",
+      "before": "9.9 s",
+      "after": "2.2 s",
+      "label": "time to ready after 120 s minimised",
+      "line": "Switching away and back lands you in the game in about 2 seconds, not 10."
     },
     {
       "head": "Chrome and Windows numbers",
       "plain": "The earlier work on Chrome and Windows (title screen load, first frame of a match, whole-browser memory, server work per tick) is in the Summary and Performance tabs, each with a before and after.",
       "notice": "What you'll notice: a faster title screen and a smoother start to each match; the Summary tab lists each one in the same words.",
       "prs": [],
-      "method": "Each number on those tabs carries its own method and source."
+      "method": "Each number on those tabs carries its own method and source.",
+      "line": "A faster title screen and a smoother start to each match; the Summary tab lists each one."
     }
   ],
   "safari": {
