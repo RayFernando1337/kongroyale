@@ -248,11 +248,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   // a session asked for before main.ts marks the title ready (Enter, a controller's A or a focused button behind the
   // loading screen) waits for it: wiring a GameRender before the prefabs exist throws and strands the match scope
   async function prepareIsland(): Promise<void> {
-    const root = document.documentElement;
-    if (root.dataset.ready !== "1") await new Promise<void>((done) => {
-      const watch = new MutationObserver(() => { if (root.dataset.ready === "1") { watch.disconnect(); done(); } });
-      watch.observe(root, { attributes: true, attributeFilter: ["data-ready"] });
-    });
+    while (document.documentElement.dataset.ready !== "1") await new Promise((done) => setTimeout(done, 100));
     const p = (window as unknown as { __kr: { prepare?: () => Promise<void> } }).__kr.prepare;
     if (p) await p();
   }

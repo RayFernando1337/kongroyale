@@ -52,7 +52,7 @@
     "model": "40e841c83d6d4fad",
     "regions": {
       "client/src/game/index.ts#startGame.online": "1527455257c5daee",
-      "client/src/game/index.ts#startGame.prepareIsland": "fe894fefb8e8d72b",
+      "client/src/game/index.ts#startGame.prepareIsland": "a60414b7ba8c24b5",
       "client/src/game/index.ts#startGame.offline": "b98b9176c358e63d",
       "client/src/game/index.ts#startGame.wire": "a771e6ac1d89834f",
       "client/src/game/index.ts#startGame.onJSON": "477338984638c38e",
