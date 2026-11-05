@@ -1,9 +1,9 @@
 // Player diagnostics (?diag, RAY-162): what a stream player's report needs beyond the per-second metrics ring.
 //   events     the moments that explain a hitch, newest 500: long animation frames with the script that ran longest
-//              (Chrome and Edge; plain long tasks where only those exist), match phase changes, POIs built or dropped,
-//              shader-program jumps, 3D-resolution steps, a heap drop over 50 MB (a collection), WebGL context loss,
-//              visibility, fullscreen and uncaught errors. POIs come from __kr.streamMs, so a lowmem eviction and the
-//              rebuild after it show up too. Times are page seconds, the clock of the timeline's `t`.
+//              (Chrome and Edge; plain long tasks where only those exist), match phase changes, world modules streamed in
+//              or evicted, shader-program jumps, 3D-resolution steps, a heap drop over 50 MB (a collection), WebGL context
+//              loss, visibility, fullscreen and uncaught errors. Modules come from __kr.streamMs: what streams in after the
+//              title (the builds a player can feel; ?nostream has none) with its build ms, and lowmem evictions and rebuilds.
 //   path       the player's position and view once a second in a match (up to an hour): the route a camera-path bench
 //              replays on another GPU
 //   heartbeat  a small record in localStorage every 5 s, marked clean on pagehide. A session that never marked clean and
@@ -134,8 +134,8 @@ export function installDiag(engine: Engine): (at: number) => void {
     if (last.heap >= 0 && heap >= 0 && last.heap - heap > GC_DROP_MB) push("gc", Math.round(last.heap - heap));
     last.phase = phase; last.programs = programs; last.scale = scale; last.heap = heap;
     const streamed = K.streamMs ?? {};
-    for (const id in streamed) if (!resident.has(id)) { resident.add(id); push("poi-built", streamed[id], id); }
-    for (const id of resident) if (!(id in streamed)) { resident.delete(id); push("poi-dropped", 0, id); }
+    for (const id in streamed) if (!resident.has(id)) { resident.add(id); push("module-built", streamed[id], id); }
+    for (const id of resident) if (!(id in streamed)) { resident.delete(id); push("module-dropped", 0, id); }
     if (p && g?.input) {
       const row = (pathCursor.rows % PATH_S) * PATH_W;
       path[row] = ring[at]; path[row + 1] = p.x; path[row + 2] = p.y; path[row + 3] = p.z;
