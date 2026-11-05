@@ -4,8 +4,8 @@
 // bandwidth cap never binds in the browser, so a throttled in-browser run cannot separate download from compile:
 //
 //   npx tsx tools/performance/title-bytes.mts log --url http://127.0.0.1:3140/ --out shots/title-bytes/main.json [--after 5]
-//   npx tsx tools/performance/title-bytes.mts replay shots/title-bytes/main.json --url http://127.0.0.1:3140 --net
-// 50,20 --runs 3
+//   npx tsx tools/performance/title-bytes.mts replay shots/title-bytes/main.json \
+//     --url http://127.0.0.1:3140 --net 50,20 --runs 3
 //
 // log: one cold Chrome load (dpr 2, 1600x900) through a logging reverse proxy, so worker-initiated fetches count
 // (a page-level CDP request log misses every Worker fetch). Writes every request (url, start/end ms, wire bytes,
