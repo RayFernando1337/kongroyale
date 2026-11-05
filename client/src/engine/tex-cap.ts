@@ -1,8 +1,10 @@
 import { flag } from "../flags";
+import { isLowMemory } from "../low-mem-device";
 
 type Source = HTMLImageElement | HTMLCanvasElement | ImageBitmap;
 
-const CAP_PX = flag("poicap");
+const DEFAULT_CAP_PX = 1024, LOW_MEMORY_CAP_PX = 512;
+const CAP_PX = flag("poicap") ?? (isLowMemory(flag("lowmem"), flag("prepare") === "full") ? LOW_MEMORY_CAP_PX : DEFAULT_CAP_PX);
 const done = new WeakMap<Source, HTMLCanvasElement>();
 
 export function capped<T extends Source>(img: T): T | HTMLCanvasElement {
