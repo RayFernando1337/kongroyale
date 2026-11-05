@@ -36,8 +36,9 @@ const UASTC = ["--encode", "uastc", "--uastc-quality", String(UASTC_QUALITY), "-
 const ETC1S = ["--encode", "basis-lz", "--clevel", String(ETC1S_CLEVEL), "--qlevel", String(ETC1S_QLEVEL)];
 
 if (check) {
-  const bad = prev.sources.filter((s) => { const k = path.join(root, "public", ktxOf(s)); return !fs.existsSync(k) || fs.statSync(k).mtimeMs < fs.statSync(path.join(root, "public", s)).mtimeMs; });
-  for (const b of bad) console.error("stale or missing: " + ktxOf(b));
+  const stale = (s: string, out: string) => { const k = path.join(root, "public", out); return !fs.existsSync(k) || fs.statSync(k).mtimeMs < fs.statSync(path.join(root, "public", s)).mtimeMs; };
+  const bad = [...prev.sources.filter((s) => stale(s, ktxOf(s))).map(ktxOf), ...(prev.etc1s ?? []).filter((s) => stale(s, etc1sOf(s))).map(etc1sOf)];
+  for (const b of bad) console.error("stale or missing: " + b);
   process.exit(bad.length ? 1 : 0);
 }
 
