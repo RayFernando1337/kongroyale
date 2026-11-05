@@ -20,6 +20,7 @@ import { createKong, type KongActorEx } from "./kong";
 import { KongAnimator } from "./kong-rig";
 import type { KongPose } from "./api";
 import { resources } from "../engine/res/scope";
+import { freeImage } from "../engine/texture-release";
 import { TAU, ZN, Z_NOSE, Z_UP, Z_RAMP, Z_OPEN, ZE, ZCAP, BELLY, TOP, HW, NOSE_Y, SE, TAIL_TOP, TAIL_BOT, TAIL_W, FLOOR_Y, SKIN, TH0, TH1, WING_Y, WING_LE, WING_C0, WING_C1, WING_HALF, WING_CENTRE, ENG_X, ENG_Y, ENG_Z, COWL_R, PROP_R, PROP_Z, GEAR_TRAVEL, WHEEL_R, NOSE_WHEEL_R, NOSE_GEAR_Z, NOSE_TRAVEL, STAB_Y, STAB_LE, STAB_HALF, FIN_Y0, FIN_Y1, FIN_ZMIN, FIN_ZMAX, YEL, clamp01, lerp, ell, sp, E2, aOfY, WIN_Y, PORTHOLES, FIN_TOP0, finLE, finTE } from "./plane-dims";
 import { PLANE_PAINT, PAINT_NAMES, isLayers, type Canvas, type Layers, type PaintName, type PlanePainted } from "./plane-paint";
 
@@ -808,8 +809,10 @@ export function releasePlanePaint() {
   paintReleased = true; paintGen++;
   for (const t of flat(TEX)) {
     const one = document.createElement("canvas"); one.width = 1; one.height = 1;
-    one.getContext("2d")!.drawImage(t.image as CanvasImageSource, 0, 0, 1, 1);
+    const old = t.image;
+    one.getContext("2d")!.drawImage(old as CanvasImageSource, 0, 0, 1, 1);
     swapImage(t, one);
+    freeImage(old);
   }
 }
 
