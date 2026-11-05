@@ -120,7 +120,7 @@ export class OfflineLink implements Link {
         const opts: MatchOpts & { botDifficulty: BotDifficulty } = { seed: this.seed, mode: this.range ? "solo" : mode, world: this.world, humans: this.caster ? [] : [{ id: 0, name: this.name, team: 0 }], botDamageToHumans: this.botDamageToHumans, botAimRange: this.botAimRange, botDifficulty: this.difficulty, range: this.range };
         const match = this.match = new Match(opts);
         match.endAfterResults = true;
-        if (flag("perfhud")) {
+        if ((globalThis as { __kr?: { recordReplay?: boolean } }).__kr?.recordReplay) {
           const { world: _world, ...recOpts } = opts;
           const rec = match.rec = new ReplayRecorder(recOpts);
           this.setReplay(() => rec.log(match));
