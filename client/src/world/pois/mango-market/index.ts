@@ -100,7 +100,7 @@ const mod: WorldModule = {
     // (__townPhase tags each long task with the phase it fell in — `after:<last lap>`)
     const lap = (k: string) => { const n = performance.now(); tm[k] = Math.round(n - tl); tl = n; (globalThis as { __townPhase?: string }).__townPhase = `after:${k}`; };
     (globalThis as { __townPhase?: string }).__townPhase = "mats";
-    await preloadTownTex(ctx.renderer);
+    await preloadTownTex(ctx.renderer, () => ctx.yield());
     const mats = townMats(ctx.renderer);
     lap("mats");
     // (individual fruit to 8.5 m — the painted heap mound carries the pile beyond; 11 m drew ~35 k fruit tris at
