@@ -1,3 +1,4 @@
+import type * as THREE from "three";
 import { flag } from "../flags";
 import { isLowMemory } from "../low-mem-device";
 
@@ -19,6 +20,14 @@ export function capped<T extends Source>(img: T): T | HTMLCanvasElement {
   g.drawImage(img, 0, 0, c.width, c.height);
   done.set(img, c);
   return c;
+}
+
+export function cappedMips<T extends THREE.CompressedTexture>(t: T): T {
+  const m = t.mipmaps;
+  let k = 0;
+  while (CAP_PX > 0 && k < m.length - 1 && Math.max(m[k].width, m[k].height) > CAP_PX) k++;
+  if (k) { t.mipmaps = m.slice(k); t.image = { width: m[k].width, height: m[k].height }; }
+  return t;
 }
 
 export async function cappedBitmap(bm: ImageBitmap): Promise<ImageBitmap> {
