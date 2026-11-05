@@ -59,7 +59,7 @@ win until their scenario produces repeatable baseline/candidate comparisons.
    generator lateness and server/client counts; reject an under-driven run rather than celebrating low latency.
 4. **Gate relevant network tails.** `tools/performance/net-tail.mts` reports RTT, input ack, snapshot gaps, corrections,
    remote holds and hit confirm/ghost rates at 50, 150 and 250 ms RTT with jitter and loss profiles, against
-   `net-budgets.json` (report-only until the budgets are agreed). Real-socket and WAN numbers still need runs over
+   `net-budgets.json`; `npm test` fails when a row breaks one (check `nettail`). Real-socket and WAN numbers still need runs over
    `netpath.py` or a real network; see [tools/performance/README.md](tools/performance/README.md#network-tails).
 5. **Keep platform prerequisites explicit.** The server wrapper sets `KR_EVENT_MODE=0` for private room creation.
    Its extensionless `node_modules/.bin/tsx` spawn targets Linux/macOS; Windows compatibility is not established.
