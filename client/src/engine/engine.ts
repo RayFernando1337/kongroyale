@@ -13,6 +13,9 @@ import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
 import { afterPaint } from "./frame";
 import { flag } from "../flags";
+import { contextEpoch, restoreAll } from "./res/restore";
+
+const RESTORE_WAIT_MS = 10000;
 const STREAM_SLICE_MS: readonly number[] = flag("streamslice") ?? [];
 
 // engine fades dissolve instead of scaling — three's shared chunks are patched before the first compile
@@ -126,6 +129,7 @@ export class Engine implements WorldCtx {
     this.renderer.toneMappingExposure = 1;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.watchContext();
     // ?dpr=N overrides the device pixel ratio (A/B of the fill-rate share). The canvas backing store is the
     // screen's NATIVE pixels (devicePixelRatio, e.g. 1.5 on a 150 %-scaled 4K monitor, 2 on a Retina MacBook; capped at
     // 2 for phones); the "3D resolution" setting scales the scene inside the post chain (TAAU), never the canvas
@@ -602,6 +606,19 @@ export class Engine implements WorldCtx {
    * the island stream) so the main thread goes to the stream, not to frames nobody sees.
    */
   suspended = false;
+  contextLost = false;
+  restores = 0;
+  private lostTimer = 0;
+  private watchContext() {
+    this.canvas.addEventListener("webglcontextlost", () => {
+      this.contextLost = true;
+      this.lostTimer = window.setTimeout(() => location.reload(), RESTORE_WAIT_MS);
+    });
+    this.canvas.addEventListener("webglcontextrestored", () => {
+      clearTimeout(this.lostTimer);
+      restoreAll().then(() => { this.restores++; this.contextLost = false; }, (e) => { console.error("[context restore]", e); location.reload(); });
+    });
+  }
   start() {
     if (this.started) return;
     this.started = true;
@@ -612,7 +629,7 @@ export class Engine implements WorldCtx {
       // window moved to another monitor), used as the default frame cap / dynamic-resolution target
       if (prevRaf) this.sampleRefresh(now - prevRaf);
       prevRaf = now;
-      if (this.suspended) { this.last = now; requestAnimationFrame(loop); return; }
+      if (this.suspended || this.contextLost) { this.last = now; requestAnimationFrame(loop); return; }
       requestAnimationFrame(loop);
       // frame limiter (display settings): draw only when the cap's interval has elapsed (a 0.6 ms slack absorbs vsync
       // jitter; the cadence advances by whole intervals so 144 on a 240 Hz screen alternates 1-2 vsyncs evenly)
@@ -728,7 +745,7 @@ export class Engine implements WorldCtx {
   private emaDt = 0; private emaCpu = 0; private dynHold = 0;
   // GPU time per frame (EXT_disjoint_timer_query_webgl2 when the browser exposes it): the controller then knows the
   // GPU's share instead of inferring it from dt vs CPU
-  private tq: { ext: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number }; free: WebGLQuery[]; pending: WebGLQuery[] } | null | undefined;
+  private tq: { ext: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number }; free: WebGLQuery[]; pending: WebGLQuery[]; epoch: number } | null | undefined;
   /** smoothed GPU ms per frame (0 = unknown) */
   gpuMs = 0;
   private gpuTimed = false;
@@ -739,11 +756,12 @@ export class Engine implements WorldCtx {
     if (this.tq === null) this.tq = undefined;
   }
   private gpuBegin(): WebGLQuery | null {
+    if (this.tq && this.tq.epoch !== contextEpoch()) this.tq = undefined;
     if (this.tq === undefined) {
       const gl = this.renderer.getContext() as WebGL2RenderingContext;
       // (never in view-camera captures; never while a dev tool times its own pass — nested TIME_ELAPSED queries are an error)
       const ext = (this.dynOn || this.dynPin || this.gpuTimed) && !this.shotMode ? gl.getExtension("EXT_disjoint_timer_query_webgl2") : null;
-      this.tq = ext ? { ext, free: [], pending: [] } : null;
+      this.tq = ext ? { ext, free: [], pending: [], epoch: contextEpoch() } : null;
     }
     const t = this.tq; if (!t || this.gpuHold || (globalThis as { __stormTimer?: unknown }).__stormTimer) return null;
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
