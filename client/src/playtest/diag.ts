@@ -2,11 +2,13 @@
 //   events     the moments that explain a hitch, newest 500: long animation frames with the script that ran longest
 //              (Chrome and Edge; plain long tasks where only those exist), match phase changes, POIs built or dropped,
 //              shader-program jumps, 3D-resolution steps, a heap drop over 50 MB (a collection), WebGL context loss,
-//              visibility, fullscreen and uncaught errors. Times are page seconds, the clock of the timeline's `t`.
+//              visibility, fullscreen and uncaught errors. POIs come from __kr.streamMs, so a lowmem eviction and the
+//              rebuild after it show up too. Times are page seconds, the clock of the timeline's `t`.
 //   path       the player's position and view once a second in a match (up to an hour): the route a camera-path bench
 //              replays on another GPU
 //   heartbeat  a small record in localStorage every 5 s, marked clean on pagehide. A session that never marked clean and
-//              stopped beating died (tab killed, browser crashed); the next load keeps its last record as `prev`.
+//              stopped beating while visible died (tab killed, browser crashed); the next load keeps its last record as
+//              `prev`. A hidden tab's timers may be throttled or frozen, so a beat written while hidden never counts.
 // snapshot() is __kr.diag.snapshot(); a report sends it as ctx.diag, which the server cleans and stores as it is.
 import type { Engine } from "../engine/engine";
 import { BUILD } from "../build";
@@ -21,7 +23,8 @@ const PATH_FIELDS = ["t", "x", "y", "z", "yawDeg", "pitchDeg", "phase"] as const
 export type DiagEvent = [number, string, number, string];
 interface Beat { v: 1; sid: string; sha: string; at: number; upS: number; phase: number; poi: string | null; heapMB: number; textures: number; geometries: number; fps: number; hidden: boolean; clean: boolean }
 interface KrGame { inMatch?: boolean; cm?: { pred?: { x: number; y: number; z: number } } | null; input?: { yaw: number; pitch: number } }
-type Kr = Record<string, unknown> & { ready?: boolean; game?: KrGame };
+/** streamMs (main.ts): the streamed modules built and integrated now, with their build ms; a lowmem eviction deletes */
+type Kr = Record<string, unknown> & { ready?: boolean; game?: KrGame; streamMs?: Record<string, number> };
 const kr = () => (window as unknown as { __kr: Kr }).__kr;
 
 const events: DiagEvent[] = [];
@@ -77,7 +80,7 @@ function readBeats(): Beat[] {
 function findDeadSession(): void {
   const now = Date.now(), first = readBeats();
   for (const b of first) if (b.clean || now - b.at > KEEP_MS) localStorage.removeItem(BEAT_KEY + b.sid);
-  const open = first.filter((b) => !b.clean && now - b.at <= KEEP_MS);
+  const open = first.filter((b) => !b.clean && !b.hidden && now - b.at <= KEEP_MS);
   if (!open.length) return;
   setTimeout(() => {
     const later = new Map(readBeats().map((b) => [b.sid, b]));
@@ -86,7 +89,7 @@ function findDeadSession(): void {
       if (!prev || b.at > prev.at) prev = b;
       localStorage.removeItem(BEAT_KEY + b.sid);
     }
-    if (prev) push("prev-session", Math.round((Date.now() - prev.at) / 1000), `died ${prev.phase >= 0 ? "in a match" : "outside a match"}${prev.hidden ? " while hidden" : ""}`);
+    if (prev) push("prev-session", Math.round((Date.now() - prev.at) / 1000), prev.phase >= 0 ? "died in a match" : "died outside a match");
   }, DEAD_AFTER_MS);
 }
 
@@ -107,16 +110,19 @@ export function installDiag(engine: Engine): (at: number) => void {
   const canvas = engine.renderer.domElement;
   canvas.addEventListener("webglcontextlost", () => push("context-lost", 0));
   canvas.addEventListener("webglcontextrestored", () => push("context-restored", 0));
-  addEventListener("visibilitychange", () => push("visibility", document.visibilityState === "visible" ? 1 : 0, document.visibilityState));
   addEventListener("fullscreenchange", () => push("fullscreen", document.fullscreenElement ? 1 : 0));
   addEventListener("error", (e) => push("error", 0, e.message || String(e.error)));
   addEventListener("unhandledrejection", (e) => push("rejection", 0, String((e.reason as Error | undefined)?.message ?? e.reason)));
 
-  const poiIds = POIS.map((p) => "poi:" + p.id), built = new Map<string, boolean>();
+  const resident = new Set<string>();
   const last = { phase: -2, programs: -1, scale: -1, heap: -1 };
   let beat: Beat = { v: 1, sid, sha: BUILD.sha, at: Date.now(), upS: 0, phase: -1, poi: null, heapMB: -1, textures: 0, geometries: 0, fps: 0, hidden: false, clean: false };
   addEventListener("pagehide", () => { beat.clean = true; beat.at = Date.now(); writeBeat(beat); });
   addEventListener("pageshow", (e) => { if (e.persisted) { beat.clean = false; writeBeat(beat); } });
+  addEventListener("visibilitychange", () => {
+    push("visibility", document.visibilityState === "visible" ? 1 : 0, document.visibilityState);
+    beat.hidden = document.visibilityState === "hidden"; beat.at = Date.now(); writeBeat(beat);
+  });
   let seconds = 0;
 
   return (at) => {
@@ -127,11 +133,9 @@ export function installDiag(engine: Engine): (at: number) => void {
     if (last.scale >= 0 && scale !== last.scale) push("scale", r1(scale * 100) / 100);
     if (last.heap >= 0 && heap >= 0 && last.heap - heap > GC_DROP_MB) push("gc", Math.round(last.heap - heap));
     last.phase = phase; last.programs = programs; last.scale = scale; last.heap = heap;
-    for (const id of poiIds) {
-      const now = engine.isBuilt(id), was = built.get(id);
-      if (was !== undefined && was !== now) push(now ? "poi-built" : "poi-dropped", 0, id);
-      built.set(id, now);
-    }
+    const streamed = K.streamMs ?? {};
+    for (const id in streamed) if (!resident.has(id)) { resident.add(id); push("poi-built", streamed[id], id); }
+    for (const id of resident) if (!(id in streamed)) { resident.delete(id); push("poi-dropped", 0, id); }
     if (p && g?.input) {
       const row = (pathCursor.rows % PATH_S) * PATH_W;
       path[row] = ring[at]; path[row + 1] = p.x; path[row + 2] = p.y; path[row + 3] = p.z;

@@ -1,8 +1,6 @@
 // The playtest perf HUD (?perfhud): a small panel in the top-left corner that shows the newest second of the metrics
 // ring (recorder.ts): fps, frame p95 and max, GPU ms, ping and jitter, heap, and the renderer's resource counts.
-import type { Engine } from "../engine/engine";
 import { BUILD, buildLabel } from "../build";
-import { flag } from "../flags";
 import { ring } from "./metrics.hot";
 
 const CSS = `.kr-perfhud { position: fixed; left: 8px; top: 30vh; z-index: 99998; pointer-events: none; user-select: none;
@@ -15,8 +13,7 @@ const fixed = (v: number, d: number) => (v < 0 ? "–" : v.toFixed(d));
 const warn = (bad: boolean, text: string) => (bad ? `<span class="bad">${text}</span>` : text);
 
 /** add the panel and return the function that redraws it from a ring row */
-export function installPerfHud(engine: Engine): (at: number) => void {
-  if (!flag("notimer")) engine.timeGpu();
+export function installPerfHud(): (at: number) => void {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);

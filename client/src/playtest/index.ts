@@ -46,10 +46,11 @@ export function installPlaytest(engine: Engine, game: boolean): void {
   if (BUILD.channel !== "stable" && flag("badge")) void import("../ui/build-badge").then((m) => m.showBuildBadge());
   const hud = flag("perfhud"), diag = diagOn();
   if (!game || (!hud && !diag)) return;
+  if (!flag("notimer")) engine.timeGpu();
   kr().recordReplay = true;
   kr().playtestBundle = bundle;
   void Promise.all([import("./recorder"), hud ? import("./perf-hud") : null, diag ? import("./diag") : null]).then(([rec, hudMod, diagMod]) => {
-    const draw = hudMod?.installPerfHud(engine), sample = diagMod?.installDiag(engine);
+    const draw = hudMod?.installPerfHud(), sample = diagMod?.installDiag(engine);
     if (diagMod) kr().diag = { snapshot: diagMod.snapshot };
     rec.startRecorder(engine, (at) => { draw?.(at); sample?.(at); });
   });
