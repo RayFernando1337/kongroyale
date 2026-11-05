@@ -1,6 +1,6 @@
 {
   "skill": ".agents/skills/verify-poi-residency/SKILL.md",
-  "note": "The caps' values live in client/src/flags.ts (lowmemcap, lowmembudget, lowmemr, lowmemhyst), which no region can name; the model is parametric in Cap.",
+  "note": "The caps' values live in client/src/flags.ts (lowmemcap, lowmembudget, lowmemr, lowmemhyst), which no region can name; the model is parametric in Cap. main.ts fills the queue (streamList, passed to low-mem.ts as pending) at top level during boot, before any match, which no region or allow entry can name; the model starts with every POI queued, and the scan does not see streamList writes, so read main.ts's boot loop against Init when it changes.",
   "regions": [
     "client/src/low-mem.ts#nearModule",
     "client/src/low-mem.ts#nextNearModule",

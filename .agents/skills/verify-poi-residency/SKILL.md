@@ -57,7 +57,9 @@ To see the AtMostCap path or redraw the chart, give the pstack `/statechart` ski
 | main.ts `stream`'s 2 s timer (`trim(null)`) | Timer |
 | the camera; `enterMatch` / leaving | Move, EnterMatch, LeaveMatch |
 
-The caps' values live in client/src/flags.ts, which no region can name; the model takes the cap as a constant and
+main.ts fills the queue (`streamList`, which low-mem.ts calls `pending`) in top-level boot code that no region can
+name, and the write scan does not look for `streamList`; the model starts with every location queued, so read that boot
+loop against `Init` when it changes. The caps' values live in client/src/flags.ts, which no region can name; the model takes the cap as a constant and
 counts locations rather than megabytes, so the budget estimate (400 MB a location until measured) is not checked.
 
 Coverage record: `tools/formal/PoiResidency.covers.json` names the functions above and the writes that change which
