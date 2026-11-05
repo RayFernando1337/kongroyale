@@ -53,7 +53,8 @@ SheetSend == screen = "sheet" /\ \E t \in BOOLEAN :
 SheetCancel == screen = "sheet" /\ screen' = back /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
 DismissCrash == screen = "crash" /\ screen' = "title" /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
 
-\* the server answers: "Sent, thanks. Report KB-123." only on an accepted upload
+\* the server answers: "Sent, thanks. Report KB-123." only on an accepted upload. Refused also stands for an upload that gets
+\* no answer: the plan needs a request timeout so that every send ends in one of the two
 Accepted == screen = "sending" /\ screen' = "sent" /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
 Refused == screen = "sending" /\ screen' = (IF RefusedShown THEN "refused" ELSE back) /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
 ToastGone == screen \in {"sent", "refused"} /\ screen' = back /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
@@ -65,7 +66,8 @@ Settings == screen \in {"title", "menu"} /\ autoOn' = ~autoOn /\ UNCHANGED <<scr
 
 Next == Play \/ OpenMenu \/ CloseMenu \/ EndMatch \/ Send \/ Report \/ NoteDone \/ SheetSend \/ SheetCancel \/ DismissCrash
   \/ Accepted \/ Refused \/ ToastGone \/ Auto \/ Settings
-Spec == Init /\ [][Next]_vars
+\* every upload is answered in the end: the server replies, or the client's timeout fires
+Spec == Init /\ [][Next]_vars /\ WF_vars(Accepted \/ Refused)
 
 (* --- the rules --- *)
 \* Nothing a player sends by hand leaves the browser before they confirmed the consent sheet once.
@@ -76,4 +78,6 @@ CallsignOnlyWhenTicked == \A r \in sent : r.callsign => r.kind = "manual" /\ r.t
 AutoOnlyWhenOn == \A r \in sent : r.kind = "auto" => r.auto
 \* Every send ends with something on screen: the thank-you with the report id, or a message that it did not go.
 EverySendAnswered == [][screen = "sending" => screen' \in {"sent", "refused"}]_vars
+\* ... and a send never hangs: the player always sees one of the two in the end.
+SendEnds == screen = "sending" ~> screen \in {"sent", "refused"}
 =============================================================================

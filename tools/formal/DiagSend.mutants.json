@@ -26,5 +26,12 @@
     "find": "screen' = (IF RefusedShown THEN \"refused\" ELSE back)",
     "replace": "screen' = back",
     "expect": "is violated"
+  },
+  {
+    "name": "a stalled upload",
+    "why": "the client has no request timeout, so an upload the server never answers leaves the player on Sending",
+    "find": "Spec == Init /\\ [][Next]_vars /\\ WF_vars(Accepted \\/ Refused)",
+    "replace": "Spec == Init /\\ [][Next]_vars",
+    "expect": "Temporal properties were violated"
   }
 ]

@@ -134,9 +134,11 @@ stateDiagram-v2
 | CallsignOnlyWhenTicked | The callsign goes only in a send where "Include my callsign" was ticked; an automatic summary never has it. | Holds |
 | AutoOnlyWhenOn | Automatic summaries go only while the setting is on. | Holds |
 | EverySendAnswered | Every send ends with something on screen: the thank-you with the report id, or a message that it did not go. | Breaks in 3 steps: a refused upload returns to the previous screen without a word. |
+| SendEnds | A send never hangs: the player sees one of the two in the end. | Breaks the same way, and also needs a request timeout the plan does not mention. |
 
-The fix is one sentence in the plan: a refused send shows "Not sent: try again in a few minutes" (`RefusedShown =
-TRUE`, in `DiagSend.cfg`).
+The fix is two sentences in the plan: a refused send shows "Not sent: try again in a few minutes" (`RefusedShown =
+TRUE`, in `DiagSend.cfg`), and an upload with no answer within a timeout counts as refused. The model assumes the
+second (a fairness condition on the answer); its mutant "a stalled upload" takes it out, and SendEnds breaks.
 
 ## What Ray should check
 

@@ -12,7 +12,8 @@ become the check for the code once it lands.
   closes, kills, back/forward-cache freezes and thaws, and crash-prompt answers. `Design` picks the plan as written
   (`"plan"`, one shared record) or the fix (`"locks"`, one record per session plus a Web Lock per live page).
 - `tools/formal/DiagSend.tla`: one tab's screens around a send, and the server accepting or refusing it.
-  `RefusedShown` picks the plan as written (`FALSE`) or the fix (`TRUE`, a refused send says so).
+  `RefusedShown` picks the plan as written (`FALSE`) or the fix (`TRUE`, a refused send says so). `Spec` assumes every
+  upload is answered in the end (weak fairness on Accepted or Refused), which the code must earn with a request timeout.
 
 ## The rules
 
@@ -25,9 +26,10 @@ become the check for the code once it lands.
 | DiagSend | CallsignOnlyWhenTicked | The callsign goes only when ticked; an automatic summary never carries it. |
 | DiagSend | AutoOnlyWhenOn | Automatic summaries go only while the setting is on. |
 | DiagSend | EverySendAnswered | Every send ends with the thank-you and report id, or a message that it did not go. |
+| DiagSend | SendEnds | A send never hangs: one of the two shows in the end (needs a request timeout). |
 
 `DiagHeartbeat.cfg` and `DiagSend.cfg` check the fixed design, where every rule holds. The `.findings.cfg` files
-check the design as written: all three heartbeat rules break, and EverySendAnswered breaks.
+check the design as written: all three heartbeat rules break, and EverySendAnswered and SendEnds break.
 
 ## Run it
 
