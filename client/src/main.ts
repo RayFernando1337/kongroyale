@@ -225,10 +225,10 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   const t0 = performance.now();
   let m: WorldModule | null = null;
   const scope = resources.root.child(`region:${id}`);
-  engine.trackUpdates(id);
+  const ctx = streamed ? postBuild!.moduleCtx(engine, id) : engine;
   try {
     m = await imports.get(id)!;
-    await m.build(engine, scope);
+    await m.build(ctx, scope);
     scopeOf.set(id, scope);
     loaded.push(m);
     modOf.set(id, m);
@@ -236,7 +236,7 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
     Object.assign(views, m.views ?? {});
   } catch (e) { report(`build:${id}`, e); m = null; scope.dispose(); }
   buildMs[id] = Math.round(performance.now() - t0);
-  buildAdds = null; buildGate = null; engine.trackUpdates(null);
+  buildAdds = null; buildGate = null; engine.rebuilding = false;
   // behind the loading screen: start the parallel compile of what this module drew right away — the driver compiles on
   // its own threads while the next module builds (the game's prewarm compile then mostly hits the program cache)
   if (!streamed && gameMode && m) {
@@ -251,9 +251,8 @@ async function runAfterBuild(m: WorldModule, streamed: boolean) {
   if (!m.afterBuild) return;
   if (!streamed) kr.stage = `afterBuild:${m.id}`;
   const t0 = performance.now();
-  engine.trackUpdates(m.id);
-  try { await m.afterBuild(engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
-  engine.trackUpdates(null);
+  try { await m.afterBuild(streamed ? postBuild!.moduleCtx(engine, m.id) : engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
+  engine.rebuilding = false;
   afterBuildMs[m.id] = (afterBuildMs[m.id] ?? 0) + Math.round(performance.now() - t0);
 }
 

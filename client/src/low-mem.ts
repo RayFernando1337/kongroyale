@@ -55,6 +55,30 @@ export async function nextNearModule(pending: string[], camera: THREE.Camera, po
   }
 }
 
+type Hook = (dt: number, t: number) => void;
+const hooksOf = new Map<string, Hook[]>(), ctxOf = new Map<string, Engine>(), evicted = new Set<string>();
+
+export function moduleCtx(engine: Engine, id: string): Engine {
+  engine.rebuilding = evicted.has(id);
+  const known = ctxOf.get(id);
+  if (known) return known;
+  const hooks: Hook[] = [], bound = new Map<PropertyKey, unknown>();
+  const onUpdate = (fn: Hook) => { engine.onUpdate(fn); hooks.push(fn); };
+  const ctx = new Proxy(engine, {
+    get(t, k) {
+      if (k === "onUpdate") return onUpdate;
+      const v = Reflect.get(t, k);
+      if (typeof v !== "function") return v;
+      let b = bound.get(k);
+      if (!b) bound.set(k, (b = (v as (...a: unknown[]) => unknown).bind(t)));
+      return b;
+    },
+  });
+  hooksOf.set(id, hooks);
+  ctxOf.set(id, ctx);
+  return ctx;
+}
+
 type World = {
   modOf: Map<string, WorldModule>; scopeOf: Map<string, Scope>; rootsOf: Map<string, THREE.Object3D[]>;
   loaded: WorldModule[]; roots: (id: string) => THREE.Object3D[]; report: (where: string, e: unknown) => void;
@@ -62,16 +86,16 @@ type World = {
 
 export async function evictStreamed(engine: Engine, w: World, id: string) {
   const m = w.modOf.get(id)!, roots = w.roots(id);
-  engine.removeUpdates(new Set(engine.hooksOf.get(id)));
+  engine.removeUpdates(new Set(hooksOf.get(id)));
   engine.occlusion.unregister(id);
   engine.far.evict(id);
   for (const r of roots) { engine.statics.unregister(r); engine.cull.unregister(r); r.removeFromParent(); }
   try { await m.release?.(engine); } catch (e) { w.report(`release:${id}`, e); }
   const freed = disposeUnused(roots, engine.scene);
   try { w.scopeOf.get(id)?.dispose(); } catch (e) { w.report(`release:${id}`, e); }
-  for (const map of [w.modOf, w.scopeOf, w.rootsOf, engine.hooksOf]) map.delete(id);
+  for (const map of [w.modOf, w.scopeOf, w.rootsOf, hooksOf, ctxOf]) map.delete(id);
   w.loaded.splice(w.loaded.indexOf(m), 1);
-  engine.evicted.add(id);
+  evicted.add(id);
   const kr = (globalThis as unknown as { __kr: { modules: string[]; evictions?: unknown[] } }).__kr;
   kr.modules = w.loaded.map((x) => x.id);
   (kr.evictions ??= []).push({ id, at: Math.round(performance.now()), ...freed });
@@ -122,7 +146,7 @@ export function disposeUnused(roots: readonly THREE.Object3D[], scene: THREE.Obj
   for (const r of roots) r.traverse((o) => {
     const m = o as THREE.Mesh;
     if ((o as THREE.InstancedMesh).isInstancedMesh || (o as unknown as { isBatchedMesh?: boolean }).isBatchedMesh) owners.push(o as unknown as Disposable);
-    else if (m.geometry) geos.add(m.geometry);
+    if (m.geometry && !(o as unknown as { isBatchedMesh?: boolean }).isBatchedMesh) geos.add(m.geometry);
     if (m.material) for (const x of Array.isArray(m.material) ? m.material : [m.material]) mats.add(x);
   });
   const keepBuf = new Set<object>(), keepMat = new Set<THREE.Material>(), keepTex = new Set<THREE.Texture>();

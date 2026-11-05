@@ -91,7 +91,7 @@ export class GlassFx {
     this.edges.count = 0; this.edges.visible = false;
     scene.add(this.edges);
     live = this;
-    if (!hooked) { hooked = true; onStructure((p, child, added) => { const g = live; if (!child || !g || !g.scannedOnce) return; if (added) { if (g.pending.length < 65536) g.pending.push(child); } else if (p === g.scene) g.pruneDue = true; }); }
+    if (!hooked) { hooked = true; onStructure((p, child, added) => { const g = live; if (!child || !g || !g.scannedOnce) return; if (added) { if (g.pending.length < 65536) g.pending.push(child); } else if (p === g.scene || p.name === "far-merge") g.pruneDue = true; }); }
   }
   readonly edges: THREE.InstancedMesh;
   private edgeN = 0;

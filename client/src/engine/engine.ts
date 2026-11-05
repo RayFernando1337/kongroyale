@@ -236,18 +236,9 @@ export class Engine implements WorldCtx {
     this.post?.setSize(w, h);
   }
 
-  readonly hooksOf = new Map<string, Array<(dt: number, t: number) => void>>();
-  readonly evicted = new Set<string>();
-  private updateSink: Array<(dt: number, t: number) => void> | null = null;
   rebuilding = false;
-  trackUpdates(id: string | null) {
-    if (id && !this.hooksOf.has(id)) this.hooksOf.set(id, []);
-    this.updateSink = id ? this.hooksOf.get(id)! : null;
-    this.rebuilding = !!id && this.evicted.has(id);
-  }
   onUpdate(fn: (dt: number, t: number) => void) {
     this.updates.push(fn);
-    if (this.updateSink && !this.inStep) this.updateSink.push(fn);
     // (hitch attribution: the stage that registered the hook — main.ts sets __kr.stage / streamStage per module build)
     const kr = (globalThis as { __kr?: { stage?: string; streamStage?: string } }).__kr;
     this.updLabels.push(String(kr?.streamStage || kr?.stage || "?"));
