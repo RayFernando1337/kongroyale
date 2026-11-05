@@ -29,5 +29,10 @@ function dropSource(t: THREE.Texture) {
   if (!px || px.data === null) return;
   t.onUpdate = null;
   t.source.data = { width: px.width, height: px.height, depth: px.depth, data: null };
-  if (px.data === undefined && typeof ImageBitmap !== "undefined" && px instanceof ImageBitmap) px.close();
+  if (px.data === undefined) freeImage(px);
+}
+
+export function freeImage(img: unknown) {
+  if (typeof ImageBitmap !== "undefined" && img instanceof ImageBitmap) img.close();
+  else if ((typeof HTMLCanvasElement !== "undefined" && img instanceof HTMLCanvasElement) || (typeof OffscreenCanvas !== "undefined" && img instanceof OffscreenCanvas)) img.width = img.height = 1;
 }
