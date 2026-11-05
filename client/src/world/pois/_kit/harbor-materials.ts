@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { canvas, edgeShade, hazardStripes, noiseTile, normalFromHeight, paintNoise, rng, scratches, splotches, streaks, tex, type TexOpts } from "./harbor-paint";
 import { workerPool } from "../../../engine/worker-pool";
+import { cappedBitmap } from "../../../engine/tex-cap";
 import { presetImageMean, setPaletteMaterial } from "./harbor-geo";
 
 export interface HarborMats {
@@ -579,7 +580,7 @@ export function harborMatsAsync(): Promise<HarborMats> {
         order.forEach((g, i) => chunks[i % 4].push(g));
         const res = await Promise.all(chunks.map((c) => pool.run<{ bm: Record<string, ImageBitmap>; means: Record<string, [number, number, number]> }>("paintMeans", c)));
         pool.close();
-        for (const r of res) for (const [k, v] of Object.entries(r.bm)) { PRE.set(k, v); const mn = r.means[k]; if (mn) presetImageMean(v, mn); }
+        for (const r of res) for (const [k, raw] of Object.entries(r.bm)) { const v = await cappedBitmap(raw); PRE.set(k, v); const mn = r.means[k]; if (mn) presetImageMean(v, mn); }
       } catch (e) { console.warn("[harbor] texture worker failed — painting on the main thread", e); }
     }
     return harborMats();
