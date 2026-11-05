@@ -280,7 +280,8 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     { const r = render; render.onVictory = () => { victoryTimer = window.setTimeout(() => { if (render === r && inMatch) showResults(true); }, 4000); }; }
     // a replaced link's late messages / close never reach the current session
     l.onJSON = (m) => { if (link === l) onJSON(m); };
-    l.onClose = (reason) => { if (link === l && (inMatch || lobbyState.code)) linkLost(l, reason); };
+    // at the title nothing is lost, but the dead link must go, or the next CREATE / JOIN reuses it and sends nothing
+    l.onClose = (reason) => { if (link !== l) return; if (inMatch || lobbyState.code) linkLost(l, reason); else link = null; };
   }
   function onJSON(m: Record<string, unknown>) {
     if (reconnect && (m.t === "lobby" || m.t === "match")) stopReconnect();   // back in: the room or our seat answered
