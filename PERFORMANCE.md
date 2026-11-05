@@ -40,7 +40,7 @@ win until their scenario produces repeatable baseline/candidate comparisons.
 | Private server/socket workload | `tools/performance/server-bench.mjs`, `tools/performance/sockets.mts` |
 | Latency/jitter hit-registration checks | `tools/netlab.mts` |
 | Wire, matrix, geometry and splat coverage checks | `npm run bench:verify` |
-| Real-GPU view captures and synchronous render benchmark | `tools/shot.mjs`, `Engine.bench()` in `client/src/engine/engine.ts` |
+| Real-GPU view captures and synchronous render benchmark | `tools/shot.mjs`, `await __kr.bench(n)` (`bench()` in `client/src/engine/dev-probes.ts`) |
 | Tick/event-loop histograms, CPU and memory | `server/perf.ts`, enabled by `KR_PERF_METRICS=1` |
 | Bounded error/frame evidence | `client/src/kongbot/capture.ts` |
 | Player reports, context, durable server queue and triage | `client/src/kongbot/`, `server/kongbot.ts`, `tools/kongbot/cli.mts` |
@@ -61,7 +61,7 @@ win until their scenario produces repeatable baseline/candidate comparisons.
    Add scenario-specific checks after establishing noise and intended behavior.
 5. **Keep platform prerequisites explicit.** The server wrapper sets `KR_EVENT_MODE=0` for private room creation.
    Its extensionless `node_modules/.bin/tsx` spawn targets Linux/macOS; Windows compatibility is not established.
-6. **Do not confuse render throughput with live latency.** `Engine.bench()` forces completion with `readPixels`.
+6. **Do not confuse render throughput with live latency.** `__kr.bench()` forces completion with `readPixels`.
    Keep it for controlled rendering comparisons; add normal-rAF, moving-camera/in-match measurements.
 7. **Unify GPU query ownership.** The engine's continuous timer and display calibration have separate query
    lifecycles, validity rules and aggregation. One bounded query owner should serve calibration, dynamic resolution,

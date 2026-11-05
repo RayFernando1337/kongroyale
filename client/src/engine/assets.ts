@@ -53,7 +53,8 @@ export class Assets {
   texture(path: string, o: { srgb?: boolean; repeat?: boolean; aniso?: boolean } = {}): Promise<THREE.Texture> {
     const { srgb = true, repeat = true, aniso = true } = o;
     return this.once(`tex:${path}:${srgb}:${repeat}`, async () => {
-      const t = releaseAfterUpload(await retry(() => this.tex.loadAsync(assetUrl(path))));
+      const load = () => retry(() => this.tex.loadAsync(assetUrl(path)));
+      const t = releaseAfterUpload(await load(), async () => capped((await load()).image));
       (t as THREE.Texture).image = capped(t.image);
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
