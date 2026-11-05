@@ -29,6 +29,15 @@ type Data = {
   inProgress: { name: string; estimate: string; source: string }[];
 };
 type MemoryChart = { id: string; title: string; caption: string; note?: string; warning?: string; series?: ("total" | "browser" | "renderer" | "gpu" | "heap")[]; x?: "time" | "phase"; killMB?: number; killLabel?: string; runs: { file: string; label: string }[]; source: string };
+type Story = {
+  title: string;
+  lead: string;
+  firstWords: { term: string; plain: string }[];
+  cards: { head: string; plain: string; notice: string; prs: number[]; method: string }[];
+  safari: { title: string; plain: string; columns: string[]; rows: { build: string; end: string; time: string; peak: string; pois: string }[]; steps: string; caveat: string; method: string };
+  journey: { title: string; items: { pr: number; text: string }[] };
+  links: [string, string][];
+};
 type Pr = { number: number; title: string; state: string; labels: { name: string }[]; mergedAt: string | null; createdAt: string; url: string };
 type Release = { tagName: string; name: string; isPrerelease: boolean; publishedAt: string; url: string; body: string };
 
@@ -275,13 +284,28 @@ function main(): void {
   };
   const memoryPage = '<h2>Memory over time</h2><p class="lead">' + esc(memoryData.plain) + "</p>" + memoryData.charts.map(memoryCard).join("");
 
-  const pages: [string, string, string][] = [["summary", "Summary", summary], ["overview", "Overview", overview], ["releases", "Releases", releasesPage], ["performance", "Performance", performance], ["memory", "Memory", memoryPage], ["fixes", "Fixes", fixes], ["roadmap", "Roadmap", roadmap], ["play", "Play experience", play], ["waiting", "Waiting", waiting]];
+  const story = JSON.parse(fs.readFileSync(path.join(HERE, "story.json"), "utf8")) as Story;
+  const mergedOn = (n: number) => {
+    const p = merged.find((m) => m.number === n);
+    return p?.mergedAt ? shortDate(p.mergedAt) : "";
+  };
+  const start =
+    '<div class="hero"><p class="eyebrow">Start here</p><h1>' + esc(story.title) + '</h1></div><p class="lead">' + esc(story.lead) + "</p>" +
+    '<div class="story">' + story.cards.map((c, i) => '<div class="card story-card"><span class="story-n">' + (i + 1) + "</span><h3>" + esc(c.head) + '</h3><p class="plain">' + esc(c.plain) + '</p><p class="notice">' + esc(c.notice) + '</p><p class="tech">' + esc(c.method) + "</p>" + (c.prs.length ? '<p class="tech-line">Changes: ' + c.prs.map(prLink).join(", ") + "</p>" : "") + "</div>").join("") + "</div>" +
+    '<div class="card"><h3>' + esc(story.safari.title) + '</h3><p class="plain">' + esc(story.safari.plain) + '</p><div class="table-wrap"><table class="play safari"><thead><tr>' + story.safari.columns.map((c) => "<th>" + esc(c) + "</th>").join("") + "</tr></thead><tbody>" +
+    story.safari.rows.map((r) => '<tr><td data-label="' + esc(story.safari.columns[0]) + '"><b>' + esc(r.build) + '</b></td><td data-label="' + esc(story.safari.columns[1]) + '">' + esc(r.end) + '</td><td data-label="' + esc(story.safari.columns[2]) + '" class="now">' + esc(r.time) + '</td><td data-label="' + esc(story.safari.columns[3]) + '" class="now">' + esc(r.peak) + '</td><td data-label="' + esc(story.safari.columns[4]) + '">' + esc(r.pois) + "</td></tr>").join("") +
+    '</tbody></table></div><p class="plain">' + esc(story.safari.steps) + '</p><p class="muted">' + esc(story.safari.caveat) + '</p><p class="tech">' + esc(story.safari.method) + "</p></div>" +
+    '<h2>Words used on this page</h2><div class="card"><dl class="words">' + story.firstWords.map((w) => "<dt>" + esc(w.term) + "</dt><dd>" + esc(w.plain) + "</dd>").join("") + "</dl></div>" +
+    "<h2>" + esc(story.journey.title) + '</h2><div class="card"><ol class="timeline">' + story.journey.items.map((i) => "<li><span class=\"when\">" + mergedOn(i.pr) + "</span> " + prLink(i.pr) + " " + esc(i.text) + "</li>").join("") + "</ol></div>" +
+    '<h2>Go deeper</h2><div class="card"><ul class="list">' + story.links.map((l) => '<li><a href="#' + l[0] + '">' + esc(l[1]) + "</a></li>").join("") + "</ul></div>";
+
+  const pages: [string, string, string][] = [["start", "Start here", start], ["summary", "Summary", summary], ["overview", "Overview", overview], ["releases", "Releases", releasesPage], ["performance", "Performance", performance], ["memory", "Memory", memoryPage], ["fixes", "Fixes", fixes], ["roadmap", "Roadmap", roadmap], ["play", "Play experience", play], ["waiting", "Waiting", waiting]];
   const css = fs.readFileSync(path.join(HERE, "style.css"), "utf8");
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(data.title) + "</title><style>" + css + "</style></head><body>" +
     '<header><div class="brand">' + esc(data.title) + '</div><nav>' + pages.map((p) => '<a href="#' + p[0] + '" data-page="' + p[0] + '">' + p[1] + "</a>").join("") + "</nav></header><main>" +
     pages.map((p) => '<section id="' + p[0] + '" class="page">' + p[2] + "</section>").join("") +
     '</main><footer>Updated ' + stamp(now.toISOString()) + ". Counts are live from GitHub. Measurements come from tools/dashboard/data.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
-    "<script>function show(){var id=(location.hash||'#summary').slice(1);if(!document.getElementById(id))id='summary';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){var on=a.dataset.page===id;a.classList.toggle('on',on);if(on){a.setAttribute('aria-current','page');var n=a.parentNode;n.scrollLeft=a.offsetLeft-(n.clientWidth-a.offsetWidth)/2}else a.removeAttribute('aria-current')});scrollTo(0,0)}addEventListener('hashchange',show);show();</script></body></html>";
+    "<script>function show(){var id=(location.hash||'#start').slice(1);if(!document.getElementById(id))id='start';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){var on=a.dataset.page===id;a.classList.toggle('on',on);if(on){a.setAttribute('aria-current','page');var n=a.parentNode;n.scrollLeft=a.offsetLeft-(n.clientWidth-a.offsetWidth)/2}else a.removeAttribute('aria-current')});scrollTo(0,0)}addEventListener('hashchange',show);show();</script></body></html>";
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, "index.html"), html);
   console.log("dashboard: " + path.join(out, "index.html") + " (" + merged.length + " merged, " + open.length + " open, " + upOpen.length + " upstream open, " + totalCommits + " commits)");
