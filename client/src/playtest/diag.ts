@@ -17,12 +17,12 @@ import { POIS } from "../../../shared/world/map";
 import { ring } from "./metrics.hot";
 
 const MAX_EVENTS = 500, PATH_S = 3600, PATH_W = 7, LONG_MS = 100, GC_DROP_MB = 50, BEAT_S = 5, DEAD_AFTER_MS = 12_000, KEEP_MS = 7 * 86_400_000;
-const BEAT_KEY = "kr.diag.hb.";
+const BEAT_KEY = "kr.diag.hb.", NEAR_POI_M = 150;
 const PATH_FIELDS = ["t", "x", "y", "z", "yawDeg", "pitchDeg", "phase"] as const;
 
 /** [page seconds, kind, number, text] */
 export type DiagEvent = [number, string, number, string];
-interface Beat { v: 1; sid: string; sha: string; at: number; upS: number; phase: number; poi: string | null; heapMB: number; textures: number; geometries: number; fps: number; hidden: boolean; clean: boolean }
+interface Beat { v: 1; sid: string; sha: string; at: number; upS: number; phase: number; x: number | null; z: number | null; poi: string | null; heapMB: number; textures: number; geometries: number; fps: number; hidden: boolean; clean: boolean }
 interface KrGame { inMatch?: boolean; cm?: { pred?: { x: number; y: number; z: number } } | null; input?: { yaw: number; pitch: number } }
 /** main.ts: streamMs = build ms of each module streamed in after the title, once integrated (a failed build too);
  *  modules = the modules resident now (a lowmem eviction removes one) */
@@ -95,12 +95,13 @@ function findDeadSession(): void {
   }, DEAD_AFTER_MS);
 }
 
-/** the POI whose edge is nearest (kongbot/context.ts nearestPoi, kept here so this lazy chunk doesn't make the entry export it) */
+/** the POI whose edge is nearest, if within NEAR_POI_M (kongbot/context.ts nearestPoi, kept here so this lazy chunk
+ *  doesn't make the entry export it) */
 function poiAt(x: number, z: number): string | null {
-  let best: string | null = null, edge = Infinity;
+  let best: string | null = null, edge = NEAR_POI_M;
   for (const p of POIS) {
     const d = Math.hypot(x - p.x, z - p.z) - p.r;
-    if (d < edge) { edge = d; best = p.id; }
+    if (d <= edge) { edge = d; best = p.id; }
   }
   return best;
 }
@@ -118,7 +119,7 @@ export function installDiag(engine: Engine): (at: number) => void {
 
   const resident = new Set<string>(), failed = new Set<string>();
   const last = { phase: -2, programs: -1, scale: -1, heap: -1 };
-  let beat: Beat = { v: 1, sid, sha: BUILD.sha, at: Date.now(), upS: 0, phase: -1, poi: null, heapMB: -1, textures: 0, geometries: 0, fps: 0, hidden: false, clean: false };
+  let beat: Beat = { v: 1, sid, sha: BUILD.sha, at: Date.now(), upS: 0, phase: -1, x: null, z: null, poi: null, heapMB: -1, textures: 0, geometries: 0, fps: 0, hidden: false, clean: false };
   addEventListener("pagehide", () => { beat.clean = true; beat.at = Date.now(); writeBeat(beat); });
   addEventListener("pageshow", (e) => { if (e.persisted) { beat.clean = false; writeBeat(beat); } });
   addEventListener("visibilitychange", () => {
@@ -150,7 +151,7 @@ export function installDiag(engine: Engine): (at: number) => void {
       pathCursor.rows++;
     }
     if (++seconds % BEAT_S === 0) {
-      beat = { ...beat, at: Date.now(), upS: Math.round(ring[at]), phase, poi: p ? poiAt(p.x, p.z) : null, heapMB: Math.round(heap), textures: ring[at + 11], geometries: ring[at + 12], fps: Math.round(ring[at + 1]), hidden: document.visibilityState === "hidden" };
+      beat = { ...beat, at: Date.now(), upS: Math.round(ring[at]), phase, x: p ? Math.round(p.x) : null, z: p ? Math.round(p.z) : null, poi: p ? poiAt(p.x, p.z) : null, heapMB: Math.round(heap), textures: ring[at + 11], geometries: ring[at + 12], fps: Math.round(ring[at + 1]), hidden: document.visibilityState === "hidden" };
       writeBeat(beat);
     }
   };
