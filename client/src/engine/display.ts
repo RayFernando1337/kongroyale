@@ -172,7 +172,7 @@ export class Display {
     const saved = store.get();
     const reclassified = !!saved && saved.preset === "auto" && !saved.stepped && saved.auto !== this.gpuLevel;
     this.firstVisit = !saved || reclassified;
-    this.settings = saved && !reclassified ? saved : presetSettings(this.gpuLevel, this.backingPx(), { ...saved, auto: this.gpuLevel }, true);
+    this.settings = saved && !reclassified ? saved : { ...presetSettings(this.gpuLevel, this.backingPx(), { ...saved, auto: this.gpuLevel }, true), dynres: saved?.dynres ?? false };
     if (!saved || reclassified) this.settings.preset = "auto";
     // the FOV used to live on the pause card too (kr-settings.fov, re-synced to this store at every boot and then moved by
     // that slider): it holds the FOV last in effect — adopt it once; the first write of this store retires it
