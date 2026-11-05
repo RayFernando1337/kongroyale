@@ -95,10 +95,12 @@ function storedScore(): number | null {
     return Number.isFinite(v) && v > 0 ? v : null;
   } catch { return null; }
 }
+let pageScore: number | null | undefined;
 function measuredScore(gpu: string): number | null {
+  if (pageScore !== undefined) return pageScore;
   const r = gpuScore();
   if (r) try { localStorage.setItem(SCORE_KEY, JSON.stringify({ score: r.score, gpu })); } catch { void 0; }
-  return r?.score ?? null;
+  return pageScore = r?.score ?? null;
 }
 export function deviceLevel(gpu: string): Level {
   if (!anonymousMacGpu(gpu)) return classifyGpu(gpu);
