@@ -28,6 +28,26 @@
       "source": "project drive: handoffs/safari-growth/README.md and kmt/*.json"
     },
     {
+      "id": "v020-main",
+      "title": "Chrome on Windows (D3D11): v0.2.0 vs main",
+      "caption": "Three runs of each build with the fixed measuring script, both standing still. At every measured phase, main 8f42339's median is 1,604 to 2,135 MB lower than kong-v0.2.0's: 6,504 MB against 8,409 MB at the title, 12,304 MB against 14,426 MB thirty seconds into a match, and 12,500 MB against 14,506 MB after leaving the second match. Neither build grows from one match to the next. The two builds don't run at the same quality: on Auto, v0.2.0 boots at ultra and main boots at high. Comparing with the earlier ultra and high runs on this machine suggests about 1,700 MB of the gap comes from our releases and about 350 MB from the lower quality, but that split is an estimate across two days of runs, not a same-quality test.",
+      "series": [
+        "total"
+      ],
+      "x": "time",
+      "runs": [
+        {
+          "file": "d3d11-v3-v0.2.0-1.json",
+          "label": "kong-v0.2.0 (Auto boots ultra)"
+        },
+        {
+          "file": "d3d11-v3-main-8f42339-1.json",
+          "label": "main 8f42339 (Auto boots high)"
+        }
+      ],
+      "source": "project drive: handoffs/memory-v020-vs-main-d3d11/README.md (medians, quality tiers, release vs quality split) and v020-1, main-1 result.json (RAY-138); the chart shows run 1 of each"
+    },
+    {
       "id": "chrome-safari",
       "title": "Chrome vs Safari on the same 16 GB Mac mini",
       "caption": "Both runs leave the kong standing still. Chrome levels off at about 10 GB for the whole browser (9,943 MB median 60 seconds into a match, six runs) and doesn't grow in a second match. Safari keeps climbing as locations load and reaches 9,278 MB by the results screen. Chrome's total counts every browser process. Safari's counts only the page's process and its graphics process, so Safari's real total is higher than shown. The two runs are on different builds: main 7890f3b for Chrome, main f417032 for Safari. The Chrome run ends at 320 seconds. It plays two matches and leaves each one about 60 seconds after landing (the first runs from Play at 34 seconds to leaving at 178 seconds). It doesn't play a match through to the results screen, so it doesn't show Chrome over a full match.",
@@ -107,13 +127,6 @@
         }
       ],
       "source": "project drive: handoffs/release-kong-v0.4.1-d3d11/README.md (medians) and memory/runs/*/result.json; the overstatement is KONG-43; v3 confirmation: project drive handoffs/memory-baseline-d3d11-v3/README.md (RAY-130)"
-    },
-    {
-      "id": "v020-main",
-      "title": "v0.2.0 vs current main",
-      "caption": "Not measured yet. No run of v0.2.0 recorded memory over time.",
-      "runs": [],
-      "source": "none yet"
     }
   ]
 }
