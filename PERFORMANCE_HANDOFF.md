@@ -8,8 +8,7 @@ This document owns dispatch prompts and coordination rules for the proposed work
 1. Read the plan and assign **one workstream per agent**. FND's core landed (#10, #11, #12), so start with the open
    items in the table below, through the lane that owns them.
 2. Give every agent an isolated branch/worktree, an approved file scope and access only to private test servers.
-3. PERF-01 and PERF-02 both touch `client/src/game/render.ts`; serialize those edits or agree non-overlapping
-   ownership before writing. FND owns shared timing/schema changes. PERF-03 owns shared simulation indexing.
+3. PERF-02 touches `client/src/game/render.ts`; agree ownership with anyone else editing it before writing. FND owns shared timing/schema changes. PERF-03 owns shared simulation indexing.
 4. Allow code-reading/fixture design in parallel, but serialize timed GPU trials on each physical GPU.
 5. Explicitly discuss protected changes under AGENTS.md before assigning implementation that requires them.
    This handoff is not blanket approval for CI, dependencies, telemetry endpoints, wire changes or balance.
@@ -18,12 +17,12 @@ This document owns dispatch prompts and coordination rules for the proposed work
 
 ## Workstream assignments
 
-Status as of 2026-11-05 on fork main 3546a534; [PERFORMANCE.md](PERFORMANCE.md) has the item-by-item detail.
+Status as of 2026-11-05 on fork main 6f684aba; [PERFORMANCE.md](PERFORMANCE.md) has the item-by-item detail.
 
 | Id | Assignment | First deliverable | Status, lane |
 |---|---|---|---|
 | FND | Measurement foundation and benchmark validity | Versioned scenario/result contract, representative fixture and repeated baseline comparison | Core done (#10, #11, #12). Open, no lane: storm/endgame and multi-lobby scenarios, network tail gates, the Windows server wrapper. Open, KONG-68: one GPU query owner |
-| PERF-01 | Procedural character animation budget | Crowded/dispersed CPU baseline and one distant-animation experiment | Open, KONG-68 |
+| PERF-01 | Procedural character animation budget | Crowded/dispersed CPU baseline and one distant-animation experiment | Done (#187) |
 | PERF-02 | Interaction prompt query reuse/invalidation | Query-count baseline, same-frame reuse/cache experiment and responsiveness gate | Open, KONG-68 |
 | PERF-03 | Deterministic loot candidate index | Trace-sensitive fixture and bounded pickup indexing experiment | Open, no lane; must pass RAY-152's determinism gates |
 | PERF-04 | Tree/understory splat budgets | Fixed-quality motion route and understory-only density sweep | Open, KONG-68 |
@@ -86,8 +85,7 @@ The first assignment, FND, is obsolete as written: the result contract, compare,
 checks landed in #10, #11 and #12, and the `perf` skill (`.agents/skills/perf/`) is the procedure owners follow. Use the
 prompt above for the open items, with this scope:
 
-- PERF-01, PERF-02, PERF-04 and the GI samples experiment go to KONG-68. PERF-01 and PERF-02 both edit
-  `client/src/game/render.ts`; serialize them.
+- PERF-02, PERF-04 and the GI samples experiment go to KONG-68. PERF-01 is done (#187).
 - One GPU timer owner goes to KONG-68. Propose it before changing the engine, display, storm and water query paths.
 - PERF-03 and the ray collider dedup have no lane. Assign a simulation owner, and gate the change on RAY-152's
   determinism checks and the `sim` step's golden hashes.

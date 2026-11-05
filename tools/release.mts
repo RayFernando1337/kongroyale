@@ -138,6 +138,7 @@ const ciGreen = (sha: string) => {
 };
 
 const plan = (hotfixFrom?: string) => {
+  if (git("rev-parse", "--is-shallow-repository") === "true") die("this clone is shallow, so earlier releases can't be traced into HEAD and the notes would start at v" + BASE_VERSION + "; run git fetch --unshallow origin first");
   const all = releases();
   const target = git("rev-parse", "HEAD");
   const isAncestor = (sha: string) => { try { git("fetch", "--quiet", "origin", sha); git("merge-base", "--is-ancestor", sha, target); return true; } catch { return false; } };

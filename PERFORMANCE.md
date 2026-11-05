@@ -10,18 +10,19 @@ Memory work has its own plan in [docs/memory-architecture.md](docs/memory-archit
 Written 2026-11-03 from a read-only investigation of client CPU, rendering, simulation, networking and diagnostics.
 The five optimization candidates below started as hypotheses, not measured bottlenecks or promised improvements.
 
-Updated 2026-11-05 against fork main (3546a534, after the upstream sync in #182). Every item is marked **done** with the
+Updated 2026-11-05 against fork main (6f684aba, after #201). Every item is marked **done** with the
 pull request that did it, **open** with the lane that owns it where one exists, or **obsolete** with the reason.
 File references were re-checked on that revision; verify them again before implementation.
 
 | Status | Count | Items |
 |---|---|---|
-| Done | 13 | Benchmark warmup split and real-play scenario, timing without packet hashing, achieved load, in-match real-GPU timing, result contract and compare, browser collectors, PERF-05 water SSR, shared benchmark helpers, local Basis transcoder, metrics flight recorder, context-loss events, replay, no-GPU CI gates |
-| Open | 13 | Storm/endgame and multi-lobby scenarios, network tail gates, Windows server wrapper, one GPU query owner, PERF-01, PERF-02, PERF-03, ray collider dedup, PERF-04, GI samples, DOM helpers, automatic incident upload, hardware regression lane |
+| Done | 14 | Benchmark warmup split and real-play scenario, timing without packet hashing, achieved load, in-match real-GPU timing, result contract and compare, browser collectors, PERF-01 kong animation budget, PERF-05 water SSR, shared benchmark helpers, local Basis transcoder, metrics flight recorder, context-loss events, replay, no-GPU CI gates |
+| Open | 12 | Storm/endgame and multi-lobby scenarios, network tail gates, Windows server wrapper, one GPU query owner, PERF-02, PERF-03, ray collider dedup, PERF-04, GI samples, DOM helpers, automatic incident upload, hardware regression lane |
 | Obsolete | 4 | "No benchmarks were run", "no memory leak was established", FND as the first assignment, CI described as build and secrets only |
 
 Lanes that own open work: textures KONG-44, geometry and impostors KONG-45, resource ownership KONG-47, shader-compile
-stalls KONG-59, in-game FPS KONG-68, determinism RAY-152. An open item with no lane named has no owner yet.
+stalls KONG-59, in-game FPS KONG-68, determinism RAY-152 (deterministic math for every platform landed in #184). An open item with no lane named has no owner
+yet.
 
 Build a small performance lab around the existing tools, then assign narrowly scoped experiments. Do not start with
 a renderer rewrite, a general-purpose framework, or broad cleanup. Shared measurement and lifecycle procedures
@@ -57,7 +58,7 @@ claim a win until their scenario produces repeatable baseline/candidate comparis
 | Latency/jitter hit-registration checks | `tools/netlab.mts` |
 | Wire, matrix, geometry and splat coverage checks | `npm run bench:verify` |
 | Real-GPU view captures and synchronous render benchmark | `tools/shot.mjs`, `await __kr.bench(n)` (`bench()` in `client/src/engine/dev-probes.ts`) |
-| Real-GPU in-match frame timing | `tools/performance/gpu-match.mts` (#18), the `?perfhud` per-second timeline (#97) |
+| Real-GPU in-match frame timing | `tools/performance/gpu-match.mts` (#18) with the fixed-seed play route `--route tour` and the per-POI `--route survey` (#201), the `?perfhud` per-second timeline (#97) |
 | Page load to playable title and match | `tools/performance/load-profile.mts` (#22) |
 | Whole-browser memory and what holds it | `tools/performance/memory.mts` (#96) |
 | Tick/event-loop histograms, CPU and memory | `server/perf.ts`, enabled by `KR_PERF_METRICS=1` |
@@ -75,9 +76,11 @@ claim a win until their scenario produces repeatable baseline/candidate comparis
    separate, slower mode that only compares with traced runs.
 3. **Record achieved load.** **Done (#11):** results record inputs per player per second and skipped generator steps,
    and the `inputLoadAchieved` and `serverKeptTickRate` gates reject an under-driven run.
-4. **Gate relevant network tails.** **Open.** `sockets.mts` gates errors, disconnects, achieved load, tick rate,
-   snapshot delivery and the server tick p99, but no RTT, input-ack or snapshot-gap tails. Add scenario-specific checks
-   after establishing noise and intended behavior.
+4. **Gate relevant network tails.** **Open; a report exists (#192).** `tools/performance/net-tail.mts` reports RTT,
+   input ack, snapshot gaps, corrections, remote holds and hit confirm/ghost rates at 50, 150 and 250 ms RTT with jitter
+   and loss profiles, against `net-budgets.json`. It is report-only until the budgets are agreed, so no tail fails a run
+   yet. Real-socket and WAN numbers still need runs over `netpath.py` or a real network; see
+   [tools/performance/README.md](tools/performance/README.md#network-tails).
 5. **Keep platform prerequisites explicit.** The server wrapper sets `KR_EVENT_MODE=0` for private room creation.
    **Open:** its extensionless `node_modules/.bin/tsx` spawn still targets Linux/macOS; Windows compatibility is not
    established.
@@ -156,16 +159,19 @@ results. Do not add blocking GL reads to production hot paths to make profiling 
 ## 2. Five initial optimization tracks
 
 The order is a dispatch recommendation based on code evidence and experiment scope, not a measured cost ranking.
-Keep each experiment single-variable. Only PERF-05 has landed; the other four are still hypotheses.
+Keep each experiment single-variable. PERF-01 and PERF-05 have landed; the other three are still hypotheses.
 
 ### PERF-01: Budget procedural character animation
 
-**Status: open (KONG-68).** `updateActors` still calls `apply` on every visible remote kong every frame.
+**Status: done (#187).** A kong drawn at the min tier re-poses at most every `ANIM_SMALL_S` (1/30 s), and one neither
+in view nor casting a shadow into it every `ANIM_HIDDEN_S` (0.1 s). In between, its last pose follows the body rigidly,
+the springs step at most `SPRING_DT_S`, and shots and hits it skipped still play (`client/src/actors/kong.ts`,
+`client/src/actors/kong-rig.ts`). Drawing is unchanged; IK, overlays, staged poses and shot mode re-pose every frame.
 
 **Hypothesis:** full animation work is paid for remote characters that are tiny or off-screen, even though drawing
 already uses screen-size LOD. `updateActors` calls `apply`, which runs the full pose/IK/face pipeline.
 
-Evidence: `client/src/game/render.ts:2072-2112`, `client/src/actors/kong.ts:1140`, `client/src/actors/kong-rig.ts`.
+Evidence: `client/src/game/render.ts:2072-2112`, `client/src/actors/kong.ts:1150`, `client/src/actors/kong-rig.ts`.
 
 - First experiment: keep near animation unchanged; reduce distant pose update cadence and/or omit unnecessary
   face/foot-IK work using existing projected-size information. Avoid blindly multiplying spring integration `dt`;
@@ -185,7 +191,7 @@ Evidence: `client/src/game/render.ts:2072-2112`, `client/src/actors/kong.ts:1140
 **Hypothesis:** per-frame HUD interaction work scans world collections unnecessarily. The prompt block queries
 vehicles twice and checks loot, chests, glass and ziplines; the loot helper scans all items.
 
-Evidence: `client/src/game/render.ts:2500-2516`, `shared/sim/pickup.ts:38`.
+Evidence: `client/src/game/render.ts:2500-2516`, `shared/sim/pickup.ts:37`.
 
 - First experiment: reuse same-frame results and cache prompt candidates until relevant player/aim/world changes,
   with a bounded refresh interval. Test cadence before building a new index.
@@ -196,7 +202,7 @@ Evidence: `client/src/game/render.ts:2500-2516`, `shared/sim/pickup.ts:38`.
 - Gates: unchanged pickup choice/reachability; no stale prompt or perceptible interaction delay. A provisional
   100 ms maximum refresh bound is a hypothesis to test, not a guaranteed acceptable feel.
 - Preserve existing HUD dirty checks and server-side validation.
-- Owner: gameplay/UI engineer; coordinate `game/render.ts` with PERF-01.
+- Owner: gameplay/UI engineer.
 
 ### PERF-03: Deterministic loot candidate indexing
 
@@ -221,7 +227,7 @@ Evidence: `shared/sim/match.ts:1213-1217`, `shared/sim/bots.hot.ts:466`, `shared
   exceed savings and a once-per-tick index could change sequential observation semantics.
 - Owner: simulation engineer.
 
-Follow-up after profiling: ray-local collider deduplication in `shared/sim/world.ts:825-940`. **Status: open**, same
+Follow-up after profiling: ray-local collider deduplication in `shared/sim/world.ts:826-941`. **Status: open**, same
 owner note as PERF-03. #13 and #19 cut the boxes and cells a ray tests, but a box spanning several cells can still be
 tested once per cell; the capsule queries already deduplicate with a generation stamp, the raycast doesn't. Preserve
 equal-distance selection, normals, terrain precedence, glass and nested query safety. Existing grids/DDA already
@@ -229,7 +235,8 @@ provide a broadphase; do not replace them without comparative evidence.
 
 ### PERF-04: Separate tree and understory splat budgets
 
-**Status: open (KONG-68).** The density sweep hasn't been run. Quality tiers still apply one `dist` and one `density`
+**Status: open (KONG-68).** The density sweep hasn't been run. `gpu-match.mts --route tour` (#201) now gives a
+fixed-seed motion route to run it on. Quality tiers still apply one `dist` and one `density`
 multiplier (`client/src/world/veg/index.ts:228-300`).
 
 **Hypothesis:** the same quality multiplier for trees and understory spends unnecessary far-vegetation work.
@@ -380,7 +387,7 @@ not passed. Do not install dependencies or change CI just to conceal an environm
 
 1. FND: **done** for host and socket workloads (#10, #11, #12). Still open: storm/endgame and multi-lobby scenarios,
    network tail gates, the Windows server wrapper and the GPU query owner.
-2. PERF-01/PERF-02: open, KONG-68; coordinate shared `game/render.ts` edits.
+2. PERF-01: done (#187). PERF-02: open, KONG-68.
 3. PERF-03 and ray deduplication: open, no lane; trace fixtures exist (the `sim` step's golden hashes), and RAY-152 owns
    determinism.
 4. PERF-04 and GI samples: open, KONG-68. PERF-05 is done (#21).

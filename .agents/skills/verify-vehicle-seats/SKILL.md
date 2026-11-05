@@ -1,6 +1,6 @@
 ---
 name: verify-vehicle-seats
-description: Model-check Kong Royale's vehicle seats (tuk-tuks and helicopters) with TLA+ - v.seats and each rider's st/veh/seat must always agree, one squad per vehicle, no dead rider. Use before calling done any change to how a kong gets into, out of, or between vehicle seats, or to what clears a seat - shared/sim/vehicle.ts freeSeat/enterVehicle/exitVehicle/switchSeat/takeSeat, shared/sim/match.ts useVehicle/ejectAll/kill/stepVehicles/spawnTuks, shared/sim/player.ts stepRide/resetForMatch.
+description: Model-check Kong Royale's vehicle seats (tuk-tuks and helicopters) with TLA+ - v.seats and each rider's st/veh/seat must always agree, one squad per vehicle, no dead rider. Use before calling done any change to how a kong gets into, out of, or between vehicle seats, or to what clears a seat - shared/sim/vehicle.ts freeSeat/enterVehicle/exitVehicle/switchSeat/takeSeat, shared/sim/match.ts useVehicle/ejectAll/kill/stepVehicles/spawnTuks, shared/sim/player.hot.ts stepRide, shared/sim/player.ts resetForMatch.
 ---
 
 # Verify vehicle seats
@@ -59,7 +59,7 @@ same pull request and run the check:
 | Code | Model action |
 |---|---|
 | shared/sim/vehicle.ts `freeSeat`, `enterVehicle`; match.ts `useVehicle` | Enter, FreeSeat |
-| player.ts `stepRide` (E, or the vehicle not `VS.Ok`), vehicle.ts `exitVehicle` | GetOut, ExitSeats |
+| player.hot.ts `stepRide` (E, or the vehicle not `VS.Ok`), vehicle.ts `exitVehicle` | GetOut, ExitSeats |
 | vehicle.ts `switchSeat`, `takeSeat` | Switch |
 | match.ts `kill` | Die |
 | match.ts `ejectAll`, `tukEvents` (TIP, SUNK), `blowTuk` | EjectAll, Events, Blow |
@@ -68,10 +68,11 @@ same pull request and run the check:
 | match.ts `spawnTuks` with `resetForMatch` in `enterWarmup` / `enterPlane` | Phase |
 | match.ts `stepRespawns`, warm-up respawn, buy-back | Respawn |
 
-Coverage record: the model describes the files above as of commit `369734c`. To see whether it may be out of date:
+Coverage record: the model describes the files above as of commit `76ebf89` (re-checked 2026-11-05 from `369734c`: #78 moved
+`stepRide` unchanged to shared/sim/player.hot.ts; #44, #45, #46, #47 and #82 touch nothing in the table). To see whether it may be out of date:
 
 ```sh
-git log --oneline 369734c..HEAD -- shared/sim/vehicle.ts shared/sim/match.ts shared/sim/player.ts
+git log --oneline 76ebf89..HEAD -- shared/sim/vehicle.ts shared/sim/match.ts shared/sim/player.ts shared/sim/player.hot.ts
 ```
 
 For each commit listed, check whether it touched a function in the table. Move the commit in this paragraph forward only

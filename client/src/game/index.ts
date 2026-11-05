@@ -862,6 +862,9 @@ function gameStage(name: string, p: number) {
 /** perf: chests / loot / held weapons / glider / render prefabs are prewarmed after the title is ready
  * (prewarmPrefabs) — ?prewarm=full builds them all before ready instead */
 const DEFER_PREFABS = flag("prewarm") !== "full";
+/** scene roots whose content the loading frames never draw (storm, weapon FX, loot beams, the FX fallback): with
+ *  DEFER_PREFABS their programs compile after ready (prewarmMatch), not behind the loading screen */
+const MATCH_ONLY_ROOTS = new Set(["storm", "weapons-fx", "loot-system", "fx-fallback"]);
 
 /** after the title is ready: make every spawnable prefab (chests of every rarity, opened; every weapon × rarity as loot
  * and held; consumables; ammo; glider; render prefabs) one at a time, then compile them in parallel and draw them ONCE
@@ -953,6 +956,9 @@ async function prewarmMatch(engine: Engine, kits: Kits, title: TitleScene, isBus
   const idle = () => kr.prepareUrgent ? Promise.resolve() : new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
   const vm = kits.viewModel;
   const vmItems: Array<WeaponId | ConsumableId> = [...WEAPONS, ...CONSUMABLES];
+  kr.matchWarm = "match-only";
+  await Promise.all([engine.compileObjects(engine.scene.children.filter((o) => MATCH_ONLY_ROOTS.has(o.name))), kits.storm.compile(engine.renderer)]);
+  if (isBusy()) return;
   kr.matchWarm = "viewmodel";
   for (const it of vmItems) { if (isBusy()) return; vm.equip(it, (CONSUMABLES as readonly string[]).includes(it) ? "rare" : "epic"); await idle(); }
   vm.equip(null);
@@ -1060,7 +1066,7 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
   }
   if (kits.viewModel) engine.camera.add(kits.viewModel.object);
   // storm: show a ring so its materials compile too
-  kits.storm.set({ cx: 0, cz: 0, r: 900, tx: 0, tz: 0, tr: 700, shrinking: true, phase: 2 });
+  if (!DEFER_PREFABS) kits.storm.set({ cx: 0, cz: 0, r: 900, tx: 0, tz: 0, tr: 700, shrinking: true, phase: 2 });
   // everything visible (hidden burst cones / lids / beams included) for the compile pass
   g.traverse((o) => { o.visible = true; o.frustumCulled = false; });
   title.update(0.016, 0);
@@ -1102,13 +1108,15 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
   gameStage("prewarm:compile", 0.45);
   const hidden: THREE.Object3D[] = [];
   engine.scene.traverse((o) => { if (!o.visible && !o.userData.krDummy) { hidden.push(o); o.visible = true; } });
+  const deferred = DEFER_PREFABS ? engine.scene.children.filter((o) => MATCH_ONLY_ROOTS.has(o.name)) : [];
+  const walk = (o: THREE.Object3D, fn: (o: THREE.Object3D) => void) => { if (deferred.includes(o)) return; fn(o); for (const c of o.children) walk(c, fn); };
+  const titleScene = { traverse: (fn: (o: THREE.Object3D) => void) => walk(engine.scene, fn), traverseVisible() {} } as unknown as THREE.Object3D;
   const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
   const prevRT = engine.renderer.getRenderTarget();
   engine.renderer.setRenderTarget(rt);
   let compiled: Promise<unknown> = Promise.resolve();
-  try { compiled = engine.renderer.compileAsync(engine.scene, cam); } catch { /* unsupported: the frames below compile */ }
+  try { compiled = engine.renderer.compileAsync(titleScene, cam, engine.scene); } catch { /* unsupported: the frames below compile */ }
   engine.renderer.setRenderTarget(prevRT);
-  compiled = Promise.all([compiled, kits.storm.compile(engine.renderer)]);
   // (perf: textures upload on first draw behind the loading screen — the frames below — and the rest one per frame in
   // the title (warmer.tick); the synchronous upload of every scene texture here cost 2.2 s of texSubImage2D)
   // shadow DEPTH programs (alpha-tested foliage, skinned kongs, instanced props): compileAsync never makes them and the
@@ -1120,10 +1128,15 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
     engine.scene.traverse((o) => { if (o.castShadow && o.frustumCulled) { unculled.push(o); o.frustumCulled = false; } });
     const sm = engine.renderer.shadowMap, au = sm.autoUpdate, nu = sm.needsUpdate;
     sm.needsUpdate = true; sun.shadow.needsUpdate = true;
+    for (const o of deferred) o.visible = false;
     try { sm.render([sun], engine.scene, cam); } catch { /* the frames below compile */ }
+    for (const o of deferred) o.visible = true;
     sm.autoUpdate = au; sm.needsUpdate = nu; sun.shadow.needsUpdate = true;
     for (const o of unculled) o.frustumCulled = true;
   }
+  // (after the shadow pass: storm.compile compiles its own scene, which leaves three's render state without the sun's
+  // shadow, so a shadow pass after it warmed depth programs without USE_SHADOWMAP that no real frame draws)
+  if (!DEFER_PREFABS) compiled = Promise.all([compiled, kits.storm.compile(engine.renderer)]);
   for (const o of hidden) o.visible = false;
   gameStage("prewarm:compile-wait", 0.55);
   try { await compiled; } catch { /* the frames below compile */ }

@@ -163,8 +163,8 @@ path to each broken rule in plain words, and for MatchEnds or PlayEnds a loop th
 
 | Code | Model action |
 |---|---|
-| match.ts `step`: the warm-up branch (`phaseT`, `warmWall`, `holdWarmup`, `skipWarmup`, `enterPlane`) | WarmTick, HoldOn |
-| match.ts `startNow`; server/index.ts onJSON "start" during a match | StartNow |
+| match.ts `step`: the warm-up branch (`phaseT`, `warmWall`, `holdWarmup` through `warmupHeld`, `skipWarmup`, `enterPlane`) | WarmTick, HoldOn |
+| match.ts `startNow`; server/index.ts onJSON "start" during a match (`Lobby.start` before one) | StartNow |
 | host.ts `holdForStream`; server/index.ts onJSON "stream" | HoldOn, Stream |
 | match.ts `stepPlane`, `enterPlay` | PlaneTick |
 | storm.ts `stormAt` and `PHASE_REF` (which phases keep resurgence) | Storm |
@@ -172,12 +172,15 @@ path to each broken rule in plain words, and for MatchEnds or PlayEnds a loop th
 | match.ts `kill`, `eliminate`, `squadsLeft` | Wipe, SquadsLeft |
 | match.ts `stepRespawns` | Redeploy |
 | match.ts `checkEnd`, `enterResults` | End |
-| match.ts `step`: the Results branch (`RESULTS_S`, `endAfterResults`, `over`); server/index.ts `Lobby.pump` | ResultsTick |
+| match.ts `step`: the Results branch (`RESULTS_S`, `endAfterResults`, `over`); server/lobby.ts `Lobby.pump`, `endMatch` | ResultsTick |
 
-Coverage record: the model describes these as of commit `369734c`. To see whether it may be out of date:
+Coverage record: the model describes these as of commit `76ebf89` (re-checked 2026-11-05 from `369734c`: #44 moved `Lobby` to
+server/lobby.ts unchanged, and #45 made `Match.step` read the hold through `warmupHeld`, which records it for replays and
+returns the same value; #46, #47 and #82 touch nothing in the table). To see whether it may be
+out of date:
 
 ```sh
-git log --oneline 369734c..HEAD -- shared/sim/match.ts shared/sim/storm.ts shared/net/host.ts server/index.ts
+git log --oneline 76ebf89..HEAD -- shared/sim/match.ts shared/sim/storm.ts shared/net/host.ts server/index.ts server/lobby.ts
 ```
 
 For each commit listed, check whether it touched a row of the table. Move the commit forward only after you have
