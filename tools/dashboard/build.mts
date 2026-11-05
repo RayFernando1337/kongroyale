@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readTrace, renderSvg } from "./memory-chart.mts";
 
 type Area = { id: string; name: string; blurb: string };
 type PerfItem = { id: string; area: string; name: string; plain: string; unit: string; before: number; after: number; approxAfter?: boolean; higherIsBetter?: boolean; digits?: number; regression?: boolean; remeasuring?: boolean; issue?: string; metric: string; machine: string; date: string; prs: number[]; source: string };
@@ -27,6 +28,7 @@ type Data = {
   summary: { wins: string[]; plain: string };
   inProgress: { name: string; estimate: string; source: string }[];
 };
+type MemoryChart = { id: string; title: string; caption: string; note?: string; warning?: string; series?: ("total" | "browser" | "renderer" | "gpu" | "heap")[]; x?: "time" | "phase"; killMB?: number; killLabel?: string; runs: { file: string; label: string }[]; source: string };
 type Pr = { number: number; title: string; state: string; labels: { name: string }[]; mergedAt: string | null; createdAt: string; url: string };
 type Release = { tagName: string; name: string; isPrerelease: boolean; publishedAt: string; url: string; body: string };
 
@@ -261,12 +263,24 @@ function main(): void {
     '<div class="card"><h3>Open on the project</h3>' + (open.length ? '<ul class="list">' + open.filter((p) => shown(p.title)).map(prItem).join("") + "</ul>" : '<p class="muted">Nothing open: every change has been reviewed and merged.</p>') + "</div>" +
     '<div class="card"><h3>Waiting on the original game (' + upOpen.length + ')</h3><details><summary>Show all</summary><ul class="list">' + upOpen.filter((p) => shown(p.title)).map((p) => '<li><span class="tech-line">' + esc(cleanTitle(p.title)) + '</span> <a href="' + esc(p.url) + '">#' + p.number + '</a><span class="when">' + shortDate(p.createdAt) + "</span></li>").join("") + "</ul></details></div>";
 
-  const pages: [string, string, string][] = [["summary", "Summary", summary], ["overview", "Overview", overview], ["releases", "Releases", releasesPage], ["performance", "Performance", performance], ["fixes", "Fixes", fixes], ["roadmap", "Roadmap", roadmap], ["play", "Play experience", play], ["waiting", "Waiting", waiting]];
+  const memoryDir = path.join(HERE, "memory");
+  const memoryData = JSON.parse(fs.readFileSync(path.join(memoryDir, "charts.json"), "utf8")) as { plain: string; charts: MemoryChart[] };
+  const memoryCard = (c: MemoryChart) => {
+    const traces = c.runs.map((r) => ({ ...readTrace(path.join(memoryDir, r.file)), label: r.label, build: r.label }));
+    const sources = traces.map((t) => "<li>" + esc(t.label) + ": " + esc(t.source) + "</li>").join("");
+    return '<div class="card memory' + (traces.length ? "" : " pending") + '"><div class="perf-head"><h3>' + esc(c.title) + "</h3>" + (c.warning ? '<span class="pill s-waiting">' + esc(c.warning) + "</span>" : traces.length ? "" : '<span class="pill s-unmeasured">not measured yet</span>') + "</div>" +
+      '<p class="plain">' + esc(c.caption) + "</p>" + (c.note ? '<p class="muted">' + esc(c.note) + "</p>" : "") +
+      (traces.length ? '<div class="chart">' + renderSvg(traces, { title: c.title, series: c.series ?? ["total"], xMode: c.x ?? "time", killMB: c.killMB, killLabel: c.killLabel }) + "</div>" : "") +
+      '<details><summary>Where the numbers come from</summary><ul class="list tech">' + sources + "<li>" + esc(c.source) + "</li></ul></details></div>";
+  };
+  const memoryPage = '<h2>Memory over time</h2><p class="lead">' + esc(memoryData.plain) + "</p>" + memoryData.charts.map(memoryCard).join("");
+
+  const pages: [string, string, string][] = [["summary", "Summary", summary], ["overview", "Overview", overview], ["releases", "Releases", releasesPage], ["performance", "Performance", performance], ["memory", "Memory", memoryPage], ["fixes", "Fixes", fixes], ["roadmap", "Roadmap", roadmap], ["play", "Play experience", play], ["waiting", "Waiting", waiting]];
   const css = fs.readFileSync(path.join(HERE, "style.css"), "utf8");
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(data.title) + "</title><style>" + css + "</style></head><body>" +
     '<header><div class="brand">' + esc(data.title) + '</div><nav>' + pages.map((p) => '<a href="#' + p[0] + '" data-page="' + p[0] + '">' + p[1] + "</a>").join("") + "</nav></header><main>" +
     pages.map((p) => '<section id="' + p[0] + '" class="page">' + p[2] + "</section>").join("") +
-    '</main><footer>Updated ' + stamp(now.toISOString()) + ". Counts are live from GitHub. Measurements come from tools/dashboard/data.json, where each one names its source.</footer>" +
+    '</main><footer>Updated ' + stamp(now.toISOString()) + ". Counts are live from GitHub. Measurements come from tools/dashboard/data.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
     "<script>function show(){var id=(location.hash||'#summary').slice(1);if(!document.getElementById(id))id='summary';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){a.classList.toggle('on',a.dataset.page===id)});scrollTo(0,0)}addEventListener('hashchange',show);show();</script></body></html>";
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, "index.html"), html);

@@ -1,0 +1,108 @@
+{
+  "plain": "How much memory the game makes the browser use, second by second, from launch to the results screen. Each line is one run.",
+  "charts": [
+    {
+      "id": "safari-growth",
+      "title": "Safari on a 16 GB Mac mini: main vs v0.5.0",
+      "caption": "Safari stops the game's page when its WebContent process gets too big: at 8,473 MB and 8,793 MB in these runs. Both runs where the kong moved around were stopped: main 55 seconds after landing, and v0.5.0 before it had even landed. The run where the kong stood still lasted to the results screen at 8,049 MB. Each step up is a new location loading, and nothing is released afterwards.",
+      "series": [
+        "renderer"
+      ],
+      "x": "time",
+      "killMB": 8793,
+      "killLabel": "Safari stopped the page at 8,793 MB",
+      "runs": [
+        {
+          "file": "safari-f417032-r1-idle.json",
+          "label": "main f417032 (standing still)"
+        },
+        {
+          "file": "safari-f417032-r2-moving.json",
+          "label": "main f417032 (moving)"
+        },
+        {
+          "file": "safari-v0.5.0-r1-moving.json",
+          "label": "kong-v0.5.0 (moving)"
+        }
+      ],
+      "source": "project drive: handoffs/safari-growth/README.md and kmt/*.json"
+    },
+    {
+      "id": "chrome-safari",
+      "title": "Chrome vs Safari on the same 16 GB Mac mini",
+      "caption": "Both runs leave the kong standing still. Chrome levels off at about 10 GB for the whole browser (9,943 MB median 60 seconds into a match, six runs) and doesn't grow in a second match. Safari keeps climbing as locations load and reaches 9,278 MB by the results screen. Chrome's total counts every browser process. Safari's counts only the page's process and its graphics process, so Safari's real total is higher than shown. The two runs are on different builds: main 7890f3b for Chrome, main f417032 for Safari. The Chrome run ends at 320 seconds. It plays two matches and leaves each one about 60 seconds after landing (the first runs from Play at 34 seconds to leaving at 178 seconds). It doesn't play a match through to the results screen, so it doesn't show Chrome over a full match.",
+      "note": "Swap and memory pressure (Chrome runs 4 to 6): about 2.5 GB of swap was already in use before each run, and it never rose during one (peaks of 2,571, 2,539 and 2,499 MB, each the starting value). macOS reported memory pressure as \"warn\" at every sample and never \"critical\".",
+      "series": [
+        "total"
+      ],
+      "x": "time",
+      "runs": [
+        {
+          "file": "chrome-metal-v3-7890f3b-r4.json",
+          "label": "Chrome 154, main 7890f3b"
+        },
+        {
+          "file": "safari-f417032-r1-idle.json",
+          "label": "Safari 27, main f417032"
+        }
+      ],
+      "source": "project drive: handoffs/memory-baseline-metal-v3/README.md (medians, swap, pressure) and handoffs/safari-growth/README.md"
+    },
+    {
+      "id": "lowmem",
+      "title": "Low-memory mode on vs off (Chrome on Windows, D3D11)",
+      "warning": "Older measuring script: totals after Play are overstated",
+      "caption": "Low-memory mode (?lowmem=1) waits to build each location until the player gets near it, but it never unloads one. It only saves memory early on: in the plane it held about 7,100 MB against about 13,300 MB with it off. Memory climbs from the moment the kong lands. After about 2 km travelled (the plane, the drop and one leg of walking) it already holds 21 of the 26 locations, and by 4 km the two lines have met (about 14,200 MB against 13,700 MB). Both runs end at about 13,300 MB on the results screen, and the peak is only about 200 MB lower with it on. These runs read the page with the older script, so compare the two lines with each other, not with the other charts.",
+      "series": [
+        "total"
+      ],
+      "x": "time",
+      "runs": [
+        {
+          "file": "lowmem1-d3d11-b542346.json",
+          "label": "lowmem on, main b542346"
+        },
+        {
+          "file": "lowmem0-d3d11-b542346.json",
+          "label": "lowmem off, main b542346"
+        }
+      ],
+      "source": "project drive: handoffs/lowmem-growth-d3d11/README.md (distance table, module counts) and cdp/samples.csv, cdp/*/growth.json (plane-phase samples) (RAY-122); the overstatement is KONG-43"
+    },
+    {
+      "id": "d3d11-v040-v041",
+      "title": "Chrome on Windows (D3D11): v0.4.0 vs v0.4.1",
+      "warning": "Older measuring script: totals after Play are overstated",
+      "caption": "The release measurements found v0.4.1 used 469 MB less than v0.4.0 thirty seconds into a match (13,188 to 12,719 MB, median of three runs each). These runs used an older version of the measuring script that overstated every total after Play, so compare the gap between the lines, not their height. Runs with the fixed script are queued.",
+      "series": [
+        "total"
+      ],
+      "x": "time",
+      "runs": [
+        {
+          "file": "d3d11-v0.4.0-r0.json",
+          "label": "kong-v0.4.0"
+        },
+        {
+          "file": "d3d11-v0.4.1-r1.json",
+          "label": "kong-v0.4.1"
+        }
+      ],
+      "source": "project drive: handoffs/release-kong-v0.4.1-d3d11/README.md (medians) and memory/runs/*/result.json; the overstatement is KONG-43"
+    },
+    {
+      "id": "d3d11-v3",
+      "title": "Chrome on Windows (D3D11) with the fixed measuring script",
+      "caption": "Not measured yet. These reruns replace the chart above once they land.",
+      "runs": [],
+      "source": "waiting for project drive: handoffs/memory-baseline-d3d11-v3/"
+    },
+    {
+      "id": "v020-main",
+      "title": "v0.2.0 vs current main",
+      "caption": "Not measured yet. No run of v0.2.0 recorded memory over time.",
+      "runs": [],
+      "source": "none yet"
+    }
+  ]
+}

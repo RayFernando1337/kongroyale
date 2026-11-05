@@ -132,6 +132,15 @@ leaks, so these numbers are ceilings: lower `left3` by hand when an owner moves 
 - `(not in the scene)` textures are real allocations the scene walk can't name. The `sites` table shows the call
   site, but in the production build every three.js upload comes from one chunk; measure the dev client
   (`kr-verify up`, port 5417) to see source names, and never quote its totals.
+- Never read the page with Playwright's `page.evaluate` while a match loads. On SwiftShader it drove the browser
+  process from 50 MB to 7 GB and the renderer to 12 GB within two minutes of Play, and runs passed 28 GB. With the
+  same reads sent as plain `Runtime.evaluate` over the page's CDP session (what `memory.mts` does since scenario
+  version 3), the same match peaked at 8.8 GB and the browser process stayed at 47 MB. Players never see this, and the
+  title phase is unaffected, but process totals from the plane on in results before version 3 are not trustworthy.
+- `nogpu` runs add `?vegsplat=0`, which makes the game bake impostor banks that a player with splats on (the
+  default) never gets: 331-547 MB more textures. Cloud texture totals overstate player memory by about that much, so
+  rank texture costs with splats on wherever the run allows it. The CI budget is still a fair ratchet because every run
+  measures the same thing.
 - WebGL in workers (OffscreenCanvas) is not wrapped; the bytes still show in the process totals.
 - `--heap` on a 4-vCPU machine pauses the page for a minute; take it in its own run, never in one you time.
 - Chrome may discard decoded images and purge GPU memory under pressure; a 64 GB workstation and a 16 GB laptop

@@ -97,6 +97,16 @@ function prep(src: THREE.BufferGeometry): THREE.BufferGeometry {
 }
 const triCount = (g: THREE.BufferGeometry) => (g.index ? g.index.count : g.attributes.position.count) / 3;
 
+const HALF_MAPS = flag("konghalf");
+function halve(img: HTMLImageElement): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = img.width >> 1; c.height = img.height >> 1;
+  const g = c.getContext("2d")!;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+
 let cache: Promise<KongAsset | null> | null = null;
 export function loadKongAsset(renderer: THREE.WebGLRenderer): Promise<KongAsset | null> {
   if (!USE_ASSET) return Promise.resolve(null);
@@ -104,21 +114,22 @@ export function loadKongAsset(renderer: THREE.WebGLRenderer): Promise<KongAsset 
     try {
       const tl = new THREE.TextureLoader();
       const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-      const tex = async (name: string, srgb: boolean) => {
+      const tex = async (name: string, srgb: boolean, half = false) => {
         const t = await tl.loadAsync(BASE + name + ".webp");
+        if (half && HALF_MAPS) (t as THREE.Texture).image = halve(t.image);
         t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = aniso; t.needsUpdate = true;
         return t;
       };
       const [gltf, ...maps] = await Promise.all([
         new GLTFLoader().loadAsync(BASE + "kong.glb"),
-        tex("hi-kong-albedo", true), tex("hi-kong-normal", false), tex("hi-kong-ao", false),
-        tex("hi-gear-albedo", true), tex("hi-gear-normal", false), tex("hi-gear-ao", false),
+        tex("hi-kong-albedo", true), tex("hi-kong-normal", false, true), tex("hi-kong-ao", false),
+        tex("hi-gear-albedo", true, true), tex("hi-gear-normal", false, true), tex("hi-gear-ao", false),
         tex("lo-kong-albedo", true), tex("lo-kong-normal", false), tex("lo-kong-ao", false),
         tex("lo-gear-albedo", true), tex("lo-gear-normal", false), tex("lo-gear-ao", false),
         // the hi head (face) has its own 2048 atlas
-        tex("hi-head-albedo", true), tex("hi-head-normal", false), tex("hi-head-ao", false),
+        tex("hi-head-albedo", true), tex("hi-head-normal", false, true), tex("hi-head-ao", false),
         // … and the hi sneakers theirs (4× the texel density of the shared clothing atlas)
-        tex("hi-shoes-albedo", true), tex("hi-shoes-normal", false), tex("hi-shoes-ao", false),
+        tex("hi-shoes-albedo", true, true), tex("hi-shoes-normal", false, true), tex("hi-shoes-ao", false),
       ]);
       const byName = new Map<string, THREE.BufferGeometry>();
       gltf.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) byName.set(m.name || m.parent?.name || "", prep(m.geometry)); });

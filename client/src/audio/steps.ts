@@ -36,9 +36,9 @@ BIOME_STEP[Biome.DeepOcean] = "water"; BIOME_STEP[Biome.Reef] = "water"; BIOME_S
 BIOME_STEP[Biome.Jungle] = "grass"; BIOME_STEP[Biome.Rock] = "stone"; BIOME_STEP[Biome.Cinder] = "dirt"; BIOME_STEP[Biome.Path] = "dirt";
 BIOME_STEP[Biome.Farmland] = "dirt"; BIOME_STEP[Biome.Paved] = "concrete"; BIOME_STEP[Biome.Lagoon] = "water";
 
-/** the terrain module's splat maps (client/src/world/terrain/data.ts buildTerrainGpuData): `w` = 3 × res² RGBA8 layers of
- * 12 layer weights, `dat` = 4 × res² RGBA8 (layer 0 .b = path coverage, layer 2 .rg = signed path offset / half-width) */
-export interface Splat { w: ArrayLike<number>; dat: ArrayLike<number>; res: number }
+/** the terrain module's footstep splat (client/src/world/terrain/data.ts stepSplatFrom): `w` = 3 × res² RGBA8 layers of
+ * 12 layer weights, `path` = res² × (path coverage, signed path offset, path half-width) */
+export interface Splat { w: ArrayLike<number>; path: ArrayLike<number>; res: number }
 
 /** dominant visible splat layer at (x, z) (bilinear weights, argmax; the shader's height blend sharpens toward it) and
  * whether the crisp dirt-path ribbon covers the point */
@@ -56,7 +56,7 @@ export function splatAt(s: Splat, x: number, z: number): { layer: number; path: 
   // path ribbon (material.ts): coverage (dat0.b) gates it, |offset| < half-width draws it (± a 0.5 m noise edge)
   let cov = 0, off = 0, hw = 0;
   for (let c = 0; c < 4; c++) {
-    const k = ks[c] * 4; cov += s.dat[k + 2] * ws[c]; off += s.dat[2 * N * 4 + k] * ws[c]; hw += s.dat[2 * N * 4 + k + 1] * ws[c];
+    const k = ks[c] * 3; cov += s.path[k] * ws[c]; off += s.path[k + 1] * ws[c]; hw += s.path[k + 2] * ws[c];
   }
   const pHW = (hw / 255) * 6.375, pOff = Math.abs((off / 255) * 12.75 - 6.4);
   const path = cov / 255 > 0.45 && pHW >= 0.1 && pOff < pHW;
@@ -192,14 +192,13 @@ export function stepSurfaceOf(terrain: Terrain, surf: number, x: number, z: numb
   return terrainStep(terrain, x, z, splat, y);
 }
 
-// the live game's splat: engine.shared "terrainTextures" ({ w, dat: DataArrayTexture, res }); image.data stays on the CPU
+// the live game's splat: engine.shared "terrainSteps" (the terrain module keeps these CPU arrays for the feet)
 let splatLive: Splat | null = null;
 function liveSplat(): Splat | null {
   if (splatLive) return splatLive;
   const eng = (globalThis as unknown as { __kr?: { engine?: { shared?: Map<string, unknown> } } }).__kr?.engine;
-  const g = eng?.shared?.get?.("terrainTextures") as { w?: { image?: { data?: Uint8Array } }; dat?: { image?: { data?: Uint8Array } }; res?: number } | undefined;
-  const w = g?.w?.image?.data, dat = g?.dat?.image?.data;
-  if (w && dat && g?.res && w.length >= g.res * g.res * 12) splatLive = { w, dat, res: g.res };
+  const g = eng?.shared?.get?.("terrainSteps") as Splat | undefined;
+  if (g && g.res && g.w.length >= g.res * g.res * 12 && g.path.length >= g.res * g.res * 3) splatLive = g;
   return splatLive;
 }
 
