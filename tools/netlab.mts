@@ -27,7 +27,7 @@
 //   ghost   = predicted hits the server rejected;  surprise = server hits the client predicted as misses
 //   clamped = shots older than the rewind cap (MAX_REWIND_TICKS)
 // and the transport tails of the window the shooter fires in, as the clients see them (first copy of each frame):
-//   rttMs      = ping → pong, both clients;  inputAckMs = an input sent → the first snapshot that acknowledges it (lastSeq),
+//   rttMs      = ping → pong, both clients;  inputAckMs = each input sent → the first snapshot that acknowledges it (lastSeq),
 //   snapGapMs  = time between snapshots (30 Hz: 33 ms when nothing is late);  corrPct = prediction corrections per 100
 //   snapshots, both clients (the server replays late inputs 1:1, so a late input shows as a pause, not a correction);
 //   holdPct    = the shooter's frames that held the target in place because interpolation ran out of snapshots
@@ -97,7 +97,7 @@ async function run(rtt: number) {
   let deaths = 0;
   if (killable) { const orig = m.spawnWarmup.bind(m); m.spawnWarmup = (p) => { if (p.id !== 1) return orig(p); deaths++; Bp.x = islet.x + 11; Bp.z = islet.z + 2; Bp.y = Math.max(0, terrain.height(Bp.x, Bp.z)) + 0.05; Bp.st = PS.Ground; Bp.grounded = true; Bp.vx = Bp.vy = Bp.vz = 0; Bp.shield = 50; }; }
   /** per client: when each input seq was sent, the newest snapshot tick and pong seen (the redundant copy is skipped) */
-  const tails = [0, 1].map(() => ({ sentAt: new Float64Array(4096), lastTick: -1, lastSnapAt: 0, lastPong: 0 }));
+  const tails = [0, 1].map(() => ({ sentAt: new Float64Array(4096), lastTick: -1, lastSnapAt: 0, lastPong: 0, acked: 0 }));
   const rttMs: number[] = [], ackMs: number[] = [], gapMs: number[] = [], hdr = {} as SnapHeader;
   let measuring = false, frames = 0; const base = { corr: [0, 0], snaps: [0, 0], hold: 0 };
   const clients: Array<{ cm: ClientMatch; up: Pipe; down: Pipe; peer: HostPeer; inp: { yaw: number; pitch: number; fire: boolean; mx: number; mz: number; buttons: number; dx: number; dy: number; poll: (o: { mx: number; mz: number; buttons: number; slot: number }, allowFire: boolean) => void } }> = [];
@@ -137,7 +137,10 @@ async function run(rtt: number) {
           if (kind === M.Snapshot) {
             readSnapHeader(r, hdr);
             if (hdr.tick > tl.lastTick) {
-              if (measuring) { if (tl.lastSnapAt) gapMs.push(now - tl.lastSnapAt); if (tl.sentAt[hdr.lastSeq % 4096]) ackMs.push(now - tl.sentAt[hdr.lastSeq % 4096]); }
+              if (measuring && tl.lastSnapAt) gapMs.push(now - tl.lastSnapAt);
+              // lastSeq is cumulative and inputs run at 60 Hz, snapshots at 30: sample every input it acknowledges for the first time
+              if (measuring) for (let s = Math.max(tl.acked + 1, hdr.lastSeq - 4095); s <= hdr.lastSeq; s++) if (tl.sentAt[s % 4096]) ackMs.push(now - tl.sentAt[s % 4096]);
+              if (hdr.lastSeq > tl.acked) tl.acked = hdr.lastSeq;
               tl.lastTick = hdr.tick; tl.lastSnapAt = now;
             }
           } else if (kind === M.Pong) { const sent = r.f64(); if (sent > tl.lastPong) { tl.lastPong = sent; if (measuring) rttMs.push(now - sent); } }
@@ -188,7 +191,7 @@ async function run(rtt: number) {
     if (s >= 0) { servHits++; if (p < 0) surprise++; }
   }
   const pc = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
-  const tail = (v: number[]) => { const s = stats(v), r1 = (x: number) => Math.round(x * 10) / 10; return { p50: r1(s.p50), p99: r1(s.p99), max: r1(s.max) }; };
+  const tail = (v: number[]) => { const s = stats(v), r1 = (x: number) => Math.round(x * 10) / 10; return { n: s.n, p50: r1(s.p50), p99: r1(s.p99), max: r1(s.max) }; };
   const transport = { sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, rttMs: tail(rttMs), inputAckMs: tail(ackMs), snapGapMs: tail(gapMs), corrPct: pc(base.corr[0] + base.corr[1], base.snaps[0] + base.snaps[1]), corrPctShooter: pc(base.corr[0], base.snaps[0]), corrPctTarget: pc(base.corr[1], base.snaps[1]), holdPct: pc(base.hold, frames) };
   return { rtt, jitter, weapon, ...(killable ? { kills: deaths } : {}), pellets: n, predMissing: pred.length - serv.length, agreePct: pc(agree, n), predHits, confirmPct: pc(confirmed, predHits), ghost, surprise, servHits, clamped: clampedN, rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: clients[0].cm.netStats.moveCorrections, corrMaxMm: Math.round(clients[0].cm.netStats.corrMax * 1000), ...transport };
 }

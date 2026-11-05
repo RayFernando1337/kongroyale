@@ -86,7 +86,7 @@
     {
       "id": "inputAck",
       "metric": "inputAckP99OverRttMs",
-      "max": 40,
+      "max": 50,
       "rtt": [
         0,
         250
@@ -94,12 +94,12 @@
       "profiles": [
         "jitter20"
       ],
-      "why": "the server's own share of input→ack (queue, tick, next snapshot) stays under ~2.5 ticks on a steady link"
+      "why": "the server's own share of input→first ack (queue, the next tick, the next 30 Hz snapshot, jitter) stays within 3 ticks on a steady link; main is 37.5-41.7 ms"
     },
     {
       "id": "inputAckLossy",
       "metric": "inputAckP99OverRttMs",
-      "max": 75,
+      "max": 85,
       "rtt": [
         0,
         150
@@ -107,7 +107,7 @@
       "profiles": [
         "loss1"
       ],
-      "why": "with 1% loss a resent input costs about one more RTT at worst on one socket; two sockets keep the p99 near the steady case"
+      "why": "with 1% loss a resent input costs up to one more RTT on one socket; two sockets keep the p99 near the steady case (main: 65.3-72.2 ms at ≤150 ms)"
     },
     {
       "id": "corrections",

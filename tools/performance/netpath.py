@@ -22,9 +22,10 @@
 #
 # What it is not: a bandwidth limiter, a reordering or burst-loss model, or a real WAN. Results from it are
 # "emulated path" results and are labelled that way. Linux only; needs root (TUN devices and namespaces).
-import argparse, fcntl, heapq, os, random, select, signal, struct, subprocess, sys, time
+import argparse, ctypes, fcntl, heapq, os, random, select, signal, struct, subprocess, sys, time
 
-TUNSETIFF, IFF_TUN, IFF_NO_PI = 0x400454CA, 0x0001, 0x1000
+TUNSETIFF, IFF_TUN, IFF_NO_PI, CLONE_NEWNET = 0x400454CA, 0x0001, 0x1000, 0x40000000
+LIBC = ctypes.CDLL(None, use_errno=True)
 NS = (("kr-srv", "10.77.0.1", "10.77.0.2"), ("kr-cli", "10.77.0.2", "10.77.0.1"))
 
 
@@ -36,7 +37,9 @@ def open_tun(ns, me, peer):
     if not os.path.exists(f"/var/run/netns/{ns}"):
         sh("ip", "netns", "add", ns)
     fd_ns = os.open(f"/var/run/netns/{ns}", os.O_RDONLY)
-    os.setns(fd_ns, os.CLONE_NEWNET)
+    # libc setns rather than os.setns, which only exists from Python 3.12
+    if LIBC.setns(fd_ns, CLONE_NEWNET) != 0:
+        sys.exit(f"netpath: setns({ns}) failed: {os.strerror(ctypes.get_errno())}")
     os.close(fd_ns)
     fd = os.open("/dev/net/tun", os.O_RDWR | os.O_NONBLOCK)
     fcntl.ioctl(fd, TUNSETIFF, struct.pack("16sH", b"krt", IFF_TUN | IFF_NO_PI))
