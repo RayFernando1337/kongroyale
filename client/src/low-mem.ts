@@ -22,7 +22,8 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   const kr = (globalThis as unknown as { __kr?: Session }).__kr;
   const casting = !!kr?.caster?.casting;
   if (!kr?.game?.inMatch && !casting) return null;
-  const overview = viewBuilds < viewCap && !casting && (kr?.game?.cm?.phase ?? Phase.Play) <= Phase.Plane;
+  const airborne = !casting && (kr?.game?.cm?.phase ?? Phase.Play) <= Phase.Plane;
+  const overview = airborne && viewBuilds < viewCap;
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
   let best: string | null = null, bestD = Infinity;
@@ -30,10 +31,11 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
     const p = pois.find((x) => `poi:${x.id}` === id);
     if (!p) return id;
     const d = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
+    const near = (airborne ? Math.hypot(d, e[13] - (p.padY ?? 0)) : d) < radiusM;
     const seen = overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M)));
-    if (!seen && d >= radiusM) continue;
+    if (!seen && !near) continue;
     const rank = overview && !seen ? d + OFFSCREEN_RANK_M : d;
-    if (rank < bestD) { best = id; bestD = rank; pickedByView = d >= radiusM; }
+    if (rank < bestD) { best = id; bestD = rank; pickedByView = !near; }
   }
   return best;
 }
