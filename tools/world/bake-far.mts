@@ -19,7 +19,7 @@ interface Soup { pos: number[]; col: number[]; idx: number[]; tris: number; srcT
 
 function extract(a: { id: string; target: number }): Soup {
   const kr = (window as unknown as { __kr: { moduleRoots(id: string): unknown[] } }).__kr;
-  type M = { isMesh?: boolean; isInstancedMesh?: boolean; isBatchedMesh?: boolean; isSkinnedMesh?: boolean; visible: boolean; parent: M | null; children: M[]; layers: { mask: number }; matrixWorld: { elements: number[] }; geometry?: G; material?: Mat | Mat[]; count?: number; instanceMatrix?: { array: Float32Array }; instanceColor?: { array: Float32Array } | null; getGeometryIdAt?(i: number): number; getGeometryRangeAt?(g: number): { vertexStart: number; vertexCount: number; indexStart: number; indexCount: number }; getColorAt?(i: number, c: { r: number; g: number; b: number }): void; getVisibleAt?(i: number): boolean; _instanceInfo?: Array<{ active: boolean }>; _matricesTexture?: { image: { data: Float32Array } }; _colorsTexture?: object | null; updateMatrixWorld(force: boolean): void };
+  type M = { isMesh?: boolean; isInstancedMesh?: boolean; isBatchedMesh?: boolean; isSkinnedMesh?: boolean; visible: boolean; parent: M | null; children: M[]; layers: { mask: number }; matrixWorld: { elements: number[] }; geometry?: G; material?: Mat | Mat[]; count?: number; instanceMatrix?: { array: Float32Array }; instanceColor?: { array: Float32Array } | null; getGeometryIdAt?(i: number): number; getGeometryRangeAt?(g: number): { vertexStart: number; vertexCount: number; indexStart: number; indexCount: number }; getVisibleAt?(i: number): boolean; _instanceInfo?: Array<{ active: boolean }>; _matricesTexture?: { image: { data: Float32Array } }; _colorsTexture?: { image: { data: Float32Array } } | null; updateMatrixWorld(force: boolean): void };
   type A = { count: number; itemSize: number; getX(i: number): number; getY(i: number): number; getZ(i: number): number; array: ArrayLike<number> | null };
   type G = { attributes: Record<string, A>; index: A | null; drawRange: { start: number; count: number } };
   type Mat = { visible: boolean; transparent: boolean; opacity: number; depthWrite: boolean; color?: { r: number; g: number; b: number }; map?: { uuid: string; image?: unknown } | null; vertexColors?: boolean; isShaderMaterial?: boolean; type: string };
@@ -62,7 +62,7 @@ function extract(a: { id: string; target: number }): Soup {
     if (g.index) for (let i = iStart; i < iStart + iCount; i++) idx.push(base + g.index.getX(i) - vStart);
     else for (let i = 0; i < vCount; i++) idx.push(base + i);
   };
-  const tmp: number[] = new Array(16).fill(0), im16 = { elements: new Array(16).fill(0) }, c3 = { r: 1, g: 1, b: 1 };
+  const tmp: number[] = new Array(16).fill(0), im16 = { elements: new Array(16).fill(0) };
   for (const r of kr.moduleRoots("poi:" + a.id) as M[]) {
     r.updateMatrixWorld(true);
     const walk = (o: M) => {
@@ -90,7 +90,8 @@ function extract(a: { id: string; target: number }): Soup {
           const md = o._matricesTexture!.image.data;
           for (let k = 0; k < 16; k++) im16.elements[k] = md[i * 16 + k];
           const irgb = rgb.slice();
-          if (o._colorsTexture) { o.getColorAt!(i, c3); irgb[0] *= c3.r; irgb[1] *= c3.g; irgb[2] *= c3.b; }
+          const cd = o._colorsTexture?.image.data;
+          if (cd) { irgb[0] *= cd[i * 4]; irgb[1] *= cd[i * 4 + 1]; irgb[2] *= cd[i * 4 + 2]; }
           add(g, mul(mw, im16.elements, tmp.slice()), irgb, vColor, gr.vertexStart, gr.vertexCount, gr.indexStart, gr.indexCount);
         }
         return;
@@ -175,8 +176,10 @@ for (const id of ids) {
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
   const t0 = Date.now();
   try {
-    await page.goto(`${base}/?cam=${cam}&modules=atmos,terrain,poi:${id}&noocc&nohlod`);
-    await page.waitForFunction((m) => (window as unknown as { __kr?: { modules?: string[] } }).__kr?.modules?.includes(m), "poi:" + id, { timeout: BUILD_TIMEOUT_MS, polling: 1000 });
+    await page.goto(`${base}/?cam=${cam}&modules=atmos,terrain,poi:${id}&noocc&nohlod&texfree=0`);
+    await page.waitForFunction((m) => { const k = (window as unknown as { __kr?: { ready?: boolean; modules?: string[]; engine?: { pendingHolds(): string[] } } }).__kr; return !!k?.ready && !!k.modules?.includes(m) && k.engine!.pendingHolds().length === 0; }, "poi:" + id, { timeout: BUILD_TIMEOUT_MS, polling: 1000 });
+    const loadErrors = await page.evaluate(() => (window as unknown as { __kr: { errors?: unknown[] } }).__kr.errors ?? []);
+    if (loadErrors.length) throw new Error("load errors " + JSON.stringify(loadErrors).slice(0, 400));
     await page.waitForTimeout(SETTLE_MS);
     const soup = await page.evaluate(extract, { id, target });
     if (!soup.tris) throw new Error("no geometry extracted " + JSON.stringify(soup.skipped));

@@ -1,18 +1,26 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { POIS } from "../../shared/world/map";
 import { FAR_DIR, FAR_INDEX, poiSourceHash, type FarIndex } from "./far-hash.mts";
 
+const HEADER_B = 40;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const index = JSON.parse(fs.readFileSync(path.join(root, FAR_INDEX), "utf8")) as FarIndex;
-const stale: string[] = [], missing: string[] = [];
-for (const [id, e] of Object.entries(index.pois)) {
-  if (!fs.existsSync(path.join(root, FAR_DIR, id + ".bin"))) missing.push(id);
+const stale: string[] = [], missing: string[] = [], broken: string[] = [];
+for (const id of POIS.map((p) => p.id).filter((id) => id !== "lobby-islet")) {
+  const e = index.pois[id], file = path.join(root, FAR_DIR, id + ".bin");
+  if (!e || !fs.existsSync(file)) { missing.push(id); continue; }
+  const buf = fs.readFileSync(file);
+  const n = buf.length >= HEADER_B ? buf.readUInt32LE(8) : 0, ni = buf.length >= HEADER_B ? buf.readUInt32LE(12) : 0;
+  const want = HEADER_B + Math.ceil((n * 6) / 4) * 4 + n * 4 + ni * (n > 65535 ? 4 : 2);
+  if (buf.length !== e.bytes || buf.toString("ascii", 0, 4) !== "KRFI" || buf.length !== want || ni !== e.tris * 3) broken.push(id);
   else if (poiSourceHash(root, id) !== e.hash) stale.push(id);
 }
 const n = Object.keys(index.pois).length;
-if (!stale.length && !missing.length) { console.log(`far impostors: ${n} baked, all match their POI sources`); process.exit(0); }
-for (const id of missing) console.error(`far impostor ${id}: ${FAR_DIR}/${id}.bin is missing`);
-for (const id of stale) console.error(`far impostor ${id}: its POI sources changed since the bake`);
-console.error(`rebake them on a running prod build: npx tsx tools/world/bake-far.mts --only ${[...stale, ...missing].join(",")}`);
+if (!stale.length && !missing.length && !broken.length) { console.log(`far impostors: ${n} baked, all match their POI sources`); process.exit(0); }
+for (const id of missing) console.error(`far impostor ${id}: not baked (${FAR_DIR}/${id}.bin or its index entry is missing)`);
+for (const id of broken) console.error(`far impostor ${id}: ${FAR_DIR}/${id}.bin does not match its header or index entry`);
+for (const id of stale) console.error(`far impostor ${id}: its POI sources, the POI kit or the bake tool changed since the bake`);
+console.error(`rebake them on a running prod build: npx tsx tools/world/bake-far.mts --only ${[...stale, ...missing, ...broken].join(",")}`);
 process.exit(1);
