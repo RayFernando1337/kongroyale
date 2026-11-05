@@ -15,9 +15,9 @@ are at least 5 s apart and share KONGBOT's per-address rate limit (20 reports pe
 
 ## Where bundles land
 
-The game server writes bundles to disk when `KR_PLAYTEST_BUNDLES` says so. `npm run server` and `tools/serve-channel.mts`
+The game server writes bundles to disk when `KR_PLAYTEST_BUNDLES` says so. `npm run server` (detected by npm's script name, so it works on every OS) and `tools/serve-channel.mts`
 (stable and next) default it to `1`, so our own runs save bundles with nothing set. `npm start` and any other deploy leave
-it unset, so they refuse the upload until the operator sets it. `KR_PLAYTEST_BUNDLES=0` switches it off everywhere.
+it unset: they still accept the report but save no bundle until the operator sets it. `KR_PLAYTEST_BUNDLES=0` switches it off everywhere.
 
 | `KR_PLAYTEST_BUNDLES` | Folder |
 |---|---|

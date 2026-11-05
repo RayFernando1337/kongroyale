@@ -18,7 +18,7 @@
   },
   "scripts": {
     "dev": "vite --host --port 5317",
-    "server": "KR_PLAYTEST_BUNDLES=${KR_PLAYTEST_BUNDLES-1} tsx watch server/index.ts",
+    "server": "tsx watch server/index.ts",
     "build": "vite build && node tools/performance/precompress.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node tools/run-tests.mjs",

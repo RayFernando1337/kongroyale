@@ -38,7 +38,7 @@ export function kongbotDb(root: string) {
   let storageState: "connecting" | "database" | "server-queue" | "unavailable" = "connecting";
   let changedAt = new Date().toISOString();
   const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 19), "[kongbot]", ...a);
-  const bundleRoot = bundleDir(root, process.env.KR_PLAYTEST_BUNDLES);
+  const bundleRoot = bundleDir(root, process.env.KR_PLAYTEST_BUNDLES ?? (process.env.npm_lifecycle_event === "server" ? "1" : undefined));
   const bundles = bundleRoot ? bundleWriter(bundleRoot, log) : null;
   if (bundles) log(`playtest bundles are written to ${bundles.dir}`);
   function state(next: typeof storageState) {
