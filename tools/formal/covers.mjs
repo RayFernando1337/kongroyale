@@ -83,6 +83,8 @@ export function region(key) {
 export function modelHash(model) {
   const h = createHash("sha256");
   for (const ext of [".tla", ".cfg", ".mutants.json"]) h.update(fs.readFileSync(path.join(here, model + ext), "utf8").replace(/\r\n/g, "\n")).update("\u0000");
+  const { regions, writes, allow } = readCovers(model);
+  h.update(JSON.stringify({ regions, writes, allow }));
   return h.digest("hex").slice(0, 16);
 }
 
@@ -106,8 +108,10 @@ function codeText(sf) {
   return t;
 }
 
-/** the .ts files a writes entry scans: a file, or every .ts file directly in a folder ending in "/" */
-const scanFiles = (entry) => entry.endsWith("/") ? fs.readdirSync(path.join(root, entry)).filter((f) => f.endsWith(".ts")).map((f) => entry + f) : [entry];
+/** the .ts files a writes entry scans: a file, or every .ts file in a folder ending in "/" and its subfolders */
+const scanFiles = (entry) => entry.endsWith("/")
+  ? fs.readdirSync(path.join(root, entry), { recursive: true }).map((f) => f.replace(/\\/g, "/")).filter((f) => f.endsWith(".ts")).sort().map((f) => entry + f)
+  : [entry];
 
 /** a write as the allow lists name it: the matched text with its spacing collapsed, e.g. ".st = PS.Glide". Patterns
  *  end in [^\s;]+ so the text carries the first word of the right-hand side, whatever character it starts with */

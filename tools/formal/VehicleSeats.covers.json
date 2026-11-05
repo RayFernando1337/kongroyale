@@ -209,7 +209,7 @@
     }
   ],
   "verified": {
-    "model": "9fad33c96212325d",
+    "model": "0b8d82522f3abcde",
     "regions": {
       "shared/sim/vehicle.ts#freeSeat": "706a387d7a9bfacb",
       "shared/sim/vehicle.ts#enterVehicle": "5da2594d416b51fb",
