@@ -149,8 +149,7 @@ read files through file URLs (#16). If a check still fails there, run it alone w
 in the PR which checks you could not run; CI on Linux runs them all. `npm start` and `npm run kongbot:db` use POSIX shell syntax and
 do not run from cmd or PowerShell: use `up --prod` to serve `dist/`. `node tools/shot.mjs` launches Playwright's own
 Chromium unless `KR_CHROME` names a browser; set it to Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`).
-`tools/verify-boot.mts` spawns `npm` without a shell, so its build step fails on Windows (`FAIL build exited null`). Run
-`npm run build` first and pass `--no-build`. Playwright's bundled headless shell is an x64 build, so on Windows on ARM
+`tools/verify-boot.mts` runs its `npm run build` step through a shell on Windows. Playwright's bundled headless shell is an x64 build, so on Windows on ARM
 also pass `--chrome` with that Chrome path. The run is still SwiftShader: there the title was ready about 180 s after
 load, and the whole run passed in about 6 minutes. `tools/verify-online-match.mts` prints `FAIL (1)` on Windows even when
 every match check passes. On Windows, `kill("SIGTERM")` ends the server with exit code null, and the tool expects 0.
