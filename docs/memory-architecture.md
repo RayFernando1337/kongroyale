@@ -86,6 +86,14 @@ children first.
 | `match` | one match, from start to leaving | `game/index.ts` | `GameRender` and everything it creates: views, FX, markers, the storm volume |
 | `transient` | one call | the function that opens it | bake targets, readback buffers, worker pools for one build |
 
+A world module gets its region scope as the second argument to `build(ctx, scope)`. `buildOne` creates it as
+`region:<module id>` (`region:poi:peel-harbor`), keeps it for as long as the module is resident, and disposes it when the
+build throws. Eviction is the caller's job: it takes off the scene roots and `ctx.onUpdate` hooks the build added, calls
+the module's optional `release(ctx)`, then disposes the scope. `release` undoes only what the caller can't see, such as
+module-level caches and fields that hold built objects. After it returns, `build` can run again on the same module
+object, because modules are singletons. A region scope never owns a resource another module shares: a kit's cached
+materials and textures, used by several towns, belong to a kit scope or the app scope.
+
 The API is `client/src/engine/res/scope.ts`. A scope takes ownership of an object you have just made and returns it,
 so the call site reads like the code it replaces:
 
@@ -151,7 +159,7 @@ owns them. The tests in `tools/res/test.mts` run each of these cases.
 
 What changes for each owner:
 
-- **World modules** get `ctx.res`, their region scope, on `WorldCtx`. A module creates through it and no longer frees
+- **World modules** get their region scope as the second argument to `build(ctx, scope)`. A module creates through it and no longer frees
   anything by hand. The boot already knows each module's scene roots (`rootsOf` in `main.ts`), so the scope also gives
   per-POI accounting.
 - **`GameRender`** gets the match scope. The resources its views and effects own move into the scope, so their
@@ -338,7 +346,7 @@ ships dark behind a registry flag where it changes behaviour.
    acquiring scope dropped when that scope is disposed, least-recently-used eviction of unreferenced entries only when
    their category is over budget, and one loader of each kind. Then each bypass site, one PR each, by the lane that
    owns that code.
-8. **Region scopes**: `ctx.res` for world modules, with per-POI accounting and `rebuild` callbacks for their geometry.
+8. **Region scopes**: the `scope` argument to `build(ctx, scope)` for world modules, with per-POI accounting and `rebuild` callbacks for their geometry.
 9. **Residency**: `far` regions free their sources' GPU buffers (with RAY-106), then `cold` for the lobby islet.
 10. **Capped internal pixels** for every screen-sized target (`world/atmos/post.ts`, `engine/engine.ts`), so the
     `target` budget no longer depends on the display.
