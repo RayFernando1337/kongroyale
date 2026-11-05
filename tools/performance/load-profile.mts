@@ -41,7 +41,7 @@ const BROWSERS = ["chrome", "edge", "safari", "webkit"] as const;
 type Browser = (typeof BROWSERS)[number];
 type Start = "cold" | "warm";
 /** the scenario version: bump it when what a load does (flags, the match drive, the windows) changes */
-const SCENARIO_VERSION = 1;
+const SCENARIO_VERSION = 2;
 const READY_TIMEOUT_MS = 240_000, MATCH_TIMEOUT_MS = 120_000, MATCH_SNAP_MS = 30_000, PLANE_PHASE = 1;
 const SNAP_POINTS = ["title", "plane", "match30"] as const;
 type SnapPoint = (typeof SNAP_POINTS)[number];
