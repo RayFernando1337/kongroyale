@@ -168,7 +168,7 @@ function evictionsFor(list: readonly Resident[]): Resident[] {
   return out;
 }
 
-const IMPOSTOR_MAGIC = "KRFI", IMPOSTOR_HEADER_B = 40;
+const IMPOSTOR_MAGIC = "KRFI", IMPOSTOR_HEADER_B = 40, INTEGRATED_POLL_MS = 100;
 let impostors: Map<string, THREE.Mesh> | null = null;
 
 function decodeImpostor(buf: ArrayBuffer): THREE.BufferGeometry {
@@ -213,7 +213,7 @@ async function loadImpostors(engine: Engine, w: World, out: Map<string, THREE.Me
   }));
 }
 
-export function showImpostors(modOf: ReadonlyMap<string, unknown>, streamMs: Record<string, number>) {
+function showImpostors(modOf: ReadonlyMap<string, unknown>, streamMs: Record<string, number>) {
   if (impostors) for (const [id, mesh] of impostors) mesh.visible = !modOf.has(id) || streamMs[id] === undefined;
 }
 
@@ -248,6 +248,7 @@ export function trimStreamed(engine: Engine, w: World, incoming: string | null, 
       delete streamMs[victim.id];
     }
     if (incoming) { building.add(incoming); motion.builtAt = performance.now(); }
+    if (incoming && impostors) { const t = setInterval(() => { if (streamMs[incoming] === undefined) return; clearInterval(t); showImpostors(w.modOf, streamMs); }, INTEGRATED_POLL_MS); }
   }).catch((e) => w.report("lowmem-trim", e)));
 }
 
