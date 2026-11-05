@@ -527,7 +527,8 @@ export class Engine implements WorldCtx {
   drawOverride: ((dt: number) => void) | null = null;
   /** true while step() runs (update hooks + render): the boot attributes scene adds made outside it to the building module */
   inStep = false;
-  excursing = false;
+  /** unset until the first excursion: falsy */
+  declare excursing: boolean;
   /** one frame; dt in seconds (clamped) */
   step(dt: number) {
     this.inStep = true;
