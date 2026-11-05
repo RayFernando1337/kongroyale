@@ -46,13 +46,35 @@ A hotfix is always a patch in the base's line (`A.B`). Delete the `hotfix-base/*
 
 ## Promote
 
-After Kong Mini (the M4 with 16 GB; Kong Mac is the fallback) and Kong RTX (D3D11) pass the `verify-kongroyale` smoke on `next`, plus a profiler A/B when the release claims perf. The Metal smoke must include boot, Play and a full practice match in Safari 27 on that Mac (the 16 GB Mini; if Kong Mac stands in, say how much memory it has), (the Safari steps are in the profile-kongroyale-load skill) and report the peak WebContent memory and whether the tab was killed or survived. A kill blocks promotion.
+After Kong Mini (the M4 with 16 GB; Kong Mac is the fallback) and Kong RTX (D3D11) pass the `verify-kongroyale` smoke on `next`, plus a profiler A/B when the release claims perf. The Metal smoke must include boot, Play and a full practice match in Safari 27 on that Mac (the 16 GB Mini; if Kong Mac stands in, say how much memory it has), (the Safari steps are in the profile-kongroyale-load skill) and report the peak WebContent memory and whether the tab was killed or survived. A kill blocks promotion. Both smokes also run the [flight check](#flight-check).
 
 ```sh
 npx tsx tools/release.mts promote kong-vX.Y.Z
 ```
 
 This moves `stable` and clears the release's prerelease flag.
+
+## Flight check
+
+Part of both GPU smokes: Kong Mini (Metal) and Kong RTX (D3D11). Ray reported a release that felt laggy and read badly from the plane, and every gate before this one passed it (RAY-135). This check compares `next` with the last `stable` on frame time in flight and on the plane view.
+
+1. Build both sides from their tags, each in its own worktree. `main` may have moved past the release since the cut, so never build the candidate from your checkout. Before you promote, check that the measured `next` commit is still the release tag's commit.
+2. Run `tools/performance/gpu-match.mts` five times a side, interleaved, at a fixed preset, one GPU job at a time. A run takes about 7 minutes, so plan on about 70 minutes per machine.
+3. Compare the p95 frame interval. A `worse` row in `gpu/match/plane`, `gpu/match/descent` or `gpu/match/ground-pan` blocks promotion. That means the medians differ by more than 10 % and every `next` run falls outside the `stable` range. The `warmup-15s` row is for information only. `compare.mts` exits nonzero on any `worse` row, warm-up included, and on a failed run gate (a window under 5 s, low GPU-timer coverage), a lost metric or an invalid row in the `next` runs. On the `stable` side, these only print a warning or a row verdict, so read them in the table. Exit status 2 means the runs couldn't be compared at all (a missing metric, a mismatched config), and no table is printed: fix the inputs or rerun the side that broke. A nonzero exit blocks promotion unless its only cause is a `worse` warm-up row: check the table, also saved with `--out`.
+4. Put the first `stable` and `next` plane screenshots (`*-plane.png`, 8 s into the plane) side by side in the smoke report. A plane view with visibly missing POIs, trees or detail also blocks promotion.
+
+```sh
+git fetch --tags --force origin
+git worktree add --detach ../kr-stable stable && (cd ../kr-stable && npm ci && npm run build)
+git worktree add --detach ../kr-next next && (cd ../kr-next && npm ci && npm run build && git rev-parse HEAD)
+for i in 1 2 3 4 5; do
+  npx tsx tools/performance/gpu-match.mts --root ../kr-stable --preset high --shots shots/flight --out reports/flight/stable-$i.json
+  npx tsx tools/performance/gpu-match.mts --root ../kr-next --preset high --shots shots/flight --out reports/flight/next-$i.json
+done
+npx tsx tools/performance/compare.mts --base reports/flight/stable-*.json --cand reports/flight/next-*.json --metrics frameIntervalMs --stats p95 --threshold 10 --out reports/flight/compare.json
+```
+
+`gpu-match.mts` drives Chrome only. On the Metal smoke, also open the Safari survival match with `?seed=42&perfhud`, press F8 8 s into the plane for the plane screenshot, and press F8 again after 15 s on the ground. The second bundle's timeline has one row per second, and each row carries the match phase but not the player state. Report the median of the per-second p95 values over the rows in phase Plane (riding plus only the part of the descent before the phase turns to Play, at about 41 s), and over the last 15 rows before the second F8 (on the ground), beside `stable`'s. The bundle can't isolate the full descent; for that, use the `gpu-match.mts` descent row. These are medians of per-second p95s, so don't compare them with `gpu-match.mts` numbers. A bundle only holds the timeline up to the moment F8 was pressed. The Safari numbers are for information until Safari has a repeatable five-run tool. A software renderer fails `gpu-match.mts`, so the cloud machines can't run this check.
 
 ## Roll back
 

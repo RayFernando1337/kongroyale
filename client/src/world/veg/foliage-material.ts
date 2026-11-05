@@ -678,7 +678,7 @@ let keySeq = 0;
 
 export function foliageMaterial(o: FoliageOpts): FoliageMaterials {
   const mat = new THREE.MeshStandardMaterial({
-    map: o.map, normalMap: o.normalMap, color: o.color ?? 0xffffff,
+    map: o.map, color: o.color ?? 0xffffff,
     roughness: o.roughness ?? 0.55, metalness: o.metalness ?? 0,
     // opaque parts (bark, stems, nuts) never alpha-test: a discard in the shader costs the GPU its hidden-surface removal
     alphaTest: o.alphaTest ?? (o.translucency ? 0.5 : 0), side: o.doubleSide === false ? THREE.FrontSide : THREE.DoubleSide,
@@ -688,7 +688,7 @@ export function foliageMaterial(o: FoliageOpts): FoliageMaterials {
     // camera. The impostors keep it.)
     fog: false,
   });
-  if (o.normalMap) mat.normalScale.set(o.normalScale ?? 1, o.normalScale ?? 1);
+  if (o.normalMap) { mat.normalMap = o.normalMap; mat.normalScale.set(o.normalScale ?? 1, o.normalScale ?? 1); }
   const leafy = !!o.translucency;
   const own = {
     uHeight: { value: o.height ?? 10 },
