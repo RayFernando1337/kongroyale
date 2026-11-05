@@ -610,16 +610,23 @@ export class Engine implements WorldCtx {
   contextLost = false;
   restores = 0;
   private lostTimer = 0;
+  private losses = 0;
   private watchContext() {
     ignoreStaleDeletes(this.renderer.getContext() as WebGL2RenderingContext);
     this.canvas.addEventListener("webglcontextlost", () => {
       this.contextLost = true;
+      this.losses++;
+      clearTimeout(this.lostTimer);
       this.lostTimer = window.setTimeout(() => location.reload(), RESTORE_WAIT_MS);
     });
     this.canvas.addEventListener("webglcontextrestored", () => {
       clearTimeout(this.lostTimer);
       this.lostTimer = window.setTimeout(() => location.reload(), REBUILD_WAIT_MS);
-      restoreAll().then(() => { clearTimeout(this.lostTimer); this.restores++; this.contextLost = false; }, (e) => { console.error("[context restore]", e); location.reload(); });
+      const loss = this.losses;
+      restoreAll().then(() => {
+        if (loss !== this.losses) return;
+        clearTimeout(this.lostTimer); this.restores++; this.contextLost = false;
+      }, (e) => { if (loss !== this.losses) return; console.error("[context restore]", e); location.reload(); });
     });
   }
   start() {
