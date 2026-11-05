@@ -24,9 +24,9 @@ async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
 const CAP_PX = flag("poicap");
 function capped(img: HTMLImageElement): HTMLImageElement | HTMLCanvasElement {
   const s = CAP_PX / Math.max(img.width, img.height);
-  if (!CAP_PX || s >= 1) return img;
+  if (!(s > 0 && s < 1)) return img;
   const c = document.createElement("canvas");
-  c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+  c.width = Math.max(1, Math.round(img.width * s)); c.height = Math.max(1, Math.round(img.height * s));
   const g = c.getContext("2d")!;
   g.imageSmoothingQuality = "high";
   g.drawImage(img, 0, 0, c.width, c.height);
