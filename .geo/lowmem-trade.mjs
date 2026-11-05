@@ -1,0 +1,44 @@
+import { chromium } from "playwright";
+import fs from "node:fs";
+const base = process.argv[2] ?? "http://127.0.0.1:3120/";
+const out = process.argv[3] ?? "lowmem-trade.json";
+const runs = Number(process.env.RUNS ?? 3);
+const ANGLE = process.env.ANGLE ?? "metal";
+const PLAY_S = Number(process.env.PLAY_S ?? 90);
+const results = [];
+async function one(lowmem) {
+  const browser = await chromium.launch({ headless: true, channel: process.env.CHANNEL ?? "chrome", args: ["--use-angle=" + ANGLE, "--enable-gpu", "--ignore-gpu-blocklist", "--enable-precise-memory-info"] });
+  const page = await (await browser.newContext({ viewport: { width: 1600, height: 900 } })).newPage();
+  await page.addInitScript(() => {
+    const g = (window.__frames = { last: 0, gaps: [] });
+    const tick = (t) => { if (g.last) g.gaps.push(t - g.last); g.last = t; requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  });
+  const t0 = Date.now();
+  await page.goto(base + "?seed=42&lowmem=" + lowmem);
+  await page.waitForFunction(() => window.__kr?.ready === true || window.__kr?.stage === "failed", null, { timeout: 300000, polling: 250 });
+  const readyS = (Date.now() - t0) / 1000;
+  const pre = await page.evaluate(() => ({ preReady: window.__kr.preReady ?? [], lowMem: window.__kr.lowMem }));
+  const frames = () => page.evaluate(() => { const g = window.__frames.gaps.splice(0); g.sort((a, b) => a - b); const q = (p) => g.length ? Math.round(g[Math.min(g.length - 1, Math.floor(g.length * p))]) : 0; return { n: g.length, p50: q(0.5), p99: q(0.99), max: Math.round(g.at(-1) ?? 0), over50: g.filter((x) => x > 50).length, over100: g.filter((x) => x > 100).length }; });
+  await frames();
+  await page.waitForTimeout(30000);
+  const title = await frames();
+  const c0 = Date.now();
+  await page.locator("button.tn-play-cta").click();
+  await page.waitForFunction(() => window.__kr.game?.inMatch === true, null, { timeout: 180000, polling: 100 });
+  const clickToMatchS = (Date.now() - c0) / 1000;
+  await frames();
+  await page.waitForFunction(() => (window.__kr.game?.cm?.phase ?? 0) >= 1, null, { timeout: 300000, polling: 250 });
+  const matchToPlaneS = (Date.now() - c0) / 1000 - clickToMatchS;
+  const warmup = await frames();
+  await page.waitForFunction(() => (window.__kr.game?.cm?.phase ?? 0) >= 2, null, { timeout: 300000, polling: 250 });
+  const plane = await frames();
+  await page.waitForTimeout(PLAY_S * 1000);
+  const play = await frames();
+  const end = await page.evaluate(() => ({ modules: window.__kr.moduleIds?.() ?? [], streamMs: window.__kr.streamMs ?? {}, heapMb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null, errors: window.__kr.errors.slice(0, 5) }));
+  await browser.close();
+  const r = { lowmem, readyS, ...pre, title, clickToMatchS, matchToPlaneS, warmup, plane, play, ...end };
+  results.push(r); fs.writeFileSync(out, JSON.stringify(results, null, 1));
+  console.log(JSON.stringify({ lowmem, readyS, pre: pre.preReady.length, clickToMatchS, matchToPlaneS, title: title.over100, warmup: warmup.over100, plane: plane.over100, play: play.over100, playMax: play.max, mods: end.modules.length, heapMb: end.heapMb, errors: end.errors.length }));
+}
+for (let i = 0; i < runs; i++) for (const v of [0, 1]) await one(v);
