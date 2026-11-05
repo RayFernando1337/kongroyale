@@ -10,7 +10,7 @@ let listed: Promise<ReadonlySet<string>> | null = null;
 
 /** the compressed texture for a source path, or null when ktx2.json doesn't list one; mips above poicap are skipped */
 export async function ktx2Texture(path: string, load: (ktx2Path: string) => Promise<THREE.CompressedTexture>): Promise<THREE.CompressedTexture | null> {
-  listed ??= fetch(assetUrl("assets/ktx2.json")).then((r) => r.json() as Promise<{ sources: string[] }>).then((m) => new Set(m.sources), () => new Set<string>());
+  listed ??= fetch(assetUrl("assets/ktx2.json")).then((r) => (r.ok ? (r.json() as Promise<{ sources: string[] }>) : { sources: [] })).then((m) => new Set(m.sources)).catch(() => new Set<string>());
   if (!(await listed).has(path.replace(/^\//, ""))) return null;
   const capped = async () => {
     const t = await load(path.replace(SOURCE_EXT, ".ktx2"));
@@ -20,7 +20,6 @@ export async function ktx2Texture(path: string, load: (ktx2Path: string) => Prom
     if (k) { t.mipmaps = m.slice(k); t.image = { width: m[k].width, height: m[k].height }; }
     return t;
   };
-  // a restore after context loss refills the same mipmaps array in place, which shareTexture clones share
-  const t = releaseAfterUpload(await capped(), async () => { const f = await capped(); t.mipmaps.length = 0; t.mipmaps.push(...f.mipmaps); return f.image; });
+  const t = releaseAfterUpload(await capped(), async () => { const f = await capped(); t.mipmaps = f.mipmaps; return f.image; });
   return t;
 }

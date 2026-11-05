@@ -22,10 +22,3 @@ export function capped<T extends Source>(img: T): T | HTMLCanvasElement {
   return c;
 }
 
-export async function cappedBitmap(bm: ImageBitmap): Promise<ImageBitmap> {
-  const c = capped(bm);
-  if (c === bm) return bm;
-  const out = await createImageBitmap(c, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
-  bm.close();
-  return out;
-}
