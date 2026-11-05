@@ -37,7 +37,6 @@ import { Display, bootQuality } from "./engine/display";
 import { WARMUP_S } from "../../shared/sim/const";
 import { afterPaint as nextFrame, noFrameWaitCount } from "./engine/frame";
 import { flag } from "./flags";
-import { BUILD } from "./build";
 
 const shot = flag("shot");
 const errors: string[] = [];
@@ -77,6 +76,7 @@ for (const [id, load] of entries) {
 }
 const gameImport = gameMode ? import("./game/index") : null;
 let postBuild = null as typeof import("./post-build") | null;
+const prepareCardImport = import("./prepare-card");
 const postBuildImport = import("./post-build").then((m) => (postBuild = m), (e) => { report("post-build", e); return null; });
 gameImport?.catch(() => { /* reported by the game stage */ });
 if (gameMode) { startStaticWorld(); startLootSpotsWorker(); } // (perf: the loot spots off the main thread too)
@@ -113,7 +113,7 @@ kr.fps = () => engine.liveFps();
 kr.info = () => ({ ...engine.renderer.info.render, geometries: engine.renderer.info.memory.geometries, textures: engine.renderer.info.memory.textures, programs: engine.renderer.info.programs?.length });
 // bug reports: `/` → /kongbot <message> (screenshot + context → the server)
 if (gameMode && !shot) installKongbot(engine);
-if (!shot && BUILD.channel !== "stable" && flag("badge")) void import("./ui/build-badge").then((m) => m.showBuildBadge(), (e) => report("build-badge", e));
+if (!shot) void import("./playtest").then((m) => m.installPlaytest(engine, gameMode), (e) => report("playtest", e));
 
 // ---- loading progress, weighted by measured cost (ms on an RTX 4080 desktop, cold dev loads). The loading
 // screen (index.html) reads __kr.progress (the percentage) and the current step's time estimate as a line
@@ -305,8 +305,9 @@ if (streamOn) {
     if (pr === "title") { streamList.splice(streamList.indexOf(id), 1); await buildOne(id, false); }
   }
 }
+const LOW_MEM = (await postBuildImport)?.lowMemoryDevice(flag("lowmem"), flag("prepare") === "full");
 // ---- pre-ready stream (READY_BY above): largest first, each only while the predicted ready time still fits
-if (streamOn && READY_BY > 0) {
+if (streamOn && READY_BY > 0 && !LOW_MEM) {
   const done = titleIds.filter((id) => buildMs[id] !== undefined);
   const want = done.reduce((a, id) => a + est(id), 0), got = done.reduce((a, id) => a + buildMs[id], 0);
   const factor = Math.min(3, Math.max(0.8, want > 0 ? got / want : 1));
@@ -479,7 +480,7 @@ kr.prepare = () => {
     const heavyLeft = () => !kr.streamed && (streamList.some((id) => est(id) >= HEAVY_MS) || (streamNow !== null && est(streamNow) >= HEAVY_MS));
     if (!heavyLeft() && (!prefabs || kr.warmDone === true)) return Promise.resolve();
     return (preparing ??= (async () => {
-      const card = prepareCard(); const tick = setInterval(() => card.set(), 100);
+      const card = (await prepareCardImport).prepareCard(kr); const tick = setInterval(() => card.set(), 100);
       const t0 = performance.now();
       streamList.sort((a, b) => est(b) - est(a));
       urgent = true; kr.prepareUrgent = true; engine.sliceMs = 1e9; engine.suspended = true;
@@ -499,7 +500,7 @@ kr.prepare = () => {
   return (preparing ??= (async () => {
     urgent = true; kr.prepareUrgent = true;
     engine.sliceMs = 1e9;
-    const card = prepareCard();
+    const card = (await prepareCardImport).prepareCard(kr);
     // the card covers the title: no title frames while the island finishes (the main thread goes to the stream)
     engine.suspended = true;
     const t0 = performance.now();
@@ -512,24 +513,6 @@ kr.prepare = () => {
     preparing = null;
   })());
 };
-function prepareCard() {
-  const el = document.createElement("div");
-  el.id = "kr-preparing";
-  el.style.cssText = "position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(8,26,40,.72),rgba(6,14,22,.9));font-family:'Barlow Condensed',Arial Narrow,sans-serif;color:#f6efc6;pointer-events:auto";
-  el.innerHTML = `<div style="text-align:center;min-width:min(520px,80vw)"><div style="font-size:clamp(28px,4vw,48px);font-weight:800;letter-spacing:.08em;color:#ffd400">PREPARING THE ISLAND</div><div style="margin:18px 0 10px;height:12px;border-radius:6px;background:rgba(246,239,198,.16);overflow:hidden"><i style="display:block;height:100%;width:100%;transform-origin:left;transform:scaleX(0);background:linear-gradient(90deg,#ffb800,#ffe066);transition:transform .25s linear"></i></div><div data-t style="font-size:20px;font-weight:700;letter-spacing:.06em;opacity:.85"></div></div>`;
-  document.body.appendChild(el);
-  const bar = el.querySelector("i") as HTMLElement, txt = el.querySelector("[data-t]") as HTMLElement;
-  const total = Math.max(1, (kr.streamTotal as number | undefined) ?? 1);
-  const set = () => {
-    const left = ((kr.streamPending as (() => string[]) | undefined)?.() ?? []).length + (kr.streamed ? 0 : 1);
-    const k = kr.streamed ? (kr.warmDone === true ? 1 : 0.95) : Math.min(0.94, 1 - left / (total + 1));
-    bar.style.transform = `scaleX(${k.toFixed(3)})`;
-    const cur = String(kr.streamStage ?? "").replace(/^(build|integrate):(poi:)?/, "").replace(/-/g, " ").toUpperCase();
-    txt.textContent = kr.streamed ? "WAKING THE KONGS" : cur ? `BUILDING ${cur}` : "";
-  };
-  set();
-  return { set, remove: () => el.remove() };
-}
 
 let holding = 0;
 function holdWarmupUntilStreamed() {
@@ -578,7 +561,7 @@ async function stream(): Promise<void> {
   { const graceUntil = performance.now() + flag("streamgrace");
     while (!urgent && !inMatch() && performance.now() < graceUntil) await new Promise((r) => setTimeout(r, 50)); }
   while (streamList.length) {
-    const id = streamList.shift()!;
+    const id = LOW_MEM ? await postBuild!.nextNearModule(streamList, engine.camera, POIS, flag("lowmemr")) : streamList.shift()!;
     streamNow = id;
     // in the title / lobby: one module per idle gap at the title's slice budget. In a match (warm-up) the plane must
     // not see an unbuilt POI: go flat out, and once the plane phase starts build the rest back to back.
@@ -596,6 +579,7 @@ async function stream(): Promise<void> {
     if (m) await runAfterBuild(m, true);
     registerStatics(id, true);
     registerFar(id, m, true);
+    if (LOW_MEM) startFarBuild();
     registerOcclusion(id, true);
     kr.streamStage = `integrate:${id}`;
     try { atmos()?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
