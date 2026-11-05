@@ -10,6 +10,7 @@ import { VEG_UNIFORMS, VEG_LIGHT, VEG_GLSL, VEG_FADE_T, bakeMaterial, vegUniform
 import { crownFootprint } from "../../../../shared/world/veg-scatter";
 import { flag } from "../../flags";
 import { bake } from "../../engine/res/restore";
+import { retireMaterial } from "../../engine/program-keep";
 
 /** view blending: each pixel shows one of the 4 baked
  *  views around the true view direction (dithered by weight, a crossfade only across a narrow band at a view cell's edge)
@@ -164,7 +165,7 @@ export function bakeImpostor(renderer: THREE.WebGLRenderer, sp: Species, frames 
   renderer.setClearColor(prevClear, prevAlpha);
   renderer.autoClear = prevAuto;
   renderer.toneMapping = prevTone;
-  for (const m of meshes) { m.albedo.dispose(); m.normal.dispose(); }
+  for (const m of meshes) { retireMaterial(renderer, m.albedo); retireMaterial(renderer, m.normal); }
   const dA = dilate(renderer, rtA, frames), dN = dilate(renderer, rtN, frames);
   rtA.dispose(); rtN.dispose();
   return { albedo: dA.texture, normal: dN.texture, frames, center: C.clone(), radius: R, rects, targets: [dA, dN] };
@@ -219,7 +220,7 @@ function dilate(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget, fra
     const t = a; a = b; b = t;
   }
   renderer.setRenderTarget(prev);
-  b.dispose(); mat.dispose(); clearMat.dispose(); q.geometry.dispose();
+  b.dispose(); retireMaterial(renderer, mat); retireMaterial(renderer, clearMat); q.geometry.dispose();
   return a;
 }
 

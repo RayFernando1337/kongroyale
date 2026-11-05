@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import type { CloudProto } from "./cloud-shapes";
 import { bake } from "../../engine/res/restore";
+import { retireMaterial } from "../../engine/program-keep";
 
 export interface CloudVolume {
   proto: CloudProto;
@@ -113,7 +114,7 @@ export function bakeCloudVolume(renderer: THREE.WebGLRenderer, proto: CloudProto
     }
     renderer.setRenderTarget(prevTarget);
     renderer.autoClear = prevAuto;
-    mat.dispose(); sphTex.dispose();
+    retireMaterial(renderer, mat); sphTex.dispose();
   });
   return { proto, texture: tex, target, bmin, bmax, res: [nx, ny, nz], voxel };
 }
