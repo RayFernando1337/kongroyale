@@ -24,7 +24,7 @@ import { CONSUMABLES, WEAPONS } from "../../../shared/world/map";
 import { Library, type ManifestFile } from "./loader";
 import { Mixer, antiImage, BUS_DB, type Bus } from "./mixer";
 import { Radio } from "./radio";
-import { BANK, ALIAS, RELOAD_S, DROP_GROUPS, loadPriority, decodeRate, lazyGroup, prefetchGroup, type EventDef, type Layer } from "./bank";
+import { BANK, ALIAS, RELOAD_S, DROP_GROUPS, HELI_GUN_GROUPS, loadPriority, decodeRate, lazyGroup, prefetchGroup, type EventDef, type Layer } from "./bank";
 import { AcousticWorld, trim, type V3 } from "./world";
 import { SurfSync, type WaterLike } from "./surf";
 import { Ambience } from "./ambience";
@@ -1797,6 +1797,7 @@ class Engine implements KongAudio {
     // asked for (fetched from idle slices only, a stalled match rode a silent plane for ~15 s)
     if (def.loop === "plane" && !this.dropWanted) { this.dropWanted = true; for (const g of DROP_GROUPS) if (this.lib.groups.has(g)) this.want(g, true); }
     if (def.loop === "plane") for (const g of DROP_GROUPS) this.lib.markUsed(g);
+    if (name === "heli:rotor") for (const g of HELI_GUN_GROUPS) if (this.lib.groups.has(g)) { this.lib.markUsed(g); if (!this.lib.has(g)) this.want(g, true); }
     // (a stopping loop with this id keeps its fade; the new one replaces it in the map — no hard cut, no click)
     const layers: { L: Layer; g: string }[] = [];
     for (const L of def.layers) {
@@ -2057,8 +2058,11 @@ class Engine implements KongAudio {
     // the drop's winds are done for this life once they stop (freed at the next eviction pass: ~1 s); others idle 9 s
     const drop = l.def.loop === "freefall" || l.def.loop === "glider" || l.def.loop === "plane";
     // (the plane itself stays resident — prefetched at load, it must sound the frame the next plane phase starts)
-    for (const g of l.groups) if (!prefetchGroup(g)) this.lib.markIdle(g, drop ? -1e9 : this.ctx.currentTime);
+    const others = [...this.loops.values()].filter((o) => o !== l && !o.stopping);
+    const heliUp = others.some((o) => o.name === "heli:rotor");
+    for (const g of l.groups) if (!prefetchGroup(g) && !(heliUp && HELI_GUN_GROUPS.includes(g))) this.lib.markIdle(g, drop ? -1e9 : this.ctx.currentTime);
     if (drop && l.def.sprinkle && !prefetchGroup(l.def.sprinkle.g)) this.lib.markIdle(l.def.sprinkle.g, -1e9);
+    if (l.name === "heli:rotor" && !heliUp) for (const g of HELI_GUN_GROUPS) if (!others.some((o) => o.groups.includes(g))) this.lib.markIdle(g, this.ctx.currentTime);
     for (const s of l.srcs) { try { s.stop(); } catch { /* */ } s.disconnect(); }
     for (const n of l.extra) n.disconnect();
     l.out.disconnect(); l.lp.disconnect(); l.panner?.disconnect(); l.inner?.disconnect(); l.outer?.disconnect(); l.outerLp?.disconnect();
