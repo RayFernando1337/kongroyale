@@ -285,7 +285,9 @@ export class GameRender implements EventSink {
     this.standScope?.dispose();
     const res = this.standScope = this.matchScope.child("stands");
     const proto = bananaStand().root;
-    proto.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) res.geometry("geo.world", m.geometry); });
+    const geos = new Set<THREE.BufferGeometry>();
+    proto.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) geos.add(m.geometry); });
+    for (const g of geos) res.geometry("geo.world", g);
     const views = this.standViews = this.cm.stands.map((s) => { const o = proto.clone(true); o.position.set(s.x, s.y, s.z); o.rotation.y = s.yaw; o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); this.engine.scene.add(o); patchTree(this.engine, o); return o; });
     res.defer(() => { for (const o of views) o.removeFromParent(); });
   }
