@@ -145,6 +145,8 @@ function body(c: Choice, m: Moment, bundle: Json | null, diag: Json, prev: Json 
   const ctx = minimise(m.ctx, c.withName);
   if (ctx) ctx.diag = { ...diag, prev: c.mode === "crash" ? prev : null, install: clientId(), kind: c.mode === "crash" ? "crash" : c.chip || c.note ? "report" : "diagnostics", chip: c.chip, dropped: [] as string[] };
   const name = c.withName && OFFER_CALLSIGN ? kr().game?.lobby?.name ?? null : null;
+  const replay = bundle?.replay as { opts?: { humans?: Array<{ name?: string }> } } | null | undefined;
+  if (replay?.opts?.humans && !name) bundle = { ...bundle, replay: { ...replay, opts: { ...replay.opts, humans: replay.opts.humans.map((h) => ({ ...h, name: "" })) } } };
   const out = {
     v: 1, message: message(c, m.ctx, prev), reporter: { name, clientId: clientId(), sessionId: (diag.sid as string) ?? null },
     ctx, logs: [] as unknown[], trail: [] as unknown[], shot: c.withShot ? m.shot?.dataUrl ?? null : null, shotSize: c.withShot && m.shot ? [m.shot.w, m.shot.h] : null,
@@ -159,9 +161,13 @@ function body(c: Choice, m: Moment, bundle: Json | null, diag: Json, prev: Json 
   return out;
 }
 
+function bodyNow(c: Choice, m: Moment) {
+  const diag = snapshot() as Json;
+  return body(c, m, trimmedBundle(), diag, (diag.prev ?? null) as Json | null);
+}
+
 async function send(c: Choice, m: Moment): Promise<string> {
-  const diag = snapshot() as Json, prev = (diag.prev ?? null) as Json | null;
-  const b = body(c, m, trimmedBundle(), diag, prev);
+  const b = bodyNow(c, m);
   const base = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(new Error("no answer from the server")), TIMEOUT_MS);
   try {
@@ -177,19 +183,18 @@ async function send(c: Choice, m: Moment): Promise<string> {
  *  #204's EverySendAnswered: every refused send says so on screen. */
 const notSent = (e: unknown) => (e instanceof TypeError ? "no connection to the server" : e instanceof Error ? e.message : String(e)).slice(0, 80);
 
-/** a short list of what the body holds, from the body itself */
+/** a short list of what the body holds, from the body send() would build now (after its size cuts) */
 function contents(c: Choice, m: Moment): string[] {
   const kb = (v: unknown) => Math.max(1, Math.round(JSON.stringify(v ?? null).length / 1024)) + " KB";
-  const b = trimmedBundle(), d = snapshot() as { events: unknown[]; path: { rows: unknown[] } };
+  const out = bodyNow(c, m), b = out.bundle, { diag, ...ctx } = out.ctx ?? {}, d = diag as { events: unknown[]; path: { rows: unknown[] } };
   const list = [
-    "Device, graphics card, browser, settings and the non-routing URL flags (" + kb(minimise(m.ctx, c.withName)) + ")",
+    "Device, graphics card, browser, settings and the non-routing URL flags (" + kb(ctx) + ")",
     "Frame rate, memory and ping, one row per second (" + ((b?.timeline as { rows?: unknown[] } | null)?.rows?.length ?? 0) + " s, " + kb(b?.timeline) + ")",
-    "Stutter markers and their causes (" + d.events.length + ", " + kb(d.events) + ")",
-    "Where you were and where you looked, once a second (" + d.path.rows.length + " s, " + kb(d.path) + ")",
   ];
+  if (d) list.push("Stutter markers and their causes (" + d.events.length + ", " + kb(d.events) + ")", "Where you were and where you looked, once a second (" + d.path.rows.length + " s, " + kb(d.path) + ")");
   if (b?.replay) list.push("Your inputs in this bot match (" + kb(b.replay) + ")");
-  if (c.withShot && m.shot) list.push("A picture of the game view (" + Math.round(m.shot.dataUrl.length * 0.75 / 1024) + " KB)");
-  if (c.withName && OFFER_CALLSIGN) list.push("Your callsign");
+  if (out.shot) list.push("A picture of the game view (" + Math.round(out.shot.length * 0.75 / 1024) + " KB)");
+  if (out.reporter.name) list.push("Your callsign");
   return list;
 }
 
@@ -212,14 +217,14 @@ function createSheet() {
   const withShot = check("Include the picture", true), withName = OFFER_CALLSIGN ? check("Include my callsign (so we can thank you on stream)", false) : null;
   const details = el("details", ""), summary = el("summary", "", "What's sent"), list = el("ul", "");
   details.append(summary, list);
-  const btns = el("div", "kd-btns"), cancel = el("button", "", "CANCEL"), sendBtn = el("button", "kd-send", "SEND");
+  const btns = el("div", "kd-btns"), cancel = el("button", "close", "CANCEL"), sendBtn = el("button", "kd-send", "SEND");
   cancel.type = sendBtn.type = "button";
   btns.append(cancel, sendBtn);
   const status = el("div", "kd-status");
   box.append(title, consent, chips, note, opts, details, btns, status);
   root.appendChild(box);
   document.body.appendChild(root);
-  let chip: string | null = null, mode: Mode = "report", moment: Moment = { ctx: null, shot: null }, returnTo: HTMLElement | null = null, sending = false;
+  let chip: string | null = null, mode: Mode = "report", moment: Moment = { ctx: null, shot: null }, returnTo: HTMLElement | null = null, sending = false, opens = 0;
   for (const name of CHIPS) {
     const b = el("button", "", name);
     b.type = "button"; b.setAttribute("aria-pressed", "false");
@@ -259,8 +264,11 @@ function createSheet() {
       withShot.checked = m !== "crash"; withShot.disabled = m === "crash";
       if (withName) withName.checked = false;
       root.hidden = false;
-      sendBtn.focus();
-      moment = await capture(m !== "crash");
+      const n = ++opens;
+      moment = { ctx: null, shot: null }; sendBtn.disabled = true; list.replaceChildren(); note.focus();
+      const got = await capture(m !== "crash");
+      if (n !== opens || root.hidden) return;
+      moment = got; sendBtn.disabled = false;
       refresh();
     },
   };

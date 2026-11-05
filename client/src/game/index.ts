@@ -650,7 +650,8 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   function padLayer(): PadLayer | null {
     const video = document.querySelector<HTMLElement>(".kr-video.on");
     if (video) return settingsLayer(video);
-    const guide = document.querySelector<HTMLElement>(".kr-guide:not([hidden])");
+    // the onboarding guide, or the ?diag send sheet (playtest/report.ts): a dialog whose .close button is B
+    const guide = document.querySelector<HTMLElement>(".kr-guide:not([hidden]), .kd-sheet:not([hidden])");
     if (guide) return { root: guide, back: () => guide.querySelector<HTMLButtonElement>(".close")?.click() };
     if (inMatch) {
       if (resultsOpen) return { root: results.el, back: () => {}, noBack: true };
