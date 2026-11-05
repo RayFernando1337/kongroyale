@@ -2,7 +2,7 @@
 // memory a phone browser allows, so the boot (entry.ts) never starts there. Plain DOM in the loading screen's Toon style
 // (the tokens and artwork are the ones index.html's #kr-loading uses); no module of the game is imported.
 
-import { flagQuery } from "./flags";
+import { pageSearch } from "./flags";
 
 /** A device with no mouse or trackpad: its primary pointer is coarse, or it says it is an iPhone, iPad or Android device. A
  *  laptop with a touchscreen and a mouse reports a fine pointer through any-pointer, so it boots normally. */
@@ -66,8 +66,9 @@ export function showDesktopOnly(): void {
 <button type="button">Copy link</button>
 <p class="fine" role="status" aria-live="polite"></p>`;
   const button = root.querySelector("button")!, status = root.querySelector<HTMLElement>(".fine")!;
-  const { mobile: _mobile, ...rest } = flagQuery;
-  const query = new URLSearchParams(rest).toString();
+  const params = new URLSearchParams(pageSearch);
+  params.delete("mobile");
+  const query = params.toString();
   const link = location.origin + location.pathname + (query ? "?" + query : "") + location.hash;
   button.addEventListener("click", () => {
     void copyLink(link).then((ok) => {

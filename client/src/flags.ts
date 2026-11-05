@@ -221,6 +221,9 @@ function readQuery(): URLSearchParams {
 
 const q = readQuery();
 
+/** the page's own query string, untouched by the saved flags: what a copied link to this page should carry */
+export const pageSearch: string = globalThis.location?.search ?? "";
+
 export const flagQuery: Readonly<Record<string, string>> = Object.fromEntries(q);
 
 const values: Record<string, unknown> = {};

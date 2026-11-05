@@ -451,7 +451,7 @@ async function run() {
     const totalMB = Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0)), unmeasured = procs.filter((p) => procMB(p) === null).map((p) => `${p.type} ${p.pid}`);
     const heap = await pageCdp.send("Runtime.getHeapUsage") as { usedSize: number };
     const g = await evalIn<{ textureBytes: number; textures: number; bufferBytes: number; phase: number; stage: string; streamStage: string }>(pageCdp, "window.__krMem.totals()");
-    const res = await evalIn<{ pois: number; evictions: number }>(pageCdp, "({ pois: (window.__kr.modules || []).filter((x) => x.startsWith('poi:')).length, evictions: (window.__kr.evictions || []).length })");
+    const res = await evalIn<{ pois: number; evictions: number }>(pageCdp, "({ pois: ((window.__kr && window.__kr.modules) || []).filter((x) => x.startsWith('poi:')).length, evictions: ((window.__kr && window.__kr.evictions) || []).length })");
     const point = { atS: Math.round((performance.now() - t0) / 1000), totalMB, byType, unmeasured, heapUsedMB: mb(heap.usedSize), webglMB: mb(g.textureBytes + g.bufferBytes), textures: g.textures, phase: g.phase, stage: g.stage, streamStage: g.streamStage, ...res };
     timeline.push(point);
     console.log(`    ${point.atS} s: ${totalMB} MB (GPU ${byType.GPU ?? 0}, renderer ${byType.renderer ?? 0}), JS heap ${point.heapUsedMB}, WebGL ${point.webglMB} in ${g.textures} textures, ${res.pois} POIs, ${res.evictions} evictions, phase ${g.phase} ${g.stage} ${g.streamStage}`);
