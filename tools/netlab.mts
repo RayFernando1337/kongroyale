@@ -239,7 +239,7 @@ async function serve(port: number, token: string) {
   const wss = new WebSocketServer({ port, perMessageDeflate: false, maxPayload: 4096 });
   for (let pid = 0; pid < 2; pid++) H.host.peers.push({ pid, invSeq: 0, send: (u8) => { const b = Buffer.from(u8); for (const ws of socks[pid]) if (ws.readyState === WebSocket.OPEN) ws.send(b); } });
   console.error(`netlab: serving one duel on :${port} (${weapon}, ${secs} s); connect with --token ${token}`);
-  let finished = false;
+  let finished = false, aborted: Error | null = null;
   const close = () => { wss.close(); for (const s of socks.flat()) s.terminate(); };
   try {
     await new Promise<void>((resolve, reject) => {
@@ -250,6 +250,7 @@ async function serve(port: number, token: string) {
           if (binary) { if (pid >= 0) H.host.receive(H.host.peers[pid], new Uint8Array(data.buffer, data.byteOffset, data.byteLength), (r) => ws.send(Buffer.from(r))); return; }
           let j: { pid?: unknown; token?: unknown; t?: unknown };
           try { j = JSON.parse(String(data)); } catch { ws.terminate(); return; }
+          if (j === null || typeof j !== "object") { ws.terminate(); return; }
           if (pid < 0) {
             if (j.token !== token || (j.pid !== 0 && j.pid !== 1)) { ws.terminate(); return; }
             pid = j.pid; socks[pid].push(ws);
@@ -258,7 +259,9 @@ async function serve(port: number, token: string) {
             if (socks[0].length && socks[1].length) resolve();
           } else if (j.t === "done") ws.send(JSON.stringify({ t: "verdicts", serv: H.serv, clamped: H.clamped, deaths: H.deaths }), () => { finished = true; });
         });
-        ws.on("close", () => { if (!finished && pid >= 0) { finished = true; reject(Error("a client left before the duel ended")); } });
+        // an oversized or broken frame is an error on that socket only (ws closes it); never an uncaught exception
+        ws.on("error", () => ws.terminate());
+        ws.on("close", () => { if (!finished && pid >= 0) { finished = true; aborted = Error("a client left before the duel ended"); reject(aborted); } });
       });
       wss.on("error", reject);
     });
@@ -270,6 +273,7 @@ async function serve(port: number, token: string) {
       if (now - nextTick > 200) nextTick = now;
       await new Promise((r) => setTimeout(r, Math.max(0, nextTick - now - 1)));
     }
+    if (aborted) throw aborted;
   } finally { close(); }
 }
 
