@@ -1,9 +1,9 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size.",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size. lazy was raised 2026-11-05 from 3055000, a deliberate exception: the player-diagnostics send sheet (client/src/playtest/report.ts, about 5.1 KB gz, RAY-162) is a lazy chunk that loads only with diag on (?diag or a VITE_KR_DIAG=1 build), so no other page downloads it. Set about 300 bytes over the measured total.",
   "gzBytes": {
     "entry": 34200,
     "boot": 1168020,
     "workers": 4726100,
-    "lazy": 3055000
+    "lazy": 3060200
   }
 }
