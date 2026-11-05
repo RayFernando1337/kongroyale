@@ -50,7 +50,7 @@
     }
   ],
   "verified": {
-    "model": "5d15a17c0843a920",
+    "model": "4c0eb35b3ab65b0b",
     "regions": {
       "client/src/game/index.ts#startGame.online": "1527455257c5daee",
       "client/src/game/index.ts#startGame.prepareIsland": "ab6e79e0e15b3e76",

@@ -34,7 +34,7 @@ node tools/formal/tlc.mjs ClientLifecycle --mutants
 ```
 
 It needs Java 11 or newer on PATH; the first run downloads the pinned TLA+ tools jar into node_modules/.cache. A run
-takes about a second (400 distinct states, `Online = TRUE`). Expected output: one `PASS ClientLifecycle` line and one
+takes about a second (358 distinct states, `Online = TRUE`). Expected output: one `PASS ClientLifecycle` line and one
 `PASS ... mutant` line per entry in `ClientLifecycle.mutants.json`. Each mutant takes one guard out of a scratch copy
 of the model and must make TLC report the rule its entry names; a mutant that passes means the model can no longer see
 that guard. Fix the model, not the mutant.

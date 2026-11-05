@@ -62,9 +62,12 @@ Connect ==
   /\ IF link = "closed"
        THEN /\ silent' = TRUE   \* link?.sendJSON does nothing on a closed socket (net.ts:42); no busy, no error
             /\ UNCHANGED <<view, link, scope, render>>
-       ELSE /\ link' = "online" /\ scope' = WireScopeAfter /\ render' = WireOk
-            /\ view' = (IF WireOk THEN "room" ELSE "title") /\ silent' = ~WireOk
-  /\ UNCHANGED <<boot, prefabs, phase, seated, err, why, ctx, restores>>
+            /\ UNCHANGED err
+       \* wire() runs inside online()'s try: when GameRender throws, the catch drops the link (the socket stays open,
+       \* unreferenced) and shows "NO SERVER", a visible but wrong reason
+       ELSE /\ link' = (IF WireOk THEN "online" ELSE "none") /\ scope' = WireScopeAfter /\ render' = WireOk
+            /\ view' = (IF WireOk THEN "room" ELSE "title") /\ silent' = FALSE /\ err' = ~WireOk
+  /\ UNCHANGED <<boot, prefabs, phase, seated, why, ctx, restores>>
 \* a JOIN that fails ("NO SUCH LOBBY") leaves the socket open at the title; the JOIN went out after the renderer was wired
 JoinFails ==
   /\ Online /\ boot = "ready" /\ prefabs /\ view = "title" /\ link \in {"none", "offline"}
