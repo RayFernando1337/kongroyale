@@ -121,7 +121,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     // the sky irradiance of the (atmos) environment for an up normal: measured once per environment, a uniform
     await brk("step");
     const skyIrr = new SkyIrradianceProbe();
-    const measureSky = () => skyIrr.update(ctx.renderer, ctx.scene)?.then((changed) => { if (changed) (uniforms.wtrSkyIrr.value as THREE.Color).copy(skyIrr.value); });
+    const measureSky = () => skyIrr.update(ctx.renderer, ctx.scene)?.then(() => { (uniforms.wtrSkyIrr.value as THREE.Color).copy(skyIrr.value); }, (e) => console.warn("[water] sky probe failed, retrying", e));
     const releaseSky = ctx.hold("water:sky");
     void Promise.resolve(measureSky()).finally(releaseSky);
     await brk("step");
