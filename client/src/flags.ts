@@ -66,7 +66,7 @@ const FLAGS = {
   harborOnly: { kind: subset, owner: "pois", purpose: "build only these Peel Harbor parts (plus the apron)" },
   headless: { kind: present, owner: "audio", purpose: "audition page without its buttons (scripted runs)" },
   heavyms: { kind: num(Infinity), owner: "boot", purpose: "modules that take longer than this (ms) build behind the match card" },
-  helilazy: { kind: text, owner: "actors", purpose: "=1 loads the helicopter model at its first use in a match, =0 at import; absent = lazy on Safari and on devices reporting under 8 GB" },
+  helilazy: { kind: text, owner: "actors", purpose: "=1 loads the helicopter model at its first use in a match, =0 when the title is ready (the prefab warm-up); absent = first use on Safari and on devices reporting under 8 GB, else when the title is ready" },
   ice: { kind: text, owner: "voice", purpose: "dev builds: ICE server URLs for voice, comma list" },
   impblend: { kind: on, owner: "veg", purpose: "impostors crossfade between their baked views" },
   impcull: { kind: on, owner: "veg", purpose: "cull impostor cells outside the view; =0 draws every impostor every frame" },
