@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
-import { chromium, type CDPSession, type Page } from "playwright";
+import { chromium, type CDPSession } from "playwright";
 import { env, save, source } from "./common.mts";
 import type { Audit } from "../../client/src/engine/res/audit.ts";
 import { RESULT_SCHEMA, RESULT_VERSION, parseResult, type CaseResult, type Metric, type RunResult } from "./schema.ts";
@@ -15,7 +15,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MB = 2 ** 20;
 const mb = (b: number) => Math.round((b / MB) * 10) / 10;
 
-const SCENARIO_VERSION = 2;
+const SCENARIO_VERSION = 3;
 type Profile = "nogpu" | "mac" | "win";
 
 const PROBE = `(function () {
@@ -377,15 +377,21 @@ interface GameSample {
 }
 type Sample = Awaited<ReturnType<typeof takeSample>>;
 
-async function takeSample(name: string, browserCdp: CDPSession, pageCdp: CDPSession, page: Page, t0: number) {
+async function evalIn<T>(cdp: CDPSession, expression: string): Promise<T> {
+  const r = await cdp.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }) as { result: { value: T }; exceptionDetails?: { text: string; exception?: { description?: string } } };
+  if (r.exceptionDetails) throw Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
+  return r.result.value;
+}
+
+async function takeSample(name: string, browserCdp: CDPSession, pageCdp: CDPSession, t0: number) {
   await pageCdp.send("HeapProfiler.collectGarbage");
   await sleep(1500);
   await pageCdp.send("HeapProfiler.collectGarbage");
   const heap = await pageCdp.send("Runtime.getHeapUsage") as { usedSize: number; totalSize: number };
   const procs = await processes(browserCdp);
-  const game = await page.evaluate(() => (window as unknown as { __krMem: { sample(top: number): unknown } }).__krMem.sample(80)) as GameSample;
-  const audit = await page.evaluate(() => (window as unknown as { __kr?: { resAudit?: () => unknown } }).__kr?.resAudit?.() ?? null) as Audit | null;
-  const kr = await page.evaluate(() => { const k = (window as unknown as { __kr?: { stage?: string; game?: { inMatch?: boolean; cm?: { phase?: number } } } }).__kr; return { stage: String(k?.stage), inMatch: !!k?.game?.inMatch, phase: k?.game?.cm?.phase ?? -1 }; });
+  const game = await evalIn<GameSample>(pageCdp, "window.__krMem.sample(80)");
+  const audit = await evalIn<Audit | null>(pageCdp, "(window.__kr && window.__kr.resAudit) ? window.__kr.resAudit() : null");
+  const kr = await evalIn<{ stage: string; inMatch: boolean; phase: number }>(pageCdp, "(() => { const k = window.__kr; return { stage: String(k && k.stage), inMatch: !!(k && k.game && k.game.inMatch), phase: k && k.game && k.game.cm && k.game.cm.phase !== undefined ? k.game.cm.phase : -1 }; })()");
   const byType: Record<string, number> = {};
   for (const p of procs) byType[p.type] = Math.round(((byType[p.type] ?? 0) + (procMB(p) ?? 0)) * 10) / 10;
   const unmeasured = procs.filter((p) => procMB(p) === null).map((p) => `${p.type} ${p.pid}`);
@@ -442,7 +448,7 @@ async function run() {
     for (const p of procs) byType[p.type] = Math.round(((byType[p.type] ?? 0) + (procMB(p) ?? 0)) * 10) / 10;
     const totalMB = Math.round(procs.reduce((a, p) => a + (procMB(p) ?? 0), 0)), unmeasured = procs.filter((p) => procMB(p) === null).map((p) => `${p.type} ${p.pid}`);
     const heap = await pageCdp.send("Runtime.getHeapUsage") as { usedSize: number };
-    const g = await page.evaluate(() => (window as unknown as { __krMem: { totals(): { textureBytes: number; textures: number; bufferBytes: number; phase: number; stage: string; streamStage: string } } }).__krMem.totals());
+    const g = await evalIn<{ textureBytes: number; textures: number; bufferBytes: number; phase: number; stage: string; streamStage: string }>(pageCdp, "window.__krMem.totals()");
     const point = { atS: Math.round((performance.now() - t0) / 1000), totalMB, byType, unmeasured, heapUsedMB: mb(heap.usedSize), webglMB: mb(g.textureBytes + g.bufferBytes), textures: g.textures, phase: g.phase, stage: g.stage, streamStage: g.streamStage };
     timeline.push(point);
     console.log(`    ${point.atS} s: ${totalMB} MB (GPU ${byType.GPU ?? 0}, renderer ${byType.renderer ?? 0}), JS heap ${point.heapUsedMB}, WebGL ${point.webglMB} in ${g.textures} textures, phase ${g.phase} ${g.stage} ${g.streamStage}`);
@@ -467,7 +473,7 @@ async function run() {
   const hold = async (ms: number) => { const end = Date.now() + ms; while (Date.now() < end && !overCap) { await trace(); await sleep(Math.min(1000, Math.max(0, end - Date.now()))); } };
   const waitFor = async (what: string, fn: string, secs: number, optional = false) => {
     const end = Date.now() + secs * 1000;
-    while (Date.now() < end && !overCap) { if (await page.evaluate(fn).catch(() => false)) return true; await trace(); await sleep(5000); }
+    while (Date.now() < end && !overCap) { if (await evalIn<boolean>(pageCdp, fn).catch(() => false)) return true; await trace(); await sleep(5000); }
     if (!overCap) (optional ? notes : errors).push(`timed out after ${secs} s waiting for ${what}`);
     return false;
   };
@@ -476,9 +482,9 @@ async function run() {
     console.log(`memory: ${url} profile ${profile} viewport ${vw}x${vh}@${dpr} -> ${out}`);
     await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 120_000 });
     if (!await waitFor("the title (__kr.ready)", "!!(window.__kr && window.__kr.ready)", waitS)) throw Error("the title never became ready");
-    gpu = await page.evaluate(() => { const c = (window as unknown as { __kr: { engine: { renderer: { getContext(): WebGL2RenderingContext } } } }).__kr.engine.renderer.getContext(), d = c.getExtension("WEBGL_debug_renderer_info"); return String(d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : c.getParameter(c.RENDERER)); });
+    gpu = await evalIn<string>(pageCdp, "(() => { const c = window.__kr.engine.renderer.getContext(), d = c.getExtension('WEBGL_debug_renderer_info'); return String(d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : c.getParameter(c.RENDERER)); })()");
     await hold(5000);
-    samples.push(await takeSample("title", browserCdp, pageCdp, page, t0));
+    samples.push(await takeSample("title", browserCdp, pageCdp, t0));
     if (flag("--heap")) { samples[0].heap = await heapSnapshot(pageCdp, path.join(out, "title.heapsnapshot")); console.log(`  heap snapshot: ${samples[0].heap.totalMB} MB in ${samples[0].heap.nodes} nodes`); }
     for (let m = 1; m <= matches; m++) {
       const suffix = m === 1 ? "" : String(m);
@@ -486,21 +492,21 @@ async function run() {
       if (!await waitFor("the match (inMatch)", "!!(window.__kr.game && window.__kr.game.inMatch)", waitS)) break;
       if (warmup) {
         await hold(5000);
-        const s = await takeSample(`warmup${suffix}`, browserCdp, pageCdp, page, t0);
+        const s = await takeSample(`warmup${suffix}`, browserCdp, pageCdp, t0);
         samples.push(s);
         if (s.kr.phase !== 0) errors.push(`${s.name}: sampled in phase ${s.kr.phase}, not the warm-up`);
       } else {
-      if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", waitS, true)) samples.push(await takeSample("plane", browserCdp, pageCdp, page, t0));
+      if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", waitS, true)) samples.push(await takeSample("plane", browserCdp, pageCdp, t0));
       if (!await waitFor("the play phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 2", nogpu ? 1200 : 240)) break;
       await hold(matchSecs * 1000);
-      samples.push(await takeSample(`match${suffix}`, browserCdp, pageCdp, page, t0));
+      samples.push(await takeSample(`match${suffix}`, browserCdp, pageCdp, t0));
       }
-      await page.evaluate(() => (window as unknown as { __kr: { game: { leave(): void } } }).__kr.game.leave());
+      await evalIn<void>(pageCdp, "window.__kr.game.leave()");
       if (!await waitFor("the title after leaving", "!(window.__kr.game && window.__kr.game.inMatch)", 60)) break;
       await hold(10_000);
-      samples.push(await takeSample(`left${m}`, browserCdp, pageCdp, page, t0));
+      samples.push(await takeSample(`left${m}`, browserCdp, pageCdp, t0));
     }
-    const krErrors = await page.evaluate(() => ((window as unknown as { __kr?: { errors?: unknown[] } }).__kr?.errors ?? []).map((e) => String(e).slice(0, 300)));
+    const krErrors = await evalIn<string[]>(pageCdp, "((window.__kr && window.__kr.errors) || []).map((e) => String(e).slice(0, 300))");
     errors.push(...krErrors.map((e) => `__kr.errors: ${e}`));
   } catch (e) {
     errors.push(String((e as Error).message ?? e).slice(0, 400));
