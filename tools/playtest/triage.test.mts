@@ -37,8 +37,8 @@ const clean = (s: string) => { for (const w of [...callsigns, ...words]) assert.
   assert.equal(saf.config.os, "macOS");
   assert.equal(saf.config.gpuVendor, "apple");
   assert.equal(saf.location.phase, "play", "a crash is placed where the dead session was");
-  assert.equal(saf.location.poi, "banana-temple");
-  assert.equal(saf.fingerprint, "crash|play|banana-temple|-|Safari|high");
+  assert.equal(saf.location.poi, null, "the heartbeat's POI is the nearest one at any distance, so it isn't trusted");
+  assert.equal(saf.fingerprint, "crash|play|-|-|Safari|high");
 
   const c1 = by.get("KB-CHR1")!;
   assert.equal(c1.kind, "report");
@@ -190,6 +190,12 @@ const clean = (s: string) => { for (const w of [...callsigns, ...words]) assert.
   const failedBuild = entryOf(hostileText);
   assert.ok(failedBuild.symptoms.includes("error"), "a failed module build is an error");
   assert.equal(failedBuild.errorKey, "module build failed exits");
+  hostileText.ctx.diag.events = [[40, "module-failed", 15, "exits"], [41, "module-built", 80, "exits"]];
+  assert.ok(!entryOf(hostileText).symptoms.includes("error"), "a module that failed and then built isn't an error");
+  hostileText.ctx.diag.events = [[5.8, "module-failed", 15, "exits"], [30, "module-built", 80, "exits"]];
+  assert.equal(entryOf(hostileText).attribution, null, "nor the cause of a stall");
+  hostileText.ctx.diag.events = [[40, "module-built", 80, "exits"], [41, "module-failed", 15, "exits"]];
+  assert.equal(entryOf(hostileText).errorKey, "module build failed exits", "a failure after the last build still counts");
   hostileText.ctx.diag.events = [[6.1, "poi-built", 420, "poi:banana-temple"]];
   assert.equal(entryOf(hostileText).attribution, null, "the old event kind is gone");
 
