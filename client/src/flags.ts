@@ -87,7 +87,7 @@ const FLAGS = {
   lodv: { kind: on, owner: "engine", purpose: "the anti-pop LOD path: terrain geomorph, rock and HLOD crossfades, view-dependent detail culling" },
   lootlater: { kind: on, owner: "weapons", purpose: "bake the floor-loot far LODs after the title is ready, before the prefab warm-up a match waits for, instead of during boot; =0 bakes them during boot" },
   lowmem: { kind: text, owner: "boot", purpose: "build POIs only near the player: =1 on, =0 off, absent = auto" },
-  lowmemr: { kind: num(450), owner: "boot", purpose: "lowmem build distance (m, horizontal) once the match is in play; in the warm-up and the plane every POI in view builds" },
+  lowmemr: { kind: num(450), owner: "boot", purpose: "lowmem build distance (m, horizontal); in the warm-up and the plane every POI in view builds too" },
   manual: { kind: present, owner: "caster", purpose: "caster camera starts in manual instead of autopilot" },
   map: { kind: one, owner: "ui", purpose: "open the full-screen map (view-camera captures)" },
   mode: { kind: text, owner: "caster", routing: true, purpose: "mode of the lobby a caster creates: trios, else solo" },

@@ -13,6 +13,7 @@ export function lowMemoryDevice(forced: string | null, fullPrepare: boolean): bo
 
 type Session = { game?: { inMatch?: boolean; cm?: { phase: number } | null }; caster?: { casting?: boolean } };
 
+const VIEW_HALF_H_M = 150;
 const view = new THREE.Frustum(), viewProj = new THREE.Matrix4(), poiSphere = new THREE.Sphere();
 
 function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number): string | null {
@@ -22,13 +23,13 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   const overview = !casting && (kr?.game?.cm?.phase ?? Phase.Play) <= Phase.Plane;
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
-  let best: string | null = null, bestD = overview ? Infinity : radiusM;
+  let best: string | null = null, bestD = Infinity;
   for (const id of pending) {
     const p = pois.find((x) => `poi:${x.id}` === id);
     if (!p) return id;
-    if (overview && !view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, p.padY ?? 0, p.z), p.r))) continue;
     const d = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
-    if (d < bestD) { best = id; bestD = d; }
+    if (d >= bestD) continue;
+    if (d < radiusM || (overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M))))) { best = id; bestD = d; }
   }
   return best;
 }
