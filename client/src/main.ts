@@ -595,8 +595,7 @@ async function stream(): Promise<void> {
   streamList.sort((a, b) => dist(a) - dist(b));
   // the HEAVY modules first (the PRACTICE card waits only for them — the longer the player stays in the title, the
   // likelier they are done), then nearest to the islet first
-  streamList.sort((a, b) => (est(b) >= 1500 ? 1 : 0) - (est(a) >= 1500 ? 1 : 0));
-  streamList.sort((a, b) => Number(owedBeforeMatch.has(b)) - Number(owedBeforeMatch.has(a)));
+  streamList.sort((a, b) => Number(owedBeforeMatch.has(b)) - Number(owedBeforeMatch.has(a)) || (est(b) >= 1500 ? 1 : 0) - (est(a) >= 1500 ? 1 : 0));
   kr.streamTotal = streamList.length;
   kr.streamPending = () => streamList.slice();
   const streamMs: Record<string, number> = {};
