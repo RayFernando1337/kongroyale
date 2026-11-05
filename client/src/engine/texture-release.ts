@@ -20,7 +20,7 @@ export function releaseAfterUpload<T extends THREE.Texture>(t: T, rebuild?: () =
 export function shareTexture<T extends THREE.Texture>(t: T): T {
   const version = t.source.version;
   const c = releaseAfterUpload(t.clone() as T, () => t.source.data);
-  if ((t as THREE.Texture & { isCompressedTexture?: boolean }).isCompressedTexture) c.mipmaps = t.mipmaps;
+  c.mipmaps = t.mipmaps;
   c.source.version = version;
   return c;
 }
@@ -30,7 +30,7 @@ function dropSource(t: THREE.Texture) {
   if (!px || px.data === null) return;
   t.onUpdate = null;
   t.source.data = { width: px.width, height: px.height, depth: px.depth, data: null };
-  if ((t as THREE.CompressedTexture).isCompressedTexture) t.mipmaps.length = 0;
+  t.mipmaps.length = 0;
   if (px.data === undefined) freeImage(px);
 }
 

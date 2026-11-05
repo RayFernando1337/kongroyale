@@ -5,7 +5,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { releaseAfterUpload } from "./texture-release";
-import { capped, cappedMips } from "./tex-cap";
+import { capped } from "./tex-cap";
 import { flag } from "../flags";
 
 const BASE = import.meta.env.BASE_URL || "/";
@@ -24,7 +24,6 @@ async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
 
 const DECODER_IDLE_MS = 10000;
 const KTX2 = flag("ktx2");
-const SOURCE_EXT = /\.(webp|jpe?g|png)$/i;
 
 export class Assets {
   private gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -33,7 +32,6 @@ export class Assets {
   private decoders: { draco: DRACOLoader; ktx2: KTX2Loader } | null = null;
   private decoding = 0;
   private decoderIdle: ReturnType<typeof setTimeout> | undefined;
-  private ktx2Sources: Promise<ReadonlySet<string>> | null = null;
   readonly maxAniso: number;
 
   constructor(private renderer: THREE.WebGLRenderer, private hold: (label: string) => () => void) {
@@ -75,13 +73,6 @@ export class Assets {
     return this.once("gltf:" + path, () => this.decode(() => retry(() => this.gltf.loadAsync(assetUrl(path)))));
   }
 
-  /** whether ?ktx2=1 is on and public/assets/ktx2.json lists a .ktx2 encoded from this source path */
-  private compressedListed(path: string): Promise<boolean> {
-    if (!KTX2) return Promise.resolve(false);
-    this.ktx2Sources ??= fetch(assetUrl("assets/ktx2.json")).then((r) => r.json() as Promise<{ sources: string[] }>).then((m) => new Set(m.sources), () => new Set<string>());
-    return this.ktx2Sources.then((s) => s.has(path.replace(/^\//, "")));
-  }
-
   compressedTexture(path: string): Promise<THREE.CompressedTexture> {
     return this.decode(({ ktx2 }) => ktx2.loadAsync(assetUrl(path)));
   }
@@ -90,17 +81,10 @@ export class Assets {
   texture(path: string, o: { srgb?: boolean; repeat?: boolean; aniso?: boolean } = {}): Promise<THREE.Texture> {
     const { srgb = true, repeat = true, aniso = true } = o;
     return this.once(`tex:${path}:${srgb}:${repeat}`, async () => {
-      if (await this.compressedListed(path)) {
-        const load = () => retry(() => this.compressedTexture(path.replace(SOURCE_EXT, ".ktx2"))).then(cappedMips);
-        const t = releaseAfterUpload(await load(), async () => { const f = await load(); t.mipmaps.length = 0; t.mipmaps.push(...f.mipmaps); return f.image; });
-        t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-        if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        if (aniso) t.anisotropy = this.maxAniso;
-        return t;
-      }
       const load = () => retry(() => this.tex.loadAsync(assetUrl(path)));
-      const t = releaseAfterUpload(await load(), async () => capped((await load()).image));
-      (t as THREE.Texture).image = capped(t.image);
+      const k = KTX2 ? await (await import("./ktx2-tex")).ktx2Texture(path, (p) => retry(() => this.compressedTexture(p))) : null;
+      const t: THREE.Texture = k ?? releaseAfterUpload(await load(), async () => capped((await load()).image));
+      if (!k) (t as THREE.Texture).image = capped(t.image as HTMLImageElement);
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
       if (aniso) t.anisotropy = this.maxAniso;

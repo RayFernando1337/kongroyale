@@ -1,11 +1,11 @@
-import type * as THREE from "three";
 import { flag } from "../flags";
 import { isLowMemory } from "../low-mem-device";
 
 type Source = HTMLImageElement | HTMLCanvasElement | ImageBitmap;
 
 const DEFAULT_CAP_PX = 1024, LOW_MEMORY_CAP_PX = 512;
-const CAP_PX = flag("poicap") ?? (isLowMemory(flag("lowmem"), flag("prepare") === "full") ? LOW_MEMORY_CAP_PX : DEFAULT_CAP_PX);
+/** longest texture edge in px for poicap; 0 = no cap */
+export const CAP_PX = flag("poicap") ?? (isLowMemory(flag("lowmem"), flag("prepare") === "full") ? LOW_MEMORY_CAP_PX : DEFAULT_CAP_PX);
 const done = new WeakMap<Source, HTMLCanvasElement>();
 
 export function capped<T extends Source>(img: T): T | HTMLCanvasElement {
@@ -20,14 +20,6 @@ export function capped<T extends Source>(img: T): T | HTMLCanvasElement {
   g.drawImage(img, 0, 0, c.width, c.height);
   done.set(img, c);
   return c;
-}
-
-export function cappedMips<T extends THREE.CompressedTexture>(t: T): T {
-  const m = t.mipmaps;
-  let k = 0;
-  while (CAP_PX > 0 && k < m.length - 1 && Math.max(m[k].width, m[k].height) > CAP_PX) k++;
-  if (k) { t.mipmaps = m.slice(k); t.image = { width: m[k].width, height: m[k].height }; }
-  return t;
 }
 
 export async function cappedBitmap(bm: ImageBitmap): Promise<ImageBitmap> {
