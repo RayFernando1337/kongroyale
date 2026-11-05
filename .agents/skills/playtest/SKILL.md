@@ -18,7 +18,7 @@ timeline and replay without the HUD, for players on a stream (RAY-162). It also 
 `events` (long animation frames with the script that ran longest, phase changes, world modules streamed in or
 evicted, shader-program jumps, 3D-resolution steps, heap drops over 50 MB, context loss, visibility, fullscreen, errors; times in page seconds,
 the timeline's `t`), `path` (position and view once a second in a match) and `prev`, the last heartbeat of a session
-that died without closing while visible (a killed tab). GPU timer queries run as they do under `?perfhud`. The
+that died without closing (a killed tab; Web Locks tell a dead session from a live tab, see docs/statecharts/diagnostics.md from #204). GPU timer queries run as they do under `?perfhud`. The
 player's send sheet (a later PR) sends the snapshot as `ctx.diag`; the typed `/kongbot` bar and F8 don't.
 
 ## Where bundles land

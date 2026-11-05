@@ -7,9 +7,10 @@
 //              evictions and rebuilds (residency from __kr.modules).
 //   path       the player's position and view once a second in a match (up to an hour): the route a camera-path bench
 //              replays on another GPU
-//   heartbeat  a small record in localStorage every 5 s, marked clean on pagehide. A session that never marked clean and
-//              stopped beating while visible died (tab killed, browser crashed); the next load keeps its last record as
-//              `prev`. A hidden tab's timers may be throttled or frozen, so a beat written while hidden never counts.
+//   heartbeat  one record per session in localStorage, written at load and every 5 s, marked clean on pagehide and
+//              running again on a back/forward-cache pageshow. Each live page holds a Web Lock named after its session,
+//              so a later load knows a session with no clean exit and no lock died (tab killed, browser crashed); it
+//              claims that record under one lock and keeps it as `prev`, so one crash is reported once.
 // snapshot() is __kr.diag.snapshot(); a report sends it as ctx.diag, which the server cleans and stores as it is.
 import type { Engine } from "../engine/engine";
 import { BUILD } from "../build";
@@ -17,7 +18,7 @@ import { POIS } from "../../../shared/world/map";
 import { ring } from "./metrics.hot";
 
 const MAX_EVENTS = 500, PATH_S = 3600, PATH_W = 7, LONG_MS = 100, GC_DROP_MB = 50, BEAT_S = 5, DEAD_AFTER_MS = 12_000, KEEP_MS = 7 * 86_400_000;
-const BEAT_KEY = "kr.diag.hb.", NEAR_POI_M = 150;
+const BEAT_KEY = "kr.diag.hb.", CLAIM_KEY = "kr.diag.claim", NEAR_POI_M = 150;
 const PATH_FIELDS = ["t", "x", "y", "z", "yawDeg", "pitchDeg", "phase"] as const;
 
 /** [page seconds, kind, number, text] */
@@ -78,21 +79,40 @@ function readBeats(): Beat[] {
   } catch { /* blocked storage */ }
   return out;
 }
-/** another tab's session is alive while it keeps beating; one that stopped without marking clean died */
-function findDeadSession(): void {
-  const now = Date.now(), first = readBeats();
-  for (const b of first) if (b.clean || now - b.at > KEEP_MS) localStorage.removeItem(BEAT_KEY + b.sid);
-  const open = first.filter((b) => !b.clean && !b.hidden && now - b.at <= KEEP_MS);
-  if (!open.length) return;
-  setTimeout(() => {
+interface Locks { request(name: string, task: () => Promise<unknown>): Promise<unknown>; query(): Promise<{ held?: Array<{ name?: string }> }> }
+const locks = (navigator as unknown as { locks?: Locks }).locks;
+
+/** hold this session's Web Lock for the page's whole life, then write its first beat: a session whose page holds no
+ *  lock is not running. Without Web Locks the first beat is written at once. */
+function goLive(first: Beat): Promise<void> {
+  if (!locks) { writeBeat(first); return Promise.resolve(); }
+  return new Promise((live) => { void locks.request(BEAT_KEY + sid, () => { writeBeat(first); live(); return new Promise(() => {}); }); });
+}
+
+/** a session that never marked clean and whose page holds no lock died. The claim runs under one lock and deletes what
+ *  it takes, so two tabs loading together never report the same crash. Without Web Locks: a session that stopped
+ *  beating for DEAD_AFTER_MS while visible (a hidden tab's timers may be frozen). Model: tools/formal/DiagHeartbeat.tla
+ *  and docs/statecharts/diagnostics.md (#204). */
+async function findDeadSession(): Promise<void> {
+  const now = Date.now();
+  for (const b of readBeats()) if (b.clean || now - b.at > KEEP_MS) localStorage.removeItem(BEAT_KEY + b.sid);
+  let dead: Beat[];
+  if (locks) {
+    dead = (await locks.request(CLAIM_KEY, async () => {
+      const held = new Set(((await locks.query()).held ?? []).map((l) => l.name));
+      const out = readBeats().filter((b) => !b.clean && !held.has(BEAT_KEY + b.sid));
+      for (const b of out) localStorage.removeItem(BEAT_KEY + b.sid);
+      return out;
+    })) as Beat[];
+  } else {
+    const open = readBeats().filter((b) => !b.clean && !b.hidden);
+    await new Promise((r) => setTimeout(r, DEAD_AFTER_MS));
     const later = new Map(readBeats().map((b) => [b.sid, b]));
-    for (const b of open) {
-      if ((later.get(b.sid)?.at ?? b.at) !== b.at) continue;
-      if (!prev || b.at > prev.at) prev = b;
-      localStorage.removeItem(BEAT_KEY + b.sid);
-    }
-    if (prev) push("prev-session", Math.round((Date.now() - prev.at) / 1000), prev.phase >= 0 ? "died in a match" : "died outside a match");
-  }, DEAD_AFTER_MS);
+    dead = open.filter((b) => later.get(b.sid)?.at === b.at);
+    for (const b of dead) localStorage.removeItem(BEAT_KEY + b.sid);
+  }
+  for (const b of dead) if (!prev || b.at > prev.at) prev = b;
+  if (prev) push("prev-session", Math.round((Date.now() - prev.at) / 1000), prev.phase >= 0 ? "died in a match" : "died outside a match");
 }
 
 /** the POI whose edge is nearest, if within NEAR_POI_M (kongbot/context.ts nearestPoi, kept here so this lazy chunk
@@ -109,7 +129,6 @@ function poiAt(x: number, z: number): string | null {
 /** start sampling; returns the per-second hook for the recorder (it gets the new row's offset in the metrics ring) */
 export function installDiag(engine: Engine): (at: number) => void {
   observeLongFrames();
-  findDeadSession();
   const canvas = engine.renderer.domElement;
   canvas.addEventListener("webglcontextlost", () => push("context-lost", 0));
   canvas.addEventListener("webglcontextrestored", () => push("context-restored", 0));
@@ -120,6 +139,7 @@ export function installDiag(engine: Engine): (at: number) => void {
   const resident = new Set<string>(), failed = new Set<string>();
   const last = { phase: -2, programs: -1, scale: -1, heap: -1 };
   let beat: Beat = { v: 1, sid, sha: BUILD.sha, at: Date.now(), upS: 0, phase: -1, x: null, z: null, poi: null, heapMB: -1, textures: 0, geometries: 0, fps: 0, hidden: false, clean: false };
+  void goLive(beat).then(findDeadSession);
   addEventListener("pagehide", () => { beat.clean = true; beat.at = Date.now(); writeBeat(beat); });
   addEventListener("pageshow", (e) => { if (e.persisted) { beat.clean = false; writeBeat(beat); } });
   addEventListener("visibilitychange", () => {
