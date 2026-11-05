@@ -159,7 +159,7 @@ owns them. The tests in `tools/res/test.mts` run each of these cases.
 
 What changes for each owner:
 
-- **World modules** get `ctx.res`, their region scope, on `WorldCtx`. A module creates through it and no longer frees
+- **World modules** get their region scope as the second argument to `build(ctx, scope)`. A module creates through it and no longer frees
   anything by hand. The boot already knows each module's scene roots (`rootsOf` in `main.ts`), so the scope also gives
   per-POI accounting.
 - **`GameRender`** gets the match scope. The resources its views and effects own move into the scope, so their
@@ -345,7 +345,7 @@ ships dark behind a registry flag where it changes behaviour.
    acquiring scope dropped when that scope is disposed, least-recently-used eviction of unreferenced entries only when
    their category is over budget, and one loader of each kind. Then each bypass site, one PR each, by the lane that
    owns that code.
-8. **Region scopes**: `ctx.res` for world modules, with per-POI accounting and `rebuild` callbacks for their geometry.
+8. **Region scopes**: the `scope` argument to `build(ctx, scope)` for world modules, with per-POI accounting and `rebuild` callbacks for their geometry.
 9. **Residency**: `far` regions free their sources' GPU buffers (with RAY-106), then `cold` for the lobby islet.
 10. **Capped internal pixels** for every screen-sized target (`world/atmos/post.ts`, `engine/engine.ts`), so the
     `target` budget no longer depends on the display.
