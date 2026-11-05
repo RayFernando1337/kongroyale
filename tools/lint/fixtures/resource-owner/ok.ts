@@ -1,0 +1,10 @@
+import * as THREE from "three";
+import { resources, type Scope } from "../../../../client/src/engine/res/scope";
+declare const scope: Scope, res: Scope, matchScope: Scope, ctx: { res: Scope };
+export const a = scope.texture("tex.ui", new THREE.DataTexture(new Uint8Array(4), 1, 1));
+export const b = matchScope.target(new THREE.WebGLRenderTarget(4, 4));
+export const c = res.worker(new Worker(new URL("./w.ts", import.meta.url), { type: "module" }));
+export const d = ctx.res.texture("tex.world", new THREE.CanvasTexture(document.createElement("canvas")));
+export const e = resources.root.texture("tex.ui", new THREE.CubeTexture());
+export const g = new THREE.BoxGeometry(1, 1, 1);
+export const m = new THREE.MeshBasicMaterial();

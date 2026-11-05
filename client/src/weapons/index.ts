@@ -95,8 +95,8 @@ export function createWeaponsKit(ctx: WorldCtx): WeaponsKitEx {
   const lootSys = new LootSystem(ctx);
   patchTree(lootSys.root);
   bootT.lootMs = Math.round(performance.now() - tp);
-  // the far-LOD bakes of every floor-loot item (~1-2 s of main thread) run one item per macrotask right after boot
-  // (done long before the deferred prefab prewarm compiles them); ?lootlater=1 leaves them to the game's prefab warm-up
+  // the far-LOD bakes of every floor-loot item (~1-2 s of main thread) are left to the game's prefab warm-up after the title;
+  // ?lootlater=0 runs them one item per macrotask right after boot (done long before the deferred prefab prewarm compiles them)
   let lootPrep: Promise<THREE.Object3D> | null = null;
   const prepareLoot = (next: () => Promise<void> = () => new Promise<void>((r) => setTimeout(r, 0))) => (lootPrep ??= (async () => {
     let spent = 0;

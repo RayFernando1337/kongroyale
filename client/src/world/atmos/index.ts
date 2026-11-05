@@ -224,7 +224,7 @@ const mod: WorldModule = {
       let t0 = prof ? performance.now() : 0;
       const lap = (k: string) => { if (prof) { const t1 = performance.now(); prof[k] = (prof[k] ?? 0) + t1 - t0; t0 = t1; } };
       u.uAtmCamPos.value.copy(ctx.camera.position);
-      ctx.renderer.getDrawingBufferSize(u.uAtmRes.value);
+      ctx.renderer.getDrawingBufferSize(u.uAtmRes.value).multiplyScalar(post.pixScale);
       u.uAtmTemporal.value.set(post.taa ? 1 : 0, frameNo++ & 1023);
       sky.update(ctx.camera, t); lap("sky");
       skirt.update(ctx.camera); lap("skirt");

@@ -289,14 +289,42 @@ async function processes(cdp: CDPSession): Promise<Proc[]> {
 }
 const procMB = (p: Proc) => p.pssMB ?? p.footprintMB ?? p.privateMB ?? p.rssMB;
 
-async function heapSnapshot(page: CDPSession) {
-  const chunks: string[] = [];
-  const onChunk = (e: { chunk: string }) => { chunks.push(e.chunk); };
+type HeapMeta = { node_fields: string[]; node_types: [string[]]; edge_fields: string[]; edge_types: [string[]] };
+function readHeapSnapshot(file: string) {
+  const buf = fs.readFileSync(file);
+  const numbers = (key: string, from: number, count: number) => {
+    const values = new Float64Array(count);
+    let i = buf.indexOf(key, from) + key.length, n = 0, v = 0, digits = false;
+    for (; n < count; i++) {
+      const c = buf[i];
+      if (c >= 48 && c <= 57) { v = v * 10 + c - 48; digits = true; }
+      else if (digits) { values[n++] = v; v = 0; digits = false; }
+    }
+    return { values, end: i };
+  };
+  const head = JSON.parse(buf.toString("utf8", 0, buf.indexOf("\"nodes\":[")).replace(/,\s*$/, "") + "}") as { snapshot: { meta: HeapMeta; node_count: number; edge_count: number } };
+  const { meta, node_count: nodeCount, edge_count: edgeCount } = head.snapshot;
+  const nodes = numbers("\"nodes\":[", 0, nodeCount * meta.node_fields.length);
+  const edges = numbers("\"edges\":[", nodes.end, edgeCount * meta.edge_fields.length);
+  const strings: string[] = [];
+  for (let i = buf.indexOf("\"strings\":[", edges.end) + 11; ;) {
+    while (buf[i] !== 34 && buf[i] !== 93) i++;
+    if (buf[i] === 93) break;
+    let j = i + 1;
+    while (buf[j] !== 34) j += buf[j] === 92 ? 2 : 1;
+    strings.push(JSON.parse(buf.toString("utf8", i, j + 1)) as string);
+    i = j + 1;
+  }
+  return { snapshot: { meta }, nodes: nodes.values, edges: edges.values, strings };
+}
+
+async function heapSnapshot(page: CDPSession, file: string) {
+  const fd = fs.openSync(file, "w");
+  const onChunk = (e: { chunk: string }) => { fs.writeSync(fd, e.chunk); };
   page.on("HeapProfiler.addHeapSnapshotChunk", onChunk);
-  await page.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false });
-  page.off("HeapProfiler.addHeapSnapshotChunk", onChunk);
-  const snap = JSON.parse(chunks.join("")) as { snapshot: { meta: { node_fields: string[]; node_types: [string[]]; edge_fields: string[]; edge_types: [string[]] } }; nodes: number[]; edges: number[]; strings: string[] };
-  chunks.length = 0;
+  try { await page.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false }); }
+  finally { page.off("HeapProfiler.addHeapSnapshotChunk", onChunk); fs.closeSync(fd); }
+  const snap = readHeapSnapshot(file);
   const { meta } = snap.snapshot, nf = meta.node_fields.length, ef = meta.edge_fields.length;
   const T = meta.node_fields.indexOf("type"), N = meta.node_fields.indexOf("name"), S = meta.node_fields.indexOf("self_size"), EC = meta.node_fields.indexOf("edge_count");
   const ET = meta.edge_fields.indexOf("type"), EN = meta.edge_fields.indexOf("name_or_index"), TO = meta.edge_fields.indexOf("to_node");
@@ -451,7 +479,7 @@ async function run() {
     gpu = await page.evaluate(() => { const c = (window as unknown as { __kr: { engine: { renderer: { getContext(): WebGL2RenderingContext } } } }).__kr.engine.renderer.getContext(), d = c.getExtension("WEBGL_debug_renderer_info"); return String(d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : c.getParameter(c.RENDERER)); });
     await hold(5000);
     samples.push(await takeSample("title", browserCdp, pageCdp, page, t0));
-    if (flag("--heap")) { samples[0].heap = await heapSnapshot(pageCdp); console.log(`  heap snapshot: ${samples[0].heap.totalMB} MB in ${samples[0].heap.nodes} nodes`); }
+    if (flag("--heap")) { samples[0].heap = await heapSnapshot(pageCdp, path.join(out, "title.heapsnapshot")); console.log(`  heap snapshot: ${samples[0].heap.totalMB} MB in ${samples[0].heap.nodes} nodes`); }
     for (let m = 1; m <= matches; m++) {
       const suffix = m === 1 ? "" : String(m);
       await page.locator("button.tn-play-cta").click({ timeout: 120_000, force: true });
