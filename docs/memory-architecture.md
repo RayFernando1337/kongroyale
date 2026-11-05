@@ -40,7 +40,7 @@ Chrome on D3D11 (RTX, 1600x900, seed 42, main 88d6d44, three runs, RAY-119). The
 
 In a match the GPU process holds about 1.8 times what the game asks WebGL for (8330 MB for 4606 MB). That extra is
 the driver's copies, mip chains and staging, which the game can't free directly, so only cutting WebGL allocations
-reduces it. The renderer holds the JS heap, the CPU copies, decoded audio (305 MB) and about 875 MB of everything else:
+reduces it. The renderer holds the JS heap, the CPU copies, decoded audio (305 MB) and about 848 MB of everything else:
 code, the DOM, decoded images in flight and V8's overhead.
 
 Five properties of the code produce these numbers:
@@ -207,20 +207,21 @@ RAY-107) refine them.
 | process | today (D3D11, match) | target | what it means |
 |---|---:|---:|---|
 | GPU process | 8330 MB | 2200 MB | WebGL allocations at most 1200 MB, at today's 1.8 ratio: down 74% from 4606 MB |
-| renderer | 4240 MB | 1500 MB | the JS heap, kept CPU copies and audio within their budgets below, plus today's 875 MB of everything else |
+| renderer | 4240 MB | 1500 MB | the JS heap, kept CPU copies and audio within their budgets below, plus today's 848 MB of everything else |
 | browser and utility processes | 143 MB | 150 MB | already there |
 | **whole browser** | **12713 MB** | **3850 MB** | under 4 GB, with 150 MB to spare |
 
-The renderer can't take up the slack: 875 MB of its 1500 MB target is outside the game's categories, so the GPU
+The renderer can't take up the slack: 848 MB of its 1500 MB target is outside the game's categories, so the GPU
 process has to come down to about a quarter of today, from 8.3 GB to 2.2 GB. WebGL allocations are split by category:
 
 | category | budget | today | how it gets there |
 |---|---:|---:|---|
-| `tex.world` on the GPU | 550 MB | about 1700 MB | POI textures at the size they are seen at, KTX2, far regions drop near-only maps |
+| `tex.world` on the GPU | 520 MB | about 1700 MB | POI textures at the size they are seen at, KTX2, far regions drop near-only maps |
 | `tex.actor` on the GPU | 150 MB | about 1050 MB | the helicopter at 2048² (RAY-105), one texture set per kong variant, kongs at 1024² beyond close range |
 | `target` | 200 MB at the tier's pixel cap | about 450 MB | impostor arrays sized to the view-distance setting, capped internal pixels (migration step 10) |
 | `geo.world` on the GPU | 250 MB | 1361 MB of buffers on D3D11 | far regions draw their proxy only (RAY-106), quantized positions and normals |
 | `geo.actor` on the GPU | 50 MB | small | one geometry per prefab, shared by every instance |
+| `tex.ui` and `other` on the GPU | 30 MB | small | the title art and UI atlases at the size they are drawn at |
 | **WebGL allocations** | **1200 MB** | **4606 MB on D3D11** | |
 | kept CPU copies, all categories | 150 MB | 2777 MB on D3D11 | the CPU-copy policy |
 | `audio` PCM | 150 MB | 305 MB on D3D11, plus 50 MB per match | the existing idle eviction, also run at match end |
