@@ -504,6 +504,8 @@ let streamNow: string | null = null;
  *  measured 5.5 s click → match was 2.7 s of prefab warm-up + a 2.2 s module build the card sat through */
 let streamHold = false;
 const streamDone: Promise<void> = streamOn ? stream() : Promise.resolve();
+let streamFailed = false;
+streamDone.catch((e) => { streamFailed = true; report("stream", e); });
 if (!streamOn) { kr.streamed = true; engine.endStream(); startFarBuild(); }
 /**
  * called by the game before a match can start (PRACTICE / CREATE / JOIN): resolves at once when the island is complete;
@@ -522,7 +524,7 @@ kr.prepare = () => {
   // online, the plane phase switches the stream to back to back. ?prepare=full = build everything behind the card.
   if (flag("prepare") !== "full") {
     holdWarmupUntilStreamed();
-    const heavyLeft = () => !kr.streamed && (streamList.some(beforeMatch) || (streamNow !== null && beforeMatch(streamNow)));
+    const heavyLeft = () => !kr.streamed && !streamFailed && (streamList.some(beforeMatch) || (streamNow !== null && beforeMatch(streamNow)));
     if (!heavyLeft() && (!prefabs || kr.warmDone === true)) return Promise.resolve();
     return (preparing ??= (async () => {
       const card = (await prepareCardImport).prepareCard(kr); const tick = setInterval(() => card.set(), 100);
