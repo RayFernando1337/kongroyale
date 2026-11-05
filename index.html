@@ -455,6 +455,7 @@
     }
 
     function remove() { el.remove(); removeEventListener("keydown", onKey, true); try { if (hook.detach) hook.detach(); } catch (e) { /* the game's labels */ } window.__krLoading = undefined; }
+    window.__krLoadingStop = function () { done = true; held = false; clearTimeout(tipTimer); remove(); };   // entry.ts: this device gets the desktop-only screen, not the game
     function fadeOut() { if (devHold && !released) { held = true; return; } done = true; held = false; clearTimeout(tipTimer); el.classList.add("out"); setTimeout(remove, 800); }
     function fail() {
       if (done || failed) return;

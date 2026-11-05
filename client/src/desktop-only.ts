@@ -12,12 +12,14 @@ export function isTouchOnly(): boolean {
   return hinted || matchMedia("(pointer: coarse)").matches;
 }
 
+const BASE: string = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
+
 const CSS = `
 #kr-desktop-only { --bg: #071422; --outline: #04101A; --text: #FFF8E7; --muted: #A9C6DA;
   --display: "Lilita One", "Arial Black", sans-serif; --ui: "Nunito", "Segoe UI", sans-serif;
   position: fixed; inset: 0; z-index: 200; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 18px; padding: 24px; box-sizing: border-box; text-align: center; color: var(--text); font-family: var(--ui);
-  background: linear-gradient(180deg, rgba(7,20,34,.55), rgba(7,20,34,.92)), var(--bg) url('/assets/ui/loading.webp') center / cover no-repeat; }
+  background: linear-gradient(180deg, rgba(7,20,34,.55), rgba(7,20,34,.92)), var(--bg) url('${BASE}assets/ui/loading.webp') center / cover no-repeat; }
 #kr-desktop-only * { box-sizing: border-box; }
 #kr-desktop-only img { width: min(280px, 70vw); height: auto; -webkit-user-drag: none;
   filter: drop-shadow(3px 0 0 var(--outline)) drop-shadow(-3px 0 0 var(--outline)) drop-shadow(0 3px 0 var(--outline)) drop-shadow(0 -3px 0 var(--outline)) drop-shadow(0 6px 0 var(--outline)); }
@@ -47,6 +49,7 @@ async function copyLink(url: string): Promise<boolean> {
 
 /** Replaces the loading screen with the desktop-only screen. Loads nothing else. */
 export function showDesktopOnly(): void {
+  (window as unknown as { __krLoadingStop?: () => void }).__krLoadingStop?.();
   document.getElementById("kr-loading")?.remove();
   document.getElementById("c")?.remove();
   (window as unknown as { __kr: unknown }).__kr = { ready: false, desktopOnly: true, errors: [] };
@@ -54,14 +57,17 @@ export function showDesktopOnly(): void {
   style.textContent = CSS;
   const root = document.createElement("main");
   root.id = "kr-desktop-only";
-  root.innerHTML = `<img src="/assets/ui/toon/kong-royale-lockup.svg" alt="Kong Royale" width="320" height="119" draggable="false" />
+  root.innerHTML = `<img src="${BASE}assets/ui/toon/kong-royale-lockup.svg" alt="Kong Royale" width="320" height="119" draggable="false" />
 <p class="eyebrow">Battle royale · 50 players</p>
 <h1>Desktop only, for now</h1>
 <p class="body">Kong Royale needs a mouse and keyboard and doesn't run on phones or tablets yet. Open this link on a computer to play.</p>
 <button type="button">Copy link</button>
 <p class="fine" role="status" aria-live="polite"></p>`;
   const button = root.querySelector("button")!, status = root.querySelector<HTMLElement>(".fine")!;
-  const link = location.origin + location.pathname;
+  const params = new URLSearchParams(location.search);
+  params.delete("mobile");
+  const query = params.toString();
+  const link = location.origin + location.pathname + (query ? "?" + query : "") + location.hash;
   button.addEventListener("click", () => {
     void copyLink(link).then((ok) => {
       button.textContent = ok ? "Copied" : "Copy link";
