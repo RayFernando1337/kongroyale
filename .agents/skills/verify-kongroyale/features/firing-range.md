@@ -21,10 +21,10 @@ Preconditions:
 - `node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs doctor` is ok. GPU profile (not run on `nogpu`).
 
 - **Open.** Run `node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs range`. The helper clicks the `Firing range` button in `.tn-play-links` and waits for the range.
-- **Move.** It clicks the canvas, holds W for 2 s, and compares `state().x/z` before and after. `walkedM` must be over 1 (about 9 m on the Mac).
+- **Move.** It clicks the centre of the viewport, waits for pointer lock, holds W for 2 s, and compares `state().x/z` before and after. `pointerLocked` must be true and `walkedM` over 1 (about 9 m on the Mac).
 - **Proof.** `range-0-spawn.png` and `range-1-after-walk.png` (practice HUD, weapon in hand, 30/300 ammo).
 
 ## Gotchas
 
-- Clicking the canvas asks for pointer lock; headless Chrome grants none, so mouse look is not exercised. Keyboard movement still works.
+- Headless Chrome and Playwright's headless shell both grant pointer lock to the canvas click (checked on Linux: Chrome 156 and headless shell 151). Keys move the kong without it, so a walk alone doesn't prove the click reached the game, which is why `range` also requires `pointerLocked`.
 - The coaching card ("Sprint, slide and crouch...") overlays the bottom left on first visit; it is expected.
