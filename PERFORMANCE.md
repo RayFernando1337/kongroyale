@@ -16,8 +16,8 @@ File references were re-checked on that revision; verify them again before imple
 
 | Status | Count | Items |
 |---|---|---|
-| Done | 14 | Benchmark warmup split and real-play scenario, timing without packet hashing, achieved load, in-match real-GPU timing, result contract and compare, browser collectors, PERF-01 kong animation budget, PERF-05 water SSR, shared benchmark helpers, local Basis transcoder, metrics flight recorder, context-loss events, replay, no-GPU CI gates |
-| Open | 12 | Storm/endgame and multi-lobby scenarios, network tail gates, Windows server wrapper, one GPU query owner, PERF-02, PERF-03, ray collider dedup, PERF-04, GI samples, DOM helpers, automatic incident upload, hardware regression lane |
+| Done | 15 | Benchmark warmup split and real-play scenario, timing without packet hashing, achieved load, simulated network tail gate, in-match real-GPU timing, result contract and compare, browser collectors, PERF-01 kong animation budget, PERF-05 water SSR, shared benchmark helpers, local Basis transcoder, metrics flight recorder, context-loss events, replay, no-GPU CI gates |
+| Open | 12 | Storm/endgame and multi-lobby scenarios, real-socket and WAN network tails, Windows server wrapper, one GPU query owner, PERF-02, PERF-03, ray collider dedup, PERF-04, GI samples, DOM helpers, automatic incident upload, hardware regression lane |
 | Obsolete | 4 | "No benchmarks were run", "no memory leak was established", FND as the first assignment, CI described as build and secrets only |
 
 Lanes that own open work: textures KONG-44, geometry and impostors KONG-45, resource ownership KONG-47, shader-compile
@@ -387,7 +387,7 @@ not passed. Do not install dependencies or change CI just to conceal an environm
 ## 7. Dispatch order and completion evidence
 
 1. FND: **done** for host and socket workloads (#10, #11, #12). Still open: storm/endgame and multi-lobby scenarios,
-   network tail gates, the Windows server wrapper and the GPU query owner.
+   real-socket and WAN network tails, the Windows server wrapper and the GPU query owner.
 2. PERF-01: done (#187). PERF-02: open, KONG-68.
 3. PERF-03 and ray deduplication: open, no lane; trace fixtures exist (the `sim` step's golden hashes), and RAY-152 owns
    determinism.
