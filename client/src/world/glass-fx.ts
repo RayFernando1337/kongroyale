@@ -27,7 +27,7 @@ interface Undo { g: GMesh; tri: number; a: number; b: number; c: number; pos: Fl
 
 /** a window-glass material: named glass, or an unnamed see-through mirror-smooth PBR one (the coast kit's) — never water,
  * spray, fog or storm cards (shader materials / rough) */
-const isGlassMat = (m: THREE.Material | undefined) => !!m && m.transparent && m.opacity <= 0.8 && m.name !== "glass:shard"
+export const isGlassMat = (m: THREE.Material | undefined) => !!m && m.transparent && m.opacity <= 0.8 && m.name !== "glass:shard"
   && (/glass/i.test(m.name) || ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial === true && m.opacity <= 0.6 && (m as THREE.MeshStandardMaterial).roughness <= 0.08));
 const MAX_TRIS = 400_000;
 const BM = new THREE.Matrix4();

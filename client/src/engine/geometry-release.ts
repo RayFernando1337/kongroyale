@@ -13,5 +13,4 @@ export function releaseBatchAfterUpload(bm: THREE.BatchedMesh): void {
   if (bm.boundingSphere) g.boundingSphere = bm.boundingSphere.clone();
   if (bm.boundingBox) g.boundingBox = bm.boundingBox.clone();
   for (const a of Object.values(g.attributes)) if ((a as THREE.BufferAttribute).isBufferAttribute) (a as THREE.BufferAttribute).onUpload(dropArray);
-  g.index?.onUpload(dropArray);
 }
