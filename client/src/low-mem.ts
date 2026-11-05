@@ -7,6 +7,7 @@ import type { WorldModule } from "./world/module";
 import type { Scope } from "./engine/res/scope";
 import { flag } from "./flags";
 import { isLowMemory } from "./low-mem-device";
+import { restoreModulesWith } from "./engine/res/restore";
 
 export function lowMemoryDevice(forced: string | null, fullPrepare: boolean): boolean {
   const on = isLowMemory(forced, fullPrepare);
@@ -85,7 +86,20 @@ type StaticEntry = Parameters<StaticCache["unfreeze"]>[0];
 const hooksOf = new Map<string, Hook[]>(), ctxOf = new Map<string, Engine>(), evicted = new Set<string>();
 
 export function moduleCtx(engine: Engine, w: World, id: string): Engine {
-  (globalThis as unknown as { __kr: { rebuildModule?: (id: string) => Promise<void> } }).__kr.rebuildModule ??= async (x) => { await evictStreamed(engine, w, x); await (await w.build(x)).integrated; };
+  const kr = (globalThis as unknown as { __kr: { rebuildModule?: (id: string) => Promise<void> } }).__kr;
+  if (!kr.rebuildModule) {
+    kr.rebuildModule = async (x) => { await evictStreamed(engine, w, x); await (await w.build(x)).integrated; };
+    restoreModulesWith({
+      can: (x) => ctxOf.has(x) && w.modOf.has(x),
+      rebuild: async (ids) => {
+        for (const x of ids) await evictStreamed(engine, w, x);
+        void (async () => {
+          while (engine.contextLost) await new Promise((r) => setTimeout(r, 50));
+          for (const x of ids) await (await w.build(x)).integrated;
+        })().catch((e) => w.report("restore-rebuild", e));
+      },
+    });
+  }
   engine.rebuilding = evicted.has(id);
   const known = ctxOf.get(id);
   if (known) return known;
