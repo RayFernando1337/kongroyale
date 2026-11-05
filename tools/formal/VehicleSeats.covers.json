@@ -29,8 +29,8 @@
   ],
   "writes": [
     {
-      "what": "a vehicle's seats, a rider's vehicle and seat, and any kong's state (a rider leaves the Ride state only together with its seat)",
-      "pattern": "seats\\[[^\\]]*\\]\\s*=(?!=)|\\.(veh|seat)\\s*=(?!=)|\\.st\\s*=\\s*(PS\\.\\w+|RIDE_ST)\\b",
+      "what": "a vehicle's seats, a rider's vehicle and seat, and every kong-state write (a rider leaves the Ride state only together with its seat); vehicle states (VS.*) are not kong states",
+      "pattern": "seats\\[[^\\]]*\\]\\s*=(?!=)|\\.(veh|seat)\\s*=(?!=)|\\.st\\s*=(?!=)(?!\\s*VS\\.)",
       "files": [
         "shared/sim/",
         "shared/net/",
@@ -114,6 +114,18 @@
     {
       "at": "shared/sim/match.ts#Match.spawnShooter",
       "why": "the firing range has no vehicles"
+    },
+    {
+      "at": "shared/sim/zipline.ts#zipAttach",
+      "why": "grabs a trolley only from on foot (returns early unless p.st === 0)"
+    },
+    {
+      "at": "shared/sim/zipline.ts#toFoot",
+      "why": "called only from the zipline step, for a kong riding a cable, never a vehicle"
+    },
+    {
+      "at": "shared/net/proto.ts#readVehicle",
+      "why": "decodes a snapshot into the client's copy of a vehicle"
     }
   ],
   "verified": {
