@@ -16,6 +16,7 @@ repository root (Node 22.12+):
 npm run build
 node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs up --prod --port 3140
 npx tsx tools/performance/memory.mts run --url http://127.0.0.1:3140            # profile from the OS: nogpu on Linux, mac, win
+npx tsx tools/performance/memory.mts run --url http://127.0.0.1:3140 --matches 1 # cloud SwiftShader: one match (see Gotchas)
 npx tsx tools/performance/memory.mts table shots/memory/<stamp>/result.json --md
 node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs down
 ```
