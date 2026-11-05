@@ -29,6 +29,7 @@ function dropSource(t: THREE.Texture) {
   if (!px || px.data === null) return;
   t.onUpdate = null;
   t.source.data = { width: px.width, height: px.height, depth: px.depth, data: null };
+  for (const m of t.mipmaps as { data: { byteLength: number } }[]) m.data = { byteLength: m.data.byteLength };
   if (px.data === undefined) freeImage(px);
 }
 
