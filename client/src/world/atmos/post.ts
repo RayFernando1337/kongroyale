@@ -2021,10 +2021,11 @@ export class AtmosPost implements PostPipeline {
   renderScale = 1;
   private fullW = 1; private fullH = 1;
   private outW = 1; private outH = 1;
+  pixScale = 1;
   private applyScale() {
     const composer = this.composer;
     const sc = this.renderScale;
-    const k = PIXCAP ? Math.min(1, Math.sqrt(MAX_PIXELS[this.quality] / (this.fullW * this.fullH))) : 1;
+    const k = this.pixScale = PIXCAP && !atmosFlags().has("smaa") ? Math.min(1, Math.sqrt(MAX_PIXELS[this.quality] / (this.fullW * this.fullH))) : 1;
     const cw = Math.max(1, Math.round(this.fullW * k)), ch = Math.max(1, Math.round(this.fullH * k));
     this.outW = this.taa ? cw : this.fullW; this.outH = this.taa ? ch : this.fullH;
     const sw = Math.max(1, Math.round(cw * sc)), sh = Math.max(1, Math.round(ch * sc));
