@@ -22,17 +22,19 @@ const VIEW_HALF_H_M = 150;
 const OFFSCREEN_RANK_M = 1e6;
 let viewBuilds = 0, pickedByView = false;
 const view = new THREE.Frustum(), viewProj = new THREE.Matrix4(), poiSphere = new THREE.Sphere();
-const LOOKAHEAD_S = 5, AHEAD_MIN_M = 0.01, SAMPLE_MS = 200, TELEPORT_MPS = 150, FAST_MPS = 12, FAST_BUILD_GAP_MS = 8000;
-const motion = { x: 0, z: 0, at: 0, vx: 0, vz: 0, builtAt: -Infinity };
+const LOOKAHEAD_S = 5, AHEAD_MIN_M = 0.01, SAMPLE_MS = 200, STALE_MS = 1000, TELEPORT_MPS = 150, FAST_MPS = 12, FAST_BUILD_GAP_MS = 8000;
+const motion = { x: 0, z: 0, at: 0, vx: 0, vz: 0, known: false, builtAt: -Infinity };
 
-function track(camera: THREE.Camera) {
+function track(camera: THREE.Camera): boolean {
   const e = camera.matrixWorld.elements, now = performance.now(), dt = (now - motion.at) / 1000;
-  if (dt * 1000 < SAMPLE_MS) return;
+  if (dt * 1000 < SAMPLE_MS) return motion.known;
   const vx = (e[12] - motion.x) / dt, vz = (e[14] - motion.z) / dt;
-  const jump = motion.at === 0 || Math.hypot(vx, vz) > TELEPORT_MPS;
+  const jump = dt * 1000 > STALE_MS || Math.hypot(vx, vz) > TELEPORT_MPS;
+  motion.known = !jump;
   motion.vx = jump ? 0 : (motion.vx + vx) / 2;
   motion.vz = jump ? 0 : (motion.vz + vz) / 2;
   motion.x = e[12]; motion.z = e[14]; motion.at = now;
+  return motion.known;
 }
 
 function distM(camera: THREE.Camera, p: Poi): number {
@@ -51,7 +53,7 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   const overview = !casting && phase === Phase.Plane && viewBuilds < viewCap;
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
-  track(camera);
+  if (!track(camera)) return null;
   if (Math.hypot(motion.vx, motion.vz) > FAST_MPS && performance.now() - motion.builtAt < FAST_BUILD_GAP_MS) return null;
   let best: string | null = null, bestD = Infinity;
   const resident = residents?.() ?? [];
@@ -73,7 +75,7 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
 export async function nextNearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number, viewCap: number): Promise<string> {
   for (;;) {
     const id = nearModule(pending, camera, pois, radiusM, viewCap);
-    if (id) { if (pickedByView) viewBuilds++; if (id.startsWith("poi:")) motion.builtAt = performance.now(); pending.splice(pending.indexOf(id), 1); return id; }
+    if (id) { if (pickedByView) viewBuilds++; pending.splice(pending.indexOf(id), 1); return id; }
     await new Promise((r) => setTimeout(r, 250));
   }
 }
@@ -189,11 +191,12 @@ export function trimStreamed(engine: Engine, w: World, incoming: string | null, 
     for (;;) {
       const list = residents!();
       const victim = over(list, incoming) ? victimOf(list, incoming) : null;
-      if (!victim) return;
+      if (!victim) break;
       await evictStreamed(engine, w, victim.id);
       pending.push(victim.id);
       delete streamMs[victim.id];
     }
+    if (incoming) motion.builtAt = performance.now();
   }).catch((e) => w.report("lowmem-trim", e)));
 }
 
