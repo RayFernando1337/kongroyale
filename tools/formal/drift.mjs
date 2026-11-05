@@ -13,7 +13,7 @@ let ok = true;
 for (const model of models) {
   const c = readCovers(model), v = c.verified ?? { regions: {} };
   const problems = [];
-  if (v.model !== modelHash(model)) problems.push(`the model (${model}.tla, .cfg or .mutants.json) changed`);
+  if (v.model !== modelHash(model)) problems.push(`the model (${model}.tla, .cfg, .mutants.json, or the regions, writes or allow list in ${model}.covers.json) changed`);
   for (const key of c.regions) {
     const r = region(key);
     if (r.error) problems.push(`${key}: ${r.error} (moved or renamed: point the region at its new place)`);
