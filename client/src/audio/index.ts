@@ -2067,8 +2067,10 @@ class Engine implements KongAudio {
 
   private idleUnused(groups: string[], t: number, except?: LoopVoice) {
     const others = [...this.loops.values()].filter((o) => o !== except && !o.stopping);
-    const heliUp = others.some((o) => o.name === "heli:rotor");
-    for (const g of groups) if (!prefetchGroup(g) && !(heliUp && HELI_GUN_GROUPS.includes(g)) && !others.some((o) => o.groups.includes(g))) this.lib.markIdle(g, t);
+    const pending = [...this.pendingLoops.values()];
+    const heliUp = others.some((o) => o.name === "heli:rotor") || pending.some((p) => p.name === "heli:rotor");
+    const inUse = (g: string) => others.some((o) => o.groups.includes(g)) || pending.some((p) => (BANK[p.name]?.layers ?? []).some((L) => this.grp(L.g) === g));
+    for (const g of groups) if (!prefetchGroup(g) && !(heliUp && HELI_GUN_GROUPS.includes(g)) && !inUse(g)) this.lib.markIdle(g, t);
   }
 
   private disconnectLoop(l: LoopVoice) {
