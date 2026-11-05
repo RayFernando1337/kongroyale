@@ -364,7 +364,7 @@
     "client/src/world/pois/coco-caves/sculpt.ts": 25,
     "client/src/world/pois/coco-caves/timber.ts": 80,
     "client/src/world/pois/coconut-cove/index.ts": 59,
-    "client/src/world/pois/lobby-islet/atlas.ts": 57,
+    "client/src/world/pois/lobby-islet/atlas.ts": 56,
     "client/src/world/pois/lobby-islet/bake-atlas.mjs": 8,
     "client/src/world/pois/lobby-islet/bake.mts": 3,
     "client/src/world/pois/lobby-islet/crowd.ts": 29,
@@ -1028,9 +1028,6 @@
       "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); t.anisotropy = 4; return t;",
       "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 0.6, 1 / 0.6); t.anisotropy = 4; return t;",
       "const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;"
-    ],
-    "client/src/world/pois/lobby-islet/atlas.ts": [
-      "ktx2 ??= new KTX2Loader().setTranscoderPath(assetUrl(\"assets/actors/basis/\")).setWorkerLimit(4).detectSupport(renderer);"
     ],
     "client/src/world/pois/lobby-islet/paint.ts": [
       "const t = new THREE.CanvasTexture(c);"
