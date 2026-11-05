@@ -27,7 +27,7 @@
 //   ghost   = predicted hits the server rejected;  surprise = server hits the client predicted as misses
 //   clamped = shots older than the rewind cap (MAX_REWIND_TICKS)
 // and the transport tails of the window the shooter fires in, as the clients see them (first copy of each frame):
-//   rttMs      = ping → pong, both clients;  inputAckMs = each input sent → the first snapshot that acknowledges it (lastSeq),
+//   rttMs      = ping → pong, both clients;  inputAckMs = an input sent → the first snapshot that acknowledges it (lastSeq),
 //   snapGapMs  = time between snapshots (30 Hz: 33 ms when nothing is late);  corrPct = prediction corrections per 100
 //   snapshots, both clients (the server replays late inputs 1:1, so a late input shows as a pause, not a correction);
 //   holdPct    = the shooter's frames that held the target in place because interpolation ran out of snapshots
@@ -79,83 +79,67 @@ const sendOn = (p: Pipe, s: Sock, u8: Uint8Array | null, json?: unknown) => {
 /** a frame goes out on every socket (the match info only on the main one, like the server's JSON) */
 const send = (p: Pipe, u8: Uint8Array | null, json?: unknown) => { for (const s of json ? p.socks.slice(0, 1) : p.socks) sendOn(p, s, u8, json); };
 
-async function run(rtt: number) {
-  now = 0; lostMsgs = 0;
+type Inp = { yaw: number; pitch: number; fire: boolean; mx: number; mz: number; buttons: number; dx: number; dy: number; poll: (o: { mx: number; mz: number; buttons: number; slot: number }, allowFire: boolean) => void };
+
+/** the authoritative side: the match on the lobby islet, A armed, B tanky (or killable), bots parked out of the way */
+function makeHost() {
   const m = new Match({ seed: 7, mode: "solo", world, humans: [{ id: 0, name: "A", team: 0 }, { id: 1, name: "B", team: 1 }] });
   for (const p of m.players) if (p.bot) { m.brains[p.id] = null; p.x = 3000 + p.id * 10; p.z = 3000; p.st = PS.Dead; p.respawnAt = 1e9; }
   const host = new MatchHost(m);
   const islet = POIS.find((q) => q.id === "lobby-islet")!;
   const A = m.players[0], Bp = m.players[1];
-  const place = () => {
-    A.x = islet.x - 11; A.z = islet.z; A.y = Math.max(0, terrain.height(A.x, A.z)) + 0.05; A.vx = A.vz = 0;
-    Bp.x = islet.x + 11; Bp.z = islet.z + 2; Bp.y = Math.max(0, terrain.height(Bp.x, Bp.z)) + 0.05;
-    const w = WEAPONS.indexOf(weapon), s = A.slots[0]; s.kind = SK.Weapon; s.id = w; s.rarity = 0; s.mag = 999; s.count = 1; A.active = 0; A.ammo.fill(999);
-    Bp.hp = killable ? 100 : 1e9; Bp.shield = killable ? 50 : 0;
-  };
-  place();
+  A.x = islet.x - 11; A.z = islet.z; A.y = Math.max(0, terrain.height(A.x, A.z)) + 0.05; A.vx = A.vz = 0;
+  Bp.x = islet.x + 11; Bp.z = islet.z + 2; Bp.y = Math.max(0, terrain.height(Bp.x, Bp.z)) + 0.05;
+  const w = WEAPONS.indexOf(weapon), s = A.slots[0]; s.kind = SK.Weapon; s.id = w; s.rarity = 0; s.mag = 999; s.count = 1; A.active = 0; A.ammo.fill(999);
+  Bp.hp = killable ? 100 : 1e9; Bp.shield = killable ? 50 : 0;
   // kill races: B respawns ON its spot (inside the tick, before history is recorded — exactly like a real respawn)
-  let deaths = 0;
-  if (killable) { const orig = m.spawnWarmup.bind(m); m.spawnWarmup = (p) => { if (p.id !== 1) return orig(p); deaths++; Bp.x = islet.x + 11; Bp.z = islet.z + 2; Bp.y = Math.max(0, terrain.height(Bp.x, Bp.z)) + 0.05; Bp.st = PS.Ground; Bp.grounded = true; Bp.vx = Bp.vy = Bp.vz = 0; Bp.shield = 50; }; }
+  const out = { m, host, deaths: 0, serv: [] as number[], clamped: 0, tick() {
+    host.tick(); A.hp = 100; if (!killable) Bp.hp = 1e9; if (m.phase !== 0) m.phase = 0;
+    // keep the warm-up going forever (respawn timers are on phaseT: shift them with it)
+    if (!killable) m.phaseT = 0; else if (m.phaseT > 60) { m.phaseT -= 30; for (const q of m.players) if (q.respawnAt > 0) q.respawnAt -= 30; }
+  } };
+  if (killable) { const orig = m.spawnWarmup.bind(m); m.spawnWarmup = (p) => { if (p.id !== 1) return orig(p); out.deaths++; Bp.x = islet.x + 11; Bp.z = islet.z + 2; Bp.y = Math.max(0, terrain.height(Bp.x, Bp.z)) + 0.05; Bp.st = PS.Ground; Bp.grounded = true; Bp.vx = Bp.vy = Bp.vz = 0; Bp.shield = 50; }; }
+  m.shotProbe = (sh, _inp, _k, _t, clamped, res) => { if (sh.id !== 0) return; out.serv.push(res.victim); if (clamped) out.clamped++; };
+  return out;
+}
+
+/** the two players' browsers: ClientMatch each, B's scripted dodging, A's aim and trigger, and the transport tails */
+function makeClients(sendUp: (pid: number, u8: Uint8Array) => void) {
   /** per client: when each input seq was sent, the newest snapshot tick and pong seen (the redundant copy is skipped) */
   const tails = [0, 1].map(() => ({ sentAt: new Float64Array(4096), lastTick: -1, lastSnapAt: 0, lastPong: 0, acked: 0 }));
   const rttMs: number[] = [], ackMs: number[] = [], gapMs: number[] = [], hdr = {} as SnapHeader;
-  let measuring = false, frames = 0; const base = { corr: [0, 0], snaps: [0, 0], hold: 0 };
-  const clients: Array<{ cm: ClientMatch; up: Pipe; down: Pipe; peer: HostPeer; inp: { yaw: number; pitch: number; fire: boolean; mx: number; mz: number; buttons: number; dx: number; dy: number; poll: (o: { mx: number; mz: number; buttons: number; slot: number }, allowFire: boolean) => void } }> = [];
-  for (let pid = 0; pid < 2; pid++) {
-    const up = pipe(rtt / 2, 11 + pid), down = pipe(rtt / 2, 91 + pid);
+  let measuring = false, frames = 0, t0 = -1, lastSemi = 0; const base = { corr: [0, 0], snaps: [0, 0], hold: 0 };
+  const T = secs * 1000, rateMs = WEAPON_DEFS[weapon].auto ? 0 : 60000 / WEAPON_DEFS[weapon].rpm + 20;
+  const clients = [0, 1].map((pid) => {
     const tl = tails[pid];
-    const sendBinary = (u8: Uint8Array) => { if (u8[0] === M.Input) tl.sentAt[new DataView(u8.buffer, u8.byteOffset).getUint32(1, true) % 4096] = now; send(up, u8); };
+    const sendBinary = (u8: Uint8Array) => { if (u8[0] === M.Input) tl.sentAt[new DataView(u8.buffer, u8.byteOffset).getUint32(1, true) % 4096] = now; sendUp(pid, u8); };
     const link: Link = { offline: false, onJSON: () => {}, onBinary: () => {}, onClose: () => {}, sendJSON: () => {}, sendBinary, close: () => {} };
-    const cm = new ClientMatch(world, link);
-    const peer: HostPeer = { pid, invSeq: 0, send: (u8) => send(down, u8) };
-    host.peers.push(peer);
-    const inp = { yaw: 0, pitch: 0, fire: false, mx: 0, mz: 0, buttons: 0, dx: 0, dy: 0, poll(o: { mx: number; mz: number; buttons: number; slot: number }, allowFire: boolean) { o.mx = this.mx; o.mz = this.mz; o.buttons = this.buttons | (this.fire && allowFire ? B.FIRE : 0); o.slot = 0; } };
-    clients.push({ cm, up, down, peer, inp });
-    const info = { ...matchInfo(m, 7, { [pid + 1]: pid }), myUid: pid + 1 };
-    send(down, null, JSON.parse(JSON.stringify(info)));
-  }
-  // ---- verdicts
-  const pred: number[] = [], serv: number[] = []; let clampedN = 0;
-  m.shotProbe = (sh, _inp, _k, _t, clamped, res) => { if (sh.id !== 0) return; serv.push(res.victim); if (clamped) clampedN++; };
-  const R = makeShotResult();
+    const inp: Inp = { yaw: 0, pitch: 0, fire: false, mx: 0, mz: 0, buttons: 0, dx: 0, dy: 0, poll(o, allowFire) { o.mx = this.mx; o.mz = this.mz; o.buttons = this.buttons | (this.fire && allowFire ? B.FIRE : 0); o.slot = 0; } };
+    return { cm: new ClientMatch(world, link), inp };
+  });
+  const pred: number[] = [], R = makeShotResult();
   clients[0].cm.onTick = () => { const c = clients[0].cm; if (c.pred.fired > 0) for (let k = 0; k < c.pred.fired; k++) pred.push(c.predictShot(k, R).victim); };
-  // ---- loop: server at 60 Hz, clients at 144 Hz
-  const T = secs * 1000; let nextTick = 0, nextFrame = 0, t0 = -1;
-  const rateMs = WEAPON_DEFS[weapon].auto ? 0 : 60000 / WEAPON_DEFS[weapon].rpm + 20;
-  let lastSemi = 0;
-  while (now < T + rtt + 500) {
-    const step = Math.min(nextTick, nextFrame); now = step;
-    for (let ci = 0; ci < clients.length; ci++) {
-      const c = clients[ci], tl = tails[ci];
-      for (let k = 0; k < c.up.socks.length; k++) {
-        const up = c.up.socks[k], down = c.down.socks[k];
-        while (up.q.length && up.q[0].at <= now) host.receive(c.peer, up.q.shift()!.u8, (r) => sendOn(c.down, down, r));
-        while (down.q.length && down.q[0].at <= now) {
-          const msg = down.q.shift()!;
-          if (msg.json) { c.cm.onJSON(msg.json as Record<string, unknown>); continue; }
-          const r = new Reader(msg.u8), kind = r.u8();
-          if (kind === M.Snapshot) {
-            readSnapHeader(r, hdr);
-            if (hdr.tick > tl.lastTick) {
-              if (measuring && tl.lastSnapAt) gapMs.push(now - tl.lastSnapAt);
-              // lastSeq is cumulative and inputs run at 60 Hz, snapshots at 30: sample every input it acknowledges for the first time
-              if (measuring) for (let s = Math.max(tl.acked + 1, hdr.lastSeq - 4095); s <= hdr.lastSeq; s++) if (tl.sentAt[s % 4096]) ackMs.push(now - tl.sentAt[s % 4096]);
-              if (hdr.lastSeq > tl.acked) tl.acked = hdr.lastSeq;
-              tl.lastTick = hdr.tick; tl.lastSnapAt = now;
-            }
-          } else if (kind === M.Pong) { const sent = r.f64(); if (sent > tl.lastPong) { tl.lastPong = sent; if (measuring) rttMs.push(now - sent); } }
-          c.cm.onBinary(msg.u8);
+  return {
+    clients, pred,
+    /** a frame from the server reached client `pid` (on any of its sockets) */
+    receive(pid: number, u8: Uint8Array | null, json?: unknown) {
+      const c = clients[pid], tl = tails[pid];
+      if (json) { c.cm.onJSON(json as Record<string, unknown>); return; }
+      const r = new Reader(u8!), kind = r.u8();
+      if (kind === M.Snapshot) {
+        readSnapHeader(r, hdr);
+        if (hdr.tick > tl.lastTick) {
+          if (measuring && tl.lastSnapAt) gapMs.push(now - tl.lastSnapAt);
+          // lastSeq is cumulative and inputs run at 60 Hz, snapshots at 30: sample every input it acknowledges for the first time
+          if (measuring) for (let s = Math.max(tl.acked + 1, hdr.lastSeq - 4095); s <= hdr.lastSeq; s++) if (tl.sentAt[s % 4096]) ackMs.push(now - tl.sentAt[s % 4096]);
+          if (hdr.lastSeq > tl.acked) tl.acked = hdr.lastSeq;
+          tl.lastTick = hdr.tick; tl.lastSnapAt = now;
         }
-      }
-    }
-    if (now >= nextTick) {
-      host.tick(); A.hp = 100; if (!killable) Bp.hp = 1e9; if (m.phase !== 0) m.phase = 0;
-      // keep the warm-up going forever (respawn timers are on phaseT: shift them with it)
-      if (!killable) m.phaseT = 0; else if (m.phaseT > 60) { m.phaseT -= 30; for (const q of m.players) if (q.respawnAt > 0) q.respawnAt -= 30; }
-      nextTick += DT * 1000;
-    }
-    if (now >= nextFrame) {
-      const dt = 1 / 144;
+      } else if (kind === M.Pong) { const sent = r.f64(); if (sent > tl.lastPong) { tl.lastPong = sent; if (measuring) rttMs.push(now - sent); } }
+      c.cm.onBinary(u8!);
+    },
+    /** one drawn frame on both clients */
+    frame(dt: number) {
       // target B: strafe left/right every 0.7 s, sprint, hop now and then
       const b = clients[1].inp, ph = Math.floor(now / 700);
       b.mx = ph % 2 ? 1 : -1; b.mz = (ph % 5 === 0) ? 1 : 0; b.buttons = (ph % 3 === 0 ? B.SPRINT : 0) | ((Math.floor(now / 1900) % 2 === 0 && now % 1900 < 60) ? B.JUMP : 0);
@@ -178,10 +162,20 @@ async function run(rtt: number) {
         }
         if (rateMs === 0) a.fire = firing; else if (firing && now - lastSemi > rateMs) { a.fire = !a.fire; lastSemi = now; } else if (!firing) a.fire = false;
       }
-      for (const c of clients) { (c.inp as unknown as { yaw: number }).yaw = c.inp.yaw; c.cm.update(dt, c.inp as never, true); }
-      nextFrame += 1000 / 144;
-    }
-  }
+      for (const c of clients) c.cm.update(dt, c.inp as never, true);
+    },
+    /** the firing window has ended (plus the time for its last shots to reach the server) */
+    done: (graceMs: number) => now > T + graceMs,
+    tails() {
+      const pc = (x: number, y: number) => (y ? Math.round((x / y) * 1000) / 10 : 0);
+      const tail = (v: number[]) => { const s = stats(v), r1 = (x: number) => Math.round(x * 10) / 10; return { n: s.n, p50: r1(s.p50), p99: r1(s.p99), max: r1(s.max) }; };
+      return { rttMs: tail(rttMs), inputAckMs: tail(ackMs), snapGapMs: tail(gapMs), corrPct: pc(base.corr[0] + base.corr[1], base.snaps[0] + base.snaps[1]), corrPctShooter: pc(base.corr[0], base.snaps[0]), corrPctTarget: pc(base.corr[1], base.snaps[1]), holdPct: pc(base.hold, frames) };
+    },
+  };
+}
+
+/** client prediction vs server verdict, pellet by pellet in firing order */
+function verdicts(pred: number[], serv: number[]) {
   const n = Math.min(pred.length, serv.length);
   let agree = 0, predHits = 0, confirmed = 0, ghost = 0, surprise = 0, servHits = 0;
   for (let i = 0; i < n; i++) {
@@ -191,9 +185,37 @@ async function run(rtt: number) {
     if (s >= 0) { servHits++; if (p < 0) surprise++; }
   }
   const pc = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
-  const tail = (v: number[]) => { const s = stats(v), r1 = (x: number) => Math.round(x * 10) / 10; return { n: s.n, p50: r1(s.p50), p99: r1(s.p99), max: r1(s.max) }; };
-  const transport = { sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, rttMs: tail(rttMs), inputAckMs: tail(ackMs), snapGapMs: tail(gapMs), corrPct: pc(base.corr[0] + base.corr[1], base.snaps[0] + base.snaps[1]), corrPctShooter: pc(base.corr[0], base.snaps[0]), corrPctTarget: pc(base.corr[1], base.snaps[1]), holdPct: pc(base.hold, frames) };
-  return { rtt, jitter, weapon, ...(killable ? { kills: deaths } : {}), pellets: n, predMissing: pred.length - serv.length, agreePct: pc(agree, n), predHits, confirmPct: pc(confirmed, predHits), ghost, surprise, servHits, clamped: clampedN, rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: clients[0].cm.netStats.moveCorrections, corrMaxMm: Math.round(clients[0].cm.netStats.corrMax * 1000), ...transport };
+  return { pellets: n, predMissing: pred.length - serv.length, agreePct: pc(agree, n), predHits, confirmPct: pc(confirmed, predHits), ghost, surprise, servHits };
+}
+
+async function run(rtt: number) {
+  now = 0; lostMsgs = 0;
+  const H = makeHost();
+  const ups = [pipe(rtt / 2, 11), pipe(rtt / 2, 12)], downs = [pipe(rtt / 2, 91), pipe(rtt / 2, 92)];
+  const C = makeClients((pid, u8) => send(ups[pid], u8));
+  for (let pid = 0; pid < 2; pid++) {
+    const peer: HostPeer = { pid, invSeq: 0, send: (u8) => send(downs[pid], u8) };
+    H.host.peers.push(peer);
+    const info = { ...matchInfo(H.m, 7, { [pid + 1]: pid }), myUid: pid + 1 };
+    send(downs[pid], null, JSON.parse(JSON.stringify(info)));
+  }
+  // ---- loop: server at 60 Hz, clients at 144 Hz
+  let nextTick = 0, nextFrame = 0;
+  while (now < secs * 1000 + rtt + 500) {
+    const step = Math.min(nextTick, nextFrame); now = step;
+    for (let pid = 0; pid < 2; pid++) {
+      const peer = H.host.peers[pid];
+      for (let k = 0; k < ups[pid].socks.length; k++) {
+        const up = ups[pid].socks[k], down = downs[pid].socks[k];
+        while (up.q.length && up.q[0].at <= now) H.host.receive(peer, up.q.shift()!.u8, (r) => sendOn(downs[pid], down, r));
+        while (down.q.length && down.q[0].at <= now) { const msg = down.q.shift()!; C.receive(pid, msg.json ? null : msg.u8, msg.json); }
+      }
+    }
+    if (now >= nextTick) { H.tick(); nextTick += DT * 1000; }
+    if (now >= nextFrame) { C.frame(1 / 144); nextFrame += 1000 / 144; }
+  }
+  const cm = C.clients[0].cm;
+  return { rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, ...C.tails() };
 }
 
 const CHECK_MAX_RTT_MS = 250, CHECK_MIN_CONFIRM_PCT = 99;
