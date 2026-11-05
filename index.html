@@ -278,9 +278,12 @@
   // allows), so it gets the screen above and window.stop() ends the page here: the module scripts below and in the head never run,
   // so no engine, world build, worker or WebGL context starts. It sits before the loading script on purpose, and is plain
   // inline script so it costs the game bundle nothing. ?mobile=1 forces the screen, ?mobile=0 boots the game anyway
-  // (client/src/flags.ts lists the flag).
+  // (a saved kr.flags value counts too, the URL wins, as in client/src/flags.ts).
   (function () {
-    var q = new URLSearchParams(location.search), forced = q.get("mobile"), blocked = forced === "1";
+    var q = new URLSearchParams(location.search), stored = "", blocked;
+    try { stored = localStorage.getItem("kr.flags") || ""; } catch (e) { /* private mode */ }
+    var forced = q.has("mobile") ? q.get("mobile") : new URLSearchParams(stored).get("mobile");
+    blocked = forced === "1";
     if (forced === null) try {
       var fine = matchMedia("(any-pointer: fine)").matches, ua = navigator.userAgent;
       // iPadOS 13+ reports itself as a Mac; a real Mac has no touch points
