@@ -58,20 +58,30 @@ This moves `stable` and clears the release's prerelease flag.
 
 Part of both GPU smokes: Kong Mini (Metal) and Kong RTX (D3D11). Ray reported a release that felt laggy and read badly from the plane, and every gate before this one passed it (RAY-135). This check compares `next` with the last `stable` on frame time in flight and on the plane view.
 
-1. Build both sides from their tags, each in its own worktree. `main` may have moved past the release since the cut, so never build the candidate from your checkout. Before you promote, check that the measured `next` commit is still the release tag's commit.
-2. Run `tools/performance/gpu-match.mts` five times a side, interleaved, at a fixed preset, one GPU job at a time. A run takes about 7 minutes, so plan on about 70 minutes per machine.
+1. Build both sides from their tags, each in its own worktree. `main` may have moved past the release since the cut, so never build the candidate from your checkout. For a dry run or a smoke before the cut, `next` still points at the previous release, so set `cand` in the snippet to the candidate commit's SHA instead of `next`, and name that commit in the report. The snippet prints the SHA it built in `../kr-next`. Check that it is the commit you meant before you start the GPU runs, and save it: before you promote, check that it is still the release tag's commit.
+2. Run `tools/performance/gpu-match.mts` five times a side, interleaved, at a fixed preset, one GPU job at a time. On Kong RTX (D3D11) a run takes about 2.5 minutes, so the ten runs take about 25 minutes. Allow up to about 7 minutes a run on a slower machine.
 3. Compare the p95 frame interval. A `worse` row in `gpu/match/plane`, `gpu/match/descent` or `gpu/match/ground-pan` blocks promotion. That means the medians differ by more than 10 % and every `next` run falls outside the `stable` range. The `warmup-15s` row is for information only. `compare.mts` exits nonzero on any `worse` row, warm-up included, and on a failed run gate (a window under 5 s, low GPU-timer coverage), a lost metric or an invalid row in the `next` runs. On the `stable` side, these only print a warning or a row verdict, so read them in the table. Exit status 2 means the runs couldn't be compared at all (a missing metric, a mismatched config), and no table is printed: fix the inputs or rerun the side that broke. A nonzero exit blocks promotion unless its only cause is a `worse` warm-up row: check the table, also saved with `--out`.
-4. Put the first `stable` and `next` plane screenshots (`*-plane.png`, 8 s into the plane) side by side in the smoke report. A plane view with visibly missing POIs, trees or detail also blocks promotion.
+4. Put the first `stable` and `next` plane screenshots (`*-plane.png`, 8 s into the plane) side by side in the smoke report, with a 3× crop of the island next to them. At 8 s the chase camera frames mostly the plane and the sea. At seed 42 and 1920×1080 the island sits in the bottom-left corner, x 0-700 and y 640-1080, so judge it in the crop the snippet writes (`*-plane-island3x.png`). If a later plane path moves the island, widen the crop. A plane view with visibly missing POIs, trees or detail also blocks promotion.
+5. Run `gpu-match.mts` once more a side with `--query "lowmem=1"`, and add those two plane screenshots and their island crops to the report. Chrome turns low-memory mode on only on devices that report under 8 GB, and Safari always does, so without this flag a Chrome smoke never builds the island the way a low-memory player sees it. A low-memory plane view with visibly missing POIs blocks promotion too. Releases before kong-v0.5.0 have no low-memory mode and ignore the flag, so while `stable` is older than that, its run shows the normal view. It still shows which POIs should be there, but that pair can't separate a low-memory change from any other change. These two runs' frame times are for information only, and they write to their own directories so they stay out of the comparison.
+
+On Windows, run the snippet from Git Bash: it uses subshells, a `for` loop and globs that cmd and PowerShell don't expand.
 
 ```sh
 git fetch --tags --force origin
 git worktree add --detach ../kr-stable stable && (cd ../kr-stable && npm ci && npm run build)
-git worktree add --detach ../kr-next next && (cd ../kr-next && npm ci && npm run build && git rev-parse HEAD)
+cand=next
+git worktree add --detach ../kr-next "$cand" && (cd ../kr-next && npm ci && npm run build && git rev-parse HEAD)
 for i in 1 2 3 4 5; do
   npx tsx tools/performance/gpu-match.mts --root ../kr-stable --preset high --shots shots/flight --out reports/flight/stable-$i.json
   npx tsx tools/performance/gpu-match.mts --root ../kr-next --preset high --shots shots/flight --out reports/flight/next-$i.json
 done
 npx tsx tools/performance/compare.mts --base reports/flight/stable-*.json --cand reports/flight/next-*.json --metrics frameIntervalMs --stats p95 --threshold 10 --out reports/flight/compare.json
+for s in stable next; do
+  npx tsx tools/performance/gpu-match.mts --root ../kr-$s --preset high --query "lowmem=1" --shots shots/flight-lowmem --out reports/flight-lowmem/$s.json
+done
+for f in shots/flight/stable-1-plane.png shots/flight/next-1-plane.png shots/flight-lowmem/stable-plane.png shots/flight-lowmem/next-plane.png; do
+  node -e 'require("sharp")(process.argv[1]).extract({ left: 0, top: 640, width: 700, height: 440 }).resize({ width: 2100, kernel: "nearest" }).toFile(process.argv[1].replace(/\.png$/, "-island3x.png"))' "$f"
+done
 ```
 
 `gpu-match.mts` drives Chrome only. On the Metal smoke, also open the Safari survival match with `?seed=42&perfhud`, press F8 8 s into the plane for the plane screenshot, and press F8 again after 15 s on the ground. The second bundle's timeline has one row per second, and each row carries the match phase but not the player state. Report the median of the per-second p95 values over the rows in phase Plane (riding plus only the part of the descent before the phase turns to Play, at about 41 s), and over the last 15 rows before the second F8 (on the ground), beside `stable`'s. The bundle can't isolate the full descent; for that, use the `gpu-match.mts` descent row. These are medians of per-second p95s, so don't compare them with `gpu-match.mts` numbers. A bundle only holds the timeline up to the moment F8 was pressed. The Safari numbers are for information until Safari has a repeatable five-run tool. A software renderer fails `gpu-match.mts`, so the cloud machines can't run this check.
