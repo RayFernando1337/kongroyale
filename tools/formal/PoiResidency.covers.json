@@ -14,8 +14,16 @@
   ],
   "writes": [
     {
-      "what": "which streamed POIs are queued, building, built or live",
-      "pattern": "\\bbuilding\\.(add|delete)\\(|streamMs\\w*\\[[^\\]]*\\]\\s*=(?!=)|delete streamMs\\w*\\[|\\bpending\\w*\\.push\\(|\\bmodOf\\.(set|delete)\\(",
+      "what": "which streamed POIs are queued, building or built: building and pending are module state of low-mem.ts and main.ts's stream()",
+      "pattern": "\\bbuilding\\.(add|delete)\\(|streamMs\\w*\\[[^\\]]*\\]\\s*(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?!=)|delete streamMs\\w*\\[|\\bpending\\w*\\.(push|splice|unshift)\\(",
+      "files": [
+        "client/src/low-mem.ts",
+        "client/src/main.ts"
+      ]
+    },
+    {
+      "what": "which modules the world holds (World.modOf)",
+      "pattern": "\\bmodOf\\.(set|delete|clear)\\(",
       "files": [
         "client/src/"
       ]
@@ -27,13 +35,14 @@
       "writes": [
         "delete streamMsRef[",
         "pendingRef.push(",
+        "pendingRef.splice(",
         "streamMsRef[x] ="
       ],
       "why": "__kr.rebuildModule, a developer hook typed into the browser console (no game code or tool calls it): evicts one module and builds it again, outside the streaming queue the model describes."
     }
   ],
   "verified": {
-    "model": "6d2c87116d2eb653",
+    "model": "343390885da31e51",
     "regions": {
       "client/src/low-mem.ts#nearModule": "51ae29ea9b2f6da8",
       "client/src/low-mem.ts#nextNearModule": "ec86e5a21cca6356",
