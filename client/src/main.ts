@@ -93,6 +93,7 @@ const engine = (() => {
   catch (e) { bootFail("engine", e); throw e; }
 })();
 kr.engine = engine;
+if (flag("texprof")) await import("./engine/dev-probes").then((m) => m.installTexProf(engine), (e) => report("texprof", e));
 // the video settings (engine/display.ts): frame cap / 3D resolution now, the rest once atmos + veg exist
 const display = gameMode && !shot ? new Display(engine) : null;
 kr.display = display;
@@ -111,7 +112,7 @@ engine.renderer.debug.onShaderError = (gl, program, vs, fs) => {
   const name = (engine.renderer.info.programs as unknown as Array<{ program: WebGLProgram; name?: string }> | undefined)?.find((p) => p.program === program)?.name ?? "?";
   report("shader", `program "${name}" failed: ${log(vs) || log(fs) || (gl.getProgramInfoLog(program) ?? "").trim().slice(0, 300)}`);
 };
-kr.bench = (n?: number) => engine.bench(n);
+kr.bench = (n?: number) => import("./engine/dev-probes").then((m) => m.bench(engine, n));
 kr.fps = () => engine.liveFps();
 kr.info = () => ({ ...engine.renderer.info.render, geometries: engine.renderer.info.memory.geometries, textures: engine.renderer.info.memory.textures, programs: engine.renderer.info.programs?.length });
 // bug reports: `/` → /kongbot <message> (screenshot + context → the server)
