@@ -273,39 +273,41 @@ islet once the plane leaves and for anything the storm has closed.
 The browser can take the WebGL context away at any time: a GPU reset, a driver update, too many contexts, or memory
 pressure (the Safari case above). three.js handles the event itself: it calls `preventDefault()` on
 `webglcontextlost`, so the browser may restore the context, and on `webglcontextrestored` it rebuilds its GL state and
-uploads geometry and textures again from their CPU copies. Nothing in `client/src` listens for either event today. So
-after a restore:
+uploads geometry and textures again from their CPU copies. On its own that leaves:
 
-- Every baked render target comes back empty: impostor banks, the terrain's far albedo, water obstacle and wave bakes,
-  cloud volumes, the sky bake. They were drawn once and are never drawn again.
-- Every texture whose CPU copy was released (`releaseAfterUpload` in `engine/texture-release.ts`, behind `?texfree`)
-  keeps only a sized stub, so it uploads as nothing.
-- Geometry whose CPU arrays are dropped would do the same, which is why the [CPU copies](#cpu-copies) section keeps them
-  until the owner registers `rebuild`.
+- Every baked render target empty: impostor banks, the terrain's far albedo, water obstacle and wave bakes, cloud
+  volumes, the sky bake. They were drawn once and are never drawn again.
+- Every texture whose CPU copy was released (`releaseAfterUpload` in `engine/texture-release.ts`, on by default,
+  `?texfree=0` turns it off) with only a sized stub, so it uploads as nothing.
+- Geometry whose CPU arrays are dropped (`?geofree=1`) the same, which is why the [CPU copies](#cpu-copies) section
+  keeps them until the owner can rebuild them.
+- three.js's dispose listeners from the lost context still on every older object, deleting objects that belong to the
+  old context when it is disposed.
 
-The policy has two stages, and the second replaces the first only when a check proves it covers everything.
+`engine/res/restore.ts` owns both events (`watchContext`, called from `engine/engine.ts`), and the restore itself runs
+from `engine/res/restore-run.ts`, loaded on the first loss:
 
-1. **Reload (now).** One handler in `engine/engine.ts` owns both events. On `webglcontextlost` it pauses the frame loop
-   and shows a "graphics reset" card. On `webglcontextrestored` it reloads the page, which rebuilds every bake and
-   refetches every released texture from the HTTP cache. If the context is not restored within a few seconds, it
-   reloads anyway. A practice match is lost. An online player lands on the title and rejoins through the lobby link,
-   the same as after any reload. This is crude, but it is correct for every resource, including ones nobody has
-   classified yet, and a context loss is rare.
-2. **Restore in place (later).** Every ledger entry gets a restore path: a cached file is reloaded through the cache, a
-   procedural texture or a bake re-runs its builder (registered with the scope next to the resource), and geometry runs
-   its `rebuild`. On `webglcontextrestored` the engine walks the ledger, app scope first, and restores each entry before
-   the next frame. The engine switches from reload to restore only when the ledger reports no entry without a restore
-   path.
+1. **On `webglcontextlost`** the frame loop pauses and a 10 s timer starts that reloads the page if no restore comes.
+2. **On `webglcontextrestored`** `restoreAll()` runs three phases, then `__kr.restores` goes up and frames resume:
+   - `source`: every released texture refills its pixels from the rebuild it gave `releaseAfterUpload(t, rebuild)`
+     (a cached file through the cache, a procedural texture through its painter).
+   - modules: a module that owns resources with no restore path (`unrestorable()`: a released texture without a
+     rebuild, a `geofree` batch) is rebuilt by the callback main.ts registers with `restoreModulesWith`.
+   - `bake`: every bake registered with `bake(fn)`, or `onRestore("bake", fn)`, draws again.
+3. **Reload** stays the fallback. If any resource with no restore path belongs to no module, or to a module that cannot
+   be rebuilt, `restoreAll()` throws before it touches anything and the page reloads, which is correct for every
+   resource. Until module rebuilds are wired, a `geofree` batch reloads the page this way.
 
-What enforces it: an `npm test` step on SwiftShader calls `WEBGL_lose_context.loseContext()` and then
-`restoreContext()` twice: once at the title, and once in the warm-up of a practice match, when the match scope holds its
-own bakes. `__kr.ready` stays true for the life of a page, so it proves nothing on its own. While the ledger still has
-entries without a restore path, the step sets a marker on `window` before the loss and requires a new document: the
-marker gone and `__kr.ready` true again. `__kr.errors` dies with the old document, so the step also listens for page
-errors and console errors through the browser driver from the loss to the end, across the reload, and requires none. In stage 2 the engine increments `__kr.restores` after it has
-restored every ledger entry, and the step requires that count to go up, no `__kr.errors`, and a non-empty pixel from one
-baked target in the app scope and one in the match scope, and the ledger check that gates
-the switch counts the entries that existed at the moment of loss, so match-only resources are covered.
+A deletion of an object made before the loss is skipped (`ignoreStaleDeletes`), so three.js's leftover listeners are
+harmless. A bake must not sample its own target: the terrain's far albedo clears `tFar` while it redraws.
+
+What enforces it: `tools/verify-context-loss.mts`, run by hand for now (a CI job "no-GPU context restore" is proposed
+separately), on SwiftShader with the title modules. It calls `WEBGL_lose_context.loseContext()` and then `restoreContext()` twice: once at the title, and
+once in the warm-up of a practice match. Each time it sets a marker on `window` before the loss and requires the same
+document afterwards (no reload), a higher `__kr.restores`, the frame loop running, no `__kr.errors`, no page error and
+no WebGL or three.js console warning, and a picture at least 60% as bright as before the loss (an empty bake shows as
+black). On SwiftShader the browser's memory rises by about 6 GB during a restore and falls back within a minute, so the
+run keeps to the title modules.
 
 ## Rules and what enforces them
 
@@ -320,7 +322,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | A match leaves nothing behind | The same CI job: three practice matches, each entered and left in its warm-up, with only the title modules (`?modules=`), because on SwiftShader the browser passes 10 GB once Peel Harbor streams in. What grows from the second left sample to the third (WebGL bytes, textures, geometries, unowned resources, ledger bytes per category) stays under `leak` in `tools/memory-leak-budgets.json`, and the run fails if the match scope is still open after leaving. The first match is not compared: the island keeps streaming through it. `--max-mb` stops the browser before the runner runs out of memory |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
 | Only the cache frees what it lends | Development builds throw on `dispose()` of a cached resource from outside the cache |
-| The game survives a WebGL context loss | `npm test` step on SwiftShader: `loseContext()` then `restoreContext()` at the title and again in a match's warm-up, with no page or console error from the loss to the end, read through the browser driver so it survives the reload: a new document while some ledger entry lacks a restore path, and a higher `__kr.restores` count with non-empty baked pixels once every entry has one (see [Context loss](#context-loss)) |
+| The game survives a WebGL context loss | Review only until a CI job runs `tools/verify-context-loss.mts`: `loseContext()` then `restoreContext()` at the title and again in a match's warm-up, the same document, a higher `__kr.restores`, no page, WebGL or three.js error and the picture as bright as before (see [Context loss](#context-loss)) |
 
 Geometry constructors are not in the lint rule. Most of the roughly 1,400 `new THREE.*Geometry` calls build temporary
 inputs that are merged and never reach the GPU, so a lint would mostly flag harmless code. The "no unowned resource"
@@ -350,8 +352,8 @@ ships dark behind a registry flag where it changes behaviour.
 9. **Residency**: `far` regions free their sources' GPU buffers (with RAY-106), then `cold` for the lobby islet.
 10. **Capped internal pixels** for every screen-sized target (`world/atmos/post.ts`, `engine/engine.ts`), so the
     `target` budget no longer depends on the display.
-11. **Context loss**: the reload handler in `engine/engine.ts` and its `npm test` step first. Restoring in place comes after
-    step 8, once every scope entry can carry a restore path.
+11. **Context loss**: restore in place (`engine/res/restore.ts`) with reload as the fallback. `geofree` batches restore
+    once module rebuilds from step 9 are wired to `restoreModulesWith`.
 
 Steps 2, 4 and 5 belong to the architecture lane. Steps 3 and 6 to 11 change other lanes' code and go through them.
 Step 10 needs none of the others and addresses the Safari kill, so it can land first.

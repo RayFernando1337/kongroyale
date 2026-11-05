@@ -923,17 +923,21 @@ async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean,
   // one offscreen draw: first use, texture uploads, VAOs (the shadow maps are left alone)
   kr.prefabWarm = "draw";
   await idle();
-  const sm = r.shadowMap, au = sm.autoUpdate;
-  for (const l of lights) l.layers.enable(LAYER);
-  sm.autoUpdate = false;
-  try { r.setRenderTarget(rt); r.render(engine.scene, cam); } catch (e) { console.warn("[prewarm] draw", e); }
-  finally { r.setRenderTarget(prev); sm.autoUpdate = au; for (const l of lights) l.layers.disable(LAYER); }
+  const lost = engine.contextLost;
+  if (!lost) {
+    const sm = r.shadowMap, au = sm.autoUpdate;
+    for (const l of lights) l.layers.enable(LAYER);
+    sm.autoUpdate = false;
+    try { r.setRenderTarget(rt); r.render(engine.scene, cam); } catch (e) { console.warn("[prewarm] draw", e); }
+    finally { r.setRenderTarget(prev); sm.autoUpdate = au; for (const l of lights) l.layers.disable(LAYER); }
+  }
   rt.dispose();
   // hide (never dispose — a disposed material would compile again); the pool lights go back to the pool
   const pool: THREE.Object3D[] = []; g.traverse((o) => { if ((o as THREE.PointLight).isPointLight) pool.push(o); });
   for (const l of pool) l.removeFromParent();
   g.visible = false;
   kits.lights?.update();
+  if (lost) { kr.prefabWarm = "stopped (context lost)"; return; }
   kr.prefabWarm = "done";
   kr.prefabWarmMs = Math.round(performance.now() - t0);
 }

@@ -221,13 +221,13 @@ function normalFrom(h: Float32Array, w: number, hh: number, strength: number): I
   return out;
 }
 
-function tex(im: Img, srgb: boolean, aniso: number, repeat = true): THREE.DataTexture {
+function tex(im: Img, srgb: boolean, aniso: number, repeat: boolean, again: () => Img): THREE.DataTexture {
   const t = new THREE.DataTexture(im.data, im.w, im.h, THREE.RGBAFormat, THREE.UnsignedByteType);
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.wrapS = t.wrapT = repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
   t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
   t.anisotropy = aniso; t.flipY = false; t.needsUpdate = true;
-  return releaseAfterUpload(t);
+  return releaseAfterUpload(t, () => { const n = again(); return { data: n.data, width: n.w, height: n.h }; });
 }
 function ormImg(w: number, h: number, ao: Float32Array | number, rough: Float32Array | number, metal: Float32Array | number = 0): Img {
   const out = img(w, h);
@@ -1023,13 +1023,16 @@ export function genFruitHeap(kind: "mango" | "banana", n = 512): GenOut {
 }
 /** soft contact-shadow blob (radial alpha), for the "blob" decal bin under props */
 export function blobTexture(n = 64): THREE.DataTexture {
+  return tex(blobImg(n), false, 1, false, () => blobImg(n));
+}
+function blobImg(n: number): Img {
   const im = img(n, n);
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
     const dx = (x + 0.5) / n * 2 - 1, dy = (y + 0.5) / n * 2 - 1, r = Math.hypot(dx, dy);
     const a = clamp01(1 - r) ** 1.6;
     put(im, y * n + x, 0, 0, 0, Math.round(a * 255));
   }
-  return tex(im, false, 1, false);
+  return im;
 }
 
 /** painted sign board — canvas text, chunky rounded font, drop shadow, worn paint */
@@ -1072,8 +1075,10 @@ export class TownTex {
   get(name: string, gen: () => GenOut): TexSet {
     let s = this.sets.get(name);
     if (!s) {
-      const g = gen();
-      s = { map: tex(g.albedo, true, this.aniso), normalMap: tex(g.normal, false, this.aniso), orm: tex(g.orm, false, this.aniso) };
+      const g = gen(), regen = TOWN_TEX_SETS[name] ?? gen;
+      let fresh: GenOut | null = null;
+      const again = (k: "albedo" | "normal" | "orm") => () => { const out = (fresh ??= regen())[k]; if (k === "orm") fresh = null; return out; };
+      s = { map: tex(g.albedo, true, this.aniso, true, again("albedo")), normalMap: tex(g.normal, false, this.aniso, true, again("normal")), orm: tex(g.orm, false, this.aniso, true, again("orm")) };
       (s.map as THREE.Texture & { metres?: number }).metres = g.metres;
       // geometry UVs are in metres everywhere; the tile size lives here
       for (const t of [s.map, s.normalMap, s.orm]) t.repeat.set(1 / g.metres, 1 / g.metres);
@@ -1104,7 +1109,7 @@ export function townTex(renderer: THREE.WebGLRenderer): TownTex {
   return shared;
 }
 export function netTexture(): THREE.DataTexture {
-  const t = tex(genNet(), true, 4); t.flipY = false; return t;
+  const t = tex(genNet(), true, 4, true, genNet); t.flipY = false; return t;
 }
 export function canvasTexture(c: HTMLCanvasElement, aniso = 8): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t;
@@ -1119,7 +1124,7 @@ export function genRipples(n = 256): Img {
   }
   return normalFrom(h, n, n, 2.2);
 }
-export function rippleTexture(aniso = 4): THREE.DataTexture { return tex(genRipples(), false, aniso); }
+export function rippleTexture(aniso = 4): THREE.DataTexture { return tex(genRipples(), false, aniso, true, () => genRipples()); }
 
 let preload: Promise<void> | null = null;
 const TOWN_TEX_STALL_MS = 20000;

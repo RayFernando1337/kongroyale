@@ -9,6 +9,7 @@ import type { Species } from "./species/types";
 import { VEG_UNIFORMS, VEG_LIGHT, VEG_GLSL, VEG_FADE_T, bakeMaterial, vegUniforms } from "./foliage-material";
 import { crownFootprint } from "../../../../shared/world/veg-scatter";
 import { flag } from "../../flags";
+import { bake } from "../../engine/res/restore";
 
 /** view blending: each pixel shows one of the 4 baked
  *  views around the true view direction (dithered by weight, a crossfade only across a narrow band at a view cell's edge)
@@ -680,17 +681,21 @@ export class ImpostorBank {
   add(renderer: THREE.WebGLRenderer, sp: Species): number {
     if (this.layers >= this.maxLayers) throw new Error("veg: impostor bank full");
     const layer = this.layers++;
-    const atlas = bakeImpostor(renderer, sp, this.frames, this.size, this.nsize);
-    // copy the 2D atlases into this layer of the arrays (raw texel copy: no tone mapping / colour conversion)
-    const prevRT = renderer.getRenderTarget(), prevTone = renderer.toneMapping;
-    renderer.toneMapping = THREE.NoToneMapping;
-    for (const [src, dst] of [[atlas.albedo, this.albedo], [atlas.normal, this.normal]] as const) {
-      this.copyMat.uniforms.map.value = src;
-      renderer.setRenderTarget(dst, layer);
-      renderer.render(this.copyScene, this.copyCam);
-    }
-    renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTone;
-    for (const t of atlas.targets) t.dispose();
+    let atlas!: ImpostorAtlas;
+    bake(() => {
+      atlas = bakeImpostor(renderer, sp, this.frames, this.size, this.nsize);
+      // copy the 2D atlases into this layer of the arrays (raw texel copy: no tone mapping / colour conversion)
+      const prevRT = renderer.getRenderTarget(), prevTone = renderer.toneMapping;
+      renderer.toneMapping = THREE.NoToneMapping;
+      for (const [src, dst] of [[atlas.albedo, this.albedo], [atlas.normal, this.normal]] as const) {
+        this.copyMat.uniforms.map.value = src;
+        renderer.setRenderTarget(dst, layer);
+        renderer.render(this.copyScene, this.copyCam);
+      }
+      renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTone;
+      for (const t of atlas.targets) t.dispose();
+      atlas.rects.dispose();
+    });
     // per-species parameters (leafiest part's lighting)
     let leafPart = sp.parts[0];
     for (const p of sp.parts) if (vegUniforms(p.mats).uTrans.value > vegUniforms(leafPart.mats).uTrans.value) leafPart = p;
@@ -705,7 +710,6 @@ export class ImpostorBank {
     const R = this.rects.image.data as Float32Array, rs = atlas.rects.image.data as Float32Array;
     R.set(rs, layer * this.frames * this.frames * 4);
     this.rects.needsUpdate = true;
-    atlas.rects.dispose();
     return layer;
   }
 
