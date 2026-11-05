@@ -968,10 +968,6 @@ class KongManager {
       b.n = n; b.geo.instanceCount = n; b.mesh.visible = n > 0;
       if (n) { b.slotFade.needsUpdate = true; b.slotFade.clearUpdateRanges(); b.slotFade.addUpdateRange(0, n * 2); }
     }
-    // an excursion (the post-title match warm-up) ticks from far-off viewpoints: the title hero dropped to the min tier
-    // there, and the next real frame crossfaded it back to hi through the screen door (no TAA on the title to hide it) —
-    // a dithered, low-detail kong for as long as the warm-up ran. The next real frame picks every tier afresh instead.
-    if (this.ctx.excursing) for (const s of this.slots) s.seen = false;
     this.outlineFrame();
   }
 

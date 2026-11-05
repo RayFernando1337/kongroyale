@@ -71,8 +71,6 @@ export interface WorldCtx {
   isBuilt(id: string): boolean;
   /** true while world modules are still streaming in after the title became ready */
   readonly streaming: boolean;
-  /** true while an excursion frame's update hooks run (see Engine.excursion): its camera is not the one the player sees */
-  readonly excursing: boolean;
 }
 
 const RESOLVED = Promise.resolve();
@@ -504,9 +502,9 @@ export class Engine implements WorldCtx {
     const pos = cam.position.clone(), quat = cam.quaternion.clone(), fov = cam.fov, near = cam.near, far = cam.far;
     try {
       setup(cam); cam.updateProjectionMatrix(); cam.updateMatrixWorld();
-      this.inStep = true; this.excursing = true;
+      this.inStep = true;
       try { for (let i = 0; i < this.updates.length; i++) { try { this.updates[i](dt, this.time); } catch { /* reported by the real frames */ } } }
-      finally { this.inStep = false; this.excursing = false; }
+      finally { this.inStep = false; }
       const r = this.renderer, sm = r.shadowMap, au = sm.autoUpdate;
       const rt = this.excursionTarget ??= new THREE.WebGLRenderTarget(320, 180, { type: THREE.HalfFloatType });
       const prev = r.getRenderTarget();
@@ -527,8 +525,6 @@ export class Engine implements WorldCtx {
   drawOverride: ((dt: number) => void) | null = null;
   /** true while step() runs (update hooks + render): the boot attributes scene adds made outside it to the building module */
   inStep = false;
-  /** unset until the first excursion: falsy */
-  declare excursing: boolean;
   /** one frame; dt in seconds (clamped) */
   step(dt: number) {
     this.inStep = true;
