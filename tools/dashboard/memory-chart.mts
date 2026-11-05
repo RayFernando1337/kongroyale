@@ -146,11 +146,14 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
   }
   const markerTrace = traces[0];
   const markerNames = opts.xMode === "phase" ? axis : MARKER_ORDER.filter((n) => markerTrace.markers.some((m) => m.name === n));
+  let lastLabelX = -Infinity, lastRow = 1;
   markerNames.forEach((name, i) => {
     const x = opts.xMode === "phase" ? xs(i + 1) : xs(markerTrace.markers.find((m) => m.name === name)!.t);
     out.push('<line x1="' + x + '" x2="' + x + '" y1="' + top + '" y2="' + (top + plotH) + '" stroke="#4a5266" stroke-dasharray="4 6"/>');
     const nearRight = x > left + plotW - 90;
-    out.push('<text x="' + (nearRight ? x - 6 : x + 6) + '" y="' + (top + 22) + '" fill="#c7cede" font-size="18" font-weight="700" text-anchor="' + (nearRight ? "end" : "start") + '">' + MARKER_LABEL[name] + "</text>");
+    const row = x - lastLabelX < 90 && lastRow === 0 ? 1 : 0;
+    lastLabelX = x; lastRow = row;
+    out.push('<text x="' + (nearRight ? x - 6 : x + 6) + '" y="' + (top + 22 + row * 24) + '" fill="#c7cede" font-size="18" font-weight="700" text-anchor="' + (nearRight ? "end" : "start") + '">' + MARKER_LABEL[name] + "</text>");
   });
   if (finite(opts.killMB)) {
     const y = ys(opts.killMB);
@@ -168,7 +171,7 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
       }
       for (const pts of runs) {
         if (pts.length === 1) { const [cx, cy] = pts[0].split(","); out.push('<circle cx="' + cx + '" cy="' + cy + '" r="' + (se === "total" ? 5 : 3.5) + '" fill="' + color + '"/>'); }
-        else if (pts.length) out.push('<polyline fill="none" stroke="' + color + '" stroke-width="' + (se === "total" ? 4 : 2.5) + '" stroke-linejoin="round" stroke-dasharray="' + SERIES_DASH[se] + '" points="' + pts.join(" ") + '"/>');
+        else if (pts.length) out.push('<polyline fill="none" stroke="' + color + '" stroke-width="' + (se === "total" || opts.series.length === 1 ? 4 : 2.5) + '" stroke-linejoin="round" stroke-dasharray="' + (opts.series.length === 1 ? "" : SERIES_DASH[se]) + '" points="' + pts.join(" ") + '"/>');
       }
     }
     if (tr.killed) out.push('<text x="' + xs(xOf(tr, tr.killed.t)) + '" y="' + (ys(tr.killed.MB) - 12) + '" fill="' + color + '" font-size="26" font-weight="800" text-anchor="middle">✕</text>');
@@ -176,12 +179,12 @@ export function renderSvg(traces: MemoryTrace[], opts: { title: string; series: 
   let ly = top + plotH + (opts.xMode === "time" ? 100 : 50);
   traces.forEach((tr, i) => {
     out.push('<rect x="' + left + '" y="' + (ly - 14) + '" width="28" height="8" rx="4" fill="' + COLORS[i % COLORS.length] + '"/>');
-    const killed = tr.killed ? "; " + tr.killed.process + " killed at " + (tr.killed.MB / 1024).toFixed(1) + " GB" : "";
+    const killed = tr.killed ? "; " + tr.killed.process + " killed at " + tr.killed.MB + " MB" : "";
     out.push('<text x="' + (left + 40) + '" y="' + ly + '" fill="#f2f4f8" font-size="19"><tspan font-weight="700">' + esc(tr.label) + "</tspan>  " + esc([tr.build === tr.label ? "" : tr.build, tr.browser, tr.machine, tr.flags].filter(Boolean).join(" · ") + killed) + "</text>");
     ly += 30;
   });
-  const styleKey = opts.series.map((se) => SERIES_LABEL[se] + (SERIES_DASH[se] ? " (" + (se === "renderer" ? "dashed" : se === "gpu" ? "dotted" : se === "heap" ? "fine dots" : "dash-dot") + ")" : " (solid)")).join(", ");
-  out.push('<text x="' + left + '" y="' + (ly + 4) + '" fill="#8d96ab" font-size="17">Lines: ' + esc(styleKey) + "</text>");
+  const styleKey = opts.series.length === 1 ? SERIES_LABEL[opts.series[0]] : opts.series.map((se) => SERIES_LABEL[se] + (SERIES_DASH[se] ? " (" + (se === "renderer" ? "dashed" : se === "gpu" ? "dotted" : se === "heap" ? "fine dots" : "dash-dot") + ")" : " (solid)")).join(", ");
+  out.push('<text x="' + left + '" y="' + (ly + 4) + '" fill="#8d96ab" font-size="17">Lines: ' + esc(styleKey) + (opts.xMode === "time" && traces.length > 1 ? ". Phase markers are from " + esc(markerTrace.label) + "." : "") + "</text>");
   if (traces.some((tr) => tr.launcher === "playwright")) out.push('<text x="' + left + '" y="' + (ly + 30) + '" fill="#8d96ab" font-size="17">Playwright-launched runs: totals after Play may be inflated by the launcher.</text>');
   out.push("</svg>");
   return out.join("\n");
