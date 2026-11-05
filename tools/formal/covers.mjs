@@ -114,7 +114,7 @@ const scanFiles = (entry) => entry.endsWith("/")
   : [entry];
 
 /** a write as the allow lists name it: the matched text with its spacing collapsed, e.g. ".st = PS.Glide". Patterns
- *  end in [^\s;]+ so the text carries the first word of the right-hand side, whatever character it starts with */
+ *  end in [^\s;]+ so the text carries the right-hand side up to its first space or semicolon, punctuation included */
 export const writeText = (s) => s.replace(/\s+/g, " ").trim();
 
 /** guarded-state writes outside every region and every listed exception: [{ at, text, pattern }]. An exception names
