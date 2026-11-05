@@ -85,7 +85,7 @@ type StaticEntry = Parameters<StaticCache["unfreeze"]>[0];
 const hooksOf = new Map<string, Hook[]>(), ctxOf = new Map<string, Engine>(), evicted = new Set<string>();
 
 export function moduleCtx(engine: Engine, w: World, id: string): Engine {
-  (globalThis as unknown as { __kr: { rebuildModule?: (id: string) => Promise<void> } }).__kr.rebuildModule ??= async (x) => { if (w.modOf.has(x)) await evictStreamed(engine, w, x); delete streamMsRef[x]; const t0 = performance.now(); await (await w.build(x)).integrated; streamMsRef[x] = Math.round(performance.now() - t0); refreshImpostors(w.modOf); setTimeout(() => refreshImpostors(w.modOf), IMPOSTOR_HOLD_MS); };
+  (globalThis as unknown as { __kr: { rebuildModule?: (id: string) => Promise<void> } }).__kr.rebuildModule ??= async (x) => { if (w.modOf.has(x)) await evictStreamed(engine, w, x); const queued = pendingRef.indexOf(x); if (queued >= 0) pendingRef.splice(queued, 1); delete streamMsRef[x]; refreshImpostors(w.modOf); const t0 = performance.now(); await (await w.build(x)).integrated; streamMsRef[x] = Math.round(performance.now() - t0); refreshImpostors(w.modOf); setTimeout(() => refreshImpostors(w.modOf), IMPOSTOR_HOLD_MS); };
   engine.rebuilding = evicted.has(id);
   const known = ctxOf.get(id);
   if (known) return known;
@@ -169,7 +169,7 @@ function evictionsFor(list: readonly Resident[]): Resident[] {
 }
 
 const IMPOSTOR_MAGIC = "KRFI", IMPOSTOR_HEADER_B = 40, INTEGRATED_POLL_MS = 100, INTEGRATED_POLL_MAX_MS = 300_000, IMPOSTOR_HOLD_MS = 1000;
-let impostors: Map<string, THREE.Mesh> | null = null, streamMsRef: Record<string, number> = {};
+let impostors: Map<string, THREE.Mesh> | null = null, streamMsRef: Record<string, number> = {}, pendingRef: string[] = [];
 const integratedAt = new Map<string, number>();
 
 function decodeImpostor(buf: ArrayBuffer): THREE.BufferGeometry {
@@ -244,6 +244,7 @@ export function trimStreamed(engine: Engine, w: World, incoming: string | null, 
   };
   if (!impostors && flag("farimp")) { impostors = new Map(); void loadImpostors(engine, w, impostors).catch((e) => w.report("far-impostors", e)); }
   streamMsRef = streamMs;
+  pendingRef = pending;
   return (trimming = trimming.then(async () => {
     refreshImpostors(w.modOf);
     for (;;) {
