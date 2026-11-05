@@ -225,7 +225,7 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   const t0 = performance.now();
   let m: WorldModule | null = null;
   const scope = resources.root.child(`region:${id}`);
-  const ctx = streamed && postBuild ? postBuild.moduleCtx(engine, id) : engine;
+  const ctx = streamed && postBuild ? postBuild.moduleCtx(engine, world, id) : engine;
   try {
     m = await imports.get(id)!;
     await m.build(ctx, scope);
@@ -251,7 +251,7 @@ async function runAfterBuild(m: WorldModule, streamed: boolean) {
   if (!m.afterBuild) return;
   if (!streamed) kr.stage = `afterBuild:${m.id}`;
   const t0 = performance.now();
-  try { await m.afterBuild(streamed && postBuild ? postBuild.moduleCtx(engine, m.id) : engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
+  try { await m.afterBuild(streamed && postBuild ? postBuild.moduleCtx(engine, world, m.id) : engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
   engine.rebuilding = false;
   afterBuildMs[m.id] = (afterBuildMs[m.id] ?? 0) + Math.round(performance.now() - t0);
 }
@@ -297,7 +297,7 @@ function registerFar(id: string, m: WorldModule | null, streamed: boolean) {
   engine.far.register(id, roots, { x: poi.x, y, z: poi.z }, Math.max(240, poi.r * 2.2));
 }
 
-const world = { modOf, scopeOf, rootsOf, loaded, roots: (id: string) => moduleRoots(id, true), report };
+const world = { modOf, scopeOf, rootsOf, loaded, roots: (id: string) => moduleRoots(id, true), report, build: (id: string) => buildStreamed(id, false) };
 
 const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
 
@@ -321,7 +321,6 @@ async function buildStreamed(id: string, fast: boolean): Promise<{ integrated: P
   return { integrated: integrateFresh(fast, moduleRoots(id, true), bg?.gate, open).finally(open).then(() => engine.markBuilt(id)) };
 }
 
-kr.rebuildModule = async (id: string) => { await postBuild!.evictStreamed(engine, world, id); await (await buildStreamed(id, false)).integrated; };
 
 // ---- title modules (everything, in ?view / ?cam / ?shot pages or with ?nostream)
 const streamList: string[] = [];
