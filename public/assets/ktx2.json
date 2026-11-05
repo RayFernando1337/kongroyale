@@ -1,5 +1,5 @@
 {
-  "encoder": "ktx version: v4.4.2: normal maps UASTC quality 2 + zstd 18, the rest ETC1S clevel 2 qlevel 128, generated mipmaps, flipped Y",
+  "encoder": "ktx version: v4.4.2: normal maps UASTC quality 2 + zstd 18, the rest ETC1S clevel 2 qlevel 128, generated mipmaps, flipped Y; etc1s lists normal maps that also have an ETC1S .etc1s.ktx2",
   "sources": [
     "assets/pois/caves/tex/cliff-rock.jpg",
     "assets/pois/caves/tex/cliff-rock_n.jpg",
@@ -42,6 +42,22 @@
     "assets/pois/wreckbay/panel-n.webp",
     "assets/pois/wreckbay/timber-arm.webp",
     "assets/pois/wreckbay/timber-d.webp",
+    "assets/pois/wreckbay/timber-n.webp"
+  ],
+  "etc1s": [
+    "assets/pois/caves/tex/cliff-rock_n.jpg",
+    "assets/pois/caves/tex/deck-n.webp",
+    "assets/pois/caves/tex/wall-n.webp",
+    "assets/pois/murk/bark-n.webp",
+    "assets/pois/murk/dark-n.webp",
+    "assets/pois/murk/deck-n.webp",
+    "assets/pois/murk/roof-n.webp",
+    "assets/pois/murk/wall-n.webp",
+    "assets/pois/wreckbay/bamboo-n.webp",
+    "assets/pois/wreckbay/cliff-n.webp",
+    "assets/pois/wreckbay/deck-n.webp",
+    "assets/pois/wreckbay/hull-n.webp",
+    "assets/pois/wreckbay/panel-n.webp",
     "assets/pois/wreckbay/timber-n.webp"
   ]
 }
