@@ -22,8 +22,9 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   const kr = (globalThis as unknown as { __kr?: Session }).__kr;
   const casting = !!kr?.caster?.casting;
   if (!kr?.game?.inMatch && !casting) return null;
-  const airborne = !casting && (kr?.game?.cm?.phase ?? Phase.Play) <= Phase.Plane;
-  const overview = airborne && viewBuilds < viewCap;
+  const phase = kr?.game?.cm?.phase ?? Phase.Play;
+  const airborne = !casting && phase <= Phase.Plane;
+  const overview = !casting && phase === Phase.Plane && viewBuilds < viewCap;
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
   let best: string | null = null, bestD = Infinity;
