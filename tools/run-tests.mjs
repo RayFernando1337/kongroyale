@@ -22,6 +22,7 @@ const checks = [
   { id: "bundles", name: "playtest bundles (hostile input, caps, rate limit)", cmd: "npx", args: ["tsx", "tools/playtest/bundles.test.mts"] },
   { id: "gate", name: "verifier flag and empty-input gates", cmd: "npx", args: ["tsx", "tools/gate.test.mts"] },
   { id: "size", name: "download size (against tools/size-budgets.json)", cmd: "npx", args: ["tsx", "tools/check-size.mts", "--budgets", "tools/size-budgets.json"] },
+  { id: "farbake", name: "far impostors match their POI sources", cmd: "npx", args: ["tsx", "tools/world/far-bake.test.mts"] },
   { id: "assets", name: "asset sources (against tools/verify-assets.baseline.json)", cmd: "npx", args: ["tsx", "tools/verify-assets.mts", "--baseline", "tools/verify-assets.baseline.json"] },
   { id: "movement", name: "movement", cmd: "npx", args: ["tsx", "tools/gameplay/movetest.mts"] },
   { id: "swimming", name: "swimming", cmd: "npx", args: ["tsx", "tools/swim/simtest.mts"] },
