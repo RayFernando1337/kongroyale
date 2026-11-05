@@ -28,7 +28,7 @@ type Data = {
   summary: { wins: string[]; plain: string };
   inProgress: { name: string; estimate: string; source: string }[];
 };
-type MemoryChart = { id: string; title: string; caption: string; warning?: string; series?: ("total" | "browser" | "renderer" | "gpu" | "heap")[]; x?: "time" | "phase"; killMB?: number; killLabel?: string; runs: { file: string; label: string }[]; source: string };
+type MemoryChart = { id: string; title: string; caption: string; note?: string; warning?: string; series?: ("total" | "browser" | "renderer" | "gpu" | "heap")[]; x?: "time" | "phase"; killMB?: number; killLabel?: string; runs: { file: string; label: string }[]; source: string };
 type Pr = { number: number; title: string; state: string; labels: { name: string }[]; mergedAt: string | null; createdAt: string; url: string };
 type Release = { tagName: string; name: string; isPrerelease: boolean; publishedAt: string; url: string; body: string };
 
@@ -269,7 +269,7 @@ function main(): void {
     const traces = c.runs.map((r) => ({ ...readTrace(path.join(memoryDir, r.file)), label: r.label, build: r.label }));
     const sources = traces.map((t) => "<li>" + esc(t.label) + ": " + esc(t.source) + "</li>").join("");
     return '<div class="card memory' + (traces.length ? "" : " pending") + '"><div class="perf-head"><h3>' + esc(c.title) + "</h3>" + (c.warning ? '<span class="pill s-waiting">' + esc(c.warning) + "</span>" : traces.length ? "" : '<span class="pill s-unmeasured">not measured yet</span>') + "</div>" +
-      '<p class="plain">' + esc(c.caption) + "</p>" +
+      '<p class="plain">' + esc(c.caption) + "</p>" + (c.note ? '<p class="muted">' + esc(c.note) + "</p>" : "") +
       (traces.length ? '<div class="chart">' + renderSvg(traces, { title: c.title, series: c.series ?? ["total"], xMode: c.x ?? "time", killMB: c.killMB, killLabel: c.killLabel }) + "</div>" : "") +
       '<details><summary>Where the numbers come from</summary><ul class="list tech">' + sources + "<li>" + esc(c.source) + "</li></ul></details></div>";
   };
