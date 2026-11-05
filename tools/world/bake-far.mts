@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { MeshoptSimplifier } from "meshoptimizer";
 import { POIS } from "../../shared/world/map";
 import { FAR_DIR, FAR_INDEX, poiSourceHash, type FarIndex } from "./far-hash.mts";
 
@@ -12,12 +13,14 @@ if (process.argv.includes("--help")) { console.log(USAGE); process.exit(0); }
 const base = arg("--url") ?? "http://127.0.0.1:3120";
 const target = Number(arg("--tris") ?? 12000);
 const only = arg("--only")?.split(",");
+const WELD_PER_M = 1000, ERROR_START = 0.001, ERROR_STEP = 1.25, ERROR_MAX = 0.005, COLOR_WEIGHTS = [0.5, 0.5, 0.5];
 const VIEW_DIST_M = 800, VIEW_UP_M = 250, SETTLE_MS = 4000, BUILD_TIMEOUT_MS = 900000;
 const ids = POIS.map((p) => p.id).filter((id) => id !== "lobby-islet" && (!only || only.includes(id)));
 
-interface Soup { pos: number[]; col: number[]; idx: number[]; tris: number; srcTris: number; cell: number; skipped: Record<string, number> }
+interface Extracted { pos: Float32Array; col: Float32Array; idx: Uint32Array; skipped: Record<string, number> }
+interface Soup { pos: number[]; col: number[]; idx: number[]; tris: number; srcTris: number; error: number; skipped: Record<string, number> }
 
-function extract(a: { id: string; target: number }): Soup {
+function extract(a: { id: string }): Extracted {
   const kr = (window as unknown as { __kr: { moduleRoots(id: string): unknown[] } }).__kr;
   type M = { isMesh?: boolean; isInstancedMesh?: boolean; isBatchedMesh?: boolean; isSkinnedMesh?: boolean; visible: boolean; parent: M | null; children: M[]; layers: { mask: number }; matrixWorld: { elements: number[] }; geometry?: G; material?: Mat | Mat[]; count?: number; instanceMatrix?: { array: Float32Array }; instanceColor?: { array: Float32Array } | null; getGeometryIdAt?(i: number): number; getGeometryRangeAt?(g: number): { vertexStart: number; vertexCount: number; indexStart: number; indexCount: number }; getVisibleAt?(i: number): boolean; _instanceInfo?: Array<{ active: boolean }>; _matricesTexture?: { image: { data: Float32Array } }; _colorsTexture?: { image: { data: Float32Array } } | null; updateMatrixWorld(force: boolean): void };
   type A = { count: number; itemSize: number; getX(i: number): number; getY(i: number): number; getZ(i: number): number; array: ArrayLike<number> | null };
@@ -108,42 +111,30 @@ function extract(a: { id: string; target: number }): Soup {
     };
     walk(r);
   }
-  const srcTris = idx.length / 3, nv = pos.length / 3;
-  if (!nv) return { pos: [], col: [], idx: [], tris: 0, srcTris: 0, cell: 0, skipped };
-  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < nv; i++) for (let c = 0; c < 3; c++) { lo[c] = Math.min(lo[c], pos[i * 3 + c]); hi[c] = Math.max(hi[c], pos[i * 3 + c]); }
-  const span = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
-  let cell = span / 512, out = { pos: [] as number[], col: [] as number[], idx: [] as number[] };
-  for (;;) {
-    const K = Math.ceil(span / cell) + 2, ids = new Map<number, number>(), map = new Int32Array(nv), sum: number[] = [], cnt: number[] = [];
-    for (let i = 0; i < nv; i++) {
-      const key = Math.floor((pos[i * 3] - lo[0]) / cell) + K * (Math.floor((pos[i * 3 + 1] - lo[1]) / cell) + K * Math.floor((pos[i * 3 + 2] - lo[2]) / cell));
-      let j = ids.get(key);
-      if (j === undefined) { j = cnt.length; ids.set(key, j); cnt.push(0); sum.push(0, 0, 0, 0, 0, 0); }
-      map[i] = j; cnt[j]++;
-      for (let c = 0; c < 3; c++) { sum[j * 6 + c] += pos[i * 3 + c]; sum[j * 6 + 3 + c] += col[i * 3 + c]; }
-    }
-    const seen = new Set<string>(), tri: number[] = [];
-    for (let t = 0; t < idx.length; t += 3) {
-      const a0 = map[idx[t]], b0 = map[idx[t + 1]], c0 = map[idx[t + 2]];
-      if (a0 === b0 || b0 === c0 || a0 === c0) continue;
-      const k = [a0, b0, c0].sort((x, y) => x - y).join(",");
-      if (seen.has(k)) continue;
-      seen.add(k); tri.push(a0, b0, c0);
-    }
-    if (tri.length / 3 <= a.target) {
-      const used = new Map<number, number>(), p: number[] = [], cl: number[] = [], ix: number[] = [];
-      for (const v of tri) {
-        let n = used.get(v);
-        if (n === undefined) { n = used.size; used.set(v, n); for (let c = 0; c < 3; c++) { p.push(sum[v * 6 + c] / cnt[v]); cl.push(sum[v * 6 + 3 + c] / cnt[v]); } }
-        ix.push(n);
-      }
-      out = { pos: p, col: cl, idx: ix };
-      break;
-    }
-    cell *= 1.25;
+  return { pos: new Float32Array(pos), col: new Float32Array(col), idx: new Uint32Array(idx), skipped };
+}
+
+async function simplify(raw: Extracted, target: number): Promise<Soup> {
+  const srcTris = raw.idx.length / 3;
+  const keys = new Map<string, number>(), remap = new Uint32Array(raw.pos.length / 3), pos: number[] = [], col: number[] = [];
+  for (let i = 0; i < remap.length; i++) {
+    const k = Array.from(raw.pos.subarray(i * 3, i * 3 + 3), (v) => Math.round(v * WELD_PER_M)).join(",") + "|" + Array.from(raw.col.subarray(i * 3, i * 3 + 3), (v) => Math.round(v * 255)).join(",");
+    let j = keys.get(k);
+    if (j === undefined) { j = keys.size; keys.set(k, j); pos.push(raw.pos[i * 3], raw.pos[i * 3 + 1], raw.pos[i * 3 + 2]); col.push(raw.col[i * 3], raw.col[i * 3 + 1], raw.col[i * 3 + 2]); }
+    remap[i] = j;
   }
-  return { ...out, tris: out.idx.length / 3, srcTris, cell, skipped };
+  const P = new Float32Array(pos), C = new Float32Array(col), welded = raw.idx.map((v) => remap[v]);
+  await MeshoptSimplifier.ready;
+  const run = (e: number) => MeshoptSimplifier.simplifyWithAttributes(welded, P, 3, C, 3, COLOR_WEIGHTS, null, Math.min(welded.length, target * 3), e, ["Permissive"])[0];
+  let error = ERROR_START, out = run(error);
+  while (out.length / 3 > target && error * ERROR_STEP <= ERROR_MAX) { error *= ERROR_STEP; out = run(error); }
+  const used = new Map<number, number>(), p: number[] = [], c: number[] = [], ix: number[] = [];
+  for (const v of out) {
+    let n = used.get(v);
+    if (n === undefined) { n = used.size; used.set(v, n); p.push(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]); c.push(C[v * 3], C[v * 3 + 1], C[v * 3 + 2]); }
+    ix.push(n);
+  }
+  return { pos: p, col: c, idx: ix, tris: ix.length / 3, srcTris, error, skipped: raw.skipped };
 }
 
 function encode(s: Soup): Buffer {
@@ -181,13 +172,13 @@ for (const id of ids) {
     const loadErrors = await page.evaluate(() => (window as unknown as { __kr: { errors?: unknown[] } }).__kr.errors ?? []);
     if (loadErrors.length) throw new Error("load errors " + JSON.stringify(loadErrors).slice(0, 400));
     await page.waitForTimeout(SETTLE_MS);
-    const soup = await page.evaluate(extract, { id, target });
+    const soup = await simplify(await page.evaluate(extract, { id }), target);
     if (!soup.tris) throw new Error("no geometry extracted " + JSON.stringify(soup.skipped));
     const bin = encode(soup);
     fs.writeFileSync(path.join(root, FAR_DIR, id + ".bin"), bin);
     index.pois[id] = { hash: poiSourceHash(root, id), tris: soup.tris, bytes: bin.length };
     fs.writeFileSync(indexPath, JSON.stringify(index, null, 2) + "\n");
-    console.log(`${id}: ${soup.srcTris} → ${soup.tris} tris (cell ${soup.cell.toFixed(2)} m), ${(bin.length / 1024).toFixed(0)} KB, ${Math.round((Date.now() - t0) / 1000)} s, skipped ${JSON.stringify(soup.skipped)}${errors.length ? " page errors: " + errors.join(" | ") : ""}`);
+    console.log(`${id}: ${soup.srcTris} → ${soup.tris} tris (error ${soup.error.toFixed(4)}), ${(bin.length / 1024).toFixed(0)} KB, ${Math.round((Date.now() - t0) / 1000)} s, skipped ${JSON.stringify(soup.skipped)}${errors.length ? " page errors: " + errors.join(" | ") : ""}`);
   } catch (e) {
     failed++;
     console.error(`${id}: FAILED ${String(e).slice(0, 300)}`);
