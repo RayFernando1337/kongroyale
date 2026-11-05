@@ -12,6 +12,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { actorLook } from "./look";
 import { flag } from "../flags";
+import { releaseAfterUpload } from "../engine/texture-release";
 
 export type AssetMat = "kbody" | "khead" | "kgear" | "kshoe" | "keye" | "kmin";
 export interface KongAsset {
@@ -122,10 +123,10 @@ export function loadKongAsset(renderer: THREE.WebGLRenderer): Promise<KongAsset 
       const halved = new Map<THREE.Texture, string>();
       loadFullMaps = () => Promise.all([...halved].map(async ([t, url]) => {
         const full = await tl.loadAsync(url);
-        halved.delete(t); t.dispose(); t.image = full.image; t.needsUpdate = true;
+        halved.delete(t); t.dispose(); releaseAfterUpload(t).image = full.image; t.needsUpdate = true;
       })).then(() => undefined);
       const tex = async (name: string, srgb: boolean, half = false) => {
-        const t = await tl.loadAsync(BASE + name + ".webp");
+        const t = releaseAfterUpload(await tl.loadAsync(BASE + name + ".webp"));
         if (half && HALF_MAPS) { halved.set(t, BASE + name + ".webp"); (t as THREE.Texture).image = halve(t.image); }
         t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = aniso; t.needsUpdate = true;
         return t;
