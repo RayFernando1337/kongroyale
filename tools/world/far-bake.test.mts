@@ -18,9 +18,9 @@ for (const id of POIS.map((p) => p.id).filter((id) => id !== "lobby-islet")) {
   else if (poiSourceHash(root, id) !== e.hash) stale.push(id);
 }
 const n = Object.keys(index.pois).length;
-if (!stale.length && !missing.length && !broken.length) { console.log(`far impostors: ${n} baked, all match their POI sources`); process.exit(0); }
-for (const id of missing) console.error(`far impostor ${id}: not baked (${FAR_DIR}/${id}.bin or its index entry is missing)`);
 for (const id of broken) console.error(`far impostor ${id}: ${FAR_DIR}/${id}.bin does not match its header or index entry`);
-for (const id of stale) console.error(`far impostor ${id}: its POI sources, the POI kit or the bake tool changed since the bake`);
-console.error(`rebake them on a running prod build: npx tsx tools/world/bake-far.mts --only ${[...stale, ...missing, ...broken].join(",")}`);
-process.exit(1);
+for (const id of missing) console.log(`far impostor ${id}: not baked yet (${FAR_DIR}/${id}.bin or its index entry is missing)`);
+for (const id of stale) console.log(`far impostor ${id}: its POI sources, the POI kit or the bake tool changed since the bake`);
+if (stale.length || missing.length || broken.length) console.log(`rebake on a running prod build: npx tsx tools/world/bake-far.mts --only ${[...stale, ...missing, ...broken].join(",")}`);
+console.log(`far impostors: ${n} baked, ${stale.length} stale, ${missing.length} not baked (report only while farimp is off by default)`);
+process.exit(broken.length ? 1 : 0);
