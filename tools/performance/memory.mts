@@ -505,16 +505,18 @@ async function run() {
 }
 
 function checkBudgets(r: RunResult, file: string): boolean {
-  const b = JSON.parse(fs.readFileSync(file, "utf8")) as { MB: Record<string, Record<string, number>>; underPct?: number };
-  const under = b.underPct ?? 5;
+  const b = JSON.parse(fs.readFileSync(file, "utf8")) as { config: Record<string, string | number>; underPct: number; headroomPct: number; budgets: Record<string, Record<string, number>> };
+  const wrongConfig = Object.entries(b.config).filter(([k, v]) => r.config[k] !== v).map(([k, v]) => `${k} ${String(r.config[k])} (budgets are for ${v})`);
+  if (wrongConfig.length) { console.log(`FAIL ${file} doesn't apply to this run: ${wrongConfig.join(", ")}`); return false; }
+  if (r.errors.length) { console.log(`FAIL the run had errors:\n  ${r.errors.join("\n  ")}`); return false; }
   let ok = true;
-  for (const [phase, metrics] of Object.entries(b.MB)) {
+  for (const [phase, metrics] of Object.entries(b.budgets)) {
     const c = r.cases.find((x) => x.scenario.id === `memory/${phase}`);
     for (const [metric, budget] of Object.entries(metrics)) {
       const m = c?.metrics[metric], v = m && m.status === "ok" && "value" in m ? m.value : NaN;
-      const verdict = !Number.isFinite(v) ? "not measured" : v > budget ? "over budget" : v < budget * (1 - under / 100) ? `more than ${under}% under: lower the budget to ${Math.ceil(v * 1.01)}` : "ok";
+      const verdict = !Number.isFinite(v) ? "not measured" : v > budget ? "over budget" : v < budget * (1 - b.underPct / 100) ? `more than ${b.underPct}% under: lower the budget to ${Math.ceil(v * (1 + b.headroomPct / 100))}` : "ok";
       if (verdict !== "ok") ok = false;
-      console.log(`${verdict === "ok" ? "ok  " : "FAIL"} ${phase}.${metric} ${v} MB, budget ${budget} MB: ${verdict}`);
+      console.log(`${verdict === "ok" ? "ok  " : "FAIL"} ${phase}.${metric} ${v}, budget ${budget}: ${verdict}`);
     }
   }
   return ok;
@@ -557,4 +559,5 @@ function table() {
 
 if (cmd === "run") { await run(); process.exit(process.exitCode ?? 0); }
 else if (cmd === "table") table();
-else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--heap] | table result.json... [--md]"); process.exitCode = cmd === "help" ? 0 : 2; }
+else if (cmd === "check") { const f = argv.slice(1).find((a) => !a.startsWith("--") && a !== opt("--budgets", "")) ?? ""; process.exitCode = checkBudgets(parseResult(JSON.parse(fs.readFileSync(f, "utf8")), f), opt("--budgets", "tools/memory-budgets.json")) ? 0 : 1; }
+else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--heap] | table result.json... [--md] | check result.json [--budgets tools/memory-budgets.json]"); process.exitCode = cmd === "help" ? 0 : 2; }

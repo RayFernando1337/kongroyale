@@ -129,6 +129,7 @@ catching it; turn it into a check when the same mistake shows up twice.
 | Tunable numbers live in `shared/sim/const.ts` | Review only |
 | `import type` for type-only imports | Lint rule `import-type` (also flags unused imports) |
 | Download size only goes down | `npm test` (`size` step): gzip bytes for entry, boot, worker and lazy JS against `tools/size-budgets.json`. Over budget fails, and so does more than 5% under until the budget is lowered |
+| Memory at the title only goes down | CI job "no-GPU boot smoke" (`memory.mts --budgets tools/memory-budgets.json`): WebGL bytes, textures, buffers and CPU copies the game holds at the playable title on SwiftShader. Over budget fails, and so does more than 5% under until the budget is lowered |
 | URL flags are read through `client/src/flags.ts` | Lint rule `url-flags`: no `location.search` read anywhere in `client/src/` outside the registry. Lint rule `url-params`: no reads of the page URL's `searchParams`. Both rules have empty baselines, so any raw read fails |
 | Wire ids are `const enum`s | Review only |
 | No new dependencies without discussion | Review only (`package.json` is on the Ask first list) |
