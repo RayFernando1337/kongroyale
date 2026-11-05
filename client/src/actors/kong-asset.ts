@@ -101,7 +101,7 @@ const HALF_MAPS = flag("konghalf") && !flag("view") && !flag("cam");
 let loadFullMaps: (() => Promise<void>) | null = null;
 let fullMaps: Promise<void> | null = null;
 export function fullKongMaps(): Promise<void> {
-  return (fullMaps ??= loadFullMaps?.() ?? Promise.resolve());
+  return (fullMaps ??= (loadFullMaps?.() ?? Promise.resolve()).catch((e) => { fullMaps = null; console.warn("[kong] full-size maps failed to load:", e); }));
 }
 function halve(img: HTMLImageElement): HTMLCanvasElement {
   const c = document.createElement("canvas");
@@ -119,14 +119,14 @@ export function loadKongAsset(renderer: THREE.WebGLRenderer): Promise<KongAsset 
     try {
       const tl = new THREE.TextureLoader();
       const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-      const halved: Array<{ t: THREE.Texture; url: string }> = [];
-      loadFullMaps = () => Promise.all(halved.map(async ({ t, url }) => {
+      const halved = new Map<THREE.Texture, string>();
+      loadFullMaps = () => Promise.all([...halved].map(async ([t, url]) => {
         const full = await tl.loadAsync(url);
-        t.dispose(); t.image = full.image; t.needsUpdate = true;
+        halved.delete(t); t.dispose(); t.image = full.image; t.needsUpdate = true;
       })).then(() => undefined);
       const tex = async (name: string, srgb: boolean, half = false) => {
         const t = await tl.loadAsync(BASE + name + ".webp");
-        if (half && HALF_MAPS) { halved.push({ t, url: BASE + name + ".webp" }); (t as THREE.Texture).image = halve(t.image); }
+        if (half && HALF_MAPS) { halved.set(t, BASE + name + ".webp"); (t as THREE.Texture).image = halve(t.image); }
         t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = aniso; t.needsUpdate = true;
         return t;
       };
