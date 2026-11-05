@@ -109,11 +109,16 @@ function codeText(sf) {
 /** the .ts files a writes entry scans: a file, or every .ts file directly in a folder ending in "/" */
 const scanFiles = (entry) => entry.endsWith("/") ? fs.readdirSync(path.join(root, entry)).filter((f) => f.endsWith(".ts")).map((f) => entry + f) : [entry];
 
-/** guarded-state writes outside every region and every listed exception: [{ at, text, pattern }] */
+/** a write as the allow lists name it: the matched text with its spacing collapsed, e.g. ".st = PS.Glide" */
+export const writeText = (s) => s.replace(/\s+/g, " ").trim();
+
+/** guarded-state writes outside every region and every listed exception: [{ at, text, pattern }]. An exception names
+ *  a function and the exact writes it may make there, so any other write added to that function still counts */
 export function strayWrites(c) {
   const spans = c.regions.map(region).filter((r) => !r.error);
-  const allowed = (c.allow ?? []).map((a) => region(a.at)).filter((r) => !r.error);
-  const inside = (file, line, list) => list.some((r) => r.file === file && line >= r.from && line <= r.to);
+  const allowed = (c.allow ?? []).map((a) => ({ ...region(a.at), writes: a.writes ?? [] })).filter((r) => !r.error);
+  const inside = (file, line, list, text) =>
+    list.some((r) => r.file === file && line >= r.from && line <= r.to && (text === undefined || r.writes.includes(text)));
   const out = [];
   for (const w of c.writes ?? []) {
     const re = new RegExp(w.pattern, "g");
@@ -121,7 +126,8 @@ export function strayWrites(c) {
       const sf = source(file); if (!sf) continue;
       for (const m of codeText(sf).matchAll(re)) {
         const line = sf.getLineAndCharacterOfPosition(m.index).line + 1;
-        if (!inside(file, line, spans) && !inside(file, line, allowed)) out.push({ at: `${file}:${line}`, text: m[0], pattern: w.pattern });
+        const text = writeText(m[0]);
+        if (!inside(file, line, spans) && !inside(file, line, allowed, text)) out.push({ at: `${file}:${line}`, text, pattern: w.pattern });
       }
     }
   }

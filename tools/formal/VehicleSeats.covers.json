@@ -30,7 +30,7 @@
   "writes": [
     {
       "what": "a vehicle's seats, a rider's vehicle and seat, and every kong-state write (a rider leaves the Ride state only together with its seat); vehicle states (VS.*) are not kong states",
-      "pattern": "seats\\[[^\\]]*\\]\\s*=(?!=)|\\.(veh|seat)\\s*=(?!=)|\\.st\\s*=(?!=)(?!\\s*VS\\.)",
+      "pattern": "seats\\[[^\\]]*\\]\\s*=(?!=)\\s*[\\w.-]+|\\.(veh|seat)\\s*=(?!=)\\s*[\\w.-]+|\\.st\\s*=(?!=)(?!\\s*VS\\.)\\s*[\\w.]+",
       "files": [
         "shared/sim/",
         "shared/net/",
@@ -41,90 +41,164 @@
   "allow": [
     {
       "at": "shared/sim/vehicle.ts#VehicleSet.bind",
+      "writes": [
+        ".veh = this"
+      ],
       "why": "world.veh is the vehicle set, not a rider's vehicle"
     },
     {
       "at": "shared/net/proto.ts#readSelf",
+      "writes": [
+        ".seat = r.u8",
+        ".st = r.u8",
+        ".veh = vi"
+      ],
       "why": "decodes a snapshot into the client's copy of its own kong; the server's seats are what the model checks"
     },
     {
       "at": "shared/net/proto.ts#readPlayer",
+      "writes": [
+        ".seat = 0",
+        ".seat = s",
+        ".st = 8",
+        ".st = 9",
+        ".st = b"
+      ],
       "why": "decodes a snapshot into the client's copy of another kong"
     },
     {
       "at": "server/lobby.ts#Lobby.castJoin",
+      "writes": [
+        ".seat = seat"
+      ],
       "why": "a commentator seat (Client.seat), not a vehicle seat"
     },
     {
       "at": "server/lobby.ts#Lobby.castLeave",
+      "writes": [
+        ".seat = -1"
+      ],
       "why": "a commentator seat (Client.seat), not a vehicle seat"
     },
     {
       "at": "shared/sim/player.hot.ts#stepPlayer",
+      "writes": [
+        ".st = PS.Glide"
+      ],
       "why": "its state writes come after the Ride early return, so they never touch a rider"
     },
     {
       "at": "shared/sim/player.hot.ts#tryMantle",
+      "writes": [
+        ".st = PS.Mantle"
+      ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
     },
     {
       "at": "shared/sim/player.hot.ts#stepMantle",
+      "writes": [
+        ".st = PS.Ground"
+      ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
     },
     {
       "at": "shared/sim/player.hot.ts#tryVault",
+      "writes": [
+        ".st = PS.Mantle"
+      ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
     },
     {
       "at": "shared/sim/player.hot.ts#stepVault",
+      "writes": [
+        ".st = PS.Ground"
+      ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
     },
     {
       "at": "shared/sim/player.hot.ts#grabClimb",
+      "writes": [
+        ".st = PS.Climb"
+      ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
     },
     {
       "at": "shared/sim/player.hot.ts#leaveClimb",
+      "writes": [
+        ".st = PS.Ground"
+      ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
     },
     {
       "at": "shared/sim/player.hot.ts#stepClimb",
+      "writes": [
+        ".st = PS.Mantle"
+      ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
     },
     {
       "at": "shared/sim/player.hot.ts#stepAir",
+      "writes": [
+        ".st = PS.Freefall",
+        ".st = PS.Glide",
+        ".st = PS.Ground"
+      ],
       "why": "runs only from stepPlayer's on-foot and air branches, after it hands a riding kong to stepRide and returns (player.hot.ts: if (p.st === PS.Ride) ... return)"
     },
     {
       "at": "shared/sim/plane.ts#planeExit",
+      "writes": [
+        ".st = PS.Freefall"
+      ],
       "why": "a kong jumping from the plane is on the plane, never in a vehicle"
     },
     {
       "at": "shared/sim/match.ts#Match.ramKongs",
+      "writes": [
+        ".st = PS.Ground"
+      ],
       "why": "changes only kongs that are mantling, on a zipline or climbing, never riders"
     },
     {
       "at": "shared/sim/match.ts#Match.setupRange",
+      "writes": [
+        ".st = PS.Spectate"
+      ],
       "why": "the firing range has no vehicles"
     },
     {
       "at": "shared/sim/match.ts#Match.placeDummy",
+      "writes": [
+        ".st = PS.Ground"
+      ],
       "why": "the firing range has no vehicles"
     },
     {
       "at": "shared/sim/match.ts#Match.spawnShooter",
+      "writes": [
+        ".st = PS.Ground"
+      ],
       "why": "the firing range has no vehicles"
     },
     {
       "at": "shared/sim/zipline.ts#zipAttach",
+      "writes": [
+        ".st = ZIP_ST"
+      ],
       "why": "grabs a trolley only from on foot (returns early unless p.st === 0)"
     },
     {
       "at": "shared/sim/zipline.ts#toFoot",
+      "writes": [
+        ".st = 0"
+      ],
       "why": "called only from the zipline step, for a kong riding a cable, never a vehicle"
     },
     {
       "at": "shared/net/proto.ts#readVehicle",
+      "writes": [
+        ".st = sb"
+      ],
       "why": "decodes a snapshot into the client's copy of a vehicle"
     }
   ],

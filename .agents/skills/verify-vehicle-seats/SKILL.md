@@ -73,7 +73,7 @@ method or switch case in the table above) and the writes it guards, and records 
 last run that passed. npm test's `formal` check (tools/formal/drift.mjs, no Java) fails when a region changed, moved or
 vanished, when the model's own files changed, or when code outside the regions writes the guarded state. Then read each
 change against the table: if the code changed shape, change the model and cite the line; if a function moved or a new
-one writes the state, update the regions or the `allow` list (with its reason). Re-verify and record in one step:
+one writes the state, update the regions or the `allow` list (a function, the exact writes it may make there, and why). Re-verify and record in one step:
 
 ```sh
 node tools/formal/tlc.mjs VehicleSeats --mutants --record

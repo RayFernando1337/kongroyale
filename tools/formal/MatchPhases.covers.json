@@ -28,7 +28,7 @@
   "writes": [
     {
       "what": "the phase, the end of a match, START NOW, the warm-up hold, redeploys",
-      "pattern": "this\\.(phase|over|skipWarmup|resurgenceOn)\\s*=(?!=)|\\.holdWarmup\\s*=(?!=)",
+      "pattern": "this\\.(phase|over|skipWarmup|resurgenceOn)\\s*=(?!=)\\s*[\\w.]+|\\.holdWarmup\\s*=(?!=)\\s*[\\w.(]+",
       "files": [
         "shared/sim/",
         "shared/net/",
@@ -37,7 +37,7 @@
     },
     {
       "what": "a squad's elimination",
-      "pattern": "\\.eliminated\\s*=(?!=)",
+      "pattern": "\\.eliminated\\s*=(?!=)\\s*[\\w.]+",
       "files": [
         "shared/sim/",
         "server/"
@@ -47,10 +47,16 @@
   "allow": [
     {
       "at": "shared/sim/match.ts#Match.setupRange",
+      "writes": [
+        ".eliminated = true"
+      ],
       "why": "the firing range never ends and is not modelled"
     },
     {
       "at": "shared/net/replay.ts#replayMatch",
+      "writes": [
+        ".holdWarmup = ("
+      ],
       "why": "a replay plays back the holds a recorded match saw"
     }
   ],
