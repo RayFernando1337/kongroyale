@@ -25,7 +25,6 @@ import * as THREE from "three";
 import { Engine, type Quality } from "./engine/engine";
 import { installKongbot } from "./kongbot";
 import { DEFAULT_VIEWS, applyView, parseCam, type CamSpec } from "./engine/views";
-import { enableFly } from "./engine/fly";
 import { MODULES, TITLE_MODULES } from "./world/registry";
 import type { WorldModule } from "./world/module";
 import { loadTerrain } from "./world/terrain/load";
@@ -393,7 +392,7 @@ if (!gameMode) {
       applyView(engine.camera, spec, engine.terrain);
     } else await setView(viewId!);
   } catch (e) { report("view", e); }
-  if (flag("fly")) enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn));
+  if (flag("fly")) void import("./engine/fly").then((m) => m.enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn)), (e) => report("fly", e));
   engine.start();
 } else {
   kr.stage = "game";
