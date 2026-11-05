@@ -319,8 +319,8 @@ export class Engine implements WorldCtx {
   /** idle: link status of every program whose (parallel) compile has finished, a few per frame; never returns true
    *  (programs keep appearing). A failed program is reported through `report` with its info log. */
   auditShaders(report: (where: string, e: unknown) => void, busy?: () => boolean): boolean {
-    if (busy?.()) return false;
     const gl = this.renderer.getContext();
+    if (busy?.() || gl.isContextLost()) return false;
     let n = 0;
     for (const p of (this.renderer.info.programs ?? []) as unknown as Array<{ name?: string; program: WebGLProgram; isReady?: () => boolean }>) {
       if (this.audited.has(p)) continue;

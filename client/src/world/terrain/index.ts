@@ -58,7 +58,7 @@ const mod: WorldModule = {
     const lava: LavaLine[] = lavaChannels(t);
     const ga = dj && dj.hash === t.hash ? dj : computeTerrainGpuArrays(t, lava);
     releaseTerrainJobs();
-    const gpu = gpuDataFromArrays(ga);
+    const gpu = gpuDataFromArrays(ga, () => computeTerrainGpuArrays(t, lava));
     ctx.shared.set("terrainSteps", stepSplatFrom(ga));
     mark("gpuData");
     await ctx.yield();

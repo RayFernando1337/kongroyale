@@ -923,6 +923,7 @@ async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean,
   // one offscreen draw: first use, texture uploads, VAOs (the shadow maps are left alone)
   kr.prefabWarm = "draw";
   await idle();
+  if (engine.contextLost) { kr.prefabWarm = "stopped (context lost)"; rt.dispose(); return; }
   const sm = r.shadowMap, au = sm.autoUpdate;
   for (const l of lights) l.layers.enable(LAYER);
   sm.autoUpdate = false;

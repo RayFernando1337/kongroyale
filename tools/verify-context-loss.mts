@@ -9,9 +9,9 @@ if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) throw Error(`re
 if (!url.searchParams.has("seed")) url.searchParams.set("seed", "42");
 if (!url.searchParams.has("vegsplat")) url.searchParams.set("vegsplat", "0");
 const WAIT_S = Number(opt("--wait-secs", "900")), AFTER_S = Number(opt("--after-secs", "20"));
-const GL_NOISE = /WebGL|GL_INVALID|THREE\./;
+const GL_NOISE = /WebGL|GL_INVALID|THREE\.|context restore/;
 
-type Kr = { ready?: boolean; errors?: string[]; game?: { inMatch?: boolean; cm?: { phase?: number } }; engine: { restores: number; contextLost: boolean; time: number; renderer: { getContext(): WebGL2RenderingContext } } };
+type Kr = { ready?: boolean; errors?: string[]; game?: { inMatch?: boolean; cm?: { phase?: number } }; engine: { restores: number; contextLost: boolean; time: number; renderer: { domElement: HTMLCanvasElement; getContext(): WebGL2RenderingContext } } };
 const kr = () => (window as unknown as { __kr: Kr }).__kr;
 
 const browser = await chromium.launch({ headless: true, args: ["--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"] });
@@ -34,32 +34,53 @@ try {
   console.log(`context loss: ${url}`);
   await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 120_000 });
   if (!await until("the title (__kr.ready)", () => !!kr()?.ready, WAIT_S)) throw Error("no title");
+  await page.evaluate(() => { (window as unknown as { __lossMarker: number }).__lossMarker = 1; });
+  const brightness = async () => {
+    const png = (await page.screenshot({ timeout: 120_000 })).toString("base64");
+    return page.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = "data:image/png;base64," + b64;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = 64; c.height = 36;
+      const g = c.getContext("2d")!;
+      g.drawImage(img, 0, 0, 64, 36);
+      const px = g.getImageData(0, 0, 64, 36).data;
+      let sum = 0;
+      for (let i = 0; i < px.length; i += 4) sum += px[i] + px[i + 1] + px[i + 2];
+      return Math.round(sum / (px.length / 4) / 3);
+    }, png);
+  };
+  const loseAndRestore = async (where: string) => {
+    const lit = await brightness();
+    const before = await page.evaluate(() => {
+      const k = kr(), ext = k.engine.renderer.getContext().getExtension("WEBGL_lose_context")!;
+      Object.assign(window, { __lose: ext, __restoresBefore: k.engine.restores });
+      ext.loseContext();
+      return { restores: k.engine.restores, phase: k.game?.cm?.phase ?? -1 };
+    });
+    const navBefore = navigations, logBefore = log.length;
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => (window as unknown as { __lose: WEBGL_lose_context }).__lose.restoreContext());
+    const restored = await until(`${where}: engine.restores to go up`, () => { const w = window as unknown as { __lossMarker?: number; __restoresBefore: number }; return w.__lossMarker !== 1 || kr().engine.restores > w.__restoresBefore && !kr().engine.contextLost; }, 300);
+    const t0 = await page.evaluate(() => kr().engine.time).catch(() => -1);
+    await page.waitForTimeout(AFTER_S * 1000);
+    const after = await page.evaluate(() => ({ marker: (window as unknown as { __lossMarker?: number }).__lossMarker ?? 0, restores: kr().engine.restores, lost: kr().engine.contextLost, time: kr().engine.time, errors: (kr().errors ?? []).map((e) => String(e).slice(0, 300)) }));
+    if (navigations > navBefore || after.marker !== 1) { throw Error(`${where}: the page reloaded instead of restoring in place`); }
+    if (restored && after.restores <= before.restores) failures.push(`${where}: engine.restores is ${after.restores}, not above ${before.restores}`);
+    if (after.lost) failures.push(`${where}: the engine still reports the context as lost`);
+    if (!(after.time > t0)) failures.push(`${where}: the frame loop did not resume (engine.time ${t0} -> ${after.time})`);
+    const relit = await brightness();
+    if (relit < lit * 0.6) failures.push(`${where}: the picture came back dark (mean brightness ${lit} before the loss, ${relit} after the restore)`);
+    for (const e of after.errors) failures.push(`${where}: __kr.errors: ${e}`);
+    for (const l of log.slice(logBefore)) failures.push(`${where}: ${l}`);
+    console.log(`${where} (phase ${before.phase}): restores ${before.restores} -> ${after.restores}, engine.time ${t0} -> ${after.time}, brightness ${lit} -> ${relit}`);
+  };
+  await loseAndRestore("title");
   await page.locator("button.tn-play-cta").click({ timeout: 120_000, force: true });
   if (!await until("the match (inMatch)", () => !!kr().game?.inMatch, WAIT_S)) throw Error("no match");
   await page.waitForTimeout(8000);
-  const before = await page.evaluate(() => {
-    (window as unknown as { __lossMarker: number }).__lossMarker = 1;
-    const k = kr(), gl = k.engine.renderer.getContext(), ext = gl.getExtension("WEBGL_lose_context")!;
-    (window as unknown as { __lose: WEBGL_lose_context }).__lose = ext;
-    const out = { restores: k.engine.restores, phase: k.game?.cm?.phase ?? -1, navigations: 0 };
-    ext.loseContext();
-    return out;
-  });
-  const navBefore = navigations, logBefore = log.length;
-  console.log(`lost the context in phase ${before.phase}`);
-  await page.waitForTimeout(1500);
-  await page.evaluate(() => (window as unknown as { __lose: WEBGL_lose_context }).__lose.restoreContext());
-  const restored = await until("engine.restores to go up", () => (window as unknown as { __lossMarker?: number }).__lossMarker !== 1 || kr().engine.restores > 0, 300);
-  const t0 = await page.evaluate(() => kr().engine.time).catch(() => -1);
-  await page.waitForTimeout(AFTER_S * 1000);
-  const after = await page.evaluate(() => ({ marker: (window as unknown as { __lossMarker?: number }).__lossMarker ?? 0, restores: kr().engine.restores, lost: kr().engine.contextLost, time: kr().engine.time, errors: (kr().errors ?? []).map((e) => String(e).slice(0, 300)) }));
-  if (navigations > navBefore || after.marker !== 1) failures.push("the page reloaded instead of restoring in place");
-  else if (restored && after.restores <= before.restores) failures.push(`engine.restores is ${after.restores}, not above ${before.restores}`);
-  if (after.lost) failures.push("the engine still reports the context as lost");
-  if (!(after.time > t0)) failures.push(`the frame loop did not resume (engine.time ${t0} -> ${after.time})`);
-  for (const e of after.errors) failures.push(`__kr.errors: ${e}`);
-  for (const l of log.slice(logBefore)) failures.push(l);
-  console.log(`restores ${before.restores} -> ${after.restores}, engine.time ${t0} -> ${after.time}`);
+  await loseAndRestore("warm-up");
 } catch (e) {
   failures.push(String((e as Error).message ?? e).slice(0, 400));
 } finally {
