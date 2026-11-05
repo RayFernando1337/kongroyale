@@ -284,7 +284,6 @@
     "client/src/world/pois/_kit/containers-geo.ts": 89,
     "client/src/world/pois/_kit/containers-tex.ts": 121,
     "client/src/world/pois/_kit/containers.ts": 115,
-    "client/src/world/pois/_kit/coplanar.ts": 35,
     "client/src/world/pois/_kit/harbor-bananas.ts": 103,
     "client/src/world/pois/_kit/harbor-batch.ts": 44,
     "client/src/world/pois/_kit/harbor-geo.ts": 109,
