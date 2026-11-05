@@ -379,7 +379,7 @@ function hoverPose(p: Pose, w: number, t: number) {
 export interface Spring { x: number; v: number }
 const springStep = (s: Spring, dt: number, k = 120, d = 12) => { const a = -k * s.x - d * s.v; s.v += a * dt; s.x += s.v * dt; };
 /** longest spring integration step (s): a frame at 30 fps or better is one step, as before */
-const SPRING_DT = 1 / 30;
+const SPRING_DT_S = 1 / 30;
 const approach = (x: number, to: number, step: number) => (x < to ? Math.min(to, x + step) : Math.max(to, x - step));
 
 /** rest height of the ankle JOINT above the sole (the planted-foot target: sole on the ground) */
@@ -547,12 +547,13 @@ export class KongAnimator {
     if (p.state !== this.prevState) { this.stateT = 0; if (p.state === "land") this.land.v = -3.5; if (p.state === "jump") this.jumpT = 0; if (p.state === "emote") this.emote = (this.emote + 1) % 3; this.prevState = p.state; }
     this.stateT += dt;
     // triggers
-    if (p.fired) this.recoil.v += this.twoHanded ? 9 : 14;
-    if (p.hurt) this.hurt.v += 7;
+    this.firedN += p.fired ? 1 : 0; this.hurtN += p.hurt ? 1 : 0;
+    this.recoil.v += this.firedN * (this.twoHanded ? 9 : 14); this.hurt.v += this.hurtN * 7;
+    this.firedN = this.hurtN = 0;
     this.stepReload(p, dt);
     // (a budgeted far kong's update spans several frames, kong.ts ANIM_SMALL_S / ANIM_HIDDEN_S: the springs take it in
-    // steps of at most SPRING_DT, so a long step neither overshoots nor diverges)
-    for (let n = Math.ceil(dt / SPRING_DT - 1e-6), k = 0; k < n; k++) { const h = dt / n; springStep(this.recoil, h, 220, 18); springStep(this.hurt, h, 90, 9); springStep(this.land, h, 140, 12); }
+    // steps of at most SPRING_DT_S, so a long step neither overshoots nor diverges)
+    for (let n = Math.ceil(dt / SPRING_DT_S - 1e-6), k = 0; k < n; k++) { const h = dt / n; springStep(this.recoil, h, 220, 18); springStep(this.hurt, h, 90, 9); springStep(this.land, h, 140, 12); }
     this.twoHanded = p.weapon !== null && p.weapon !== "pistol";
 
     // locomotion parameters
@@ -665,9 +666,13 @@ export class KongAnimator {
   /** where the last update() / follow() put the kong (its pose's position + yaw) */
   private atX = 0; private atY = 0; private atZ = 0; private atYaw = 0;
   private followM = new THREE.Matrix4();
+  /** shots and hits (the pose's edge-triggered fired / hurt) seen by follow() since the last update(), which plays them */
+  private firedN = 0; private hurtN = 0;
   /** between two budgeted updates (kong.ts): carry the last pose rigidly to the kong's new position + yaw — every bone,
-   *  the root and so the hand sockets move with the body, no re-pose (no clock, springs, IK or face) */
+   *  the root and so the hand sockets move with the body, no re-pose (no clock, springs, IK or face); shots and hits wait
+   *  for the next update() */
   follow(p: KongPose) {
+    this.firedN += p.fired ? 1 : 0; this.hurtN += p.hurt ? 1 : 0;
     const dy = p.yaw - this.atYaw, c = Math.cos(dy), s = Math.sin(dy);
     if (dy === 0 && p.x === this.atX && p.y === this.atY && p.z === this.atZ) return;
     // T(new) · Ry(dy) · T(−old)
