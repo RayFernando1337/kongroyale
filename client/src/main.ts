@@ -225,9 +225,10 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   const t0 = performance.now();
   let m: WorldModule | null = null;
   const scope = resources.root.child(`region:${id}`);
+  const ctx = streamed && postBuild ? postBuild.moduleCtx(engine, world, id) : engine;
   try {
     m = await imports.get(id)!;
-    await m.build(engine, scope);
+    await m.build(ctx, scope);
     scopeOf.set(id, scope);
     loaded.push(m);
     modOf.set(id, m);
@@ -235,11 +236,11 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
     Object.assign(views, m.views ?? {});
   } catch (e) { report(`build:${id}`, e); m = null; scope.dispose(); }
   buildMs[id] = Math.round(performance.now() - t0);
-  buildAdds = null; buildGate = null;
+  buildAdds = null; buildGate = null; engine.rebuilding = false;
   // behind the loading screen: start the parallel compile of what this module drew right away — the driver compiles on
   // its own threads while the next module builds (the game's prewarm compile then mostly hits the program cache)
   if (!streamed && gameMode && m) {
-    try { (engine.shared.get("atmos") as { sweep?: () => number } | undefined)?.sweep?.(); } catch { /* atmos reports */ }
+    try { atmos()?.sweep?.(); } catch { /* atmos reports */ }
     void engine.compileObjects(adds.filter((c) => c.parent === engine.scene));
   }
   rootsOf.set(id, [...new Set(adds)].filter((c) => c.parent === engine.scene));
@@ -250,7 +251,8 @@ async function runAfterBuild(m: WorldModule, streamed: boolean) {
   if (!m.afterBuild) return;
   if (!streamed) kr.stage = `afterBuild:${m.id}`;
   const t0 = performance.now();
-  try { await m.afterBuild(engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
+  try { await m.afterBuild(streamed && postBuild ? postBuild.moduleCtx(engine, world, m.id) : engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
+  engine.rebuilding = false;
   afterBuildMs[m.id] = (afterBuildMs[m.id] ?? 0) + Math.round(performance.now() - t0);
 }
 
@@ -294,6 +296,31 @@ function registerFar(id: string, m: WorldModule | null, streamed: boolean) {
   const y = Math.max(poi.padY ?? 0, engine.terrain.height(poi.x, poi.z));
   engine.far.register(id, roots, { x: poi.x, y, z: poi.z }, Math.max(240, poi.r * 2.2));
 }
+
+const world = { modOf, scopeOf, rootsOf, loaded, roots: (id: string) => moduleRoots(id, true), report, build: (id: string) => buildStreamed(id, false) };
+
+const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
+
+async function buildStreamed(id: string, fast: boolean): Promise<{ integrated: Promise<void> }> {
+  const m = await buildOne(id, true);
+  if (m) await runAfterBuild(m, true);
+  registerStatics(id, true);
+  registerFar(id, m, true);
+  if (LOW_MEM) startFarBuild();
+  registerOcclusion(id, true);
+  kr.streamStage = `integrate:${id}`;
+  try { atmos()?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
+  // pipelined: this module's programs compile on the driver's threads while the NEXT module builds (its fresh
+  // materials stay hidden until its integration ends); at most one integration in flight
+  // (the build gate stays shut until integrateFresh's offscreen first draw has uploaded the module's vertex buffers:
+  // opened before it, the meshes on already-compiled materials drew on the next live frame and uploaded tens of MB of
+  // geometry inside it — 180-580 ms warm-up frames while Peel Harbor integrated)
+  const bg = buildGates.get(id); buildGates.delete(id);
+  let shut = !!bg;
+  const open = () => { if (!bg || !shut) return; shut = false; bg.gate.active = false; for (const o of bg.adds) ungate(o, bg.gate); engine.cull.reveal(bg.adds); };
+  return { integrated: integrateFresh(fast, moduleRoots(id, true), bg?.gate, open).finally(open).then(() => engine.markBuilt(id)) };
+}
+
 
 // ---- title modules (everything, in ?view / ?cam / ?shot pages or with ?nostream)
 const streamList: string[] = [];
@@ -559,15 +586,17 @@ async function stream(): Promise<void> {
   kr.streamPending = () => streamList.slice();
   const streamMs: Record<string, number> = {};
   kr.streamMs = streamMs;
-  const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
+  const trim = (incoming: string | null) => postBuild!.trimStreamed(engine, world, incoming, streamList, streamMs, POIS);
+  if (LOW_MEM) setInterval(() => void trim(null), 2000);
   const inflight: Promise<void>[] = [];
   // a grace of 2.5 s after ready before the first module build — several streamed POIs still build in single
   // 1-3 s tasks, and a PRACTICE click right at ready sat through one (measured 5.5-6.3 s click → match with a
   // 1.7-1.8 s card). A click in the grace holds the stream until the match is in; otherwise it starts 2.5 s later.
   { const graceUntil = performance.now() + flag("streamgrace");
     while (!urgent && !inMatch() && performance.now() < graceUntil) await new Promise((r) => setTimeout(r, 50)); }
-  while (streamList.length) {
+  while (streamList.length || LOW_MEM) {
     const id = LOW_MEM ? await postBuild!.nextNearModule(streamList, engine.camera, POIS, flag("lowmemr"), flag("lowmemview")) : streamList.shift()!;
+    if (LOW_MEM && id.startsWith("poi:")) await trim(id);
     streamNow = id;
     // in the title / lobby: one module per idle gap at the title's slice budget. In a match (warm-up) the plane must
     // not see an unbuilt POI: go flat out, and once the plane phase starts build the rest back to back.
@@ -581,23 +610,8 @@ async function stream(): Promise<void> {
     engine.sliceMs = fast ? 1e9 : engine.streamSlice(inMatch(), matchPhase(), 1.4 * (est(id) + streamList.reduce((a, x) => a + est(x), 0)), warmLeftMs()); // (×1.4: + integration)
     if (!fast) await nextFrame();
     const t0 = performance.now();
-    const m = await buildOne(id, true);
-    if (m) await runAfterBuild(m, true);
-    registerStatics(id, true);
-    registerFar(id, m, true);
-    if (LOW_MEM) startFarBuild();
-    registerOcclusion(id, true);
-    kr.streamStage = `integrate:${id}`;
-    try { atmos()?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
-    // pipelined: this module's programs compile on the driver's threads while the NEXT module builds (its fresh
-    // materials stay hidden until its integration ends); at most one integration in flight
-    // (the build gate stays shut until integrateFresh's offscreen first draw has uploaded the module's vertex buffers:
-    // opened before it, the meshes on already-compiled materials drew on the next live frame and uploaded tens of MB of
-    // geometry inside it — 180-580 ms warm-up frames while Peel Harbor integrated)
-    const bg = buildGates.get(id); buildGates.delete(id);
-    let shut = !!bg;
-    const open = () => { if (!bg || !shut) return; shut = false; bg.gate.active = false; for (const o of bg.adds) ungate(o, bg.gate); engine.cull.reveal(bg.adds); };
-    const done = integrateFresh(fast, moduleRoots(id, true), bg?.gate, open).finally(open).then(() => { engine.markBuilt(id); streamMs[id] = Math.round(performance.now() - t0); });
+    const { integrated } = await buildStreamed(id, fast);
+    const done = integrated.then(() => { streamMs[id] = Math.round(performance.now() - t0); });
     inflight.push(done);
     if (inflight.length > 1) await inflight.shift();
     if (est(id) >= HEAVY_MS) await done; // (the PRACTICE card waits for the heavy ones — integrated, not just built)
