@@ -5,10 +5,9 @@
 // splat-build.ts turns the tiles into 3D surface samples and the samples into gaussian splats.
 import * as THREE from "three";
 import type { Species } from "./species/types";
-import { VEG_UNIFORMS, bakeMaterial } from "./foliage-material";
+import { VEG_UNIFORMS, bakeMaterial, retireMaterial } from "./foliage-material";
 import type { SplatBuildInput, SplatCaptureView } from "./splat-build";
 import { flag } from "../../flags";
-import { retireMaterial } from "../../engine/program-keep";
 
 /** capture directions: rings of (elevation°, count) — from below the crown's rim to straight down */
 const RINGS: Array<[number, number]> = [[-22, 6], [4, 8], [28, 8], [52, 6], [74, 3], [90, 1]];

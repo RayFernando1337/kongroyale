@@ -6,11 +6,10 @@
 // This is what lets the master aerial show a continuous lush canopy of ~40k plants for the cost of 40k quads.
 import * as THREE from "three";
 import type { Species } from "./species/types";
-import { VEG_UNIFORMS, VEG_LIGHT, VEG_GLSL, VEG_FADE_T, bakeMaterial, vegUniforms } from "./foliage-material";
+import { VEG_UNIFORMS, VEG_LIGHT, VEG_GLSL, VEG_FADE_T, bakeMaterial, vegUniforms, retireMaterial } from "./foliage-material";
 import { crownFootprint } from "../../../../shared/world/veg-scatter";
 import { flag } from "../../flags";
 import { bake } from "../../engine/res/restore";
-import { retireMaterial } from "../../engine/program-keep";
 
 /** view blending: each pixel shows one of the 4 baked
  *  views around the true view direction (dithered by weight, a crossfade only across a narrow band at a view cell's edge)
