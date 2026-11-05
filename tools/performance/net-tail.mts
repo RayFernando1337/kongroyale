@@ -50,7 +50,7 @@ function netlab(weapon: string, profile: string): Promise<Row[]> {
       if (code !== 0) return reject(Error(`netlab ${args.slice(2).join(" ")} exited ${code}`));
       resolve(text.split("\n").filter((l) => l.startsWith("{")).map((l) => {
         const r = JSON.parse(l);
-        return { weapon, profile, rtt: r.rtt, raw: r, samples: { rttMs: r.rttMs.n, inputAckP99OverRttMs: r.inputAckMs.n, snapGapP99Ms: r.snapGapMs.n }, metrics: { confirmPct: r.confirmPct, ghost: r.ghost, rttP99Ms: r.rttMs.p99, inputAckP99OverRttMs: Math.round((r.inputAckMs.p99 - r.rtt) * 10) / 10, snapGapP99Ms: r.snapGapMs.p99, corrPct: r.corrPct, holdPct: r.holdPct } };
+        return { weapon, profile, rtt: r.rtt, raw: r, samples: { rttP99Ms: r.rttMs.n, inputAckP99OverRttMs: r.inputAckMs.n, snapGapP99Ms: r.snapGapMs.n }, metrics: { confirmPct: r.confirmPct, ghost: r.ghost, rttP99Ms: r.rttMs.p99, inputAckP99OverRttMs: Math.round((r.inputAckMs.p99 - r.rtt) * 10) / 10, snapGapP99Ms: r.snapGapMs.p99, corrPct: r.corrPct, holdPct: r.holdPct } };
       }));
     });
   });
@@ -86,7 +86,7 @@ const cases: CaseResult[] = rows.map((r) => {
     metrics: {
       confirmPct: { status: "ok", unit: "count", better: "higher", value: r.metrics.confirmPct },
       ghost: { status: "ok", unit: "count", better: "lower", value: r.metrics.ghost },
-      rttP99Ms: ms("rttMs"), inputAckP99OverRttMs: ms("inputAckP99OverRttMs"), snapGapP99Ms: ms("snapGapP99Ms"),
+      rttP99Ms: ms("rttP99Ms"), inputAckP99OverRttMs: ms("inputAckP99OverRttMs"), snapGapP99Ms: ms("snapGapP99Ms"),
       corrPct: { status: "ok", unit: "count", better: "lower", value: r.metrics.corrPct },
       holdPct: { status: "ok", unit: "count", better: "lower", value: r.metrics.holdPct },
     },
