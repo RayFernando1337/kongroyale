@@ -83,7 +83,7 @@ const RULES: Array<[RegExp, Level]> = [
   [/intel.*(hd|uhd|iris|xe)|intel\(r\) (hd|uhd|iris)|radeon\(tm\) graphics|vega \d|radeon graphics|radeon 7[0-9]0m/i, "low"],
   [/apple m\d(?! (pro|max|ultra))/i, "low"],
   [/apple m[1-2] pro|apple m3 pro|gtx 10[5-6]0|gtx 16[0-9]0|rtx 20[5-6]0|rtx 30[5]0|rtx 40[5]0|rx 5[5-7]00|rx 6[4-5]00|arc a[3-5]/i, "medium"],
-  [/apple m[4-9] pro|apple m\d max|apple m\d ultra|rtx 20[7-8]0|rtx 30[6]0|rtx 40[6]0|rtx 50[5-6]0|gtx 10[7-8]0|rx 6[6-7]00|rx 7[6]00|arc a7|arc b/i, "high"],
+  [/apple m[4-9](?! (pro|max|ultra))|apple m[4-9] pro|apple m\d max|apple m\d ultra|rtx 20[7-8]0|rtx 30[6]0|rtx 40[6]0|rtx 50[5-6]0|gtx 10[7-8]0|rx 6[6-7]00|rx 7[6]00|arc a7|arc b/i, "high"],
   [/rtx 30[7-9]0|rtx 40[7-9]0|rtx 50[7-9]0|rtx a\d000|rx 6[8-9]00|rx 7[7-9]00|rx 9\d{3}|titan/i, "epic"],
 ];
 const APPLE_GPU_HIGH_SCORE = 2000, APPLE_GPU_MEDIUM_SCORE = 1300;
