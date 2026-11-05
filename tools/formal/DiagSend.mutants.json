@@ -1,0 +1,30 @@
+[
+  {
+    "name": "the first send skips the sheet",
+    "why": "the send goes out before the player has seen the consent sheet",
+    "find": "SendNow ==\n  IF consented",
+    "replace": "SendNow ==\n  IF TRUE",
+    "expect": "Invariant NoManualSendWithoutConsent is violated"
+  },
+  {
+    "name": "the callsign rides along unticked",
+    "why": "the payload takes the callsign whatever the tick says",
+    "find": "THEN screen' = \"sending\" /\\ sent' = sent \\cup {Rec(\"manual\", tick)}",
+    "replace": "THEN screen' = \"sending\" /\\ sent' = sent \\cup {Rec(\"manual\", TRUE)}",
+    "expect": "Invariant CallsignOnlyWhenTicked is violated"
+  },
+  {
+    "name": "the automatic summary ignores the setting",
+    "why": "diagauto sends whether or not the player opted in",
+    "find": "Auto == screen = \"match\" /\\ autoOn /\\",
+    "replace": "Auto == screen = \"match\" /\\",
+    "expect": "Invariant AutoOnlyWhenOn is violated"
+  },
+  {
+    "name": "a refused send says nothing",
+    "why": "the client drops a refused upload without telling the player",
+    "find": "screen' = (IF RefusedShown THEN \"refused\" ELSE back)",
+    "replace": "screen' = back",
+    "expect": "is violated"
+  }
+]
