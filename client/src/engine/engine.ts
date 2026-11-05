@@ -521,6 +521,7 @@ export class Engine implements WorldCtx {
    * loading screen.
    */
   excursion(setup: (cam: THREE.PerspectiveCamera) => void, dt = 0) {
+    if (this.contextLost) return;
     const cam = this.camera;
     const pos = cam.position.clone(), quat = cam.quaternion.clone(), fov = cam.fov, near = cam.near, far = cam.far;
     try {
