@@ -27,6 +27,22 @@ and counts each one once. Texture sizes are estimates (texels × bytes per texel
 
 Decoded audio is another 212 MB, and it grows by about 50 MB per match (RAY-104).
 
+On a real GPU the whole browser is three times that, and the GPU process is the largest part. Windows numbers are from
+Chrome on D3D11 (RTX, 1600x900, seed 42, main 88d6d44, three runs, RAY-119). The Mac numbers are from Chrome on Metal
+(M4 Mac mini, RAY-104). Medians, in MB:
+
+| phase | whole browser | GPU process | renderer | JS heap after GC | WebGL allocations | CPU copies (textures + geometry) |
+|---|---:|---:|---:|---:|---:|---:|
+| title (D3D11) | 7588, bimodal: 6930 or 8368 | 4700 | 2745 | 214 | 2538 | 762 + 379 |
+| plane (D3D11) | 12897 | 8612 | 4143 | 303 | 4590 | 1316 + 1395 |
+| match, 30 s in (D3D11) | 12713 | 8330 | 4240 | 310 | 4606 | 1316 + 1461 |
+| plane onward (Metal) | 12300-12500 | | | | | |
+
+In a match the GPU process holds about 1.8 times what the game asks WebGL for (8330 MB for 4606 MB). That extra is
+the driver's copies, mip chains and staging, which the game can't free directly, so only cutting WebGL allocations
+reduces it. The renderer holds the JS heap, the CPU copies, decoded audio (305 MB) and about 848 MB of everything else:
+code, the DOM, decoded images in flight and V8's overhead.
+
 Five properties of the code produce these numbers:
 
 1. **Almost everything lives for the whole session.** No world module can unload. `engine/assets.ts` caches every load
@@ -110,22 +126,22 @@ it undoes:
 ```ts
 import { resources, type Scope } from "../engine/res/scope";
 
-const match: Scope = resources.root.child("match");
-const geo = match.geometry("geo.actor", new THREE.CapsuleGeometry(0.09, 0.4, 4, 8));
-const mat = match.material(new THREE.MeshStandardMaterial({ color: "#f5c531" }));
+const matchScope: Scope = resources.root.child("match");
+const geo = matchScope.geometry("geo.actor", new THREE.CapsuleGeometry(0.09, 0.4, 4, 8));
+const mat = matchScope.material(new THREE.MeshStandardMaterial({ color: "#f5c531" }));
 const rocket = new THREE.Mesh(geo, mat);
 scene.add(rocket);
-match.defer(() => rocket.removeFromParent());
-match.defer(() => overlay.remove());
+matchScope.defer(() => rocket.removeFromParent());
+matchScope.defer(() => overlay.remove());
 
-match.dispose();
+matchScope.dispose();
 ```
 
 A bake frees its target even when it throws:
 
 ```ts
-await withScope(resources.root, "bake:impostor", async (s) => {
-  const rt = s.target(new THREE.WebGLRenderTarget(size, size));
+await withScope(resources.root, "bake:impostor", async (scope) => {
+  const rt = scope.target(new THREE.WebGLRenderTarget(size, size));
   renderBake(rt);
 });
 ```
@@ -184,18 +200,35 @@ static-world worker.
 
 ## Budgets and residency
 
-Each category has a budget. The numbers below start from the measurements above and the 4 GB target; the textures,
-geometry and lifecycle lanes (RAY-105, RAY-106, RAY-107) refine them.
+Each category has a budget. The budgets come from the 4 GB target, split by process first, because the process is
+what the OS charges and what a player's machine swaps. The textures, geometry and lifecycle lanes (RAY-105, RAY-106,
+RAY-107) refine them.
 
-| category | budget | today (640x360, in a match) | how it gets there |
-|---|---|---|---|
-| `tex.world` on the GPU | 1000 MB | about 1700 MB | POI textures at the size they are seen at, KTX2, far regions drop near-only maps |
-| `tex.actor` on the GPU | 350 MB | about 1050 MB | the helicopter at 2048² (RAY-105), one texture set per kong variant |
-| `target` | 350 MB at the tier's pixel cap | about 450 MB | impostor arrays sized to the view-distance setting |
-| `geo.world` on the GPU | 600 MB | about 1100 MB | far regions draw their proxy only (RAY-106) |
-| kept CPU copies, all categories | 150 MB | about 3700 MB | the CPU-copy policy |
-| `audio` PCM | 150 MB | 212 MB, plus 50 MB per match | the existing idle eviction, also run at match end |
-| JS heap | 350 MB | 205-318 MB | lifecycle lane (RAY-107) |
+| process | today (D3D11, match) | target | what it means |
+|---|---:|---:|---|
+| GPU process | 8330 MB | 2200 MB | WebGL allocations at most 1200 MB, at today's 1.8 ratio: down 74% from 4606 MB |
+| renderer | 4240 MB | 1500 MB | the JS heap, kept CPU copies and audio within their budgets below, plus today's 848 MB of everything else |
+| browser and utility processes | 143 MB | 150 MB | already there |
+| **whole browser** | **12713 MB** | **3850 MB** | under 4 GB, with 150 MB to spare |
+
+The renderer can't take up the slack: 848 MB of its 1500 MB target is outside the game's categories, so the GPU
+process has to come down to about a quarter of today, from 8.3 GB to 2.2 GB. WebGL allocations are split by category:
+
+| category | budget | today | how it gets there |
+|---|---:|---:|---|
+| `tex.world` on the GPU | 520 MB | about 1700 MB | POI textures at the size they are seen at, KTX2, far regions drop near-only maps |
+| `tex.actor` on the GPU | 150 MB | about 1050 MB | the helicopter at 2048² (RAY-105), one texture set per kong variant, kongs at 1024² beyond close range |
+| `target` | 200 MB at the tier's pixel cap | about 450 MB | impostor arrays sized to the view-distance setting, capped internal pixels (migration step 10) |
+| `geo.world` on the GPU | 250 MB | 1361 MB of buffers on D3D11 | far regions draw their proxy only (RAY-106), quantized positions and normals |
+| `geo.actor` on the GPU | 50 MB | small | one geometry per prefab, shared by every instance |
+| `tex.ui` and `other` on the GPU | 30 MB | small | the title art and UI atlases at the size they are drawn at |
+| **WebGL allocations** | **1200 MB** | **4606 MB on D3D11** | |
+| kept CPU copies, all categories | 150 MB | 2777 MB on D3D11 | the CPU-copy policy |
+| `audio` PCM | 150 MB | 305 MB on D3D11, plus 50 MB per match | the existing idle eviction, also run at match end |
+| JS heap | 350 MB | 310 MB on D3D11 | lifecycle lane (RAY-107) |
+
+The per-category "today" numbers for textures and targets are the 640x360 SwiftShader census above. On D3D11 at
+1600x900 the textures total 3208 MB. The ledger reports each category directly once owners have moved to scopes.
 
 Budgets scale with the quality tier, and with `navigator.deviceMemory` where the browser reports it.
 
@@ -273,7 +306,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 
 | rule | enforced by |
 |---|---|
-| GPU resources are created only through a scope or the cache | Lint rule `resource-owner`: no `new THREE.*Texture`, `*RenderTarget`, `new Worker`, `TextureLoader` or `GLTFLoader` outside `client/src/engine/res/`. Today's sites go in `tools/lint/baseline.json`, which only shrinks |
+| GPU resources are created only through a scope or the cache | Lint rule `resource-owner`: outside `client/src/engine/res/`, every `new THREE.*Texture`, `*RenderTarget` and `new Worker` is handed straight to a scope (`scope.texture`, `scope.target`, `scope.worker`) through a binding named `scope`, `res`, `<name>Scope` or `resources.root`, and `new *Loader` appears only in `client/src/engine/assets.ts`. Today's sites go in `tools/lint/baseline.json`, which only shrinks |
 | The renderer holds no unowned resource | `npm test` memory step: after boot and a match on SwiftShader, every geometry, texture and render target the renderer holds belongs to a scope. The harness observes the renderer's own registration (three.js counts a geometry once in `renderer.info.memory` however many attributes it has, counts render-target attachments as textures, and drops both on `dispose()`) and compares it with the ledger's owned set. Attribute-upload callbacks are not used for this: two geometries sharing one attribute would both look uploaded, and a render target's attachments never fire `texture.onUpdate`. Bytes and categories come from the ledger, never from `renderer.info`. Programs and VAOs are outside the check; they are small |
 | Each category stays inside its budget | `npm test` memory step on KONG-43's harness: bytes per category against `tools/memory-budgets.json`. Over budget fails, and more than 5% under fails until the budget is lowered, as `tools/size-budgets.json` works today |
 | A match leaves nothing behind | CI on SwiftShader: two matches back to back. The ledger's bytes per category after the second equal those after the first, within a small tolerance, and the match scope is empty after leaving |
@@ -318,7 +351,8 @@ Step 10 needs none of the others and addresses the Safari kill, so it can land f
 
 - Whether a `far` region can free its source buffers without a hitch when the POI comes back near. The proxy keeps
   drawing until the sources upload again, so the cost is upload time, not a visual pop. RAY-106 measures it.
-- How budgets measured on SwiftShader, where GPU memory is process memory, map to Metal and D3D11. KONG-43 calibrates
-  them with GPU runs.
+- How budgets measured on SwiftShader, where GPU memory is process memory, map to Metal. On D3D11 the GPU process holds
+  1.8 times the WebGL allocations in a match (RAY-119). Metal's ratio is still to be measured, and the GPU-process target
+  assumes it is no worse.
 - Whether sharing one `Source` is enough for textures that differ only in sampler state, or whether those callers should
   agree on one sampler.

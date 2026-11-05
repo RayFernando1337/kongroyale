@@ -431,7 +431,44 @@ const urlParams: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags, urlParams];
+const RESOURCE_LAYER = "client/src/engine/res/";
+const ASSET_CACHE = "client/src/engine/assets.ts";
+const SCOPED_CTOR = /^(\w*Texture|\w*RenderTarget|Worker|SharedWorker)$/;
+const LOADER_CTOR = /^\w*Loader$/;
+const SCOPE_TAKES = new Set(["texture", "target", "worker"]);
+const SCOPE_NAME = /^(scope|res|\w+Scope)$/;
+function isScopeRef(e: ts.Expression): boolean {
+  if (ts.isIdentifier(e)) return SCOPE_NAME.test(e.text);
+  if (!ts.isPropertyAccessExpression(e)) return false;
+  if (SCOPE_NAME.test(e.name.text)) return true;
+  return e.name.text === "root" && ts.isIdentifier(e.expression) && e.expression.text === "resources";
+}
+
+const resourceOwner: Rule = {
+  id: "resource-owner",
+  applies: (rel) => rel.startsWith("client/src/") && !rel.startsWith(RESOURCE_LAYER),
+  check(sf, rel) {
+    const hits: Hit[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isNewExpression(n)) {
+        const e = n.expression;
+        const name = ts.isIdentifier(e) ? e.text : ts.isPropertyAccessExpression(e) ? e.name.text : "";
+        const p = n.parent;
+        const handed = ts.isCallExpression(p) && p.arguments.includes(n) && ts.isPropertyAccessExpression(p.expression) && SCOPE_TAKES.has(p.expression.name.text) && isScopeRef(p.expression.expression);
+        if (SCOPED_CTOR.test(name) && !handed) {
+          hits.push({ node: n, message: `new ${name} without an owner: hand it to a resource scope as you create it (scope.texture(cat, new ...), scope.target(new ...), scope.worker(new Worker(...))), through a variable or property named scope, res or <name>Scope, or resources.root, from ${RESOURCE_LAYER}scope.ts, so it is counted and freed with its scope (docs/memory-architecture.md)` });
+        } else if (LOADER_CTOR.test(name) && rel !== ASSET_CACHE) {
+          hits.push({ node: n, message: `new ${name} outside the asset cache: load through Assets in ${ASSET_CACHE}, which keeps one loader of each kind and loads each file once (docs/memory-architecture.md, "One asset cache")` });
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return hits;
+  },
+};
+
+const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags, urlParams, resourceOwner];
 
 // ---- engine ----
 
