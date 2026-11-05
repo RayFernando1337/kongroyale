@@ -73,7 +73,7 @@ done
 npx tsx tools/performance/compare.mts --base reports/flight/stable-*.json --cand reports/flight/next-*.json --metrics frameIntervalMs --stats p95 --threshold 10
 ```
 
-`gpu-match.mts` drives Chrome only. On the Metal smoke, also open the Safari survival match with `?seed=42&perfhud`, press F8 8 s into the plane, and report the per-phase frame p95 from the bundle (plane, descent, the first 15 s on the ground) beside `stable`'s, with the plane screenshot. The Safari numbers are for information until Safari has a repeatable five-run tool. A software renderer fails `gpu-match.mts`, so the cloud machines can't run this check.
+`gpu-match.mts` drives Chrome only. On the Metal smoke, also open the Safari survival match with `?seed=42&perfhud`, press F8 8 s into the plane for the plane screenshot, and press F8 again after 15 s on the ground. Report the per-phase frame p95 (plane, descent, the first 15 s on the ground) from the second bundle, beside `stable`'s; a bundle only holds the timeline up to the moment F8 was pressed. The Safari numbers are for information until Safari has a repeatable five-run tool. A software renderer fails `gpu-match.mts`, so the cloud machines can't run this check.
 
 ## Roll back
 
