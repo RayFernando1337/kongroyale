@@ -14,6 +14,7 @@ export function lowMemoryDevice(forced: string | null, fullPrepare: boolean): bo
 type Session = { game?: { inMatch?: boolean; cm?: { phase: number } | null }; caster?: { casting?: boolean } };
 
 const VIEW_HALF_H_M = 150;
+const OFFSCREEN_RANK_M = 1e6;
 const view = new THREE.Frustum(), viewProj = new THREE.Matrix4(), poiSphere = new THREE.Sphere();
 
 function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number): string | null {
@@ -28,8 +29,10 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
     const p = pois.find((x) => `poi:${x.id}` === id);
     if (!p) return id;
     const d = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
-    if (d >= bestD) continue;
-    if (d < radiusM || (overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M))))) { best = id; bestD = d; }
+    const seen = overview && view.intersectsSphere(poiSphere.set(poiSphere.center.set(p.x, (p.padY ?? 0) + VIEW_HALF_H_M, p.z), Math.hypot(p.r, VIEW_HALF_H_M)));
+    if (!seen && d >= radiusM) continue;
+    const rank = overview && !seen ? d + OFFSCREEN_RANK_M : d;
+    if (rank < bestD) { best = id; bestD = rank; }
   }
   return best;
 }
