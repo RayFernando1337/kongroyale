@@ -102,6 +102,7 @@ export function bakeCloudVolume(renderer: THREE.WebGLRenderer, proto: CloudProto
       quad = new THREE.Mesh(g, mat);
       quad.frustumCulled = false;
     }
+    const prevMat = quad.material as THREE.Material;
     quad.material = mat;
     const prevTarget = renderer.getRenderTarget();
     const prevAuto = renderer.autoClear;
@@ -113,7 +114,8 @@ export function bakeCloudVolume(renderer: THREE.WebGLRenderer, proto: CloudProto
     }
     renderer.setRenderTarget(prevTarget);
     renderer.autoClear = prevAuto;
-    mat.dispose(); sphTex.dispose();
+    if (prevMat !== mat) prevMat.dispose();
+    sphTex.dispose();
   });
   return { proto, texture: tex, target, bmin, bmax, res: [nx, ny, nz], voxel };
 }
