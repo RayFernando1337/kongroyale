@@ -31,7 +31,9 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 | `npx tsx tools/performance/alloc.mts --out <file>` | `kong-perf-result` | Bytes allocated per host tick (`allocBytesPerTick`), GC count and GC time over `real-play`'s PLAY window, read from `v8.GCProfiler` with no inspector attached. The same match as `bench:host`'s real-play, with the same state digest. Ten runs on a 4-vCPU runner spread under 3% on bytes and GC count; `gcMs` spreads about 45%, so treat it as a guardrail. `--sample` adds the top allocating functions to `detail.topAllocators` (the sampling heap profiler perturbs the JIT, so sampled runs only compare with sampled runs). `run.mts --runner alloc` interleaves it. |
 | `npx tsx tools/performance/run.mts --base <checkout> --cand <checkout>` | a folder of results plus `comparison.md` | Interleaved repeated `bench:host` runs and the comparison. See below. |
 | `npm run bench:server -- --seconds 60 --out <file>` | `kong-perf-result` | Private server and 50 real WebSocket players, each also on an aux socket. Build first. The match gets a 5 s warm-up and a real plane, so the bench takes about 50 s plus `--seconds`. The timed window starts at the first PLAY snapshot. Linux and macOS only. |
-| `npx tsx tools/performance/gpu-match.mts --out <file>` | `kong-perf-result` | Real GPU, in-match frame timing: a seed-42 trios practice match in Chrome at a pinned video preset (default High, 1920x1080, DPR 1, no dynamic resolution), normal rAF, valid `EXT_disjoint_timer_query_webgl2` samples per frame. Four cases: `warmup-15s`, `plane`, `descent`, `ground-pan`. Build first; `--root` measures another checkout's `dist/`. One timed GPU job per machine. |
+| `npx tsx tools/performance/net-tail.mts` | `kong-perf-result` (`reports/performance/net-tail.json`) | The network tail gate. Runs `tools/netlab.mts` with the game's two sockets over every weapon × path profile × RTT in [net-budgets.json](net-budgets.json) and checks each row against its budgets. Deterministic (simulated clock), so it needs no repetitions and no quiet machine; about 2 min on 2 vCPU. Report-only: exits 0 unless `--check`. See [Network tails](#network-tails). |
+| `npx tsx tools/performance/gpu-match.mts --out <file>` | `kong-perf-result` | Real GPU, in-match frame timing: a seed-42 trios practice match in Chrome at a pinned video preset (default High, 1920x1080, DPR 1, no dynamic resolution), normal rAF, valid `EXT_disjoint_timer_query_webgl2` samples per frame. Four cases: `warmup-15s`, `plane`, `descent`, `ground-pan`. Build first; `--root` measures another checkout's `dist/`. One timed GPU job per machine. `--route tour` replaces the pan with the play route in [tour.mts](tour.mts) (a sprint through Mango Market, a close fight with six bots, a tuk-tuk drive across the island, a helicopter flight over four towns), one case per segment (`gpu/tour/<id>`), and `--segments a,b` runs some of them. `--route survey` pans 360 degrees at every POI (`gpu/survey/<poi>`) to find the densest places. Both routes add per-frame attribution: practice-host sim, prediction, actors, vehicles, other hooks, streaming, culling, render submit, draw calls, triangles, new programs, heap growth, GC and long animation frames. `--software` lets SwiftShader check a route's path and counts, never its timing. |
+| `npx tsx tools/performance/tour-check.mts` | stdout | Drives the tour route on a headless seed-42 Match in seconds and fails when a segment gets stuck. Run it after editing [tour.mts](tour.mts) or the map near the route. `--only id,id`, `--trace`. |
 | `npx tsx tools/performance/load-profile.mts run --url http://127.0.0.1:<port> --browsers chrome,safari` | `kong-perf-result`, one file per run | Browser page load to the playable title and a practice match start, cold and warm, per phase (workload `page-load`). Chrome adds a CDP trace and CPU profile; Safari runs through safaridriver. `table` prints medians per browser. See [the profile-kongroyale-load skill](../../.agents/skills/profile-kongroyale-load/SKILL.md). |
 | `npx tsx tools/performance/memory.mts run --url http://127.0.0.1:<port>` | `kong-perf-result` | Whole-browser memory per process (PSS, footprint or private bytes from the OS), JS heap after GC, every WebGL allocation, CPU copies kept after upload and decoded audio, at the title, plane, match and after leaving, over two matches. `table --md` ranks textures, modules, geometry and audio. See [the verify-memory skill](../../.agents/skills/verify-memory/SKILL.md). |
 
@@ -113,3 +115,50 @@ npx tsx tools/performance/run.mts --base .           # A/A: the noise floor of t
   `comparison.json` and `comparison.md`.
 - Exit status is `compare.mts`'s, or 1 on a digest mismatch. Five pairs of `real-play` take about 10 minutes on a
   4-vCPU runner. Don't run anything else on the machine meanwhile.
+
+## Network tails
+
+`net-tail.mts` is the gate for how the game feels over a network. Each row is one `tools/netlab.mts` run: the real
+client prediction (`ClientMatch`) and the real host loop (`MatchHost`) in one process, joined by simulated TCP links,
+with a shooter firing at a strafing, jumping target on the lobby islet. The matrix comes from
+[net-budgets.json](net-budgets.json): weapons (`ar`, `smg`, `shotgun`), RTTs (50, 150, 250 ms) and three path
+profiles:
+
+| Profile | Jitter | Loss | Stands for |
+|---|---|---|---|
+| `jitter20` | ±10 ms per way | 0 | a steady home connection |
+| `loss1` | ±10 ms per way | 1% per socket and direction | busy Wi-Fi |
+| `loss2j40` | ±20 ms per way | 2% | a bad connection (reported, no budget) |
+
+Loss is modelled the way TCP behaves, not as dropped frames: a lost message arrives `max(1.25 × RTT, RTT + 35 ms)`
+late and every later message on that socket waits behind it. Each client has two sockets, like the game, and the first
+copy of each frame wins. The resend delay was measured with `netpath.py` (below) on Linux TCP (cubic, SACK, RACK) at
+1% loss and 20 ms jitter: stalls peaked at 68-100 ms at 50 ms RTT, 167-201 ms at 150 ms and 305-336 ms at 250 ms.
+
+Metrics, over the shooter's firing window: `confirmPct` and `ghost` (predicted hits the server confirmed or
+rejected), `rttP99Ms`, `inputAckP99OverRttMs` (input sent → first snapshot acknowledging it, minus the path RTT),
+`snapGapP99Ms`, `corrPct` (prediction corrections per 100 snapshots) and `holdPct` (the shooter's frames that froze
+the target because no newer snapshot had arrived). The RTT sample is small (one ping a second after the first eight),
+so its p99 is close to the run's maximum.
+
+```sh
+npx tsx tools/performance/net-tail.mts                    # the whole matrix, report-only
+npx tsx tools/performance/net-tail.mts --check            # exit 1 when a row breaks a budget
+npx tsx tools/performance/net-tail.mts --weapons shotgun --rtts 150 --secs 10
+```
+
+What it does not cover: a 50-player server under load (`bench:server`), real TCP, or a real network. For those, run
+the real server and real sockets over an emulated path with `netpath.py`. It relays IP packets between two network
+namespaces through TUN devices with added delay, jitter and loss, for kernels without `netem` (Linux, root):
+
+```sh
+sudo python3 tools/performance/netpath.py --rtt 150 --jitter 20 --loss 1 &
+sudo ip netns exec kr-srv sudo -u "$USER" env "PATH=$PATH" KR_EVENT_MODE=0 KR_WARMUP_S=5 KR_HOST=10.77.0.1 npm start &
+sudo ip netns exec kr-cli sh -c 'until curl -sf http://10.77.0.1:3020/health >/dev/null; do sleep 1; done'
+sudo ip netns exec kr-cli sudo -u "$USER" env "PATH=$PATH" npx tsx tools/performance/sockets.mts \
+  --url http://10.77.0.1:3020 --players 2 --aux --seconds 60 --out reports/performance/sockets-150-loss1.json
+# stop the server and netpath, then remove the namespaces
+sudo python3 tools/performance/netpath.py --down
+```
+
+Label those results "emulated path". Neither tool replaces one measurement over a real WAN.
