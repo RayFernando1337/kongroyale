@@ -30,9 +30,9 @@ function track(camera: THREE.Camera): boolean {
   if (dt * 1000 < SAMPLE_MS) return motion.known;
   const vx = (e[12] - motion.x) / dt, vz = (e[14] - motion.z) / dt;
   const jump = dt * 1000 > STALE_MS || Math.hypot(vx, vz) > TELEPORT_MPS;
+  motion.vx = jump ? 0 : motion.known ? (motion.vx + vx) / 2 : vx;
+  motion.vz = jump ? 0 : motion.known ? (motion.vz + vz) / 2 : vz;
   motion.known = !jump;
-  motion.vx = jump ? 0 : (motion.vx + vx) / 2;
-  motion.vz = jump ? 0 : (motion.vz + vz) / 2;
   motion.x = e[12]; motion.z = e[14]; motion.at = now;
   return motion.known;
 }
