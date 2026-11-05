@@ -148,7 +148,11 @@ const sharedDeterminism: Rule = {
 // ---- shared-math (AGENTS.md rule 2: transcendental Math through shared/sim/dmath.ts) ----
 
 const MATH_BANNED = new Set(["sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "exp", "expm1", "log", "log1p", "log2", "log10", "pow", "cbrt", "hypot"]);
-const MSG_MATH = (fn: string) => `Math.${fn} differs in the last bit between CPUs and JS engines (V8 on arm64 fuses multiply-adds, Safari and Firefox use other libms): use dmath.${fn === "hypot" ? "hypot / dmath.hypot3" : fn} from shared/sim/dmath.ts ${RULE2}`;
+const DMATH_HAS = new Set(["sin", "cos", "tan", "asin", "acos", "atan", "atan2", "exp", "pow", "hypot"]);
+const MATH_WHY = "differs in the last bit between CPUs and JS engines (V8 on arm64 fuses multiply-adds, Safari and Firefox use other libms)";
+const MSG_MATH = (fn: string) => DMATH_HAS.has(fn)
+  ? `Math.${fn} ${MATH_WHY}: use dmath.${fn === "hypot" ? "hypot / dmath.hypot3" : fn} from shared/sim/dmath.ts ${RULE2}`
+  : `Math.${fn} ${MATH_WHY}, and shared/sim/dmath.ts has no ${fn} yet: add a dmath port first (from V8's src/base/ieee754.cc into shared/sim/dmath.hot.ts, with vectors in tools/dmath/vectors.json recorded on linux-x64 Node), then call dmath.${fn} ${RULE2}`;
 const MSG_MATH_DYNAMIC = `Math[...] with a computed name can reach a transcendental function: call it by name through shared/sim/dmath.ts ${RULE2}`;
 const MSG_EXP_OP = `** is Math.pow under another name and differs between JS engines: use dmath.pow from shared/sim/dmath.ts ${RULE2}`;
 
