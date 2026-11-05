@@ -7,8 +7,8 @@ import { WORLD } from "../../../../shared/world/map";
 import { TERRAIN_CAMS, badlandsAt, lavaChannels, primeTerrainRocks, type LavaLine } from "../../../../shared/world/terrain-gen";
 import { terrainData } from "./load";
 import { fillLayerArrays, layerArraysFrom, loadLayerArrays } from "./textures";
-import { startTerrainJobs } from "./jobs";
-import { buildTerrainGpuData, gpuDataFromArrays } from "./data";
+import { releaseTerrainJobs, startTerrainJobs } from "./jobs";
+import { computeTerrainGpuArrays, gpuDataFromArrays, stepSplatFrom } from "./data";
 import { makeTerrainMaterial } from "./material";
 import { TerrainLOD } from "./lod";
 import { buildRocks, setRockGround } from "./rocks";
@@ -55,9 +55,10 @@ const mod: WorldModule = {
     await ctx.yield();   // yields between the build stages: no single multi-second task
     const dj = await gpuJob;
     const lava: LavaLine[] = lavaChannels(t);
-    let gpu: ReturnType<typeof buildTerrainGpuData>;
-    if (dj && dj.hash === t.hash) gpu = gpuDataFromArrays(dj);
-    else gpu = buildTerrainGpuData(t, lava);
+    const ga = dj && dj.hash === t.hash ? dj : computeTerrainGpuArrays(t, lava);
+    releaseTerrainJobs();
+    const gpu = gpuDataFromArrays(ga);
+    ctx.shared.set("terrainSteps", stepSplatFrom(ga));
     mark("gpuData");
     await ctx.yield();
     const { material, farMaterial, uniforms } = makeTerrainMaterial(arrays, gpu);

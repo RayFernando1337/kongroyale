@@ -6,6 +6,7 @@
 //   • sea floor: bright sand, dark coral patches (the same reefPatch field that raised them), rock on steep drops
 //   • basalt only on the cone and in the badlands (no dark apron on the flats at the volcano's foot)
 import * as THREE from "three";
+import { releaseAfterUpload } from "../../engine/texture-release";
 import { Biome, POIS, WORLD } from "../../../../shared/world/map";
 import { Simplex2, smoothstep } from "../../../../shared/world/noise";
 import { HARBOR_APRON, MURK, RIVER, VOLCANO, cliffSkins, poiGroundAt, badlandsAt, kipukaAt, groundWarp, lagoonShoreAt, lavaChannels, padWeight, pathLines, plantationAt, reefPatch, type LavaLine, type TerrainData } from "../../../../shared/world/terrain-gen";
@@ -72,12 +73,14 @@ export function gpuDataFromArrays(a: TerrainGpuArrays): TerrainGpuData {
     // pixel covers more than one of them — from the plane every pixel does, and the lit relief shimmered frame to frame
     if (TERRAIN_LODV) { tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true; tex.anisotropy = 8; }
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.needsUpdate = true;
-    return tex;
+    return releaseAfterUpload(tex);
   };
   return { dat: mk(a.dat, 4), w: mk(a.w, 3), res: a.res };
 }
-export function buildTerrainGpuData(t: TerrainData, lava: LavaLine[] = lavaChannels(t)): TerrainGpuData {
-  return gpuDataFromArrays(computeTerrainGpuArrays(t, lava));
+export function stepSplatFrom(a: TerrainGpuArrays): { w: Uint8Array; path: Uint8Array; res: number } {
+  const N = a.res * a.res, L2 = 2 * N * 4, path = new Uint8Array(N * 3);
+  for (let k = 0; k < N; k++) { path[k * 3] = a.dat[k * 4 + 2]; path[k * 3 + 1] = a.dat[L2 + k * 4]; path[k * 3 + 2] = a.dat[L2 + k * 4 + 1]; }
+  return { w: a.w, path, res: a.res };
 }
 /** the CPU half of buildTerrainGpuData — split so terrain.worker.ts can run the per-sample splat rules on
  * row bands in parallel (computeGpuRows) and finish once (finishGpuArrays); in-thread it is both in a row */
