@@ -28,11 +28,12 @@ export function preReadyPlanner(est: (id: string) => number, factor: number, rea
     for (const id of [...ids].sort((a, b) => est(b) - est(a))) if (t + est(id) * factor + restMs(out.length + 1, preMs + est(id) * factor) <= readyBy) { out.push(id); t += est(id) * factor; preMs += est(id) * factor; }
     return out;
   };
+  let fixed: string[] = [];
   return {
     estimate: { ms: Math.round(post.ms), stored: post.stored },
-    plan: (ids: string[]) => plan(ids, rest),
+    plan: (ids: string[]) => { fixed = measured ? plan(ids, fixedRest) : []; return plan(ids, rest); },
     fits: (id: string, pre: number, preMs: number) => performance.now() + est(id) * factor + rest(pre + 1, preMs + est(id) * factor) <= readyBy,
-    owed: (ids: string[], pre: number) => (measured ? plan(ids, (n) => fixedRest(pre + n)) : []),
+    owed: (ids: string[], pre: number) => plan(ids.filter((id) => fixed.includes(id)), (n) => fixedRest(pre + n)),
   };
 }
 
