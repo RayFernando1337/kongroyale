@@ -70,3 +70,6 @@ footer{color:var(--muted);text-align:center;padding:32px;font-size:.85rem;border
 .card.regression .bar.after{background:linear-gradient(90deg,var(--bad),#ffa3a3)}
 .tracked{color:var(--bad);font-weight:700;font-size:.95rem;margin:12px 0 0}
 .pill.s-regressed{background:#3b1212;color:var(--bad)}
+.card.remeasuring{opacity:.75}
+.card.remeasuring .delta{color:var(--muted)}
+.card.remeasuring .bar.after{background:#6b7387}
