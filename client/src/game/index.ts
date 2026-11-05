@@ -55,6 +55,7 @@ import { createGpuWarmer } from "./warm";
 import { createBlimp } from "./blimp";
 import { createCasterApp, type CasterApp } from "../caster/app";
 import { createSquadVoice, type SquadVoice } from "../voice/squad";
+import { flag } from "../flags";
 
 export interface GameBoot { views: Record<string, CamSpec>; modules: WorldModule[] }
 
@@ -79,6 +80,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
 
   // ---- kits (contracts)
   const weapons = createWeaponsKit(engine);
+  if (!DEFER_PREFABS) void weapons.prepareLoot();
   gameStage("kits:viewmodel", 0.12);
   // (perf: the first-person viewmodel — ~1.7 s of weapon LOD / merge work — only ever draws in a match: with
   // DEFER_PREFABS it is made right after the title is ready, in the prefab warm-up every PRACTICE / CREATE / JOIN waits
@@ -147,10 +149,10 @@ export async function startGame(engine: Engine, boot: GameBoot) {
 
   // ---- lobby state
   const url = new URL(location.href);
-  const joinCode = (url.searchParams.get("join") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || null;
+  const joinCode = (flag("join") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || null;
   // (admin lobby) a player link `?e=CODE`: the event lobby screen instead of the title lobby ("" = not a valid code: the
   // screen says the lobby isn't open)
-  const eventRaw = url.searchParams.get(EVENT_PARAM);
+  const eventRaw = flag(EVENT_PARAM);
   const eventCode = eventRaw === null ? null : EVENT_CODE_RE.test(eventRaw.trim().toUpperCase()) ? eventRaw.trim().toUpperCase() : "";
   // this browser's player session token (sent with every join; an event lobby knows a returning / kicked player by it)
   const playerTok = (() => {
@@ -175,7 +177,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   function nextSessionGeneration() { return ++sessionGeneration; }
   function clearSessionTimers() { clearTimeout(victoryTimer); clearInterval(streamTimer); victoryTimer = 0; streamTimer = 0; }
   // ?ws=ws://host:port/ws (tools): a private game server instead of the page's own /ws
-  const wsParam = url.searchParams.get("ws");
+  const wsParam = flag("ws");
   const wsUrl = wsParam && /^wss?:\/\/[^\s]+$/.test(wsParam) ? wsParam : (url.protocol === "https:" ? "wss://" : "ws://") + url.host + ((import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/") + "ws";
 
   // first-session controls coach (warm-up / firing range; F1 skips) and what it observes
@@ -211,7 +213,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   const blimp = createBlimp(); engine.scene.add(blimp.object);
   // (caster) ?caster / ?cast=CODE: this tab is a commentator seat (client/src/caster) — its own lobby card instead of the
   // player's, its own camera / desk / autopilot once a match runs
-  const casterMode = url.searchParams.has("caster") || url.searchParams.has("cast");
+  const casterMode = flag("caster") !== null || flag("cast") !== null;
   let caster: CasterApp | null = null;
   if (casterMode) {
     lobby.setVisible(false); lobby.el.style.display = "none";
@@ -268,6 +270,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     clearSessionTimers();
     if (l.offline) { voice?.dispose(); voice = null; voiceLink = null; }
     else if (voiceLink !== l) { voice?.dispose(); voice = createSquadVoice(l, ui); voiceLink = l; }
+    render?.dispose();
     cm = new ClientMatch(world, l);
     render = new GameRender(engine, cm, kits, input);
     render.myName = lobby.name; render.fovBase = currentFov();
@@ -805,14 +808,15 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   // program info logs: getProgramInfoLog is a synchronous GPU-process round trip that waits for the (parallel) compile
   // and the lazily built ANGLE/Metal pipeline — 90-430 ms main-thread stalls at match start / plane entry.
   // A late shader error still reaches the console (the driver logs it). ?shadercheck=1 keeps them.
-  if (!new URLSearchParams(location.search).has("shadercheck")) engine.renderer.debug.checkShaderErrors = false;
+  if (!flag("shadercheck")) engine.renderer.debug.checkShaderErrors = false;
   gameStage("done", 1);
   releaseBoot();
   // (perf) the prefabs every match spawns: made + warmed in the title's idle time, never behind the loading screen
   if (DEFER_PREFABS) { const kr = (window as unknown as { __kr: Record<string, unknown> }).__kr; kr.prefabWarmP = (async () => {
     while (!kr.ready) await new Promise((r) => setTimeout(r, 100));
     if (!kits.viewModel) { const t = performance.now(); const vm = await weapons.createViewModel(); vm.object.visible = false; engine.camera.add(vm.object); kits.viewModel = vm; kr.viewModelMs = Math.round(performance.now() - t); }
-    await prewarmPrefabs(engine, kits, () => inMatch); await prewarmMatch(engine, kits, title, () => inMatch); kr.warmDone = true; })(); }
+    const lootRoot = await weapons.prepareLoot(() => new Promise<void>((r) => (kr.prepareUrgent ? setTimeout(r, 0) : requestAnimationFrame(() => setTimeout(r, 0)))));
+    await prewarmPrefabs(engine, kits, () => inMatch, lootRoot); await prewarmMatch(engine, kits, title, () => inMatch); kr.warmDone = true; })(); }
 
   // the loot generator's spots (shared/sim/loot-spots.ts, ~1.5-2 s of probes on the static world) are
   // built in ≤ 6 ms idle slices once the title is ready, so an offline PRACTICE never waits for them (the host's Match
@@ -857,13 +861,13 @@ function gameStage(name: string, p: number) {
 }
 /** perf: chests / loot / held weapons / glider / render prefabs are prewarmed after the title is ready
  * (prewarmPrefabs) — ?prewarm=full builds them all before ready instead */
-const DEFER_PREFABS = new URLSearchParams(location.search).get("prewarm") !== "full";
+const DEFER_PREFABS = flag("prewarm") !== "full";
 
 /** after the title is ready: make every spawnable prefab (chests of every rarity, opened; every weapon × rarity as loot
  * and held; consumables; ammo; glider; render prefabs) one at a time, then compile them in parallel and draw them ONCE
  * into an offscreen target on a private layer (never on screen, no shadows): programs, first use, textures, buffers.
  * Stops as soon as a match starts (the match then makes what it needs on demand). Nothing is disposed. */
-async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean) {
+async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean, lootRoot: THREE.Object3D) {
   const t0 = performance.now();
   const kr = (window as unknown as { __kr: Record<string, unknown> }).__kr;
   kr.prefabWarm = "make";
@@ -903,7 +907,7 @@ async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean)
   cam.layers.set(LAYER);
   const r = engine.renderer;
   const rt = new THREE.WebGLRenderTarget(256, 256, { type: THREE.HalfFloatType });
-  const list: THREE.Object3D[] = []; g.traverse((o) => list.push(o));
+  const list: THREE.Object3D[] = []; g.traverse((o) => list.push(o)); lootRoot.traverse((o) => list.push(o));
   const fake = { traverse(fn: (o: THREE.Object3D) => void) { for (const o of list) fn(o); }, traverseVisible() { /* lights: the scene's */ } } as unknown as THREE.Object3D;
   // the scene's lights must be seen by the private camera (their count is part of every program key)
   const lights: THREE.Light[] = []; engine.scene.traverse((o) => { if ((o as THREE.Light).isLight) lights.push(o as THREE.Light); });
@@ -919,17 +923,21 @@ async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean)
   // one offscreen draw: first use, texture uploads, VAOs (the shadow maps are left alone)
   kr.prefabWarm = "draw";
   await idle();
-  const sm = r.shadowMap, au = sm.autoUpdate;
-  for (const l of lights) l.layers.enable(LAYER);
-  sm.autoUpdate = false;
-  try { r.setRenderTarget(rt); r.render(engine.scene, cam); } catch (e) { console.warn("[prewarm] draw", e); }
-  finally { r.setRenderTarget(prev); sm.autoUpdate = au; for (const l of lights) l.layers.disable(LAYER); }
+  const lost = engine.contextLost;
+  if (!lost) {
+    const sm = r.shadowMap, au = sm.autoUpdate;
+    for (const l of lights) l.layers.enable(LAYER);
+    sm.autoUpdate = false;
+    try { r.setRenderTarget(rt); r.render(engine.scene, cam); } catch (e) { console.warn("[prewarm] draw", e); }
+    finally { r.setRenderTarget(prev); sm.autoUpdate = au; for (const l of lights) l.layers.disable(LAYER); }
+  }
   rt.dispose();
   // hide (never dispose — a disposed material would compile again); the pool lights go back to the pool
   const pool: THREE.Object3D[] = []; g.traverse((o) => { if ((o as THREE.PointLight).isPointLight) pool.push(o); });
   for (const l of pool) l.removeFromParent();
   g.visible = false;
   kits.lights?.update();
+  if (lost) { kr.prefabWarm = "stopped (context lost)"; return; }
   kr.prefabWarm = "done";
   kr.prefabWarmMs = Math.round(performance.now() - t0);
 }
@@ -1005,6 +1013,10 @@ async function prewarmMatch(engine: Engine, kits: Kits, title: TitleScene, isBus
     excursion(look, 0.1);
     for (const a of made) a.setVisible(false);
   }
+  const crowd = (await kongManager(engine)).warmBatches();
+  patchTree(engine, crowd);
+  await engine.compileObjects([crowd]);
+  if (!isBusy()) engine.warmDraw([crowd]);
   made.forEach((a, i) => kits.releaseKong?.(a, i % 6));
   kits.lights?.update();
   kr.matchWarm = "done";
@@ -1096,6 +1108,7 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
   let compiled: Promise<unknown> = Promise.resolve();
   try { compiled = engine.renderer.compileAsync(engine.scene, cam); } catch { /* unsupported: the frames below compile */ }
   engine.renderer.setRenderTarget(prevRT);
+  compiled = Promise.all([compiled, kits.storm.compile(engine.renderer)]);
   // (perf: textures upload on first draw behind the loading screen — the frames below — and the rest one per frame in
   // the title (warmer.tick); the synchronous upload of every scene texture here cost 2.2 s of texSubImage2D)
   // shadow DEPTH programs (alpha-tested foliage, skinned kongs, instanced props): compileAsync never makes them and the
@@ -1180,6 +1193,10 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
     await frames(2);
     for (const a of made) a.setVisible(false);
   }
+  const crowd = (await kongManager(engine)).warmBatches();
+  patchTree(engine, crowd);
+  await engine.compileObjects([crowd]);
+  engine.warmDraw([crowd]);
   made.forEach((a, i) => kits.releaseKong?.(a, i % 6));
   }
   // hide (never dispose) — programs stay cached for the whole session. The chest pool lights go back to the pool

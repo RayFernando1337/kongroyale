@@ -33,6 +33,7 @@ import { createCasterComms, type CasterComms } from "./comms";
 import { CasterLook } from "./look";
 import { Seats } from "./seats";
 import { lastResults } from "./panels";
+import { flag } from "../flags";
 
 export interface CasterDeps {
   engine: Engine; world: StaticWorld; kits: Kits; hud: Hud; title: TitleScene; input: GameInput; ui: HTMLElement;
@@ -52,7 +53,6 @@ const isTyping = (e: Event) => { const t = e.target as HTMLElement | null; retur
 
 export function createCasterApp(d: CasterDeps): CasterApp {
   const { engine, world, kits } = d;
-  const url = new URL(location.href), qs = url.searchParams;
   // ---- the caster lobby (over the title scene)
   { const st = document.createElement("style"); st.textContent = LOBBY_CSS; document.head.appendChild(st); }
   const panel = document.createElement("div"); panel.className = "kcl"; d.ui.appendChild(panel);
@@ -65,10 +65,10 @@ export function createCasterApp(d: CasterDeps): CasterApp {
   /** instant replay + highlights (replay.ts, highlights.ts) */
   let replay: Replay | null = null, highlights: Highlights | null = null;
   let map: PaintedMap | null = null;
-  const autoDefault = !qs.has("manual");
+  const autoDefault = !flag("manual");
   /** (seats.ts) the other seats' cameras, mirroring, the producer's TAKE, pings. `program`: this window is a PROGRAM
    *  output (?cast=CODE&program — the OBS feed): it only mirrors the seat on air, behind the broadcast layer */
-  const program = qs.has("program");
+  const program = flag("program");
   let seats: Seats | null = null;
 
   function drawPanel() {
@@ -91,7 +91,7 @@ export function createCasterApp(d: CasterDeps): CasterApp {
           <div class="kcl-btns"><button data-a="leave">LEAVE</button></div>
           <p class="kcl-hint">Other casters join this desk with <b>?cast=${esc(l!.code)}</b> · players join the match with the code <b>${esc(l!.code)}</b></p>
         </div>` : `
-        <div class="kcl-join"><input data-k="code" maxlength="8" placeholder="LOBBY CODE" value="${esc(qs.get("cast") ?? "")}"><button data-a="join" class="go">CAST THIS LOBBY</button></div>
+        <div class="kcl-join"><input data-k="code" maxlength="8" placeholder="LOBBY CODE" value="${esc(flag("cast") ?? "")}"><button data-a="join" class="go">CAST THIS LOBBY</button></div>
         <div class="kcl-or">— OR OPEN AN EXHIBITION (50 BOTS) —</div>
         <div class="kcl-btns"><button data-a="ex-solo">SERVER · SOLO</button><button data-a="ex-trios" class="go">SERVER · TRIOS</button></div>
         <div class="kcl-btns"><button data-a="lo-solo">THIS TAB · SOLO</button><button data-a="lo-trios">THIS TAB · TRIOS</button></div>
@@ -121,7 +121,7 @@ export function createCasterApp(d: CasterDeps): CasterApp {
     try {
       if (!link || link.offline) { closeLink(); const l = await connectWs(d.wsUrl); link = l; local = false; wire(l); }
       link!.sendJSON({ t: "hello", name: myName }); link!.sendJSON(first);
-      if (first.t === "exhibit" && qs.get("caster") === "exhibit") setTimeout(() => link?.sendJSON({ t: "start" }), 400);
+      if (first.t === "exhibit" && flag("caster") === "exhibit") setTimeout(() => link?.sendJSON({ t: "start" }), 400);
     } catch { error = "NO GAME SERVER — start `npm run server`, or cast a match in THIS TAB"; link = null; }
     busy = false; drawPanel();
   }
@@ -306,7 +306,7 @@ export function createCasterApp(d: CasterDeps): CasterApp {
 
   // ---- boot: URL shortcuts
   drawPanel();
-  const wantCast = qs.get("cast"), wantCaster = qs.get("caster"), wantMode: Mode = qs.get("mode") === "trios" ? "trios" : "solo";
+  const wantCast = flag("cast"), wantCaster = flag("caster"), wantMode: Mode = flag("mode") === "trios" ? "trios" : "solo";
   const kr = (window as unknown as { __kr: Record<string, unknown> }).__kr;
   void (async () => {
     while (!kr.ready) await new Promise((r) => setTimeout(r, 100));

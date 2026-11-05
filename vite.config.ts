@@ -1,6 +1,14 @@
 import { build, defineConfig, type Plugin } from "vite";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+
+const git = (...a: string[]) => { try { return execFileSync("git", a, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return ""; } };
+const head = git("rev-parse", "HEAD");
+const at = (tag: string) => head !== "" && git("rev-parse", "--verify", "--quiet", `refs/tags/${tag}^{commit}`) === head;
+process.env.VITE_KR_SHA ??= head.slice(0, 7);
+process.env.VITE_KR_TAG ??= git("describe", "--tags", "--match", "kong-v*");
+process.env.VITE_KR_CHANNEL ??= process.env.KR_CHANNEL ?? (at("stable") ? "stable" : at("next") || git("tag", "--points-at", "HEAD", "--list", "kong-v*") ? "next" : "dev");
 
 // (admin lobby) `vite build` also builds the admin console bundles into dist-admin/ (vite.admin.config.ts) — never into
 // dist/, which is served to everyone
@@ -45,7 +53,7 @@ export default defineConfig({
     // and never dotfiles such as the admin key
     fs: {
       allow: [fileURLToPath(new URL(".", import.meta.url)), ...(fs.existsSync("refs") ? [fs.realpathSync("refs")] : [])],
-      deny: [".env", ".env.*", "*.{crt,pem,key}", "**/.git/**", ".admin-key*", "**/.kongbot/**", "**/.claude/**"],
+      deny: [".env", ".env.*", "*.{crt,pem,key}", "**/.git/**", ".admin-key*", "**/.kongbot/**", "**/playtest-bundles/**", "**/.claude/**"],
     },
   },
   // module workers (every `new Worker(url, { type: "module" })` in the client): ES output lets a worker code-split —

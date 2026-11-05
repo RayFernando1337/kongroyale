@@ -9,6 +9,8 @@ import { POIS } from "../../../shared/world/map";
 import { makeHit, surfaceById, type StaticWorld } from "../../../shared/sim/world";
 import { weaponId, consumableId, rarityOf } from "../../../shared/sim/player";
 import { frameStats } from "./capture";
+import { flagQuery } from "../flags";
+import { BUILD } from "../build";
 
 const ST = ["ground", "freefall", "glide", "dead", "plane", "spectate", "zip"];
 const PHASE = ["warmup", "plane", "play", "results"];
@@ -98,7 +100,8 @@ export function gatherContext(engine: Engine) {
 
   return {
     capturedAt: new Date().toISOString(),
-    page: { url: location.href, query: Object.fromEntries(new URLSearchParams(location.search)), visibility: document.visibilityState, focused: document.hasFocus(), fullscreen: !!document.fullscreenElement, pointerLock: !!document.pointerLockElement, uptimeS: Math.round(performance.now() / 1000) },
+    build: BUILD,
+    page: { url: location.href, query: flagQuery, visibility: document.visibilityState, focused: document.hasFocus(), fullscreen: !!document.fullscreenElement, pointerLock: !!document.pointerLockElement, uptimeS: Math.round(performance.now() / 1000) },
     env: {
       ua: navigator.userAgent, uaData: nav.userAgentData ? { brands: nav.userAgentData.brands, platform: nav.userAgentData.platform, mobile: nav.userAgentData.mobile } : null,
       platform: navigator.platform, lang: navigator.language, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, tzOffsetMin: new Date().getTimezoneOffset(),

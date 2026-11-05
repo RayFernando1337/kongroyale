@@ -6,6 +6,7 @@ import type { CamSpec } from "../../engine/views";
 import type { ConsumableId, WeaponId } from "../../../../shared/world/map";
 import { createWeaponsKit } from "../index";
 import type { StageDef, StageFile } from "../studio";
+import { flag } from "../../flags";
 
 // fov 72 = the game camera (settings.fov) — the holds are solved for it
 const CAM = { pos: [135, 1.7, 530] as [number, number, number], target: [245, 20, 572] as [number, number, number], fov: 72, rel: true };
@@ -27,11 +28,11 @@ function stage(id: WeaponId | ConsumableId, mode: Mode): StageDef {
       // settle the equip animation deterministically, then trigger the action a fixed time before the capture
       for (let i = 0; i < 60; i++) vm.update(1 / 60, motion);
       // ?vmu=0.45 → the reload frozen at that fraction (default 0.33)
-      const vmu = (() => { try { const v = new URLSearchParams(location.search).get("vmu"); return v ? Number(v) : 0.33; } catch { return 0.33; } })();
+      const vmu = (() => { try { const v = flag("vmu"); return v ? Number(v) : 0.33; } catch { return 0.33; } })();
       if (mode === "reload") { vm.reload(2); const n = Math.round(vmu * 120); for (let i = 0; i < n; i++) vm.update(1 / 60, motion); }
       if (mode === "ads") { vm.setAds?.(true); for (let i = 0; i < 40; i++) vm.update(1 / 60, motion); }
       if (mode === "use") { vm.use(2); for (let i = 0; i < 40; i++) vm.update(1 / 60, motion); }
-      const liveMode = (() => { try { return new URLSearchParams(location.search).has("fxlive"); } catch { return false; } })();
+      const liveMode = (() => { try { return flag("fxlive"); } catch { return false; } })();
       if (mode === "fire" && !liveMode) {
         // one shot, captured 25 ms later: kick in progress, flash + casing in flight; then everything holds still
         ctx.camera.updateMatrixWorld(true);

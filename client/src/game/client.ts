@@ -521,7 +521,7 @@ export class ClientMatch {
         case EV.TakeItem: { const id = r.u16(), by = r.u8(); const it = this.items.get(id); if (it) { it.taken = true; this.items.delete(id); } s?.takeItem(id, by); break; }
         case EV.Explosion: { const x = r.f32(), y = r.f32(), z = r.f32(), rr = r.u8() / 10; s?.explosion(x, y, z, rr); break; }
         case EV.Rocket: { const id = r.u16(), o = r.u8(), x = r.f32(), y = r.f32(), z = r.f32(), vx = r.f32(), vy = r.f32(), vz = r.f32(); s?.rocket(id, o, x, y, z, vx, vy, vz); break; }
-        case EV.RocketEnd: { s?.rocketEnd(r.u16()); break; }
+        case EV.RocketEnd: { const id = r.u16(); s?.rocketEnd(id); break; }
         // respawn / plane exit move us: the next snapshot's state reconciles the prediction (no guessing here)
         case EV.Respawn: { const id = r.u8(), x = r.f32(), y = r.f32(), z = r.f32(); s?.respawn(id, x, y, z); break; }
         case EV.Jump: { const id = r.u8(); s?.jump(id); break; }
@@ -531,7 +531,7 @@ export class ClientMatch {
         case EV.Glass: { const id = r.u16(), c = r.u8(), by = r.u8(), sd = (c >> 2) & 3; this.glass.breakPane(id, c & 3, sd === 1 ? 1 : sd === 2 ? -1 : 0, by); break; }
         case EV.Veh: { const id = r.u8(), kind = r.u8(), a = r.u8(), x = r.f32(), y = r.f32(), z = r.f32(); s?.veh?.(id, kind, a, x, y, z); break; }
         case EV.Bomb: { const id = r.u16(), o = r.u8(), x = r.f32(), y = r.f32(), z = r.f32(), vx = r.f32(), vy = r.f32(), vz = r.f32(), f = r.u16() / 1000; s?.bomb?.(id, o, x, y, z, vx, vy, vz, f); break; }
-        case EV.BombEnd: { s?.bombEnd?.(r.u16()); break; }
+        case EV.BombEnd: { const id = r.u16(); s?.bombEnd?.(id); break; }
         case EV.Cover: { const id = r.u16(), o = r.u8(), x = r.f32(), y = r.f32(), z = r.f32(), yw = yawDec(r.u16()), hp = r.u16(); this.covers.remove(id); this.covers.add(id, o, x, y, z, yw, hp, this.time); s?.cover?.(id, o, true); break; }
         case EV.CoverEnd: { const id = r.u16(), why = r.u8(); this.covers.remove(id); s?.coverEnd?.(id, why); break; }
         case EV.CoverHit: { const id = r.u16(), hp = r.u16(); const w = this.covers.byId(id); if (w) w.hp = hp; s?.coverHit?.(id, hp); break; }

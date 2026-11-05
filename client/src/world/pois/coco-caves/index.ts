@@ -22,6 +22,7 @@ import { mulberry } from "../_kit/jungle-mat";
 import { buildInteriors } from "../_kit/interior";
 import { buildSculpted } from "./sculpt";
 import { cavePatch } from "./light";
+import { flag } from "../../../flags";
 
 type V3 = [number, number, number];
 const eye = (x: number, z: number, y?: number): V3 => [x, (y ?? floorAt(x, z)) + 1.8, z];
@@ -173,7 +174,7 @@ const mod: WorldModule = {
         detail.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { if (m.userData.cs === undefined) m.userData.cs = m.castShadow; m.castShadow = now ? false : m.userData.cs; } });
       }); }
     // ablation hook: ?cavesHide=rock,water,timber,… hides the POI's named parts for A/B GPU timing
-    { const hide = (new URLSearchParams(location.search).get("cavesHide") ?? "").split(",").filter(Boolean);
+    { const hide = flag("cavesHide");
       if (hide.length) ctx.onUpdate(() => { group.traverse((o) => { if (hide.some((h) => o.name.includes(h))) o.visible = false; }); }); }
     mark("tail");
     console.info(`[coco-caves] build ${Math.round(performance.now() - t0)} ms (cpu ${JSON.stringify(ph)}), ${tb.draws} timber draws, water ${WATER_Y}`);

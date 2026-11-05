@@ -22,6 +22,11 @@ import { atmosFlags, gradeParams, type AtmosState } from "./state";
 import { gradeLUT, LUT_GAMMA, LUT_N } from "./grade";
 import { toHalf } from "./sky";
 import { ATMOS_PARS, type AtmosUniforms } from "./glsl";
+import { flag } from "../../flags";
+import { onRestore } from "../../engine/res/restore";
+
+const PIXCAP = flag("pixcap");
+const MAX_PIXELS: Record<Quality, number> = { ultra: 2560 * 1440, high: 1920 * 1080, medium: 1920 * 1080, low: 1600 * 900 };
 
 const FS_VERT = /* glsl */ `
 varying vec2 vUv;
@@ -1422,6 +1427,7 @@ class AtmosFinalPass extends Pass {
   readonly reproj = new THREE.Matrix4();
   frame = 0;
   private w = 1; private h = 1;
+  private dw = 1; private dh = 1;
   /** the scene render's size (= w, h unless a render scale < 1 is set) */
   private iw = 1; private ih = 1;
   /** tone + grade + sRGB as an N³ table (grade.ts gradeLUT), rebuilt per preset */
@@ -1479,7 +1485,8 @@ class AtmosFinalPass extends Pass {
     this.lut.needsUpdate = true;
   }
 
-  dispose() { for (const t of this.hist) t.dispose(); this.hist.length = 0; super.dispose(); }
+  private unrestore = onRestore("bake", () => { this.reset = true; });
+  dispose() { this.unrestore(); for (const t of this.hist) t.dispose(); this.hist.length = 0; super.dispose(); }
   constructor(private cam: THREE.PerspectiveCamera, private ao: AtmosAOPass | null, readonly taa: boolean, bloom: boolean, sharpen: number, private au: AtmosUniforms, readonly shafts = false, fxaa = false) {
     super("AtmosFinalPass");
     this.needsSwap = true;
@@ -1653,16 +1660,17 @@ class AtmosFinalPass extends Pass {
     state.bindFramebuffer(gl.READ_FRAMEBUFFER, src);
     state.bindFramebuffer(gl.DRAW_FRAMEBUFFER, dst);
     gl.readBuffer(gl.COLOR_ATTACHMENT1);
-    gl.blitFramebuffer(0, 0, this.w, this.h, 0, 0, this.w, this.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    const dw = this.renderToScreen ? this.dw : this.w, dh = this.renderToScreen ? this.dh : this.h;
+    gl.blitFramebuffer(0, 0, this.w, this.h, 0, 0, dw, dh, gl.COLOR_BUFFER_BIT, dw === this.w && dh === this.h ? gl.NEAREST : gl.LINEAR);
     gl.readBuffer(gl.COLOR_ATTACHMENT0);
     state.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     renderer.setRenderTarget(null);
   }
 
-  setSize(w: number, h: number) { this.setSizes(w, h, w, h); }
-  /** TAAU: the scene / AO / bloom / shafts run at (w, h); the TAA history and the display at (ow, oh) */
-  setSizes(w: number, h: number, ow: number, oh: number) {
-    this.w = ow; this.h = oh; this.iw = w; this.ih = h;
+  setSize(w: number, h: number) { this.setSizes(w, h, w, h, w, h); }
+  /** TAAU: the scene / AO / bloom / shafts run at (w, h); the TAA history and the display at (ow, oh); the canvas at (dw, dh) */
+  setSizes(w: number, h: number, ow: number, oh: number, dw: number, dh: number) {
+    this.w = ow; this.h = oh; this.iw = w; this.ih = h; this.dw = dw; this.dh = dh;
     // bloom at QUARTER resolution: the prefilter's 4 bilinear taps cover the 4x4 full-res texels of each output pixel
     const qw = Math.max(1, w >> 2), qh = Math.max(1, h >> 2);
     this.pre.setSize(qw, qh);
@@ -1946,7 +1954,8 @@ export class AtmosPost implements PostPipeline {
     if (!this.vmRT) {
       this.vmRT = new THREE.WebGLRenderTarget(this.fullW, this.fullH, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, stencilBuffer: false, generateMipmaps: false });
       this.vmRT.texture.colorSpace = THREE.NoColorSpace;
-    } else if (this.vmRT.width !== this.fullW || this.vmRT.height !== this.fullH) this.vmRT.setSize(this.fullW, this.fullH);
+    }
+    if (this.vmRT.width !== this.outW || this.vmRT.height !== this.outH) this.vmRT.setSize(this.outW, this.outH);
     // the scene's lights (same count → the viewmodel's programs are the ones the scene render uses; rescanned ~1 / s)
     if (++this.vmLightAge > 60) {
       this.vmLightAge = 0; this.vmLights = [];
@@ -2014,17 +2023,22 @@ export class AtmosPost implements PostPipeline {
   }
   renderScale = 1;
   private fullW = 1; private fullH = 1;
+  private outW = 1; private outH = 1;
+  pixScale = 1;
   private applyScale() {
     const composer = this.composer;
     const sc = this.renderScale;
-    const sw = Math.max(1, Math.round(this.fullW * sc)), sh = Math.max(1, Math.round(this.fullH * sc));
+    const k = this.pixScale = PIXCAP && !atmosFlags().has("smaa") ? Math.min(1, Math.sqrt(MAX_PIXELS[this.quality] / (this.fullW * this.fullH))) : 1;
+    const cw = Math.max(1, Math.round(this.fullW * k)), ch = Math.max(1, Math.round(this.fullH * k));
+    this.outW = this.taa ? cw : this.fullW; this.outH = this.taa ? ch : this.fullH;
+    const sw = Math.max(1, Math.round(cw * sc)), sh = Math.max(1, Math.round(ch * sc));
     this.w = sw; this.h = sh;
     if (!composer) return;
-    if (sc === 1 && composer.inputBuffer.width === sw && composer.inputBuffer.height === sh && this.composite && (this.composite as unknown as { iw: number }).iw === sw) return;
+    if (sc === 1 && composer.inputBuffer.width === sw && composer.inputBuffer.height === sh && this.composite && (this.composite as unknown as { iw: number; w: number }).iw === sw && (this.composite as unknown as { iw: number; w: number }).w === this.outW) return;
     composer.inputBuffer.setSize(sw, sh);
     composer.outputBuffer.setSize(sw, sh);
     for (const p of (composer as unknown as { passes: Pass[] }).passes) {
-      if (p === this.composite) this.composite.setSizes(sw, sh, this.fullW, this.fullH);
+      if (p === this.composite) this.composite.setSizes(sw, sh, this.outW, this.outH, this.fullW, this.fullH);
       else p.setSize(sw, sh);
     }
     if (this.composite) this.composite.reset = true;

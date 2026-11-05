@@ -16,12 +16,13 @@ import { addTrunk, addFlanges, addCrown } from "./trees";
 import { addRing, addHelix, addBridge, addTower, addHut, addShelter, addZip, addProp } from "./structures";
 import { distanceSwitch, type LodItem } from "../_kit/jungle-lod";
 import { addFarProxy } from "./far";
+import { flag } from "../../../flags";
 
 /** the DETAIL set (rails, ropes, tread edges, prop hardware — 3–6 cm parts) is drawn within
  *  DETAIL_FAR m of the POI centre: beyond it every part is < 0.3 px, so it leaves unseen. (At 130 m the whole POI's
  *  rails / ropes / props visibly grew out of the POI centre in a 0.3 s scale fade whenever you crossed it.) */
 /** A/B: ?elevlod=0 = the old switches (130 / 340 / 58 m, scale-faded) */
-const OLD_LOD = typeof location !== "undefined" && new URLSearchParams(location.search).get("elevlod") === "0";
+const OLD_LOD = !flag("elevlod");
 const DETAIL_FAR = OLD_LOD ? 110 : 260;
 /** beyond this distance from the POI centre MAIN + DETAIL give way to the far proxy (far.ts, ~15 k tris):
  *  900 m keeps the full POI through the whole drop from the plane (PLANE_ALT 720) and from anywhere on the island's
@@ -291,7 +292,7 @@ async function build(ctx: WorldCtx) {
   }
 
   // perf probe (tools): ?canopyOff=crowns,det,main,cast hides / un-casts parts of this POI for A/B timing
-  const off = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("canopyOff")?.split(",") ?? [];
+  const off = flag("canopyOff");
   if (off.length) root.traverse((o) => {
     const n = o.name;
     if (off.includes("crowns") && n.startsWith("canopy:crown")) o.visible = false;

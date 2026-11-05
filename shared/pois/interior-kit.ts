@@ -1227,7 +1227,8 @@ function island(p: Placer, g: Group): boolean {
   for (const u of p.used) for (const it of u.items) if (it.y < 0.3 && it.col) cs.push([it.x, it.z]);
   const pts: Array<[number, number, number]> = [];
   for (let z = -d / 2 + m; z <= d / 2 - m; z += 0.4) for (let x = -w / 2 + m; x <= w / 2 - m; x += 0.4) {
-    let q = 5; for (const [cx, cz] of cs) q = Math.min(q, Math.hypot(cx - x, cz - z));
+    // (the squared test skips the exact hypot only where it surely cannot lower q: the same q, without most of the hypots)
+    let q = 5; for (const [cx, cz] of cs) { const dx = cx - x, dz = cz - z; if (dx * dx + dz * dz < q * q * 1.000001) q = Math.min(q, Math.hypot(dx, dz)); }
     pts.push([x, z, q + r() * 0.8]);
   }
   pts.sort((a, b) => b[2] - a[2]);

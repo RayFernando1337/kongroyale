@@ -14,33 +14,34 @@
 // ?nocull disables it; `engine.cull.info()` / `engine.cull.minPx` for tuning.
 import * as THREE from "three";
 import { DITHER, clearDither, ditherable, patchShaderDissolve, setDither } from "./dither";
+import { flag } from "../flags";
 
 /** ?lodv=1 → a cut /
  * restore is a 0.3 s SCALE FADE about the mesh's bounding centre (onBeforeRender / onAfterRender — the module's own
  * matrices are never touched), the restore band is 22 % (was 13 %) plus 1.5 s before a faded-out mesh may come back
  * (no flapping at the boundary), and big meshes (r ≥ 4 m: buildings, POI modules) keep at least 0.83 × the Epic
  * distance on every view-distance setting (Low cuts small-object distance, not the skyline). */
-export const CULL_LODV = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("lodv") !== "0";
+export const CULL_LODV = flag("lodv");
 /** with DITHER (engine/dither.ts) every fade DISSOLVES instead of scaling; a dissolve reads as a soft
  *  crossfade under TAA, so it runs a little longer than the scale fade (0.3 s) */
 const FADE_S = DITHER ? 0.4 : 0.3, VIS_FADE_S = DITHER ? 0.5 : 0.3, REVEAL_S = 0.9, BIG_R = 4, BIG_MAXPX = 2.4;
 /** module visibility fades (see MODULE VISIBILITY FADES below): ON by default (measured pops on the Auto preset on a
  *  Mac, 5 routes: 6,469 → 1,027; the drop 926 → 13, the glide 1,294 → 16); ?visfade=0 = instant switches (A/B);
  *  switches nearer than VIS_NEAR m (to the object's box) are instant */
-const VIS_FADE = typeof location === "undefined" ? false : new URLSearchParams(location.search).get("visfade") !== "0";
+const VIS_FADE = typeof location !== "undefined" && flag("visfade");
 // (3 m, and only for objects < 30 m across — with the dissolve a near switch reads as a short crossfade,
 // not a shrinking object, so only what the player touches stays instant; gameplay-driven visibility opts out with
 // userData.krInstant)
 const VIS_NEAR = DITHER ? 3 : 12, INST_FADE_MAX = 4096, SETTLE = 10;
 /** module switches of objects outside the view are instant (?offinstant=0 = they fade, A/B) */
-const OFF_INSTANT = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("offinstant") !== "0";
+const OFF_INSTANT = flag("offinstant");
 /** the screen-size thresholds
  *  use the player's OWN field of view (DetailCull.fovRef, the video setting) instead of the camera's live one. The game
  *  widens the view +5° while sprinting (+7° more sliding: 72 → 84°, tan ratio 1.24) and narrows it to 58–65° in the
  *  plane / drop — each change moved every cut distance: props at the edge of the cull distance faded out when the
  *  player started sprinting or sliding (and, past the 22 % restore band, back in when they stopped). A real zoom (a
  *  scope: < 0.75 × the base FOV) still counts. ?cullfov=0 = the live FOV (A/B). */
-const CULL_FOVREF = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("cullfov") !== "0";
+const CULL_FOVREF = flag("cullfov");
 const VIS = Symbol("krVis");
 interface Vis { o: THREE.Object3D; want: boolean; committed: boolean; shown: boolean; f: number; dir: number; meshes: THREE.Object3D[] | null; b: THREE.Box3 | null; owner: DetailCull }
 /** ONE getter / setter pair shared by every wrapped object (per-object closures gave each wrapped
@@ -88,14 +89,14 @@ export class DetailCull {
   private items: Item[] = [];
   /** every instanced mesh below a root (frustumCulled or not): one with count 0 still costs a full draw setup */
   private inst: Array<{ o: THREE.InstancedMesh; off: boolean; mask: number }> = [];
-  private roots: THREE.Object3D[] = [];
-  private stale = new Set<THREE.Object3D>();
+  readonly roots: THREE.Object3D[] = [];
+  readonly stale = new Set<THREE.Object3D>();
   /** the frame a root's structure last changed: a root is re-collected once it has been quiet for
    *  SETTLE frames — a module that builds lazily (the Murk's far crowns: two cells a frame) used to trigger a
    *  re-collect every frame, cross the churn limit below and lose its culling AND its visibility fades for good */
-  private touchedAt = new Map<THREE.Object3D, number>();
+  readonly touchedAt = new Map<THREE.Object3D, number>();
   /** …but a root that never goes quiet is still re-collected every 120 frames (then the churn limit applies) */
-  private staleSince = new Map<THREE.Object3D, number>();
+  readonly staleSince = new Map<THREE.Object3D, number>();
   private frame = 0;
   culled = 0;
   /** scale fades started (each one is a prop visibly shrinking away
@@ -126,8 +127,15 @@ export class DetailCull {
     for (let p: THREE.Object3D | null = parent; p; p = p.parent) if ((p as unknown as Record<string, unknown>)[ROOT]) { this.stale.add(p); this.touchedAt.set(p, this.frame); if (!this.staleSince.has(p)) this.staleSince.set(p, this.frame); return; }
   }
 
+
+
   /** a root whose structure churns (> 12 re-collects in 240 frames) is left alone for good */
   private release(root: THREE.Object3D) {
+    this.drop(root);
+    this.released++;
+  }
+
+  drop(root: THREE.Object3D) {
     for (const it of this.items) if ((it.culled || it.dir !== 0) && isBelow(it.o, root)) this.uncull(it);
     this.items = this.items.filter((it) => !isBelow(it.o, root));
     for (const x of this.inst) if (x.off && isBelow(x.o, root)) x.o.layers.mask |= x.mask;
@@ -135,7 +143,6 @@ export class DetailCull {
     this.roots.splice(this.roots.indexOf(root), 1);
     delete (root as unknown as Record<string, unknown>)[ROOT];
     this.unwrapVis(root); this.reconcile();
-    this.released++;
   }
   released = 0;
 

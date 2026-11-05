@@ -5,15 +5,16 @@
 // splat-build.ts turns the tiles into 3D surface samples and the samples into gaussian splats.
 import * as THREE from "three";
 import type { Species } from "./species/types";
-import { VEG_UNIFORMS, bakeMaterial } from "./foliage-material";
+import { VEG_UNIFORMS, bakeMaterial, retireMaterial } from "./foliage-material";
 import type { SplatBuildInput, SplatCaptureView } from "./splat-build";
+import { flag } from "../../flags";
 
 /** capture directions: rings of (elevation°, count) — from below the crown's rim to straight down */
 const RINGS: Array<[number, number]> = [[-22, 6], [4, 8], [28, 8], [52, 6], [74, 3], [90, 1]];
 
 
-const ASYNC = typeof location !== "undefined" && new URLSearchParams(location.search).get("splasync") === "1";
-const HULL = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("splhull") === "1";
+const ASYNC = flag("splasync");
+const HULL = typeof location === "undefined" || flag("splhull");
 
 export interface CaptureOpts { res: number; levels: number[]; spread: number; thick: number }
 
@@ -142,7 +143,7 @@ export async function captureSpecies(renderer: THREE.WebGLRenderer, sp: Species,
     renderer.setClearColor(prevClear, prevAlpha);
     renderer.autoClear = prevAuto;
     renderer.toneMapping = prevTone;
-    for (const m of meshes) { m.albedo.dispose(); m.normal.dispose(); }
+    for (const m of meshes) { retireMaterial(renderer, m.albedo); retireMaterial(renderer, m.normal); }
   }
   const rgba = new Uint8Array(W * H * 4), nd = new Uint8Array(W * H * 4);
   const read = async (rt: THREE.WebGLRenderTarget, buf: Uint8Array) => {

@@ -6,6 +6,7 @@ import * as THREE from "three";
 import type { WorldCtx } from "../../../engine/engine";
 import { murkSurface, shelfTop, shelfCells, groundAt, SURF, LAYOUT, GM, gmRadius, CX, CZ } from "../../../../../shared/pois/the-murk";
 import { SceneGrab } from "../../water/grab";
+import { flag } from "../../../flags";
 
 const { x0: X0, x1: X1, z0: Z0, z1: Z1, step: STEP } = SURF;
 const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -116,15 +117,14 @@ export function buildWater(ctx: WorldCtx, cover: CoverFn = () => 0): MurkWater {
   g.setIndex(idx);
   g.computeBoundingSphere();
 
-  const qs = new URLSearchParams(location.search);
-  const dbg = Number(qs.get("murkdbg") ?? 0);
+  const dbg = flag("murkdbg");
   const uniforms = { uTime: { value: 0 }, uDbg: { value: dbg } };
   // SCENE GRAB: one colour + depth blit of the finished opaque scene right before the tea draws (the water area's
   // SceneGrab, read-only reuse; ~0.03 ms at 1440p on the 4080). The tea then COMPOSITES itself: the bed, piles, roots
   // and a wading kong's legs seen THROUGH it with per-channel tea absorption along the real view-ray thickness,
   // a refraction wobble, screen-space reflections of the huts / trunks / canopy, and a shoreline that fades to the bank
   // by thickness (no polygon edge). Off on the low tier / ?murknoscene (the alpha-blended fallback below).
-  const grab = ctx.quality !== "low" && !qs.has("murknoscene") ? new SceneGrab() : null;
+  const grab = ctx.quality !== "low" && !flag("murknoscene") ? new SceneGrab() : null;
   if (grab) grab.colour = true;
   const uMk = {
     uMkCol: { value: null as THREE.Texture | null }, uMkDepth: { value: null as THREE.Texture | null },

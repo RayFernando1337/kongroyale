@@ -11,6 +11,7 @@ import type { Box } from "../../../shared/world/colliders";
 import { POIS, Biome } from "../../../shared/world/map";
 import type { Terrain } from "../../../shared/world/terrain";
 import { AcousticWorld } from "./world";
+import { flag } from "../flags";
 
 type V3 = [number, number, number];
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -297,7 +298,7 @@ function loop() {
   requestAnimationFrame(frame);
 }
 
-if (!new URLSearchParams(location.search).has("headless")) {
+if (!flag("headless")) {
   buildButtons();
   drawMap();
   $("unlock").onclick = async () => {

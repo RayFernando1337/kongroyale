@@ -1,0 +1,35 @@
+{
+  "about": "memory.mts --warmup --budgets: three practice matches on SwiftShader, each entered and left in its warm-up, title modules only. 'leak' is what grew from the second left sample to the third (never negative); 'left3' is what the renderer holds that no resource scope owns (__kr.resAudit, ?resaudit). These are ceilings: underPct 100 turns off the more-than-under failure, because growth between matches is zero when nothing leaks. Set 2026-11-05 from two runs on 4 vCPUs: leak 0-2 geometries, 0 textures, 0.4-4.8 MB WebGL; left3 1371-1383 unowned resources, 1718.8-1719.9 MB.",
+  "config": {
+    "url": "/?resaudit=&modules=atmos%2Cterrain%2Cwater%2Cveg%2Cpoi%3Alobby-islet%2Cshowcase%2Cweapons-showcase%2Cgameplay-stage&seed=42&vegsplat=0",
+    "profile": "nogpu",
+    "viewport": "640x360",
+    "dpr": 1,
+    "seed": 42,
+    "matches": 3,
+    "warmup": true
+  },
+  "underPct": 100,
+  "headroomPct": 0,
+  "budgets": {
+    "leak": {
+      "webglMB": 8,
+      "unownedMB": 8,
+      "textureCount": 1,
+      "geometryCount": 6,
+      "unownedCount": 6,
+      "ledger.tex.worldMB": 1,
+      "ledger.tex.actorMB": 1,
+      "ledger.tex.uiMB": 1,
+      "ledger.geo.worldMB": 1,
+      "ledger.geo.actorMB": 1,
+      "ledger.targetMB": 1,
+      "ledger.audioMB": 1,
+      "ledger.otherMB": 1
+    },
+    "left3": {
+      "unownedCount": 1420,
+      "unownedMB": 1760
+    }
+  }
+}

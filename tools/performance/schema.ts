@@ -8,7 +8,7 @@ export const RESULT_VERSION = 1;
 /** Distribution of correlated samples (ticks, frames, packets) inside ONE run. Not a set of independent trials. */
 export interface Summary { n: number; mean: number; p50: number; p95: number; p99: number; max: number }
 
-export type Unit = "ms" | "bytes/s" | "count" | "1/s" | "MB";
+export type Unit = "ms" | "bytes" | "bytes/s" | "count" | "1/s" | "MB";
 
 /** A metric a runner could not measure is recorded with its reason, never as zero. */
 export type Metric =
@@ -25,8 +25,9 @@ export interface Scenario {
   version: number;
   /** -1 when the runner can't fix the seed (the server picks one per match); runs then sample different matches */
   seed: number;
-  /** "synthetic-*" workloads isolate one cost; only "real-play" claims match coverage */
-  workload: "synthetic-warmup" | "synthetic-play" | "real-play" | "socket-load";
+  /** "synthetic-*" workloads isolate one cost; only "real-play" claims match coverage; "page-load" is a browser load to
+   *  the playable title and a match start (load-profile.mts) */
+  workload: "synthetic-warmup" | "synthetic-play" | "real-play" | "socket-load" | "page-load";
 }
 
 export interface CaseResult {

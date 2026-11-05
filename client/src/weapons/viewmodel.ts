@@ -23,6 +23,7 @@ import { buildHeal } from "./heals";
 import { createHand, handMaterials, type Hand } from "./hands";
 import { tintAccent } from "./rarity";
 import { camoSkin } from "./camo";
+import { flag } from "../flags";
 
 type Equip = WeaponId | ConsumableId;
 type V3 = [number, number, number];
@@ -116,7 +117,7 @@ export const VM_HOLD: Record<WeaponId, Hold> = {
 };
 /** consumables are held in the right fist, low right; the use animation brings them up to the mouth */
 // right of centre like the guns (bbox centre >= 0.60), low, left of the hotbar's first slot
-export const ITEM_HOLD = { pos: (typeof location === "undefined" || new URLSearchParams(location.search).get("fp3") !== "0" ? [0.115, -0.22, -0.46] : [0.24, -0.15, -0.44]) as V3, rot: [0.12, -0.3, 0.05] as V3, scale: 0.6 };
+export const ITEM_HOLD = { pos: (flag("fp3") ? [0.115, -0.22, -0.46] : [0.24, -0.15, -0.44]) as V3, rot: [0.12, -0.3, 0.05] as V3, scale: 0.6 };
 /** hand size in gun space (kong hands are big) */
 const HAND_K = 1.3;
 /** the glove's size in camera space, the same on every gun (HAND_K × the gun's scale would give the re-posed,
@@ -125,8 +126,8 @@ const HAND_W = 0.94;   // (big kong gloves)
 /** where the forearms go (camera space): off the bottom corners, behind the view */
 // both elbows BELOW the hands, not behind the camera: the forearms drop out of the bottom edge a short way from the
 // gloves instead of running from the gun back to the camera as two huge fur planks
-const FP3_ON = typeof location === "undefined" || new URLSearchParams(location.search).get("fp3") !== "0";
-const ELBOW_R = new THREE.Vector3(0.3, -0.72, 0.05), ELBOW_L = typeof location === "undefined" || new URLSearchParams(location.search).get("fp3") !== "0" ? new THREE.Vector3(-0.05, -1.0, -0.6) : new THREE.Vector3(-0.3, -0.78, 0.0);
+const FP3_ON = flag("fp3");
+const ELBOW_R = new THREE.Vector3(0.3, -0.72, 0.05), ELBOW_L = flag("fp3") ? new THREE.Vector3(-0.05, -1.0, -0.6) : new THREE.Vector3(-0.3, -0.78, 0.0);
 // ADS elbows below the hands too (the ADS forearms ran back to the camera as two planks from the bottom centre)
 const ELBOW_R_ADS = FP3_ON ? new THREE.Vector3(0.2, -0.95, -0.45) : new THREE.Vector3(0.16, -0.62, -0.1), ELBOW_L_ADS = FP3_ON ? new THREE.Vector3(-0.12, -0.95, -0.55) : new THREE.Vector3(-0.22, -0.66, -0.16);
 const _elR = new THREE.Vector3(), _elL = new THREE.Vector3(), _elR0 = new THREE.Vector3(), _elA = new THREE.Vector3(), _elB = new THREE.Vector3();
@@ -149,7 +150,7 @@ export const VM_FOV = 55;
  *  parachute rig keeps the 72° projection outright (its own counter-scale) */
 const AUTH_FOV = 72;
 /** A/B switch for tools: ?fp3=0 = the older behaviour (world-FOV viewmodel, no parachute hands) */
-const FP3 = typeof location === "undefined" || new URLSearchParams(location.search).get("fp3") !== "0";
+const FP3 = flag("fp3");
 /** the use animation's sideways travel to the mouth (the item hold already sits near the centre) */
 const USE_X = FP3 ? 0.25 : 1;
 /** uniform depth squeeze of the whole viewmodel about the eye (a uniform scale about the lens = the SAME image): keeps

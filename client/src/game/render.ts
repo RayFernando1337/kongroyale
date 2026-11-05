@@ -34,11 +34,13 @@ import { ANN, HELD_STOWED, SURF_PLAYER } from "../../../shared/net/proto";
 import { Biome, CONSUMABLES, POIS, WEAPONS, type WeaponId } from "../../../shared/world/map";
 import type { Surface } from "../../../shared/world/colliders";
 import type { Terrain } from "../../../shared/world/terrain";
-import type { PlaneProps } from "../actors/plane";
+import { releasePlanePaint, restorePlanePaint, type PlaneProps } from "../actors/plane";
 import type { GliderProps } from "../actors/glider";
 import { outfitFor } from "../actors/outfit-pick";
+import { fullKongMaps } from "../actors/kong-asset";
 import type { LightBalancer } from "./lights";
 import { AmmoBoxes } from "./ammobox";
+import { resources, type Scope } from "../engine/res/scope";
 import { GlassFx, glassShardPrefab } from "../world/glass-fx";
 import { PG, glassAim } from "../../../shared/sim/glass";
 import { MarkerBeams, type MarkerSpec } from "./markers";
@@ -158,8 +160,9 @@ export class GameRender implements EventSink {
   caster: CasterView | null = null;
   actors = new Map<number, ActorSlot>();
   chestViews = new Map<number, ChestView>();
+  readonly matchScope = resources.root.child("match");
   /** the ammo boxes (instanced, near the camera) */
-  readonly boxes = new AmmoBoxes();
+  readonly boxes = new AmmoBoxes(this.matchScope);
   lootViews = new Map<number, LootView>();
   rockets = new Map<number, RocketView>();
   readonly hud: HudState;
@@ -224,32 +227,36 @@ export class GameRender implements EventSink {
   private readonly streakU: ReturnType<typeof shared>["streakU"];
   constructor(readonly engine: Engine, readonly cm: ClientMatch, readonly kits: Kits, readonly input: GameInput) {
     const before = new Set(engine.scene.children);
+    this.matchScope.defer(() => this.releaseViews());
+    this.matchScope.defer(() => void restorePlanePaint());
     this.hud = makeHudState();
     engine.camera.add(kits.viewModel.object);
     engine.scene.add(kits.plane.object);
     engine.scene.add(this.boxes.group); patchTree(engine, this.boxes.group);
-    this.hl = new InteractHighlight(engine.scene);
+    this.hl = this.matchScope.own("other", new InteractHighlight(engine.scene));
     if (kits.plane.object.children.length === 0) { this.placeholderPlane = placeholderPlane(); kits.plane.object.add(this.placeholderPlane); }
     kits.plane.object.visible = false;
     kits.hud.onMapClick = (x, z) => this.setMark(x, z);
     // right click / the pad's clear on the big map: the marker (and its beam) goes everywhere, not only on the big map
     kits.hud.onMapClear = () => this.setMark(null);
-    this.markers = new MarkerBeams(engine.scene, (x, z) => engine.terrain.height(x, z));
+    this.markers = new MarkerBeams(engine.scene, (x, z) => engine.terrain.height(x, z), this.matchScope);
     for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(this.rocketGeo, this.rocketMat); m.visible = false; m.castShadow = true; engine.scene.add(m); this.rocketPool.push(m); }
     this.streaks = new THREE.Mesh(shared().streakGeo, shared().streakMat); this.streaks.frustumCulled = false; this.streaks.renderOrder = 5; this.streaks.visible = false; this.streaks.name = "wind-streaks";
     this.streakU = shared().streakU; engine.scene.add(this.streaks);
     this.updraftFx = new UpdraftFx(engine.scene);
-    this.climbViews = new ClimbViews(engine.scene, cm.world.climbs);
+    this.matchScope.defer(() => this.updraftFx.dispose((id) => this.kits.audio.stopLoop(id)));
+    this.matchScope.own("other", this.buffUi);
+    this.climbViews = this.matchScope.own("other", new ClimbViews(engine.scene, cm.world.climbs));
     for (const m of this.climbViews.meshes) patchTree(engine, m);
     // glass: broken panes vanish, shards burst, the shatter plays (client/src/world/glass-fx.ts)
-    this.glassFx = new GlassFx(engine.scene, cm.glass, (x, y, z, _cause, by) => this.play("glass:break", x, y, z, by === cm.me ? 1 : 0.9));
+    this.glassFx = this.matchScope.own("other", new GlassFx(engine.scene, cm.glass, (x, y, z, _cause, by) => this.play("glass:break", x, y, z, by === cm.me ? 1 : 0.9)));
     patchTree(engine, this.glassFx.shards);
-    this.tukFx = new TukFx(engine.scene, (x, z) => engine.terrain.height(x, z));
+    this.tukFx = this.matchScope.own("other", new TukFx(engine.scene, (x, z) => engine.terrain.height(x, z)));
     this.tukThru = new TukThru(cm.world, this.tukFx, (s, x, y, z, v) => this.play(s, x, y, z, v));
     // banana bombs: the world copies, the arc preview, the first-person throw
-    this.coverViews = new CoverViews(engine.scene, cm.world, kits.fx, (s, x, y, z) => this.play(s === "up" ? "tuk:land" : s === "hit" ? "impact:wood" : s === "break" ? "tuk:crash" : "step:wood", x, y, z, s === "hit" ? 0.5 : 0.9));
-    this.bombFx = new BombFx(engine.scene, engine.camera, cm.world, (x, y, z, sp) => this.play("impact:wood", x, y, z, Math.min(0.55, 0.12 + sp * 0.04)));
-    this.bananas = new BananaRounds(engine.scene); patchTree(engine, this.bananas.mesh);
+    this.coverViews = new CoverViews(engine.scene, cm.world, kits.fx, (s, x, y, z) => this.play(s === "up" ? "tuk:land" : s === "hit" ? "impact:wood" : s === "break" ? "tuk:crash" : "step:wood", x, y, z, s === "hit" ? 0.5 : 0.9), this.matchScope);
+    this.bombFx = new BombFx(engine.scene, engine.camera, cm.world, (x, y, z, sp) => this.play("impact:wood", x, y, z, Math.min(0.55, 0.12 + sp * 0.04)), this.matchScope);
+    this.bananas = new BananaRounds(engine.scene, this.matchScope); patchTree(engine, this.bananas.mesh);
     cm.sink = this;
     // (a POI streaming in meanwhile must not adopt these as its own roots, main.ts moduleRoots: its cull would give the
     // custom shaders a dissolve, a program the boot prewarm never linked, and fade gameplay effects as scenery)
@@ -268,7 +275,7 @@ export class GameRender implements EventSink {
   /** bombs carried last frame, until when the pick-up hint shows, the fuse's next tick (s) */
   private bombSeen = 0; private bombHintUntil = 0; private fuseTickAt = 0;
   // ---- (economy) the Banana Stands, the shop prompt, the wallet
-  private standViews: THREE.Object3D[] = [];
+  private standViews: THREE.Object3D[] = []; private standScope: Scope | null = null;
   /** the stand in reach (its index) — E opens its buy menu (index.ts owns the menu) */
   standNear = -1; private lastE = false; private bountyTeam = -1;
   onShop: ((stand: number) => void) | null = null;
@@ -276,9 +283,14 @@ export class GameRender implements EventSink {
   cashGain(amount: number) { this.cashGainAt = performance.now(); this.cashGainAmt = amount; }
   private syncStands() {
     if (this.standViews.length === this.cm.stands.length) return;
-    for (const o of this.standViews) o.removeFromParent();
+    this.standScope?.dispose();
+    const res = this.standScope = this.matchScope.child("stands");
     const proto = bananaStand().root;
-    this.standViews = this.cm.stands.map((s) => { const o = proto.clone(true); o.position.set(s.x, s.y, s.z); o.rotation.y = s.yaw; o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); this.engine.scene.add(o); patchTree(this.engine, o); return o; });
+    const geos = new Set<THREE.BufferGeometry>();
+    proto.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) geos.add(m.geometry); });
+    for (const g of geos) res.geometry("geo.world", g);
+    const views = this.standViews = this.cm.stands.map((s) => { const o = proto.clone(true); o.position.set(s.x, s.y, s.z); o.rotation.y = s.yaw; o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); this.engine.scene.add(o); patchTree(this.engine, o); return o; });
+    res.defer(() => { for (const o of views) o.removeFromParent(); });
   }
   /** the buy menu's view of the offers for this kong right now (the server re-checks every rule) */
   shopView(): import("../ui/shop").ShopView {
@@ -315,7 +327,7 @@ export class GameRender implements EventSink {
   private tuks = new Map<number, TukView>();
   private tukAudio = new Map<number, TukSound>();
   /** the helipad decals (one per spot, once per world) */
-  private pads: THREE.Mesh[] = []; private padWorld: unknown = null; private padKey = 0;
+  private pads: THREE.Mesh[] = []; private padScope: Scope | null = null; private padWorld: unknown = null; private padKey = 0;
   rideThird = true;
   private rideOn = false; private rideSeat = -1; private rideYaw = 0; private rideRel = 0; private rideSet = 0; private rideFree = 1; private rideAt = 0; private heliTip = 0;
   /** the saddle view's lean into the turn (rad, smoothed) */
@@ -685,7 +697,7 @@ export class GameRender implements EventSink {
         if (this.deadAt >= 0 && this.resCountdown != null && !this.range && this.cm.phase !== 0) this.resCountdown = null;
         break;
       }
-      case ANN.Victory: { const win = a === this.cm.pred.team; if (win) { this.announce("KONG ROYALE VICTORY", "#1", "victory"); this.sfx("ui:victory"); this.placement = 1; this.victoryAt = performance.now(); this.onVictory?.(); } else if (this.deadAt < 0) { this.placement = 2; this.onEliminated?.(); } else if (this.spec.active(this.cm)) this.spectatorVictory(a); break; }
+      case ANN.Victory: { const win = a === this.cm.pred.team; if (win) { this.announce("KONG ROYALE VICTORY", "#1", "victory"); this.sfx("ui:victory"); this.placement = 1; this.victoryAt = performance.now(); void fullKongMaps(); this.onVictory?.(); } else if (this.deadAt < 0) { this.placement = 2; this.onEliminated?.(); } else if (this.spec.active(this.cm)) this.spectatorVictory(a); break; }
       // (economy) bounties and buy-backs: a / b carry teams (or kong ids) — this squad's news only
       case ANN_ECON.Bounty: { const t = this.cm.pred.team; if (a === (t & 0xff)) { this.announce("BOUNTY CONTRACT ACTIVE", "the marked squad is on your map — 90 s", "kill"); this.sfx("ui:countdown"); } else if (b === (t & 0xff)) { this.announce("YOU HAVE A BOUNTY", "a squad is hunting you — survive 90 s for $500", "warn"); this.sfx("storm:shrink"); } break; }
       case ANN_ECON.BountyDone: { const t = this.cm.pred.team; if (a === (t & 0xff)) { this.announce("BOUNTY COMPLETE", "+$1,500 each · the reward dropped where they fell", "victory"); this.sfx("ui:victory"); } else if (b === (t & 0xff)) this.announce("YOUR BOUNTY WAS CLAIMED", "the hunters got one of you", "warn"); break; }
@@ -1732,8 +1744,9 @@ export class GameRender implements EventSink {
     const padKey = this.range ? -1 : cm.seed;
     if (this.padWorld !== cm.world || this.padKey !== padKey) {
       this.padWorld = cm.world; this.padKey = padKey;
-      for (const m of this.pads) { m.removeFromParent(); m.geometry.dispose(); }
-      this.pads = cm.heliSpots(!!this.range).map((sp) => { const m = createHelipad(this.engine.terrain, sp.x, sp.z, sp.yaw); this.engine.scene.add(m); patchTree(this.engine, m); return m; });
+      this.padScope?.dispose();
+      const res = this.padScope = this.matchScope.child("pads");
+      this.pads = cm.heliSpots(!!this.range).map((sp) => { const m = createHelipad(this.engine.terrain, sp.x, sp.z, sp.yaw); res.geometry("geo.world", m.geometry); res.defer(() => m.removeFromParent()); this.engine.scene.add(m); patchTree(this.engine, m); return m; });
     }
     for (const vr of cm.vehicles) {
       let v = this.tuks.get(vr.id);
@@ -2206,7 +2219,7 @@ export class GameRender implements EventSink {
     const cm = this.cm, pl = this.kits.plane;
     const inPlanePhase = cm.phase === 1;
     pl.object.visible = inPlanePhase;
-    if (!inPlanePhase) { this.stopLoop("plane:drone"); return; }
+    if (!inPlanePhase) { this.stopLoop("plane:drone"); if (cm.phase === 2) releasePlanePaint(); else if (cm.phase > 2) void restorePlanePaint(); return; }
     this.planePosSmooth(PP);
     // the drone follows the plane: cabin sound while riding, a flyover from the ground once you jumped
     POS3[0] = PP.x; POS3[1] = PLANE_ALT + 2; POS3[2] = PP.z; this.loops.add("plane:drone");
@@ -2357,11 +2370,11 @@ export class GameRender implements EventSink {
   private disposed = false;
   /** remove everything this renderer added to the scene (leaving a match) */
   dispose() {
-    this.glassFx.dispose(); this.hl.dispose(); this.markers.dispose();
-    this.updraftFx.dispose((id) => this.kits.audio.stopLoop(id)); this.buffUi.dispose(); this.climbViews.dispose();
-    this.bombFx.dispose(); this.coverViews.dispose();
-    for (const o of this.standViews) o.removeFromParent(); this.standViews = [];
     this.disposed = true;
+    this.matchScope.dispose();
+  }
+  private releaseViews() {
+    this.standViews = []; this.standScope = null;
     this.range?.dispose(); this.range = null;
     for (const a of this.actors.values()) { if (this.kits.releaseKong) this.kits.releaseKong(a.actor, a.id % 6); else a.actor.dispose(); a.glider?.object.removeFromParent(); }
     for (const v of this.lootViews.values()) v.dispose();
@@ -2370,12 +2383,13 @@ export class GameRender implements EventSink {
     for (const m of this.rocketPool) m.removeFromParent();
     this.myGlider?.object.removeFromParent();
     for (const v of this.tuks.values()) v.dispose();
-    this.tuks.clear(); this.tukAudio.clear(); this.tukFx.dispose();
-    for (const m of this.pads) m.removeFromParent(); this.pads = []; this.padWorld = null;
+    this.tuks.clear(); this.tukAudio.clear();
+    this.pads = []; this.padScope = null; this.padWorld = null;
     if (this.windMesh) { this.windMesh.removeFromParent(); this.windMesh.geometry.dispose(); (this.windMesh.material as THREE.Material).dispose(); }
     if (this.meActor) { if (this.kits.releaseKong) this.kits.releaseKong(this.meActor, Math.max(0, this.cm.me) % 6); else this.meActor.dispose(); }
-    this.streaks.removeFromParent(); this.boxes.group.removeFromParent();
+    this.streaks.removeFromParent();
     this.kits.viewModel.object.visible = false; this.kits.plane.object.visible = false;
+    this.kits.hud.onMapClick = null; this.kits.hud.onMapClear = null;
     this.stopAllLoops();
     this.actors.clear(); this.lootViews.clear(); this.chestViews.clear(); this.rockets.clear(); this.shotPings.clear();
   }
@@ -2760,7 +2774,7 @@ export function renderPrefabs(): THREE.Object3D[] {
   const r = new THREE.Mesh(s.rocketGeo, s.rocketMat); r.castShadow = true;
   const w = new THREE.Mesh(s.streakGeo, s.streakMat); w.frustumCulled = false;
   const fx = new THREE.Group() as unknown as THREE.Scene;
-  const effects = [new InteractHighlight(fx).group, new MarkerBeams(fx, () => 0).group, new UpdraftFx(fx).group, new TukFx(fx, () => 0).object, new BananaRounds(fx).mesh, new AmmoBoxes().group, glassShardPrefab(), coverGhostPrefab(), ...bombPrefabs()];
+  const effects = [new InteractHighlight(fx).group, new MarkerBeams(fx, () => 0, resources.root).group, new UpdraftFx(fx).group, new TukFx(fx, () => 0).object, new BananaRounds(fx, resources.root).mesh, new AmmoBoxes(resources.root).group, glassShardPrefab(), coverGhostPrefab(), ...bombPrefabs()];
   // (the highlight draws its hull / rim meshes empty until it has a target, then with the target's geometry, and a
   // program's key reads which attributes the geometry has: a second copy carries a small real mesh)
   const hl = new InteractHighlight(fx).group, geo = new THREE.PlaneGeometry(0.01, 0.01);

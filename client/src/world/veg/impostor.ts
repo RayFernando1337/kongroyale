@@ -6,14 +6,16 @@
 // This is what lets the master aerial show a continuous lush canopy of ~40k plants for the cost of 40k quads.
 import * as THREE from "three";
 import type { Species } from "./species/types";
-import { VEG_UNIFORMS, VEG_LIGHT, VEG_GLSL, VEG_FADE_T, bakeMaterial, vegUniforms } from "./foliage-material";
+import { VEG_UNIFORMS, VEG_LIGHT, VEG_GLSL, VEG_FADE_T, bakeMaterial, vegUniforms, retireMaterial } from "./foliage-material";
 import { crownFootprint } from "../../../../shared/world/veg-scatter";
+import { flag } from "../../flags";
+import { bake } from "../../engine/res/restore";
 
 /** view blending: each pixel shows one of the 4 baked
  *  views around the true view direction (dithered by weight, a crossfade only across a narrow band at a view cell's edge)
  *  on a quad facing the TRUE view — instead of the nearest view on a quad facing it, which jumped to the next baked view
  *  every ~11° of bearing / ~22° of elevation. ?impblend=0 = the old nearest-view impostors (A/B). */
-export const IMP_BLEND = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("impblend") !== "0";
+export const IMP_BLEND = flag("impblend");
 /** half-width of the crossfade band at a view cell's edge (fraction of the cell: 0.15 → pure views over the middle 70 %) */
 const IMP_BAND = 0.15;
 
@@ -162,7 +164,7 @@ export function bakeImpostor(renderer: THREE.WebGLRenderer, sp: Species, frames 
   renderer.setClearColor(prevClear, prevAlpha);
   renderer.autoClear = prevAuto;
   renderer.toneMapping = prevTone;
-  for (const m of meshes) { m.albedo.dispose(); m.normal.dispose(); }
+  for (const m of meshes) { retireMaterial(renderer, m.albedo); retireMaterial(renderer, m.normal); }
   const dA = dilate(renderer, rtA, frames), dN = dilate(renderer, rtN, frames);
   rtA.dispose(); rtN.dispose();
   return { albedo: dA.texture, normal: dN.texture, frames, center: C.clone(), radius: R, rects, targets: [dA, dN] };
@@ -217,7 +219,7 @@ function dilate(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget, fra
     const t = a; a = b; b = t;
   }
   renderer.setRenderTarget(prev);
-  b.dispose(); mat.dispose(); clearMat.dispose(); q.geometry.dispose();
+  b.dispose(); retireMaterial(renderer, mat); retireMaterial(renderer, clearMat); q.geometry.dispose();
   return a;
 }
 
@@ -560,9 +562,8 @@ export const IMP_GRADE = {
   uImpLit: { value: new THREE.Vector2(0.05, 0.15) },
 };
 {
-  const sp = new URLSearchParams(location.search);
-  const q = sp.get("impgrade")?.split(",").map(Number); if (q && q.length === 4 && q.every(Number.isFinite)) IMP_GRADE.uImpGrade.value.set(q[0], q[1], q[2], q[3]);
-  const k = sp.get("impsplit")?.split(",").map(Number); if (k && k.length === 4 && k.every(Number.isFinite)) IMP_GRADE.uImpSplit.value.set(k[0], k[1], k[2], k[3]);
+  const q = flag("impgrade"); if (q && q.length === 4 && q.every(Number.isFinite)) IMP_GRADE.uImpGrade.value.set(q[0], q[1], q[2], q[3]);
+  const k = flag("impsplit"); if (k && k.length === 4 && k.every(Number.isFinite)) IMP_GRADE.uImpSplit.value.set(k[0], k[1], k[2], k[3]);
 }
 
 /** measure the scene environment's diffuse response (white Standard material, normals up / side / down) */
@@ -680,17 +681,21 @@ export class ImpostorBank {
   add(renderer: THREE.WebGLRenderer, sp: Species): number {
     if (this.layers >= this.maxLayers) throw new Error("veg: impostor bank full");
     const layer = this.layers++;
-    const atlas = bakeImpostor(renderer, sp, this.frames, this.size, this.nsize);
-    // copy the 2D atlases into this layer of the arrays (raw texel copy: no tone mapping / colour conversion)
-    const prevRT = renderer.getRenderTarget(), prevTone = renderer.toneMapping;
-    renderer.toneMapping = THREE.NoToneMapping;
-    for (const [src, dst] of [[atlas.albedo, this.albedo], [atlas.normal, this.normal]] as const) {
-      this.copyMat.uniforms.map.value = src;
-      renderer.setRenderTarget(dst, layer);
-      renderer.render(this.copyScene, this.copyCam);
-    }
-    renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTone;
-    for (const t of atlas.targets) t.dispose();
+    let atlas!: ImpostorAtlas;
+    bake(() => {
+      atlas = bakeImpostor(renderer, sp, this.frames, this.size, this.nsize);
+      // copy the 2D atlases into this layer of the arrays (raw texel copy: no tone mapping / colour conversion)
+      const prevRT = renderer.getRenderTarget(), prevTone = renderer.toneMapping;
+      renderer.toneMapping = THREE.NoToneMapping;
+      for (const [src, dst] of [[atlas.albedo, this.albedo], [atlas.normal, this.normal]] as const) {
+        this.copyMat.uniforms.map.value = src;
+        renderer.setRenderTarget(dst, layer);
+        renderer.render(this.copyScene, this.copyCam);
+      }
+      renderer.setRenderTarget(prevRT); renderer.toneMapping = prevTone;
+      for (const t of atlas.targets) t.dispose();
+      atlas.rects.dispose();
+    });
     // per-species parameters (leafiest part's lighting)
     let leafPart = sp.parts[0];
     for (const p of sp.parts) if (vegUniforms(p.mats).uTrans.value > vegUniforms(leafPart.mats).uTrans.value) leafPart = p;
@@ -705,7 +710,6 @@ export class ImpostorBank {
     const R = this.rects.image.data as Float32Array, rs = atlas.rects.image.data as Float32Array;
     R.set(rs, layer * this.frames * this.frames * 4);
     this.rects.needsUpdate = true;
-    atlas.rects.dispose();
     return layer;
   }
 

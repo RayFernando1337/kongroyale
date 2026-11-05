@@ -9,6 +9,7 @@ import type { Terrain } from "../../../../../shared/world/terrain";
 import type { Piece } from "../../../../../shared/pois/coast-kit";
 import type { WorldCtx } from "../../../engine/engine";
 import * as T from "./coast-tex";
+import { flag } from "../../../flags";
 
 // ------------------------------------------------------------------------------------------------ materials
 export type MatKey =
@@ -270,7 +271,7 @@ export class Batch {
   tris = 0;
   /** z-fight resolver over this batch's boxes (_kit/coplanar.ts), run once before the merge; null = off */
   co: Coplanar | null = new Coplanar();
-  private coResolve() { if (this.co && this.co.boxes.length) { const r = this.co.resolve(); if (r.moved && typeof location !== "undefined" && /[?&]codebug/.test(location.search)) console.info(`[coast] coplanar: ${r.boxes} boxes, ${r.pairs} pairs, ${r.moved} faces moved (${r.ms} ms)`); } }
+  private coResolve() { if (this.co && this.co.boxes.length) { const r = this.co.resolve(); if (r.moved && flag("codebug")) console.info(`[coast] coplanar: ${r.boxes} boxes, ${r.pairs} pairs, ${r.moved} faces moved (${r.ms} ms)`); } }
   /** `lod`: the default distance class for every add() that doesn't pass one; `cell`: chunk size (m) — small POIs use
    *  one big cell (fewer draws), large ones ~80 m so frustum + distance culling work per chunk */
   constructor(private defaults: { lod?: 0 | 1 | 2; cell?: number } = {}) {}
@@ -427,7 +428,7 @@ export function buildLayered(name: string, batches: Batch[], o: { farShadow?: bo
  */
 /** `?nocull` (for the collider ≡ visual parity check) — every coast mesh at its full detail at any
  *  distance, no far proxy (the parity page looks from 120 m up; distance switching would hide most of the drawn geometry from it) */
-export const NOCULL = typeof location !== "undefined" && /[?&]nocull\b/.test(location.search);
+export const NOCULL = flag("nocull");
 export class CoastLod {
   private items: Array<{ o: THREE.Object3D; lod: number; c: THREE.Vector3; r: number; counts?: number[] }> = [];
   private last = new THREE.Vector3(Infinity, 0, 0);

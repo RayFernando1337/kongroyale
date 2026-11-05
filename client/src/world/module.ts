@@ -6,11 +6,13 @@
 // every main-thread task short (the loading bar and the title keep painting).
 import type { WorldCtx } from "../engine/engine";
 import type { CamSpec } from "../engine/views";
+import type { Scope } from "../engine/res/scope";
 
 export interface WorldModule {
   id: string;
   /** add meshes/lights to ctx.scene, register ctx.onUpdate hooks, publish handles on ctx.shared */
-  build(ctx: WorldCtx): Promise<void> | void;
+  build(ctx: WorldCtx, scope: Scope): Promise<void> | void;
+  release?(ctx: WorldCtx): Promise<void> | void;
   /**
    * runs after every TITLE module has built (registry order) — e.g. shadows/material patching, shader warm-up — and,
    * for a streamed module, right after its own build. Once the stream has finished, every loaded module's afterBuild

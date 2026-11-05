@@ -13,6 +13,7 @@
 // If the extension is missing or the test program fails to compile/link, nothing is hooked and the water keeps its
 // separate multiply pass (material.ts / index.ts fall back automatically).
 import * as THREE from "three";
+import { flag } from "../../flags";
 
 export const DUAL_DST_SENTINEL = THREE.SrcAlphaSaturateFactor;
 
@@ -26,7 +27,7 @@ export function installDualSource(renderer: THREE.WebGLRenderer): boolean {
   const gl = renderer.getContext() as GL;
   if (gl.__wtrDualSrc !== undefined) return gl.__wtrDualSrc;
   gl.__wtrDualSrc = false;
-  if (new URLSearchParams(location.search).has("wnodual")) return false;       // (profiling / fallback check)
+  if (flag("wnodual")) return false;       // (profiling / fallback check)
   if (typeof WebGL2RenderingContext === "undefined" || !(gl instanceof WebGL2RenderingContext)) return false;
   const ext = gl.getExtension("WEBGL_blend_func_extended") as { SRC1_COLOR_WEBGL: number } | null;
   if (!ext) return false;

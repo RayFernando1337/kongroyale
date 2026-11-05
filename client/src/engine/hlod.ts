@@ -19,8 +19,9 @@ import type { Engine } from "./engine";
 import { gate as gateVisible, type Gate } from "./scene-hooks";
 import { programMergeSafe, releaseShaderRecorder } from "./shader-src";
 import { DITHER, clearDither, setDither } from "./dither";
+import { flag } from "../flags";
 
-interface FarPoi {
+export interface FarPoi {
   id: string;
   roots: THREE.Object3D[];
   cx: number; cy: number; cz: number;
@@ -46,7 +47,7 @@ const PREPARE_CHUNK = 512;
 const HYST = 25;
 /** ?lodv=1: a source the engine's DetailCull would already have cut at the proxy's switch distance
  * is NOT merged (it keeps its own cut / fade) — a merged proxy brought every sub-pixel prop of a far POI back at once */
-const HLOD_LODV = typeof location === "undefined" ? true : new URLSearchParams(location.search).get("lodv") !== "0";
+const HLOD_LODV = flag("lodv");
 const MAX_TRIS = 40000;
 /** instanced sources with at most this many instances expand into the proxy (ripe-peak draws 86 one-instance chunks) */
 const MAX_INSTANCES = 64;
@@ -90,7 +91,7 @@ const _m3 = new THREE.Matrix3();
 const _v = new THREE.Vector3();
 
 export class FarMerge {
-  private pois: FarPoi[] = [];
+  readonly pois: FarPoi[] = [];
   private group = new THREE.Group();
   private building = false;
   /** diagnostics (__kr.engine.far.info()) */
@@ -102,6 +103,8 @@ export class FarMerge {
   /** register a POI (module roots + centre). `near` = distance (m) inside which the POI renders as built. */
   register(id: string, roots: THREE.Object3D[], centre: { x: number; y: number; z: number }, near: number) {
     if (!this.enabled || !roots.length) return;
+    const old = this.pois.find((q) => q.id === id);
+    if (old) this.drop(old);
     if (!this.group.parent) this.engine.scene.add(this.group);
     // world-matrix snapshot of every mesh now; compared when the proxy is built (≥ 90 frames later): whatever moved
     // in between is animated and keeps drawing on its own
@@ -120,6 +123,11 @@ export class FarMerge {
       return n > 0;
     };
     this.pois.push({ id, roots, cx: centre.x, cy: centre.y, cz: centre.z, near, gate: { active: false }, proxies: [], sources: [], state: "wait", readyAt: this.engine.frames + 90, moved, late, tries: 0 });
+  }
+
+  drop(p: FarPoi) {
+    this.pois.splice(this.pois.indexOf(p), 1);
+    for (const o of [...this.group.children]) if (o.userData.krFar === p.id) { this.outgoing.delete(o); o.removeFromParent(); (o as THREE.Mesh).geometry.dispose(); }
   }
 
   /** diagnostics: why a POI's visible meshes did / did not merge (reason → count) */
@@ -154,7 +162,7 @@ export class FarMerge {
   buildNext(): boolean {
     if (!this.enabled) return true;
     if (this.building) return false;
-    if (!this.pois.some((q) => q.state === "wait")) { releaseShaderRecorder(); return true; }
+    if (!this.pois.some((q) => q.state === "wait")) { if (!this.engine.streaming) releaseShaderRecorder(); return true; }
     // capture a POI's FAR state only: the camera beyond its near distance, every POI root drawn (a module that hides
     // its POI at that distance is retried later), and every mesh observed static for ≥ 90 frames
     const c = this.engine.camera.position, f = this.engine.frames;
@@ -164,7 +172,7 @@ export class FarMerge {
     if (p.late()) { p.readyAt = f + 90; return false; }
     this.prepare(p);
     if (this.building || this.pois.some((q) => q.state === "wait")) return false;
-    releaseShaderRecorder();
+    if (!this.engine.streaming) releaseShaderRecorder();
     return true;
   }
 
@@ -291,6 +299,7 @@ export class FarMerge {
       // first draw offscreen now (vertex buffers / VAOs of the merged geometry): the frame a POI first goes far never
       // uploads megabytes of merged vertices (a landing / teleport hitch otherwise)
       try { this.engine.warmDraw(list); } catch (e) { console.warn("[far-merge] warm", e); }
+      if (!this.pois.includes(p)) { for (const [proxy] of made) { proxy.removeFromParent(); proxy.geometry.dispose(); } return; }
       for (const [proxy, meshes] of made) { p.proxies.push(proxy); for (const m of meshes) { gateVisible(m, p.gate); p.sources.push(m); } }
       p.state = "built";
     });

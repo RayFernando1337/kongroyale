@@ -1,0 +1,1084 @@
+{
+  "title": "Kong Royale: what we shipped",
+  "repo": "RayFernando1337/kongroyale",
+  "upstreamRepo": "MaximilianHansen/kongroyale",
+  "upstreamAuthor": "RayFernando1337",
+  "baseTag": "v0.2.0",
+  "baseCommit": "f000fd1",
+  "tagPrefix": "kong-v",
+  "hide": "lobby|security|advisor|ghsa|\\broom|\\brole|rate limit",
+  "areas": [
+    {
+      "id": "gameplay",
+      "name": "Gameplay and simulation",
+      "blurb": "The rules of the game that run on both the server and your browser: movement, bots, loot and hits."
+    },
+    {
+      "id": "loading",
+      "name": "Loading",
+      "blurb": "Everything between opening the page and seeing the title screen."
+    },
+    {
+      "id": "graphics",
+      "name": "Graphics and smoothness",
+      "blurb": "How the island is drawn, and how smooth the game feels once it starts."
+    },
+    {
+      "id": "networking",
+      "name": "Networking and server",
+      "blurb": "The server that runs every match and the messages it sends to players."
+    },
+    {
+      "id": "tooling",
+      "name": "Tooling and testing",
+      "blurb": "Automatic checks that catch mistakes before a change ships, and the tools that measure the game."
+    },
+    {
+      "id": "docs",
+      "name": "Docs and process",
+      "blurb": "How the project is written down: guides, release steps and rules for contributors."
+    }
+  ],
+  "areaRules": [
+    {
+      "area": "docs",
+      "match": "^(docs|AGENTS\\.md|\\.agents)|Document|RELEASING"
+    },
+    {
+      "area": "networking",
+      "match": "shared/net|server|socket|online match"
+    },
+    {
+      "area": "gameplay",
+      "match": "^shared/sim"
+    },
+    {
+      "area": "loading",
+      "match": "boot|load|import-time|map render|main\\.ts"
+    },
+    {
+      "area": "graphics",
+      "match": "water|render|materials|programs|shader|^world:"
+    }
+  ],
+  "prs": {
+    "2": {
+      "area": "tooling",
+      "plain": "A server speed test that crashed whenever bots played now runs."
+    },
+    "3": {
+      "area": "networking",
+      "plain": "The 50-player server stress test connects every player properly again."
+    },
+    "13": {
+      "area": "networking",
+      "plain": "Shot and sight checks skip walls they can't touch, so the server does less work."
+    },
+    "14": {
+      "area": "networking",
+      "plain": "Player movement checks skip walls they can't touch, so the server does less work."
+    },
+    "16": {
+      "area": "tooling",
+      "plain": "Two game tests now run on Windows PCs too."
+    },
+    "17": {
+      "area": "tooling",
+      "plain": "The full test suite now runs on Windows PCs."
+    },
+    "19": {
+      "area": "networking",
+      "plain": "Bot sight lines skip map squares they never pass through. With #13 and #14, the server's work per tick fell by about a third."
+    },
+    "21": {
+      "area": "graphics",
+      "plain": "Water reflections cost about a quarter less to draw, with no visible change."
+    },
+    "23": {
+      "area": "graphics",
+      "plain": "The game prepares its effects before you drop in, so the first frame of a match is about 6 times quicker."
+    },
+    "25": {
+      "area": "loading",
+      "plain": "Slow computers no longer fail to load because of a cosmetic far-tree effect."
+    },
+    "28": {
+      "area": "loading",
+      "plain": "The game's start-up script runs about a second faster on a Windows PC."
+    },
+    "32": {
+      "area": "loading",
+      "plain": "Sharing a link to the game now shows a proper preview card."
+    },
+    "35": {
+      "area": "loading",
+      "plain": "The game skips painting a character model it isn't going to use."
+    },
+    "36": {
+      "area": "graphics",
+      "plain": "Two big locations build in small steps, so the match warm-up hitches less."
+    },
+    "37": {
+      "area": "loading",
+      "plain": "The game keeps loading even if the browser window is covered or hidden."
+    },
+    "41": {
+      "area": "loading",
+      "plain": "The island map is painted in the background, so the page doesn't freeze while it loads."
+    },
+    "46": {
+      "area": "gameplay",
+      "plain": "Picking up items stopped creating throwaway memory: 55% less memory churn per tick."
+    },
+    "47": {
+      "area": "gameplay",
+      "plain": "Loot is placed using each match's own cover walls."
+    },
+    "59": {
+      "area": "networking",
+      "plain": "Rocket and bomb messages are always read in full, so the message after them isn't misread."
+    },
+    "60": {
+      "area": "graphics",
+      "plain": "Locations that stream in during warm-up cause smaller hitches: the worst one went from 641 ms to 410 ms."
+    },
+    "69": {
+      "area": "gameplay",
+      "plain": "Bots stopped creating throwaway memory every tick."
+    },
+    "83": {
+      "area": "tooling",
+      "plain": "Testers can save debug settings in the browser."
+    },
+    "85": {
+      "area": "loading",
+      "plain": "The game learns how long each computer takes to finish loading, so it can plan a faster title screen."
+    },
+    "87": {
+      "area": "loading",
+      "plain": "Keeps the first download small by loading that new timing code only when it's needed."
+    },
+    "88": {
+      "area": "loading",
+      "plain": "The game stops preparing graphics it throws away, so the title shows up 4 seconds sooner on a Windows PC."
+    }
+  },
+  "perf": [
+    {
+      "id": "title-since-v020",
+      "area": "loading",
+      "name": "Title screen ready, v0.2.0 vs today (Windows Chrome)",
+      "plain": "Compared with the version we started from, the title screen shows up about 4 seconds sooner on a first visit.",
+      "unit": "s",
+      "before": 31.682,
+      "after": 27.329,
+      "digits": 1,
+      "metric": "readyMs, cold, median of 3 interleaved loads a side, [31.6-33.1] to [26.6-29.0]",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T19:10:00Z",
+      "prs": [
+        88
+      ],
+      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+    },
+    {
+      "id": "heap-title",
+      "area": "loading",
+      "name": "Memory used at the title screen",
+      "plain": "An early reading showed about 180 MB more memory at the title than v0.2.0. It was taken without clearing out garbage first, so it's being measured again before we count it either way.",
+      "unit": "MB",
+      "before": 1025,
+      "after": 1205,
+      "issue": "RAY-104",
+      "metric": "performance.memory.usedJSHeapSize with precise memory info at __kr.ready, median of 3, [949-1106] to [1145-1341]. 30 s into the match: 2410 to 2381 MB, level",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T19:10:00Z",
+      "prs": [],
+      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative",
+      "remeasuring": true
+    },
+    {
+      "id": "heap-plane",
+      "area": "graphics",
+      "name": "Memory used on the plane",
+      "plain": "An early reading showed about 220 MB more on the drop plane. Same problem: no garbage clean-up first, so it's being measured again.",
+      "unit": "MB",
+      "before": 2337,
+      "after": 2557,
+      "issue": "RAY-104",
+      "metric": "usedJSHeapSize with precise memory info at the first poll in the Plane phase, median of 3, [2157-2670] to [2440-3236] (wide range)",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T19:10:00Z",
+      "prs": [],
+      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative",
+      "remeasuring": true
+    },
+    {
+      "id": "geo-title",
+      "area": "graphics",
+      "name": "3D shapes loaded at the title screen",
+      "plain": "About 210 more 3D shapes are loaded when the title appears than in v0.2.0, and about 420 more 30 seconds into a match.",
+      "unit": "geometries",
+      "before": 580,
+      "after": 794,
+      "regression": true,
+      "issue": "RAY-104",
+      "metric": "three.js renderer.info geometries at __kr.ready, median of 3, [580-663] to [616-855]. Plane 2819 to 3045, 30 s into the match 3047 to 3464",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T19:10:00Z",
+      "prs": [],
+      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+    },
+    {
+      "id": "ready-depth-warm",
+      "area": "loading",
+      "name": "Title screen ready, Windows Chrome (first visit)",
+      "plain": "The title screen now shows up 4 seconds sooner on a first visit, because the game stops preparing graphics it throws away.",
+      "unit": "s",
+      "before": 30.0,
+      "after": 26.0,
+      "digits": 1,
+      "metric": "__kr.readyAt, cold, median of 5 interleaved per side, [28.4-31.6] to [24.3-27.5]; settle warm-up 3908 ms to 501 ms; first match frame unchanged within noise. Metal is unmeasured",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T18:44:21Z",
+      "prs": [
+        88
+      ],
+      "source": "RAY-89; fork PR #88 body (290a32b)"
+    },
+    {
+      "id": "server-tick",
+      "area": "networking",
+      "name": "Server work per tick",
+      "plain": "The server does a third less work to run each moment of a match, so one machine can host more games.",
+      "unit": "ms",
+      "before": 1,
+      "after": 0.65,
+      "metric": "Real-play host tick p50 on a seeded match; results are replay-identical",
+      "machine": "Cloud CPU",
+      "date": "2026-11-04T03:29:14Z",
+      "prs": [
+        13,
+        14,
+        19
+      ],
+      "source": "reports/KONG-20.md (Stack status) and NOTES.md 2026-11-04; fork PRs #13, #14, #19",
+      "digits": 2
+    },
+    {
+      "id": "alloc",
+      "area": "gameplay",
+      "name": "Memory churn per tick",
+      "plain": "The game creates far less throwaway memory, so the computer pauses less often to clean up.",
+      "unit": "KB",
+      "before": 419,
+      "after": 188,
+      "metric": "allocBytesPerTick on real-play; garbage collections 183 to 82, GC time 178 ms to 87 ms",
+      "machine": "Cloud CPU",
+      "date": "2026-11-04T07:41:54Z",
+      "prs": [
+        46
+      ],
+      "source": "reports/KONG-36.md; fork PR #46"
+    },
+    {
+      "id": "first-frame-cpu",
+      "area": "graphics",
+      "name": "First frame of a match (processor)",
+      "plain": "The first moment after you drop in no longer freezes: it's about 6 times quicker.",
+      "unit": "ms",
+      "before": 919,
+      "after": 153,
+      "metric": "First match frame, CPU step, median [851-1461] to [146-160]",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T04:33:01Z",
+      "prs": [
+        23
+      ],
+      "source": "fork PR #23 body; handoffs/upstream/match-prewarm.md"
+    },
+    {
+      "id": "first-frame-gpu",
+      "area": "graphics",
+      "name": "First frame of a match (graphics card)",
+      "plain": "The graphics card's share of that first frame went from almost half a second to a blink.",
+      "unit": "ms",
+      "before": 470,
+      "after": 41,
+      "metric": "First match frame, GPU time, median [442-1051] to [23-47]",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T04:33:01Z",
+      "prs": [
+        23
+      ],
+      "source": "fork PR #23 body"
+    },
+    {
+      "id": "warmup-worst",
+      "area": "graphics",
+      "name": "Worst hitch during match warm-up",
+      "plain": "The biggest stutter while the island streams in is a third shorter.",
+      "unit": "ms",
+      "before": 641,
+      "after": 410,
+      "metric": "Worst frame interval in the first 15 s, median [525-819] to [402-640]",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T08:27:33Z",
+      "prs": [
+        60
+      ],
+      "source": "fork PR #60 body; handoffs/upstream/stream-first-draw.md"
+    },
+    {
+      "id": "warmup-p99",
+      "area": "graphics",
+      "name": "Slowest 1% of warm-up frames",
+      "plain": "Even the slow frames during warm-up are almost twice as fast.",
+      "unit": "ms",
+      "before": 305,
+      "after": 173,
+      "metric": "Frame interval p99 in the first 15 s",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T08:27:33Z",
+      "prs": [
+        60
+      ],
+      "source": "fork PR #60 body"
+    },
+    {
+      "id": "main-script-d3d",
+      "area": "loading",
+      "name": "Start-up script, Windows Chrome (first visit)",
+      "plain": "The code that runs first when you open the game finishes a full second sooner.",
+      "unit": "ms",
+      "before": 2736,
+      "after": 1744,
+      "metric": "phase.mainScriptMs, median of 5 interleaved runs, d7c5e04 to 552f14e; #28 accounts for the change",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T05:24:49Z",
+      "prs": [
+        28
+      ],
+      "source": "RAY-53 result comment (load A/B)"
+    },
+    {
+      "id": "main-script-swiftshader",
+      "area": "loading",
+      "name": "Start-up script, computer without a graphics card",
+      "plain": "On a slow, software-only computer the start-up script takes about half as long.",
+      "unit": "ms",
+      "before": 5375,
+      "after": 2900,
+      "approxAfter": true,
+      "metric": "phase.mainScriptMs median 5375 (4533-6134) to about 2.9 s (2794-3033)",
+      "machine": "Cloud, SwiftShader (software graphics)",
+      "date": "2026-11-04T05:24:49Z",
+      "prs": [
+        28
+      ],
+      "source": "reports/KONG-29.md"
+    },
+    {
+      "id": "ready-chrome",
+      "area": "loading",
+      "name": "Title screen ready, Windows Chrome (first visit, overnight fixes)",
+      "plain": "The title screen shows up about 2 seconds sooner on a first visit in Chrome.",
+      "unit": "s",
+      "before": 32.3,
+      "after": 30.4,
+      "metric": "readyMs, Chrome cold, median of 5 interleaved runs, d7c5e04 to 552f14e",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T09:00:00Z",
+      "prs": [
+        25,
+        28,
+        37,
+        41
+      ],
+      "source": "RAY-53 result comment (load A/B)"
+    },
+    {
+      "id": "ready-edge",
+      "area": "loading",
+      "name": "Title screen ready, Windows Edge (first visit, overnight fixes)",
+      "plain": "The title screen shows up about 2 seconds sooner on a first visit in Edge.",
+      "unit": "s",
+      "before": 31.8,
+      "after": 29.6,
+      "metric": "readyMs, Edge cold, median of 5 interleaved runs, d7c5e04 to 552f14e",
+      "machine": "Windows PC, Edge, D3D11",
+      "date": "2026-11-04T09:00:00Z",
+      "prs": [
+        25,
+        28,
+        37,
+        41
+      ],
+      "source": "RAY-53 result comment (load A/B)"
+    },
+    {
+      "id": "match-p99",
+      "area": "graphics",
+      "name": "Slowest 1% of match frames",
+      "plain": "The worst frames in a match are about 40% quicker, so play feels steadier.",
+      "unit": "ms",
+      "before": 356,
+      "after": 214,
+      "metric": "match.p99FrameMs, Chrome cold, median of 5; Edge cold 358 to 229",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T09:00:00Z",
+      "prs": [
+        23,
+        36,
+        60
+      ],
+      "source": "RAY-53 result comment (load A/B)"
+    },
+    {
+      "id": "water",
+      "area": "graphics",
+      "name": "Drawing the water (harbor view)",
+      "plain": "Water reflections cost about a quarter less to draw, and look the same.",
+      "unit": "ms",
+      "before": 2.116,
+      "after": 1.604,
+      "metric": "Water pass p50, High preset, 1920x1080; -18.5% to -25.0% across five water views",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-04T03:21:42Z",
+      "prs": [
+        21
+      ],
+      "source": "fork PR #21 body"
+    },
+    {
+      "id": "slow-boots",
+      "area": "loading",
+      "name": "Slow computers that finish loading",
+      "plain": "A slow, software-only computer used to fail every load; now every one reaches the title.",
+      "unit": "of 3",
+      "before": 0,
+      "after": 3,
+      "higherIsBetter": true,
+      "metric": "SwiftShader 1600x900 boots that reached ready",
+      "machine": "Cloud, SwiftShader (software graphics)",
+      "date": "2026-11-04T05:04:11Z",
+      "prs": [
+        25
+      ],
+      "source": "fork PR #25 body; handoffs/upstream/boot-settle-issue.md"
+    },
+    {
+      "id": "browser-mem-match",
+      "area": "graphics",
+      "name": "Whole-browser memory 30 s into a match (Windows)",
+      "plain": "The browser uses about 470 MB less memory in a match on v0.4.1 than on v0.4.0, mostly because the game keeps fewer copies of textures.",
+      "unit": "MB",
+      "before": 13188,
+      "after": 12719,
+      "metric": "memory totalMB at match +30 s, median of 3 a side, [13168-13202] to [12695-12851]; renderer CPU texture copies 1779 to 1316 MB",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-05T01:00:00Z",
+      "prs": [],
+      "source": "project drive handoffs/release-kong-v0.4.1-d3d11/README.md (3 runs a side, whole browser) and handoffs/heap-v041/README.md"
+    },
+    {
+      "id": "browser-mem-plane",
+      "area": "graphics",
+      "name": "Whole-browser memory on the plane (Windows)",
+      "plain": "On the drop plane the browser uses about 650 MB less memory on v0.4.1 than on v0.4.0.",
+      "unit": "MB",
+      "before": 13510,
+      "after": 12862,
+      "metric": "memory totalMB in the Plane phase, median of 3 a side, [13361-13519] to [12833-12959]",
+      "machine": "Windows PC, Chrome, D3D11",
+      "date": "2026-11-05T01:00:00Z",
+      "prs": [],
+      "source": "project drive handoffs/release-kong-v0.4.1-d3d11/README.md (3 runs a side, whole browser) and handoffs/heap-v041/README.md"
+    },
+    {
+      "id": "main-script-mac",
+      "area": "loading",
+      "name": "Start-up script, Mac (Chrome)",
+      "plain": "On a Mac the code that runs first finishes more than a third sooner.",
+      "unit": "ms",
+      "before": 1913,
+      "after": 1188,
+      "metric": "phase.mainScriptMs, median of 5 a side, [1898-1944] to [1183-1192]; title time is unchanged at the default because the saved time builds one more location",
+      "machine": "Mac mini M4 16 GB, Chrome, Metal",
+      "date": "2026-11-05T00:00:00Z",
+      "prs": [
+        28
+      ],
+      "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
+    },
+    {
+      "id": "prewarm-mac",
+      "area": "loading",
+      "name": "Graphics warm-up while loading, Mac (Chrome)",
+      "plain": "Painting the island map in the background makes the loading warm-up a fifth shorter on a Mac.",
+      "unit": "ms",
+      "before": 3010,
+      "after": 2405,
+      "metric": "prewarmMs, median of 5 a side, [2981-3050] to [2362-2432]",
+      "machine": "Mac mini M4 16 GB, Chrome, Metal",
+      "date": "2026-11-05T00:00:00Z",
+      "prs": [
+        41
+      ],
+      "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
+    },
+    {
+      "id": "settle-mac",
+      "area": "loading",
+      "name": "Final settle before the title, Mac (Chrome)",
+      "plain": "Not waiting for a cosmetic tree effect makes the last loading step 28% shorter on a Mac.",
+      "unit": "ms",
+      "before": 3214,
+      "after": 2314,
+      "metric": "settleMs, median of 5 a side, [3027-3383] to [2156-2474]",
+      "machine": "Mac mini M4 16 GB, Chrome, Metal",
+      "date": "2026-11-05T00:00:00Z",
+      "prs": [
+        25
+      ],
+      "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
+    }
+  ],
+  "play": {
+    "categories": [
+      {
+        "id": "load",
+        "name": "Opening the game",
+        "blurb": "From clicking the link to a title screen you can use."
+      },
+      {
+        "id": "enter",
+        "name": "Getting into a match",
+        "blurb": "From pressing Play to running around the island."
+      },
+      {
+        "id": "match",
+        "name": "Playing a match",
+        "blurb": "How smooth the game feels once you're in."
+      },
+      {
+        "id": "server",
+        "name": "The server",
+        "blurb": "The machine that runs every match for everyone."
+      }
+    ],
+    "items": [
+      {
+        "category": "load",
+        "name": "First visit to title screen, Windows PC (Chrome)",
+        "value": 26.0,
+        "unit": "s",
+        "target": 25,
+        "targetNote": "the game's own title-screen budget",
+        "status": "improving",
+        "detail": "26.0 s is the median of 5 first-visit loads in the #88 comparison (30.0 s just before it, and 32.3 s before the overnight fixes). A separate 3-run batch on the same build, compared against v0.2.0, measured 27.3 s. About 10 s of a first visit is the graphics driver preparing shaders, and two more cuts worth an estimated 3 to 5.5 s are in progress.",
+        "source": "fork PR #88 body; RAY-89; RAY-53; RAY-86; RAY-94 precise re-run (27.3 s batch)"
+      },
+      {
+        "category": "load",
+        "name": "Return visit to title screen, Windows PC (Chrome)",
+        "value": 13.6,
+        "unit": "s",
+        "target": null,
+        "status": "measured",
+        "detail": "Median with the browser's shader cache already filled, main f808b28.",
+        "source": "RAY-86"
+      },
+      {
+        "category": "load",
+        "name": "First visit to title screen, Mac (Chrome)",
+        "value": 24.98,
+        "unit": "s",
+        "target": 15,
+        "targetNote": "the project scorecard (under 15 s)",
+        "status": "measured",
+        "detail": "Metal on an M3 Max in Chrome, build f808b28. An earlier 22.6 s reading wasn't a controlled comparison, so there is no before number.",
+        "source": "Kong Mac drive reports/release-gate-f808b28.md"
+      },
+      {
+        "category": "load",
+        "name": "First visit to title screen, Mac mini (Chrome)",
+        "value": 21.0,
+        "unit": "s",
+        "target": null,
+        "status": "measured",
+        "detail": "Median of 5 cold loads on a Mac mini M4 16 GB. With the test setting that skips pre-building locations (?readyby=0) it is 12.4 s, with an emptier island behind the title.",
+        "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
+      },
+      {
+        "category": "load",
+        "name": "Firing Range ready, Mac (Chrome)",
+        "value": 24.3,
+        "unit": "s",
+        "target": null,
+        "status": "measured",
+        "detail": "Metal on an M3 Max in Chrome, build f808b28.",
+        "source": "Kong Mac drive reports/release-gate-f808b28.md"
+      },
+      {
+        "category": "load",
+        "name": "First visit to title screen, Mac (Safari)",
+        "value": null,
+        "unit": "s",
+        "target": null,
+        "status": "fixing",
+        "detail": "On the 16 GB Mac mini, Safari closes the game for using too much memory: today's build at the title, v0.2.0 30 s into a match. Fixes are in progress (RAY-104 to RAY-106).",
+        "source": "Captain, from RAY-112 Safari half; RAY-104 to RAY-106"
+      },
+      {
+        "category": "load",
+        "name": "Safari loads that stall when the window is covered",
+        "value": null,
+        "baseline": 5,
+        "unit": "of 5",
+        "target": 0,
+        "targetNote": "the project scorecard",
+        "status": "not measured yet",
+        "detail": "5 of 5 stalled before. The fix (#37) shipped; Safari hasn't been re-measured. In a visible Chrome window on the Mac the fix is neutral, as expected.",
+        "source": "plans/why-it-matters.md scorecard; fork PR #37"
+      },
+      {
+        "category": "load",
+        "name": "Slow computers that reach the title",
+        "value": 3,
+        "unit": "of 3",
+        "target": 3,
+        "targetNote": "the project scorecard",
+        "status": "done",
+        "detail": "Software-only graphics at 1600x900: 0 of 3 before #25, 3 of 3 after.",
+        "source": "fork PR #25"
+      },
+      {
+        "category": "load",
+        "name": "Data downloaded before the title screen",
+        "value": 43.9,
+        "unit": "MB",
+        "target": null,
+        "status": "measured",
+        "detail": "Median of 3 first visits on a Windows PC; v0.2.0 was 41.4 MB. Audio now loads later (24 requests at the title instead of 70).",
+        "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+      },
+      {
+        "category": "load",
+        "name": "Memory used at the title screen",
+        "value": null,
+        "unit": "MB",
+        "target": null,
+        "status": "remeasuring",
+        "detail": "An earlier reading of 1205 MB (180 MB over v0.2.0) was taken without clearing out garbage first, so it's being measured again. With garbage cleared, the JS heap at the title measured about 210 MB on both v0.4.0 and v0.4.1.",
+        "source": "RAY-94; handoffs/heap-v041/README.md"
+      },
+      {
+        "category": "enter",
+        "name": "Press Play to in the match",
+        "value": 7.2,
+        "unit": "s",
+        "target": null,
+        "status": "measured",
+        "detail": "Click to in the match, median of 3 first-visit runs on a Windows PC: 7.2 s [6.2-7.4]. v0.2.0 measured 8.3 s [6.0-8.8]. Three runs a side, so treat it as indicative.",
+        "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+      },
+      {
+        "category": "enter",
+        "name": "First frame of the match, Windows PC",
+        "value": 153,
+        "unit": "ms",
+        "target": null,
+        "status": "improved",
+        "detail": "Processor time of the first match frame; the graphics card's part is 41 ms. They were 919 ms and 470 ms.",
+        "source": "fork PR #23"
+      },
+      {
+        "category": "match",
+        "name": "Worst hitch in the first 15 s, Windows PC",
+        "value": 410,
+        "unit": "ms",
+        "target": null,
+        "status": "improved",
+        "detail": "It was 641 ms. Median of 5 runs.",
+        "source": "fork PR #60"
+      },
+      {
+        "category": "match",
+        "name": "Stutters over 100 ms in the first 15 s, Windows PC",
+        "value": 9,
+        "unit": "frames",
+        "target": 2,
+        "targetNote": "the project scorecard (under 2)",
+        "status": "improving",
+        "detail": "Median of 5 runs after #60 (12 before). The count is noisy: one run had 18.",
+        "source": "fork PR #60"
+      },
+      {
+        "category": "match",
+        "name": "Stutters over 100 ms in the first 15 s, Mac (Chrome)",
+        "value": null,
+        "baseline": 5,
+        "unit": "frames",
+        "target": 2,
+        "targetNote": "the project scorecard (under 2)",
+        "status": "not measured yet",
+        "detail": "5 was measured before the fixes; not re-measured on the Mac.",
+        "source": "plans/why-it-matters.md scorecard"
+      },
+      {
+        "category": "match",
+        "name": "Slowest 1% of match frames, Windows PC",
+        "value": 214,
+        "unit": "ms",
+        "target": null,
+        "status": "improved",
+        "detail": "Chrome first visit, median of 5. It was 356 ms.",
+        "source": "RAY-53 result comment"
+      },
+      {
+        "category": "match",
+        "name": "Hits landing at high ping",
+        "value": null,
+        "unit": "",
+        "target": null,
+        "status": "not measured yet",
+        "detail": "On the backlog: checking shotgun and SMG hits at a 320 ms round trip.",
+        "source": "RAY-15"
+      },
+      {
+        "category": "match",
+        "name": "Memory used 30 s into a match",
+        "value": null,
+        "unit": "MB",
+        "target": null,
+        "status": "remeasuring",
+        "detail": "The earlier 2381 MB reading didn't clear out garbage first, so it's being measured again. The whole browser 30 s into a match is in the next row.",
+        "source": "RAY-94; handoffs/heap-v041/README.md"
+      },
+      {
+        "category": "match",
+        "name": "Whole-browser memory 30 s into a match, Windows PC",
+        "value": 12719,
+        "unit": "MB",
+        "target": null,
+        "status": "improved",
+        "detail": "v0.4.1, median of 3. It was 13188 MB on v0.4.0.",
+        "source": "project drive handoffs/release-kong-v0.4.1-d3d11/README.md (3 runs a side, whole browser) and handoffs/heap-v041/README.md"
+      },
+      {
+        "category": "match",
+        "name": "Whole-browser memory, Mac mini 16 GB (Chrome)",
+        "value": 12.4,
+        "unit": "GB",
+        "target": null,
+        "status": "baseline",
+        "detail": "About 12.4 GB once a match settles (graphics process about 6.6 GB, page about 5.5 GB); about 10 GB at the title. The Mac starts swapping. This is the baseline we're burning down so 16 GB machines play without swapping.",
+        "source": "captain-kong-cloud-release NOTES.md (Mac mini 16 GB Chrome footprint); reports/KONG-46.md"
+      },
+      {
+        "category": "server",
+        "name": "Server work per tick",
+        "value": 0.65,
+        "unit": "ms",
+        "target": 0.65,
+        "targetNote": "the project scorecard",
+        "status": "done",
+        "detail": "Median tick on a seeded real-play match. It was 1.00 ms. Results are replay-identical.",
+        "source": "reports/KONG-20.md"
+      },
+      {
+        "category": "server",
+        "name": "Memory churn per tick",
+        "value": 188,
+        "unit": "KB",
+        "target": null,
+        "status": "improved",
+        "detail": "It was 419 KB. A budget in the test suite now stops it growing back.",
+        "source": "reports/KONG-36.md"
+      }
+    ]
+  },
+  "roadmap": {
+    "snapshotAt": "2026-11-04T18:50:00Z",
+    "phases": [
+      {
+        "name": "Safety checks for every change",
+        "plain": "Automatic tests that prove the game still works, on Mac, Windows and in the cloud.",
+        "source": "RAY-6 sub-issues",
+        "issues": [
+          [
+            "Online match test",
+            "Done"
+          ],
+          [
+            "Pass/fail thresholds for the bot match and lag lab",
+            "Done"
+          ],
+          [
+            "Fix the server benchmarks",
+            "Done"
+          ],
+          [
+            "Verification skill for Mac, Windows and cloud",
+            "Done"
+          ],
+          [
+            "Cloud boot without a graphics card",
+            "Done"
+          ],
+          [
+            "Loading can't fail on a cosmetic effect",
+            "Waiting"
+          ],
+          [
+            "Boot check without a graphics card",
+            "Done"
+          ],
+          [
+            "Baked data drift",
+            "Waiting"
+          ],
+          [
+            "Cross-platform determinism check",
+            "Backlog"
+          ],
+          [
+            "Tests for bug reports and voice",
+            "Backlog"
+          ],
+          [
+            "Asset licence check",
+            "Done"
+          ],
+          [
+            "Slow first 15 s of a match",
+            "Done"
+          ],
+          [
+            "Windows validation",
+            "Done"
+          ],
+          [
+            "Faster package manager proposal",
+            "Waiting"
+          ],
+          [
+            "Windows verification pass",
+            "Done"
+          ],
+          [
+            "Hits at high ping",
+            "Backlog"
+          ],
+          [
+            "Pause menu during flight online",
+            "Backlog"
+          ],
+          [
+            "Console noise",
+            "Backlog"
+          ],
+          [
+            "npm start on Windows",
+            "Backlog"
+          ]
+        ]
+      },
+      {
+        "name": "Ready for many contributors",
+        "plain": "Turning every project rule into an automatic check so lots of changes can land safely at once.",
+        "source": "RAY-46 sub-issues",
+        "issues": [
+          [
+            "Gate the existing rules",
+            "Done"
+          ],
+          [
+            "Match checks, golden results and replays",
+            "In review"
+          ],
+          [
+            "Formal models of vehicle seats and match phases",
+            "In review"
+          ],
+          [
+            "Performance budgets",
+            "Done"
+          ],
+          [
+            "Line endings, cloud boot check, link previews",
+            "Done"
+          ]
+        ]
+      },
+      {
+        "name": "Performance plan",
+        "plain": "Measure first, then make the game and server faster, keeping only changes the numbers prove.",
+        "source": "RAY-21 sub-issues (2 canceled left out)",
+        "issues": [
+          [
+            "Land the plan",
+            "Done"
+          ],
+          [
+            "Measurement foundation",
+            "Done"
+          ],
+          [
+            "Character animation budget",
+            "In progress"
+          ],
+          [
+            "Loot search index (tried; the numbers said no)",
+            "Done"
+          ],
+          [
+            "Tree budgets",
+            "Done"
+          ],
+          [
+            "Cheaper water reflections",
+            "Done"
+          ],
+          [
+            "Flight recorder",
+            "Backlog"
+          ],
+          [
+            "Nightly regression check",
+            "Backlog"
+          ],
+          [
+            "Graphics baseline on Windows",
+            "Done"
+          ],
+          [
+            "Safari slow load",
+            "In review"
+          ],
+          [
+            "Locations build in small steps",
+            "Done"
+          ],
+          [
+            "Warm-up stalls",
+            "Done"
+          ],
+          [
+            "Windows load comparison",
+            "Done"
+          ],
+          [
+            "Lighting samples 8 to 6",
+            "Done"
+          ],
+          [
+            "Better load-time planning",
+            "Done"
+          ]
+        ]
+      },
+      {
+        "name": "Faster loading",
+        "plain": "Cutting the time from opening the page to the title screen.",
+        "source": "RAY-39 sub-issues",
+        "issues": [
+          [
+            "Lazy loading of location tables",
+            "In review"
+          ],
+          [
+            "Safari covered-window stall",
+            "In review"
+          ],
+          [
+            "Off-thread map, deferred weapon kit",
+            "In review"
+          ],
+          [
+            "Where the last 29 s goes",
+            "Done"
+          ],
+          [
+            "Warm only the shaders we need",
+            "Done"
+          ],
+          [
+            "Prepare the storm effect early",
+            "Todo"
+          ],
+          [
+            "Defer far loot detail until after the title",
+            "Todo"
+          ],
+          [
+            "Memory and download measurements",
+            "Todo"
+          ]
+        ]
+      },
+      {
+        "name": "Releases",
+        "plain": "Numbered releases with a test channel (next) and a public channel (stable), plus fast rollback.",
+        "source": "RAY-56 sub-issues",
+        "issues": [
+          [
+            "Release tool, labels and the first release",
+            "Todo"
+          ],
+          [
+            "Feature switches",
+            "Done"
+          ]
+        ]
+      }
+    ]
+  },
+  "asks": [
+    {
+      "who": "Ray",
+      "what": "Decide whether the faster-title setting goes on by default: an earlier title screen with a less finished island behind it.",
+      "since": "2026-11-04",
+      "source": "NOTES.md (#85 readyest flag)"
+    },
+    {
+      "who": "Ray",
+      "what": "Pick where the stable release is hosted.",
+      "since": "2026-11-04",
+      "source": "NOTES.md (hosting open)"
+    }
+  ],
+  "inProgress": [
+    {
+      "name": "Cut memory so 16 GB Macs play without swapping",
+      "estimate": "Chrome uses about 12.4 GB today, and Safari runs out of memory (tracked as RAY-104 to RAY-106)",
+      "source": "RAY-104; RAY-105; RAY-106; NOTES.md"
+    },
+    {
+      "name": "Prepare the storm effect during loading",
+      "estimate": "an estimated 1.7 to 3.4 s off a first visit",
+      "source": "RAY-90"
+    },
+    {
+      "name": "Build far-away loot detail after the title",
+      "estimate": "an estimated 1.5 to 2.2 s off every visit",
+      "source": "RAY-91"
+    }
+  ],
+  "releaseTrain": {
+    "plain": "A new release can go out four times a day, at 10 AM, 1 PM, 4 PM and 7 PM Pacific, whenever there are changes waiting.",
+    "source": "Captain, 2026-11-04 (train automation enabled)"
+  },
+  "summary": {
+    "wins": [
+      "title-since-v020",
+      "first-frame-cpu",
+      "server-tick",
+      "browser-mem-match",
+      "slow-boots",
+      "warmup-worst"
+    ],
+    "plain": "In its first day, the project shipped its first release and made the game faster to load, smoother to start and cheaper to run, with every change measured before and after."
+  }
+}

@@ -3,6 +3,7 @@
 // done and cost the main thread only the GPU upload. Fallback: paint on the main thread.
 import * as THREE from "three";
 import { LAB_PAINT } from "./paint";
+import { releaseAfterUpload } from "../../../engine/texture-release";
 
 export interface TexSet { map: THREE.Texture; normalMap?: THREE.Texture; emissiveMap?: THREE.Texture; metres: [number, number] }
 const NAMES = Object.keys(LAB_PAINT);
@@ -17,7 +18,10 @@ function wrap(name: string, k: string, img: ImageBitmap | HTMLCanvasElement | Of
   t.anisotropy = name === "heli" || name === "sign" ? 16 : name === "chain" ? 4 : 8;
   t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
   t.needsUpdate = true;
-  return t;
+  return releaseAfterUpload(t, () => {
+    const c = LAB_PAINT[name]()[k as "map" | "normalMap" | "emissiveMap"] as HTMLCanvasElement;
+    return bitmap ? createImageBitmap(c, { imageOrientation: "flipY", premultiplyAlpha: "none" }) : c;
+  });
 }
 function paintHere(name: string): TexSet {
   const s = LAB_PAINT[name]();

@@ -8,6 +8,7 @@
 //     sputtering), then the over-arm throw; the gun drops out of view meanwhile (render.ts hides the viewmodel).
 // Pooled meshes, scratch vectors: nothing allocates per frame.
 import * as THREE from "three";
+import type { Scope } from "../engine/res/scope";
 import { BOMB } from "../../../shared/sim/const";
 import { bombLaunch, bombStep, type BombBody } from "../../../shared/sim/bomb";
 import type { StaticWorld } from "../../../shared/sim/world";
@@ -63,16 +64,17 @@ export class BombFx {
   private readonly W1 = new THREE.Vector3(); private readonly W2 = new THREE.Vector3(); private readonly Q1 = new THREE.Quaternion();
   private readonly W3 = new THREE.Vector3(); private readonly W4 = new THREE.Vector3(); private readonly W5 = new THREE.Vector3(); private readonly Q2 = new THREE.Quaternion(); private readonly M2 = new THREE.Matrix4();
   private readonly M = new THREE.Matrix4(); private readonly P = new THREE.Vector3(); private readonly B: BombBody = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, rest: false };
-  constructor(private readonly scene: THREE.Scene, camera: THREE.Camera, private readonly world: StaticWorld, private readonly bounce: (x: number, y: number, z: number, speed: number) => void) {
-    this.dotMat = arcDotMaterial();
-    this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 8, 6), this.dotMat, PREV_N);
+  constructor(private readonly scene: THREE.Scene, camera: THREE.Camera, private readonly world: StaticWorld, private readonly bounce: (x: number, y: number, z: number, speed: number) => void, res: Scope) {
+    this.dotMat = res.material(arcDotMaterial());
+    this.dots = res.own("geo.actor", new THREE.InstancedMesh(res.geometry("geo.actor", new THREE.SphereGeometry(0.05, 8, 6)), this.dotMat, PREV_N), () => this.dots.instanceMatrix.array.byteLength);
     this.dots.name = "bomb-arc"; this.dots.frustumCulled = false; this.dots.count = 0; this.dots.visible = false; this.dots.renderOrder = 6;
-    this.ringMat = arcRingMaterial();
-    this.ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.55, 40).rotateX(-Math.PI / 2), this.ringMat);
+    this.ringMat = res.material(arcRingMaterial());
+    this.ring = new THREE.Mesh(res.geometry("geo.actor", new THREE.RingGeometry(0.42, 0.55, 40).rotateX(-Math.PI / 2)), this.ringMat);
     this.ring.name = "bomb-arc-ring"; this.ring.visible = false; this.ring.renderOrder = 6; this.ring.frustumCulled = false;
     scene.add(this.dots, this.ring);
     // first person: the hand + a bomb in its palm, parented to the camera
     this.hand = createHand("R");
+    res.own("other", this.hand.mesh.skeleton);
     this.hand.mesh.scale.setScalar(0.62);
     this.hand.setGrip(0.04, 0.035, 0.9, 0.9);
     const hb = buildHeal("banana-bomb").root; hb.scale.setScalar(0.62);
@@ -94,8 +96,8 @@ export class BombFx {
       home.matrix.makeBasis(s0.dir, side, new THREE.Vector3().crossVectors(s0.dir, side).normalize()).setPosition(rp);
       home.matrix.decompose(home.position, home.quaternion, home.scale); inner.add(home);
       this.pinHome = home;
-      const chrome = pinChromeMaterial();
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.017, 0.0035, 8, 22), chrome); ring.name = "bomb-pin-ring";
+      const chrome = res.material(pinChromeMaterial());
+      const ring = new THREE.Mesh(res.geometry("geo.actor", new THREE.TorusGeometry(0.017, 0.0035, 8, 22)), chrome); ring.name = "bomb-pin-ring";
       this.pin.add(ring); this.pin.name = "bomb-pin";
       // the strip's anchor: on the skin at the stem end (pin space), where it peels from
       const st = bananaAt(o, 0.04), A = st.center.clone().addScaledVector(side, st.radius * 0.95);
@@ -106,17 +108,24 @@ export class BombFx {
       const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(this.stripPos, 3)); g.setAttribute("normal", new THREE.BufferAttribute(this.stripNrm, 3));
       const uv = new Float32Array((N + 1) * 2 * 2); for (let i = 0; i <= N; i++) { uv[i * 4] = i / N; uv[i * 4 + 1] = 0; uv[i * 4 + 2] = i / N; uv[i * 4 + 3] = 1; } g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
       const idx: number[] = []; for (let i = 0; i < N; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } g.setIndex(idx);
-      const peelM = pinPeelMaterial();
+      res.geometry("geo.actor", g);
+      const peelM = res.material(pinPeelMaterial());
       this.strip = new THREE.Mesh(g, peelM); this.strip.name = "bomb-pin-strip"; this.strip.frustumCulled = false;
       this.pin.add(this.strip);
       this.pin.traverse((q) => { (q as THREE.Mesh).castShadow = false; (q as THREE.Mesh).frustumCulled = false; });
       this.homePin();
     }
     this.handL = createHand("L");
+    res.own("other", this.handL.mesh.skeleton);
     this.handL.mesh.scale.setScalar(0.62); this.handL.mesh.visible = false;
     this.handL.setGrip(0.006, 0.006, 0.95, 0.95);
     this.handL.mesh.userData.vmPass = true;
     camera.add(this.handL.mesh);
+    res.defer(() => {
+      for (const v of [...this.views.values(), ...this.pool]) v.obj.removeFromParent();
+      this.views.clear(); this.pool.length = 0;
+      this.dots.removeFromParent(); this.ring.removeFromParent(); this.fp.removeFromParent(); this.handL.mesh.removeFromParent();
+    });
   }
   /** the pin back on the bomb (its rest pose), the strip lying along the skin, the bomb's own ring hidden */
   private homePin() {
@@ -295,9 +304,4 @@ export class BombFx {
     else { this.W1.set(-0.01, -0.045, 0.01); this.layStrip(this.W1, 0.008); }
   }
   private readonly P0 = new THREE.Vector3();
-  dispose() {
-    for (const v of [...this.views.values(), ...this.pool]) v.obj.removeFromParent();
-    this.views.clear(); this.pool.length = 0;
-    this.dots.removeFromParent(); this.ring.removeFromParent(); this.fp.removeFromParent();
-  }
 }

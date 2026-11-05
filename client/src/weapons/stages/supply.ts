@@ -4,9 +4,10 @@
 import * as THREE from "three";
 import { createWeaponsKit } from "../index";
 import type { StageDef, StageFile } from "../studio";
+import { flag } from "../../flags";
 
 const O = new THREE.Vector3(150, 0, 524);
-const live = () => { try { return new URLSearchParams(location.search).has("fxlive"); } catch { return false; } };
+const live = () => { try { return flag("fxlive"); } catch { return false; } };
 
 const stages: Record<string, StageDef> = {
   supply: {

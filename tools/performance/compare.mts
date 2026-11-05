@@ -13,16 +13,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { comparabilityKey, parseResult, type Metric, type RunResult, type Summary } from "./schema.ts";
+import { orExit, parseFlags } from "../gate.mts";
 
 // With 5 runs a side, every candidate landing outside the baseline range by chance is under 1% per row (2 of 252
 // orderings). With 3 it is 10%, and an A/A run of identical code did produce false "worse" rows at 3.
 const MIN_RUNS = 5;
-const argv = process.argv.slice(2);
-const list = (flag: string) => { const i = argv.indexOf(flag); if (i < 0) return []; const out: string[] = []; for (let j = i + 1; j < argv.length && !argv[j].startsWith("--"); j++) out.push(argv[j]); return out; };
-const opt = (flag: string, fallback: string) => list(flag)[0] ?? fallback;
-const baseFiles = list("--base"), candFiles = list("--cand");
-const statNames = (list("--stats").length ? list("--stats") : ["p50,p95,p99"]).flatMap((s) => s.split(",")) as Array<keyof Summary>;
-const threshold = Number(opt("--threshold", "5")), onlyMetrics = list("--metrics").flatMap((m) => m.split(",")), out = list("--out")[0], budgetFile = list("--budgets")[0];
+const USAGE = "npx tsx tools/performance/compare.mts --base FILE... [--cand FILE...] [--metrics a,b] [--stats p50,p95,p99] [--threshold 5] [--out FILE] [--budgets FILE]";
+const { flags } = orExit("compare", USAGE, () => parseFlags(process.argv.slice(2), {
+  "--base": "list", "--cand": "list", "--stats": "list", "--metrics": "list", "--threshold": "number", "--out": "string", "--budgets": "string",
+}));
+const baseFiles = flags["--base"] ?? [], candFiles = flags["--cand"] ?? [];
+const statNames = (flags["--stats"] ?? ["p50,p95,p99"]).flatMap((s) => s.split(",")) as Array<keyof Summary>;
+const threshold = flags["--threshold"] ?? 5, onlyMetrics = (flags["--metrics"] ?? []).flatMap((m) => m.split(",")), out = flags["--out"], budgetFile = flags["--budgets"];
 for (const s of statNames) if (!["n", "mean", "p50", "p95", "p99", "max"].includes(s)) fail(`unknown statistic "${s}" in --stats; use n, mean, p50, p95, p99 or max`);
 if (!baseFiles.length) fail("pass at least one --base result file");
 if (!(threshold >= 0)) fail("--threshold must be a non-negative percentage");

@@ -11,6 +11,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { actorLook } from "./look";
+import { flag } from "../flags";
+import { releaseAfterUpload } from "../engine/texture-release";
 
 export type AssetMat = "kbody" | "khead" | "kgear" | "kshoe" | "keye" | "kmin";
 export interface KongAsset {
@@ -21,16 +23,15 @@ export interface KongAsset {
   materials(tier: 0 | 1 | 2): Record<AssetMat, THREE.Material>;
 }
 
-const QS = (() => { try { return new URLSearchParams(location.search); } catch { return new URLSearchParams(); } })();
 /** ?kongv=1 → the procedural kong (A/B) */
-export const USE_ASSET = QS.get("kongv") !== "1";
+export const USE_ASSET = !flag("kongv");
 /** which kong asset draws: ?kong=v1 (the Blender sculpt) / ?kong=v2 (the Tripo kong), else KONG_DEFAULT */
 export const KONG_DEFAULT: "v1" | "v2" = "v2";
 /** ?kong=alt — an IP-distance variant of v2, away from a famous ape mascot's look (heart-shaped
  *  tan face, forelock tuft, warm-brown fur): the same asset with darker, cooler fur, a dark face with only the muzzle
  *  tan, and the forelock tuft pressed flat (kong.ts ALT_GLSL / ALT_TUFT). Not the default. */
-export const KONG_ALT = QS.get("kong") === "alt";
-export const KONG_VER: "v1" | "v2" = QS.get("kong") === "v1" ? "v1" : QS.get("kong") === "v2" || KONG_ALT ? "v2" : KONG_DEFAULT;
+export const KONG_ALT = flag("kong") === "alt";
+export const KONG_VER: "v1" | "v2" = flag("kong") === "v1" ? "v1" : flag("kong") === "v2" || KONG_ALT ? "v2" : KONG_DEFAULT;
 /** the deploy base (vite `base`, e.g. "/kong/"): public/ files live under it */
 export const PUBLIC_BASE: string = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
 const BASE = PUBLIC_BASE + (KONG_VER === "v2" ? "assets/actors/kong2/" : "assets/actors/kong/");
@@ -97,6 +98,21 @@ function prep(src: THREE.BufferGeometry): THREE.BufferGeometry {
 }
 const triCount = (g: THREE.BufferGeometry) => (g.index ? g.index.count : g.attributes.position.count) / 3;
 
+const HALF_MAPS = flag("konghalf") && !flag("view") && !flag("cam");
+let loadFullMaps: (() => Promise<void>) | null = null;
+let fullMaps: Promise<void> | null = null;
+export function fullKongMaps(): Promise<void> {
+  return (fullMaps ??= (loadFullMaps?.() ?? Promise.resolve()).catch((e) => { fullMaps = null; console.warn("[kong] full-size maps failed to load:", e); }));
+}
+function halve(img: HTMLImageElement): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = img.width >> 1; c.height = img.height >> 1;
+  const g = c.getContext("2d")!;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+
 let cache: Promise<KongAsset | null> | null = null;
 export function loadKongAsset(renderer: THREE.WebGLRenderer): Promise<KongAsset | null> {
   if (!USE_ASSET) return Promise.resolve(null);
@@ -104,21 +120,28 @@ export function loadKongAsset(renderer: THREE.WebGLRenderer): Promise<KongAsset 
     try {
       const tl = new THREE.TextureLoader();
       const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-      const tex = async (name: string, srgb: boolean) => {
-        const t = await tl.loadAsync(BASE + name + ".webp");
+      const halved = new Map<THREE.Texture, string>();
+      loadFullMaps = () => Promise.all([...halved].map(async ([t, url]) => {
+        const full = await tl.loadAsync(url);
+        halved.delete(t); t.dispose(); releaseAfterUpload(t, async () => (await tl.loadAsync(url)).image).image = full.image; t.needsUpdate = true;
+      })).then(() => undefined);
+      const tex = async (name: string, srgb: boolean, half = false) => {
+        const url = BASE + name + ".webp";
+        const t: THREE.Texture<HTMLImageElement> = releaseAfterUpload(await tl.loadAsync(url), async () => { const img = (await tl.loadAsync(url)).image; return halved.has(t) ? halve(img) : img; });
+        if (half && HALF_MAPS) { halved.set(t, url); (t as THREE.Texture).image = halve(t.image); }
         t.flipY = false; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = aniso; t.needsUpdate = true;
         return t;
       };
       const [gltf, ...maps] = await Promise.all([
         new GLTFLoader().loadAsync(BASE + "kong.glb"),
-        tex("hi-kong-albedo", true), tex("hi-kong-normal", false), tex("hi-kong-ao", false),
-        tex("hi-gear-albedo", true), tex("hi-gear-normal", false), tex("hi-gear-ao", false),
+        tex("hi-kong-albedo", true), tex("hi-kong-normal", false, true), tex("hi-kong-ao", false),
+        tex("hi-gear-albedo", true, true), tex("hi-gear-normal", false, true), tex("hi-gear-ao", false),
         tex("lo-kong-albedo", true), tex("lo-kong-normal", false), tex("lo-kong-ao", false),
         tex("lo-gear-albedo", true), tex("lo-gear-normal", false), tex("lo-gear-ao", false),
         // the hi head (face) has its own 2048 atlas
-        tex("hi-head-albedo", true), tex("hi-head-normal", false), tex("hi-head-ao", false),
+        tex("hi-head-albedo", true), tex("hi-head-normal", false, true), tex("hi-head-ao", false),
         // … and the hi sneakers theirs (4× the texel density of the shared clothing atlas)
-        tex("hi-shoes-albedo", true), tex("hi-shoes-normal", false), tex("hi-shoes-ao", false),
+        tex("hi-shoes-albedo", true, true), tex("hi-shoes-normal", false, true), tex("hi-shoes-ao", false),
       ]);
       const byName = new Map<string, THREE.BufferGeometry>();
       gltf.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) byName.set(m.name || m.parent?.name || "", prep(m.geometry)); });

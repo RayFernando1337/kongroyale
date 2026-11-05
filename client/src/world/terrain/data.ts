@@ -6,6 +6,8 @@
 //   • sea floor: bright sand, dark coral patches (the same reefPatch field that raised them), rock on steep drops
 //   • basalt only on the cone and in the badlands (no dark apron on the flats at the volcano's foot)
 import * as THREE from "three";
+import { releaseAfterUpload } from "../../engine/texture-release";
+import { onRestore } from "../../engine/res/restore";
 import { Biome, POIS, WORLD } from "../../../../shared/world/map";
 import { Simplex2, smoothstep } from "../../../../shared/world/noise";
 import { HARBOR_APRON, MURK, RIVER, VOLCANO, cliffSkins, poiGroundAt, badlandsAt, kipukaAt, groundWarp, lagoonShoreAt, lavaChannels, padWeight, pathLines, plantationAt, reefPatch, type LavaLine, type TerrainData } from "../../../../shared/world/terrain-gen";
@@ -63,8 +65,10 @@ function polyEdge(poly: Array<[number, number]>, x: number, z: number): number {
 
 /** the GPU data as plain arrays (worker-safe): dat = 4 RGBA layers (data, info, path, skin), w = 3 RGBA weight layers */
 export interface TerrainGpuArrays { dat: Uint8Array; w: Uint8Array; res: number }
-export function gpuDataFromArrays(a: TerrainGpuArrays): TerrainGpuData {
-  const mk = (arr: Uint8Array, layers: number) => {
+export function gpuDataFromArrays(a: TerrainGpuArrays, again: () => TerrainGpuArrays): TerrainGpuData {
+  let fresh: TerrainGpuArrays | null = null;
+  onRestore("bake", () => { fresh = null; });
+  const mk = (a: { res: number }, arr: Uint8Array, layers: number, pick: (g: TerrainGpuArrays) => Uint8Array) => {
     const tex = new THREE.DataArrayTexture(arr, a.res, a.res, layers);
     tex.format = THREE.RGBAFormat; tex.type = THREE.UnsignedByteType;
     tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
@@ -72,12 +76,15 @@ export function gpuDataFromArrays(a: TerrainGpuArrays): TerrainGpuData {
     // pixel covers more than one of them — from the plane every pixel does, and the lit relief shimmered frame to frame
     if (TERRAIN_LODV) { tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true; tex.anisotropy = 8; }
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.needsUpdate = true;
-    return tex;
+    return releaseAfterUpload(tex, () => { fresh ??= again(); return { data: pick(fresh), width: a.res, height: a.res, depth: layers }; });
   };
-  return { dat: mk(a.dat, 4), w: mk(a.w, 3), res: a.res };
+  const size = { res: a.res };
+  return { dat: mk(size, a.dat, 4, (g) => g.dat), w: mk(size, a.w, 3, (g) => g.w), res: a.res };
 }
-export function buildTerrainGpuData(t: TerrainData, lava: LavaLine[] = lavaChannels(t)): TerrainGpuData {
-  return gpuDataFromArrays(computeTerrainGpuArrays(t, lava));
+export function stepSplatFrom(a: TerrainGpuArrays): { w: Uint8Array; path: Uint8Array; res: number } {
+  const N = a.res * a.res, L2 = 2 * N * 4, path = new Uint8Array(N * 3);
+  for (let k = 0; k < N; k++) { path[k * 3] = a.dat[k * 4 + 2]; path[k * 3 + 1] = a.dat[L2 + k * 4]; path[k * 3 + 2] = a.dat[L2 + k * 4 + 1]; }
+  return { w: a.w, path, res: a.res };
 }
 /** the CPU half of buildTerrainGpuData — split so terrain.worker.ts can run the per-sample splat rules on
  * row bands in parallel (computeGpuRows) and finish once (finishGpuArrays); in-thread it is both in a row */

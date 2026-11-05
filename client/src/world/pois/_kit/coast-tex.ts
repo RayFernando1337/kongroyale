@@ -4,6 +4,7 @@
 // Textures are cached per key for the page lifetime (shared by lookout-point, peel-strip, the-plantation).
 import * as THREE from "three";
 import { rng } from "../../../../../shared/pois/coast-kit";
+import { flag } from "../../../flags";
 
 export interface TexSet { map: THREE.Texture; normalMap?: THREE.Texture; roughnessMap?: THREE.Texture }
 
@@ -139,7 +140,7 @@ export function bakeExport(type = "image/webp", q = 0.92): Array<{ key: string; 
 let preloaded: Promise<number> | null = null;
 export function preloadBaked(load: (url: string, srgb: boolean, repeat: boolean) => Promise<THREE.Texture>): Promise<number> {
   if (preloaded) return preloaded;
-  if (typeof location !== "undefined" && /[?&]painttex\b/.test(location.search)) return (preloaded = Promise.resolve(0));
+  if (flag("painttex")) return (preloaded = Promise.resolve(0));
   preloaded = (async () => {
     let man: Record<string, { repeat: boolean; n?: boolean; r?: boolean }>;
     try { const res = await fetch("assets/pois/coast/proc/manifest.json"); if (!res.ok) return 0; man = await res.json(); } catch { return 0; }

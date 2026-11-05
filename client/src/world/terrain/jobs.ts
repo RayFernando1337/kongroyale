@@ -18,6 +18,8 @@ export function startTerrainJobs(t: TerrainData) {
   return JOBS;
 }
 
+export function releaseTerrainJobs() { JOBS = null; }
+
 /** the splat data in 6 row bands + a finisher (terrain.worker.ts); null (→ in-thread) on any failure or hash mismatch */
 async function gpuInWorkers(url: string, res: number): Promise<{ hash: number; dat: Uint8Array; w: Uint8Array; res: number; ms: number } | null> {
   const T0 = performance.now();

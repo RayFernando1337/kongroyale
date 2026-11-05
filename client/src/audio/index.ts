@@ -24,12 +24,13 @@ import { CONSUMABLES, WEAPONS } from "../../../shared/world/map";
 import { Library, type ManifestFile } from "./loader";
 import { Mixer, antiImage, BUS_DB, type Bus } from "./mixer";
 import { Radio } from "./radio";
-import { BANK, ALIAS, RELOAD_S, DROP_GROUPS, loadPriority, decodeRate, lazyGroup, prefetchGroup, type EventDef, type Layer } from "./bank";
+import { BANK, ALIAS, RELOAD_S, DROP_GROUPS, HELI_GUN_GROUPS, loadPriority, decodeRate, lazyGroup, prefetchGroup, type EventDef, type Layer } from "./bank";
 import { AcousticWorld, trim, type V3 } from "./world";
 import { SurfSync, type WaterLike } from "./surf";
 import { Ambience } from "./ambience";
 import { StepCadence, loadFloorMap, loadRoomsMap, stepSurfaceAt, stepSurfaceUnderLive, type RayWorld } from "./steps";
 import { setT } from "./param";
+import { flag } from "../flags";
 import { GameBridge } from "./bridge";
 import { FootDriver, type FootEvent } from "./feet";
 
@@ -318,7 +319,13 @@ class Engine implements KongAudio {
   play(s: Sfx, o: PlayOpts = {}): void { this.playEvent(s, o); }
 
   stopLoop(loopId: string): void {
-    this.pendingLoops.delete(loopId);
+    const pend = this.pendingLoops.get(loopId);
+    if (pend) {
+      this.pendingLoops.delete(loopId);
+      const now = this.ctx.currentTime;
+      this.idleUnused((BANK[pend.name]?.layers ?? []).map((L) => this.grp(L.g)).filter((g): g is string => !!g), now);
+      if (pend.name === "heli:rotor") this.idleUnused(HELI_GUN_GROUPS, now);
+    }
     const u = this.uses.get(loopId);
     if (u) { this.endUse(u, false); return; }
     const tv = this.tagged.get(loopId);
@@ -349,6 +356,7 @@ class Engine implements KongAudio {
     if (this.uwBed) { this.uwBed.stop(); this.uwBed = null; } this.uwK = 0;
     const t = this.ctx.currentTime;
     for (const v of this.voices) if (v.end > t && !v.group.startsWith("ui/")) this.fadeOut(v, 0.15);
+    if (flag("audioevict")) { this.lib.releaseLoaded(prefetchGroup); this.dropWanted = false; this.stormFetched = false; }
   }
   /** endSession() ran and no match update() since: the idle slice starts nothing */
   private sessionOff = false;
@@ -620,6 +628,7 @@ class Engine implements KongAudio {
 
   playEvent(name: string, o: PlayOpts = {}): void {
     const t0 = performance.now();
+    if (name === "gun:spinup") { this.wantHeliGun(); this.idleUnused(HELI_GUN_GROUPS, this.ctx.currentTime); }
     try {
       // other players' one-shots (the bulk of a 50-player match) are QUEUED: play() returns in microseconds and
       // update() voices them within a time budget, keeping their exact timing (speed-of-sound delay from the call
@@ -1795,6 +1804,7 @@ class Engine implements KongAudio {
     // asked for (fetched from idle slices only, a stalled match rode a silent plane for ~15 s)
     if (def.loop === "plane" && !this.dropWanted) { this.dropWanted = true; for (const g of DROP_GROUPS) if (this.lib.groups.has(g)) this.want(g, true); }
     if (def.loop === "plane") for (const g of DROP_GROUPS) this.lib.markUsed(g);
+    if (name === "heli:rotor") this.wantHeliGun();
     // (a stopping loop with this id keeps its fade; the new one replaces it in the map — no hard cut, no click)
     const layers: { L: Layer; g: string }[] = [];
     for (const L of def.layers) {
@@ -2051,12 +2061,25 @@ class Engine implements KongAudio {
     else if (lv.def.spatial?.occl && lv.def.loop === "plain") lv.occ = this.world.occl(this.ear(), lv.pos, t, 0.3);
   }
 
+  private wantHeliGun() {
+    for (const g of HELI_GUN_GROUPS) if (this.lib.groups.has(g)) { this.lib.markUsed(g); if (!this.lib.has(g)) this.want(g, true); }
+  }
+
+  private idleUnused(groups: string[], t: number, except?: LoopVoice) {
+    const others = [...this.loops.values()].filter((o) => o !== except && !o.stopping);
+    const pending = [...this.pendingLoops.values()];
+    const heliUp = others.some((o) => o.name === "heli:rotor") || pending.some((p) => p.name === "heli:rotor");
+    const inUse = (g: string) => others.some((o) => o.groups.includes(g)) || pending.some((p) => (BANK[p.name]?.layers ?? []).some((L) => this.grp(L.g) === g));
+    for (const g of groups) if (!prefetchGroup(g) && !(heliUp && HELI_GUN_GROUPS.includes(g)) && !inUse(g)) this.lib.markIdle(g, t);
+  }
+
   private disconnectLoop(l: LoopVoice) {
     // the drop's winds are done for this life once they stop (freed at the next eviction pass: ~1 s); others idle 9 s
     const drop = l.def.loop === "freefall" || l.def.loop === "glider" || l.def.loop === "plane";
     // (the plane itself stays resident — prefetched at load, it must sound the frame the next plane phase starts)
-    for (const g of l.groups) if (!prefetchGroup(g)) this.lib.markIdle(g, drop ? -1e9 : this.ctx.currentTime);
+    this.idleUnused(l.groups, drop ? -1e9 : this.ctx.currentTime, l);
     if (drop && l.def.sprinkle && !prefetchGroup(l.def.sprinkle.g)) this.lib.markIdle(l.def.sprinkle.g, -1e9);
+    if (l.name === "heli:rotor") this.idleUnused(HELI_GUN_GROUPS, this.ctx.currentTime, l);
     for (const s of l.srcs) { try { s.stop(); } catch { /* */ } s.disconnect(); }
     for (const n of l.extra) n.disconnect();
     l.out.disconnect(); l.lp.disconnect(); l.panner?.disconnect(); l.inner?.disconnect(); l.outer?.disconnect(); l.outerLp?.disconnect();

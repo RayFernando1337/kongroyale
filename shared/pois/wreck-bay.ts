@@ -945,17 +945,25 @@ export function shrink2(p: P2[], d: number[] | number): P2[] {
   return p.map((q, i) => { const dx = c[0] - q[0], dz = c[1] - q[1], l = Math.hypot(dx, dz) || 1, k = Math.min(l * 0.9, typeof d === "number" ? d : d[i]) / l; return [q[0] + dx * k, q[1] + dz * k] as P2; });
 }
 export function inPoly2(p: P2[], x: number, z: number, pad = 0): boolean {
-  const c = centroid2(p);
-  for (let i = 0; i < p.length; i++) {
-    const a = p[i], b = p[(i + 1) % p.length], ex = b[0] - a[0], ez = b[1] - a[1], l = Math.hypot(ex, ez) || 1;
+  return polyInside(p)(x, z, pad);
+}
+/** inPoly2 for one polygon tested many times: its edges' inward normals computed once (the same arithmetic, so the
+ *  same answers bit for bit). polyBoxes tests ~10⁵ points per rock; recomputing them per point cost ~1 s at import. */
+function polyInside(p: P2[]): (x: number, z: number, pad: number) => boolean {
+  const c = centroid2(p), n = p.length, ax = new Float64Array(n), az = new Float64Array(n), nxs = new Float64Array(n), nzs = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = p[i], b = p[(i + 1) % n], ex = b[0] - a[0], ez = b[1] - a[1], l = Math.hypot(ex, ez) || 1;
     let nx = -ez / l, nz = ex / l; if ((c[0] - a[0]) * nx + (c[1] - a[1]) * nz < 0) { nx = -nx; nz = -nz; }
-    if ((x - a[0]) * nx + (z - a[1]) * nz < pad - 1e-6) return false;
+    ax[i] = a[0]; az[i] = a[1]; nxs[i] = nx; nzs[i] = nz;
   }
-  return true;
+  return (x, z, pad) => {
+    for (let i = 0; i < n; i++) if ((x - ax[i]) * nxs[i] + (z - az[i]) * nzs[i] < pad - 1e-6) return false;
+    return true;
+  };
 }
 /** the boxes whose union is the convex polygon `p` between y0 and y1 (one per edge + a centre box) */
 export function polyBoxes(p: P2[], y0: number, y1: number, surf: Surface = "stone"): Box[] {
-  const c = centroid2(p), out: Box[] = [], hy = (y1 - y0) / 2, cy = (y0 + y1) / 2;
+  const c = centroid2(p), out: Box[] = [], hy = (y1 - y0) / 2, cy = (y0 + y1) / 2, inside = polyInside(p);
   let minAp = Infinity;
   for (let i = 0; i < p.length; i++) {
     const a = p[i], b = p[(i + 1) % p.length], ex = b[0] - a[0], ez = b[1] - a[1], l = Math.hypot(ex, ez);
@@ -963,14 +971,24 @@ export function polyBoxes(p: P2[], y0: number, y1: number, surf: Surface = "ston
     let nx = -ez / l, nz = ex / l; if ((c[0] - a[0]) * nx + (c[1] - a[1]) * nz < 0) { nx = -nx; nz = -nz; }
     let d = (c[0] - a[0]) * nx + (c[1] - a[1]) * nz; minAp = Math.min(minAp, d);
     // the inner corners must stay inside the polygon (an acute neighbour would push them out)
-    for (let k = 0; k < 12 && !(inPoly2(p, a[0] + nx * d, a[1] + nz * d, -0.01) && inPoly2(p, b[0] + nx * d, b[1] + nz * d, -0.01)); k++) d *= 0.85;
+    for (let k = 0; k < 12 && !(inside(a[0] + nx * d, a[1] + nz * d, -0.01) && inside(b[0] + nx * d, b[1] + nz * d, -0.01)); k++) d *= 0.85;
     out.push({ c: [(a[0] + b[0]) / 2 + (nx * d) / 2, cy, (a[1] + b[1]) / 2 + (nz * d) / 2], h: [l / 2, hy, d / 2], yaw: Math.atan2(ez, ex), surf });
   }
   // the centre: a square around the centroid (closes the fan where an edge's foot falls outside it)
   const q = minAp * 0.68, yaw0 = Math.atan2(p[1][1] - p[0][1], p[1][0] - p[0][0]);
   if (q > 0.1) out.push({ c: [c[0], cy, c[1]], h: [q, hy, q], yaw: yaw0, surf });
   // any hole left (a short edge next to a long one): inscribed strips across the polygon, only where a hole is
-  const inAny = (x: number, z: number) => out.some((b) => { const yw = b.yaw ?? 0, cc = Math.cos(yw), ss = Math.sin(yw), dx = x - b.c[0], dz = z - b.c[2]; return Math.abs(dx * cc + dz * ss) <= b.h[0] + 1e-3 && Math.abs(-dx * ss + dz * cc) <= b.h[2] + 1e-3; });
+  // (each box's cos / sin once: `out` only grows, so box i's pair is computed the first time a test reaches it)
+  const cs: number[] = [], sn: number[] = [];
+  const inAny = (x: number, z: number) => {
+    for (let i = 0; i < out.length; i++) {
+      const b = out[i];
+      if (i === cs.length) { const yw = b.yaw ?? 0; cs.push(Math.cos(yw)); sn.push(Math.sin(yw)); }
+      const dx = x - b.c[0], dz = z - b.c[2];
+      if (Math.abs(dx * cs[i] + dz * sn[i]) <= b.h[0] + 1e-3 && Math.abs(-dx * sn[i] + dz * cs[i]) <= b.h[2] + 1e-3) return true;
+    }
+    return false;
+  };
   const ux = Math.cos(yaw0), uz = Math.sin(yaw0), vx = -uz, vz = ux;
   let v0 = Infinity, v1 = -Infinity, u0 = Infinity, u1 = -Infinity;
   for (const [x, z] of p) { const u = (x - c[0]) * ux + (z - c[1]) * uz, v = (x - c[0]) * vx + (z - c[1]) * vz; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
@@ -992,7 +1010,7 @@ export function polyBoxes(p: P2[], y0: number, y1: number, surf: Surface = "ston
     let hole = false;
     for (let v = va + 0.05; v <= vb - 0.05 + 1e-6 && !hole; v += 0.1) for (let u = u0; u <= u1; u += 0.1) {
       const x = c[0] + ux * u + vx * v, z = c[1] + uz * u + vz * v;
-      if (inPoly2(p, x, z, 0.03) && !inAny(x, z)) { hole = true; break; }
+      if (inside(x, z, 0.03) && !inAny(x, z)) { hole = true; break; }
     }
     if (!hole) continue;
     const [l0, h0] = chord(va), [l1, h1] = chord(vb), lo = Math.max(l0, l1), hi = Math.min(h0, h1);
@@ -1003,7 +1021,7 @@ export function polyBoxes(p: P2[], y0: number, y1: number, surf: Surface = "ston
   // last slivers: a 0.24 m plug at any point still uncovered (0.12 m inside the rim — the plug stays inside)
   for (let u = u0; u <= u1; u += 0.08) for (let v = v0; v <= v1; v += 0.08) {
     const x = c[0] + ux * u + vx * v, z = c[1] + uz * u + vz * v;
-    if (inPoly2(p, x, z, 0.12) && !inAny(x, z)) out.push({ c: [x, cy, z], h: [0.12, hy, 0.12], yaw: yaw0, surf });
+    if (inside(x, z, 0.12) && !inAny(x, z)) out.push({ c: [x, cy, z], h: [0.12, hy, 0.12], yaw: yaw0, surf });
   }
   return out;
 }

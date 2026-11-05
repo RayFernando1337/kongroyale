@@ -13,6 +13,10 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { assetUrl } from "../engine/assets";
+import { releaseAfterUpload } from "../engine/texture-release";
+import { onRestore } from "../engine/res/restore";
+import { resources } from "../engine/res/scope";
+import { flag } from "../flags";
 import type { TukDraw, TukView } from "./tuktuk";
 import { VF, VS } from "../../../shared/sim/vehicle";
 
@@ -77,13 +81,30 @@ function flashTexture(): THREE.CanvasTexture {
   return t;
 }
 
+type Slot = "map" | "normalMap" | "roughnessMap" | "metalnessMap" | "aoMap" | "emissiveMap";
+const SLOTS: readonly Slot[] = ["map", "normalMap", "roughnessMap", "metalnessMap", "aoMap", "emissiveMap"];
+const reloads = new Map<string, Promise<THREE.Group>>();
+onRestore("bake", () => { reloads.clear(); });
+
+async function sourceAgain(url: string, mesh: number, slot: Slot) {
+  let job = reloads.get(url);
+  if (!job) reloads.set(url, job = heliLoader().loadAsync(assetUrl(url)).then((g) => g.scene as THREE.Group));
+  const scene = await job;
+  let i = 0, out: THREE.Texture | null = null;
+  scene.traverse((o) => { if ((o as THREE.Mesh).isMesh && i++ === mesh) out = ((o as THREE.Mesh).material as THREE.MeshStandardMaterial)[slot]; });
+  return (out as THREE.Texture | null)?.source.data ?? null;
+}
+
 /** the shared material pass of a loaded model: shadows, the glass, the fin's sticker, a burnt twin of every material */
-function dress(scene: THREE.Group, burnt: Map<THREE.Material, THREE.Material>, glass: THREE.Material) {
+function dress(scene: THREE.Group, burnt: Map<THREE.Material, THREE.Material>, glass: THREE.Material, url: string) {
+  let mesh = -1;
   scene.traverse((o) => {
     const m = o as THREE.Mesh; if (!m.isMesh) return;
+    const at = ++mesh;
     m.castShadow = true; m.receiveShadow = true; m.userData.farShadow = false;
     if (m.name === "glass" || (m.material as THREE.Material).name === "glass") { m.material = glass; m.castShadow = false; m.renderOrder = 3; return; }
     const src = m.material as THREE.MeshStandardMaterial;
+    for (const slot of SLOTS) { const t = src[slot]; if (t && !resources.ownerOf(t)) resources.root.texture("tex.actor", releaseAfterUpload(t, () => sourceAgain(url, at, slot))); }
     if (src.name === "fin_decal") {
       // the BANANA CO logo on the fin: an overlay 4 mm proud of the paint (no polygon offset: it pulled the far side's
       // logo through the fin), blended, never writing depth
@@ -110,10 +131,10 @@ function charred(src: THREE.Material): THREE.Material {
   return b;
 }
 
-function prepare(scene: THREE.Group): Kit {
+function prepare(scene: THREE.Group, url: string): Kit {
   const burnt = new Map<THREE.Material, THREE.Material>();
   const glass = new THREE.MeshPhysicalMaterial({ name: "heli:glass", color: 0xe4f1ff, metalness: 0, roughness: 0.04, transparent: true, opacity: 0.16, envMapIntensity: 1.5, clearcoat: 1, clearcoatRoughness: 0.03, side: THREE.DoubleSide, depthWrite: false });
-  dress(scene, burnt, glass);
+  dress(scene, burnt, glass, url);
   /** a part's radius round its own pivot, in the plane of its spin */
   const radius = (n: string, plane: "xz" | "yz") => {
     let r = 0;
@@ -131,17 +152,28 @@ function prepare(scene: THREE.Group): Kit {
   return { scene, burnt, glass, blur, tailBlur, flash, rotorR, fanR, far: null };
 }
 
+function heliLoader() {
+  const L = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  return L;
+}
+
 /** start fetching the model (render.ts calls it at boot; createHeli works before it lands and fills in after) */
 export function loadHeli(): Promise<Kit> {
   return (loading ??= (async () => {
-    const L = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    const L = heliLoader();
     const [near, far] = await Promise.all([L.loadAsync(assetUrl(GLB)), L.loadAsync(assetUrl(GLB_FAR)).catch(() => null)]);
-    const K = prepare(near.scene as THREE.Group);
-    if (far) { K.far = far.scene as THREE.Group; dress(K.far, K.burnt, K.glass); }
+    const K = prepare(near.scene as THREE.Group, GLB);
+    if (far) { K.far = far.scene as THREE.Group; dress(K.far, K.burnt, K.glass, GLB_FAR); }
     return (KIT = K);
   })());
 }
-if (typeof document !== "undefined") void loadHeli().catch((e) => console.error("[heli] model failed", e));
+function loadsLazily() {
+  const f = flag("helilazy");
+  if (f !== null) return f === "1";
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+  return mem < 8 || /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
+}
+if (typeof document !== "undefined" && !loadsLazily()) void loadHeli().catch((e) => console.error("[heli] model failed", e));
 
 interface Inst {
   model: THREE.Group;
@@ -311,6 +343,7 @@ export function createHeli(late?: (o: THREE.Object3D) => void): TukView & { muzz
   return view;
 }
 
+let PANEL: { geo: THREE.BoxGeometry; mat: THREE.MeshStandardMaterial } | null = null;
 /** loose pieces for the bang: the rotor's blades, the tail fan, the door gun, a panel — fresh objects, the caller owns
  * them (client/src/game/tuk-fx.ts throws them about). Empty until the model has loaded. */
 export function heliDebris(): THREE.Object3D[] {
@@ -323,7 +356,8 @@ export function heliDebris(): THREE.Object3D[] {
     g.add(c); out.push(g);
   };
   piece("rotor_blades"); piece("tailfan"); piece("gun_pitch");
-  const panel = new THREE.Group(); panel.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 1.6), new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.8 }))); out.push(panel);
+  PANEL ??= { geo: new THREE.BoxGeometry(0.7, 0.6, 1.6), mat: new THREE.MeshStandardMaterial({ color: 0x2a2010, roughness: 0.8 }) };
+  const panel = new THREE.Group(); panel.add(new THREE.Mesh(PANEL.geo, PANEL.mat)); out.push(panel);
   return out;
 }
 /** one of each (fresh + wreck) for the prewarm compile — empty if the model has not landed yet (then it compiles on

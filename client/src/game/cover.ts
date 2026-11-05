@@ -4,6 +4,7 @@
 // sim runs: green = fire sets it here, red = it does not fit). Pooled views (≤ 2 per kong), materials cloned per view so
 // one wall can darken on its own.
 import * as THREE from "three";
+import type { Scope } from "../engine/res/scope";
 import { COVER, coverPlace, PLACED, type CoverSet } from "../../../shared/sim/cover";
 import type { StaticWorld } from "../../../shared/sim/world";
 import { crateWall } from "../weapons/loot-lane";
@@ -19,18 +20,24 @@ export class CoverViews {
   private readonly views = new Map<number, View>();
   private pool: View[] = [];
   private readonly ghost: THREE.Group; private readonly ghostMat: THREE.MeshBasicMaterial;
-  constructor(private readonly scene: THREE.Scene, private readonly world: StaticWorld, private readonly fx: { puff(p: THREE.Vector3, k: "dust"): void }, private readonly sound: (s: "up" | "hit" | "break" | "end", x: number, y: number, z: number) => void) {
-    this.ghostMat = ghostMaterial();
-    this.ghost = crateWall(COVER.w, COVER.h, COVER.t).root;
+  constructor(private readonly scene: THREE.Scene, private readonly world: StaticWorld, private readonly fx: { puff(p: THREE.Vector3, k: "dust"): void }, private readonly sound: (s: "up" | "hit" | "break" | "end", x: number, y: number, z: number) => void, private readonly res: Scope) {
+    this.ghostMat = res.material(ghostMaterial());
+    this.ghost = this.owned(crateWall(COVER.w, COVER.h, COVER.t).root);
     this.ghost.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.material = this.ghostMat; m.castShadow = false; m.receiveShadow = false; m.renderOrder = 7; } });
     this.ghost.name = "cover-ghost"; this.ghost.visible = false;
     scene.add(this.ghost);
+    res.defer(() => { for (const v of [...this.views.values(), ...this.pool]) v.obj.removeFromParent(); this.views.clear(); this.pool.length = 0; this.ghost.removeFromParent(); });
+  }
+  private owned<T extends THREE.Object3D>(root: T): T {
+    const seen = new Set<THREE.BufferGeometry>();
+    root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !seen.has(m.geometry)) { seen.add(m.geometry); this.res.geometry("geo.world", m.geometry); } });
+    return root;
   }
   private grab(id: number): View {
     let v = this.pool.pop();
     if (!v) {
-      const obj = crateWall(COVER.w, COVER.h, COVER.t).root, mats: THREE.MeshStandardMaterial[] = [], base: THREE.Color[] = [];
-      obj.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; const c = (m.material as THREE.MeshStandardMaterial).clone(); m.material = c; mats.push(c); base.push(c.color.clone()); m.castShadow = true; m.receiveShadow = true; });
+      const obj = this.owned(crateWall(COVER.w, COVER.h, COVER.t).root), mats: THREE.MeshStandardMaterial[] = [], base: THREE.Color[] = [];
+      obj.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; const c = this.res.material((m.material as THREE.MeshStandardMaterial).clone()); m.material = c; mats.push(c); base.push(c.color.clone()); m.castShadow = true; m.receiveShadow = true; });
       const g = new THREE.Group(); g.add(obj); g.name = "crate-wall";
       v = { id, obj: g, mats, base, t: 0, state: 0, hitT: -1, hp: COVER.hp, seed: 0 };
       this.scene.add(g);
@@ -88,5 +95,4 @@ export class CoverViews {
     this.ghostMat.color.setHex(ok ? 0x55ff77 : 0xff4a3a); this.ghostMat.opacity = ok ? 0.34 : 0.28;
     return ok;
   }
-  dispose() { for (const v of [...this.views.values(), ...this.pool]) v.obj.removeFromParent(); this.views.clear(); this.pool.length = 0; this.ghost.removeFromParent(); }
 }

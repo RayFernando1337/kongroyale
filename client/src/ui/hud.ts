@@ -27,6 +27,7 @@ import { device } from "../settings/device";
 import type { BindAction } from "../settings/bindings";
 import { safeEdgeGuide } from "../game/hud-state";
 import { setMoney } from "./bucks";
+import { flag } from "../flags";
 
 const FEED_MAX = 6;
 const DMG_POOL = 16;
@@ -1019,7 +1020,7 @@ export function createHud(terrain: Terrain, pois: typeof POIS): Hud {
 
   resize();
   // view-camera hook: ?map=1 opens the full-screen map for the ui-02 view (kept intentionally)
-  if (new URLSearchParams(location.search).get("map") === "1") hud.setMapOpen(true);
+  if (flag("map")) hud.setMapOpen(true);
   void drawGlyph;
   return hud;
 }

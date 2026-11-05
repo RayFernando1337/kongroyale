@@ -1,6 +1,8 @@
 // The lobby's live server status line: real data only. It reads the game server's own /health (server/index.ts:
 // `clients` = players in online lobbies and matches) while the lobby is on screen. No answer, or not the game server
 // answering, means the line says so (bot matches still work; private lobbies need the server).
+import { flag } from "../flags";
+
 export type ServerStatus =
   | { state: "checking" }
   | { state: "online"; players: number }
@@ -12,7 +14,7 @@ const POLL_MS = 15000, RETRY_MS = 3000, RETRIES = 3, TIMEOUT_MS = 8000;
 /** the server's /health beside the page's own /ws (or beside a ?ws= override, the way game/index.ts connects) */
 function healthUrl(): string {
   try {
-    const ws = new URL(location.href).searchParams.get("ws");
+    const ws = flag("ws");
     if (ws && /^wss?:\/\/[^\s]+$/.test(ws)) { const u = new URL(ws); u.protocol = u.protocol === "wss:" ? "https:" : "http:"; u.pathname = "/health"; u.search = ""; return u.href; }
   } catch { /* fall through */ }
   // (under a deploy base, e.g. /kong/: the game server's /health is /kong/health, like /kong/ws — the site root is not it)

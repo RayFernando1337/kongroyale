@@ -21,6 +21,7 @@ import { buildVeneer, strataPatch } from "./veneer";
 import { distanceSwitch, noCast, type LodItem } from "../_kit/jungle-lod";
 import { boundsLods } from "./rocklod";
 import { ROCK_MERGE, mergedStoneMat, mergeRockLevel } from "./rockmerge";
+import { flag } from "../../../flags";
 
 const V = (pos: CamSpec["pos"], target: CamSpec["target"], o: Partial<CamSpec> = {}): CamSpec => ({ pos, target, fov: 50, ...o });
 
@@ -52,7 +53,7 @@ const mod: WorldModule = {
         g.add(await hero(ctx, "gorilla-head", 1990, 311, 100, { height: 12, yaw: -Math.PI / 2, material: (bm) => heroStoneMaterial(pbr(ctx, "temple-blocks"), bm.map, { scale: 8.5, bakeMix: 0.9, moss: 0.45, mossColor: "#7cbd3c", color: "#fff6e6", variation: 0.2, lift: 0.18 }, pbr(ctx, "moss")) })); }
       g.add(await hero(ctx, "totem", 2003, 298, 100, { height: 10, yaw: -Math.PI / 2 }));
       g.add(await hero(ctx, "guardian", 2011, 298, 100, { height: 9, yaw: -Math.PI / 2 }));
-      g.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && new URLSearchParams(location.search).has("dside")) m.side = THREE.DoubleSide; });
+      g.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && flag("dside")) m.side = THREE.DoubleSide; });
       { const { goldMaterial } = await import("../_kit/jungle-gold");   // gold swatches: roughness 0.15 / 0.25 / 0.35
         [0.15, 0.25, 0.35].forEach((r, i) => { const s2 = new THREE.Mesh(new THREE.SphereGeometry(1.4, 48, 24), goldMaterial(ctx.renderer, { roughness: r })); s2.position.set(1989 + i * 3.2, 313.5, 112); g.add(s2); }); }
       return;
@@ -72,7 +73,7 @@ const mod: WorldModule = {
     const h: H = (x, z) => ctx.terrain.height(x, z);
     // the BAKED resolved layout — the exact data the server colliders are built from (shared/pois/mist-falls.ts)
     const R = BAKED;
-    if (new URLSearchParams(location.search).has("jungleCheck")) {
+    if (flag("jungleCheck")) {
       const L = resolveFalls(h); let d = 0; L.cliff.forEach((c, i) => { const b = R.cliff[i]; if (b) d = Math.max(d, Math.abs(c.y - b.y) + Math.abs(c.x - b.x)); });
       console.warn(`[poi-jungle] mist-falls baked vs live: ${L.cliff.length}/${R.cliff.length} cliff blocks, max Δ ${d.toFixed(2)} m`);
     }
@@ -165,7 +166,7 @@ const mod: WorldModule = {
 
     // vegetation (veg area species): rims, ledges, the lookout, river banks
     // ?jungleNoVeg: skip the POI-planted vegetation (perf isolation)
-    const veg = new URLSearchParams(location.search).has("jungleNoVeg") ? undefined : ctx.shared.get("veg") as VegApi | undefined;
+    const veg = flag("jungleNoVeg") ? undefined : ctx.shared.get("veg") as VegApi | undefined;
     if (veg) {
       const rnd = mulberry(9090);
       // keep every view camera's sight line clear (FALLS.views: camera stand + first stretch toward the subject)

@@ -31,22 +31,23 @@ import type { WorldModule } from "./world/module";
 import { loadTerrain } from "./world/terrain/load";
 import { startStaticWorld } from "./engine/static-world";
 import { startLootSpotsWorker } from "./engine/lootspots";
-import { onStructure, gate, ungate } from "./engine/scene-hooks";
+import { onStructure, gate, ungate, type Gate } from "./engine/scene-hooks";
 import { POIS } from "../../shared/world/map";
 import { Display, bootQuality } from "./engine/display";
 import { WARMUP_S } from "../../shared/sim/const";
+import { afterPaint as nextFrame, noFrameWaitCount } from "./engine/frame";
+import { flag } from "./flags";
+import { resources, type Scope } from "./engine/res/scope";
+import { asOwner } from "./engine/res/restore";
 
-const q = new URLSearchParams(location.search);
-/** a real task boundary after the next paint (the loading screen / title repaint between two long builds) */
-const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-const shot = q.has("shot");
+const shot = flag("shot");
 const errors: string[] = [];
 const report = (where: string, e: unknown) => {
   const msg = `[${where}] ${e instanceof Error ? e.stack || e.message : String(e)}`;
   errors.push(msg);
   console.error(msg);
   // players get the loading screen's reload card for a genuine boot failure (bootFail), not a raw stack: ?debug shows it
-  if (!shot && q.has("debug")) showError(msg);
+  if (!shot && flag("debug")) showError(msg);
 };
 addEventListener("error", (e) => report("window", e.error ?? e.message));
 addEventListener("unhandledrejection", (e) => report("promise", e.reason));
@@ -62,10 +63,10 @@ let bootReady = false;
  *  throwing, a shader warning) is only reported. View-camera pages (?view / ?cam) keep going. */
 const bootFail = (where: string, e: unknown) => { report(where, e); if (gameMode && !bootReady) kr.bootError = true; };
 
-const viewId = q.get("view"), camArg = q.get("cam");
+const viewId = flag("view"), camArg = flag("cam");
 const gameMode = !viewId && !camArg;
-const streamOn = gameMode && !q.has("nostream");
-const only = q.get("modules")?.split(",").filter(Boolean);
+const streamOn = gameMode && !flag("nostream");
+const only = flag("modules");
 const entries = MODULES.filter(([id]) => !only || only.some((o) => id === o || id.startsWith(o)));
 
 // ---- t = 0: start every fetch at once (module code, the game code, the static collision world in a worker)
@@ -76,18 +77,23 @@ for (const [id, load] of entries) {
   imports.set(id, p);
 }
 const gameImport = gameMode ? import("./game/index") : null;
+let postBuild = null as typeof import("./post-build") | null;
+const prepareCardImport = import("./prepare-card");
+const postBuildImport = import("./post-build").then((m) => (postBuild = m), (e) => { report("post-build", e); return null; });
 gameImport?.catch(() => { /* reported by the game stage */ });
 if (gameMode) { startStaticWorld(); startLootSpotsWorker(); } // (perf: the loot spots off the main thread too)
 
 
+const auditReady = flag("resaudit") ? import("./engine/res/audit").then((m) => { kr.resAudit = m.auditRenderer(() => (kr.engine as Engine | undefined)?.renderer); }, (e) => report("resaudit", e)) : null;
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 // the game page builds at the tier of the player's video preset (?q= wins; view-camera pages ignore it)
-const videoQ = gameMode && !shot && !q.has("q") ? bootQuality() : null;
+const videoQ = gameMode && !shot && flag("q") === null ? bootQuality() : null;
 const engine = (() => {
-  try { return new Engine(canvas, { quality: (q.get("q") as Quality) || videoQ || "ultra", shotMode: shot, time: Number(q.get("t") ?? 12) }); }
+  try { return new Engine(canvas, { quality: (flag("q") as Quality) || videoQ || "ultra", shotMode: shot, time: flag("t") }); }
   catch (e) { bootFail("engine", e); throw e; }
 })();
 kr.engine = engine;
+if (flag("texprof")) await import("./engine/dev-probes").then((m) => m.installTexProf(engine), (e) => report("texprof", e));
 // the video settings (engine/display.ts): frame cap / 3D resolution now, the rest once atmos + veg exist
 const display = gameMode && !shot ? new Display(engine) : null;
 kr.display = display;
@@ -98,7 +104,7 @@ if (streamOn) engine.lightReserve(7);
 // 2× getShaderInfoLog + LINK_STATUS per program = a GPU-process round trip each, 3.5 s of the boot for ~440 programs).
 // Link failures are still reported: engine.auditShaders() checks every program once it has finished compiling, in idle
 // frames (never blocking). ?shadercheck keeps three's own synchronous checks. View-camera pages keep them too.
-if (gameMode && !q.has("shadercheck")) { engine.renderer.debug.checkShaderErrors = false; engine.addIdle(() => engine.auditShaders(report, () => !kr.ready || !!(kr.game as { inMatch?: boolean } | undefined)?.inMatch)); }
+if (gameMode && !flag("shadercheck")) { engine.renderer.debug.checkShaderErrors = false; engine.addIdle(() => engine.auditShaders(report, () => !kr.ready || !!(kr.game as { inMatch?: boolean } | undefined)?.inMatch)); }
 // ?shadercheck / view-camera pages: three's synchronous check reports a failed program into __kr.errors too
 // (the preset audit must catch every compile / link failure, not only a console line)
 engine.renderer.debug.onShaderError = (gl, program, vs, fs) => {
@@ -106,11 +112,12 @@ engine.renderer.debug.onShaderError = (gl, program, vs, fs) => {
   const name = (engine.renderer.info.programs as unknown as Array<{ program: WebGLProgram; name?: string }> | undefined)?.find((p) => p.program === program)?.name ?? "?";
   report("shader", `program "${name}" failed: ${log(vs) || log(fs) || (gl.getProgramInfoLog(program) ?? "").trim().slice(0, 300)}`);
 };
-kr.bench = (n?: number) => engine.bench(n);
+kr.bench = (n?: number) => import("./engine/dev-probes").then((m) => m.bench(engine, n));
 kr.fps = () => engine.liveFps();
 kr.info = () => ({ ...engine.renderer.info.render, geometries: engine.renderer.info.memory.geometries, textures: engine.renderer.info.memory.textures, programs: engine.renderer.info.programs?.length });
 // bug reports: `/` → /kongbot <message> (screenshot + context → the server)
 if (gameMode && !shot) installKongbot(engine);
+if (!shot) void import("./playtest").then((m) => m.installPlaytest(engine, gameMode), (e) => report("playtest", e));
 
 // ---- loading progress, weighted by measured cost (ms on an RTX 4080 desktop, cold dev loads). The loading
 // screen (index.html) reads __kr.progress (the percentage) and the current step's time estimate as a line
@@ -137,7 +144,7 @@ const est = (id: string) => EXPECT[id] ?? EST[id] ?? 700;
  */
 // (25 s — with the corrected EXPECT table the planner now really lands ready near 25 s instead of 29 s;
 // a lower target moved too much of the island into the match: POIs were still integrating in the skydive)
-const READY_BY = Number(q.get("readyby") ?? 25000);
+const READY_BY = flag("readyby");
 const titleIds = entries.map(([id]) => id).filter((id) => !streamOn || TITLE_MODULES.has(id));
 const steps: Array<[string, number]> = [["boot", EXPECT.boot], ...titleIds.map((id): [string, number] => [id, est(id)]), ["afterBuild", EXPECT.afterBuild]];
 if (gameMode) steps.push(["game", EXPECT.game]);
@@ -203,9 +210,11 @@ let buildGate: { active: boolean } | null = null;
 const buildGates = new Map<string, { gate: { active: boolean }; adds: THREE.Object3D[] }>();
 onStructure((parent, child, added) => { if (added && child && buildAdds && parent === engine.scene && !engine.inStep) { buildAdds.push(child); if (buildGate) gate(child, buildGate); } });
 const modOf = new Map<string, WorldModule>();
+const scopeOf = new Map<string, Scope>();
 
 /** build one module; returns it (or null on error) with the scene roots it added */
 async function buildOne(id: string, streamed: boolean): Promise<WorldModule | null> {
+  await auditReady;
   kr.stage = streamed ? kr.stage : `build:${id}`;
   if (streamed) kr.streamStage = `build:${id}`;
   else { enterStep(id); await nextFrame(); }
@@ -213,24 +222,28 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   // gameplay pumping the match — add their own objects inside step)
   const adds: THREE.Object3D[] = [];
   buildAdds = adds;
-  if (streamed && !q.has("nobuildgate")) { buildGate = { active: true }; buildGates.set(id, { gate: buildGate, adds }); }
+  if (streamed && !flag("nobuildgate")) { buildGate = { active: true }; buildGates.set(id, { gate: buildGate, adds }); }
   engine.beginSlice();
   const t0 = performance.now();
   let m: WorldModule | null = null;
+  const scope = resources.root.child(`region:${id}`);
+  const ctx = streamed && postBuild ? postBuild.moduleCtx(engine, world, id) : engine;
   try {
     m = await imports.get(id)!;
-    await m.build(engine);
+    const mod = m;
+    await asOwner(id, async () => mod.build(ctx, scope));
+    scopeOf.set(id, scope);
     loaded.push(m);
     modOf.set(id, m);
     kr.modules = loaded.map((x) => x.id);
     Object.assign(views, m.views ?? {});
-  } catch (e) { report(`build:${id}`, e); m = null; }
+  } catch (e) { report(`build:${id}`, e); m = null; scope.dispose(); }
   buildMs[id] = Math.round(performance.now() - t0);
-  buildAdds = null; buildGate = null;
+  buildAdds = null; buildGate = null; engine.rebuilding = false;
   // behind the loading screen: start the parallel compile of what this module drew right away — the driver compiles on
   // its own threads while the next module builds (the game's prewarm compile then mostly hits the program cache)
   if (!streamed && gameMode && m) {
-    try { (engine.shared.get("atmos") as { sweep?: () => number } | undefined)?.sweep?.(); } catch { /* atmos reports */ }
+    try { atmos()?.sweep?.(); } catch { /* atmos reports */ }
     void engine.compileObjects(adds.filter((c) => c.parent === engine.scene));
   }
   rootsOf.set(id, [...new Set(adds)].filter((c) => c.parent === engine.scene));
@@ -241,7 +254,8 @@ async function runAfterBuild(m: WorldModule, streamed: boolean) {
   if (!m.afterBuild) return;
   if (!streamed) kr.stage = `afterBuild:${m.id}`;
   const t0 = performance.now();
-  try { await m.afterBuild(engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
+  try { await m.afterBuild(streamed && postBuild ? postBuild.moduleCtx(engine, world, m.id) : engine); } catch (e) { report(`afterBuild:${m.id}`, e); }
+  engine.rebuilding = false;
   afterBuildMs[m.id] = (afterBuildMs[m.id] ?? 0) + Math.round(performance.now() - t0);
 }
 
@@ -286,6 +300,31 @@ function registerFar(id: string, m: WorldModule | null, streamed: boolean) {
   engine.far.register(id, roots, { x: poi.x, y, z: poi.z }, Math.max(240, poi.r * 2.2));
 }
 
+const world = { modOf, scopeOf, rootsOf, loaded, roots: (id: string) => moduleRoots(id, true), report, build: (id: string) => buildStreamed(id, false) };
+
+const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
+
+async function buildStreamed(id: string, fast: boolean): Promise<{ integrated: Promise<void> }> {
+  const m = await buildOne(id, true);
+  if (m) await runAfterBuild(m, true);
+  registerStatics(id, true);
+  registerFar(id, m, true);
+  if (LOW_MEM) startFarBuild();
+  registerOcclusion(id, true);
+  kr.streamStage = `integrate:${id}`;
+  try { atmos()?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
+  // pipelined: this module's programs compile on the driver's threads while the NEXT module builds (its fresh
+  // materials stay hidden until its integration ends); at most one integration in flight
+  // (the build gate stays shut until integrateFresh's offscreen first draw has uploaded the module's vertex buffers:
+  // opened before it, the meshes on already-compiled materials drew on the next live frame and uploaded tens of MB of
+  // geometry inside it — 180-580 ms warm-up frames while Peel Harbor integrated)
+  const bg = buildGates.get(id); buildGates.delete(id);
+  let shut = !!bg;
+  const open = () => { if (!bg || !shut) return; shut = false; bg.gate.active = false; for (const o of bg.adds) ungate(o, bg.gate); engine.cull.reveal(bg.adds); };
+  return { integrated: integrateFresh(fast, moduleRoots(id, true), bg?.gate, open).finally(open).then(() => engine.markBuilt(id)) };
+}
+
+
 // ---- title modules (everything, in ?view / ?cam / ?shot pages or with ?nostream)
 const streamList: string[] = [];
 for (const [id] of entries) {
@@ -302,32 +341,33 @@ if (streamOn) {
     if (pr === "title") { streamList.splice(streamList.indexOf(id), 1); await buildOne(id, false); }
   }
 }
+const LOW_MEM = (await postBuildImport)?.lowMemoryDevice(flag("lowmem"), flag("prepare") === "full");
+const owedBeforeMatch = new Set<string>();
 // ---- pre-ready stream (READY_BY above): largest first, each only while the predicted ready time still fits
-if (streamOn && READY_BY > 0) {
+if (streamOn && READY_BY > 0 && !LOW_MEM && postBuild) {
   const done = titleIds.filter((id) => buildMs[id] !== undefined);
   const want = done.reduce((a, id) => a + est(id), 0), got = done.reduce((a, id) => a + buildMs[id], 0);
   const factor = Math.min(3, Math.max(0.8, want > 0 ? got / want : 1));
   kr.bootFactor = +factor.toFixed(2);
-  const rest = (n: number) => (EXPECT.afterBuild + EXPECT.game + EXPECT.settle + 120 * n) * factor;
-  const plan = (t: number, ids: string[]) => {
-    const out: string[] = [];
-    for (const id of [...ids].sort((a, b) => est(b) - est(a))) if (t + est(id) * factor + rest(out.length + 1) <= READY_BY) { out.push(id); t += est(id) * factor; }
-    return out;
-  };
-  const planned = plan(performance.now(), streamList);
+  const planner = postBuild.preReadyPlanner(est, factor, READY_BY, EXPECT.afterBuild + EXPECT.game + EXPECT.settle, flag("readyest"));
+  kr.postBuildEstimate = planner.estimate;
+  const planned = planner.plan(streamList);
   planSteps(planned);
   kr.preReadyPlan = planned.slice();
   const pre: string[] = [];
   for (const id of planned) {
-    if (performance.now() + est(id) * factor + rest(pre.length + 1) > READY_BY) continue;
+    if (!planner.fits(id, pre.length, pre.reduce((a, p) => a + buildMs[p], 0))) continue;
     streamList.splice(streamList.indexOf(id), 1);
     pre.push(id);
     await buildOne(id, false);
   }
   kr.preReady = pre;
+  for (const id of planner.owed(streamList, pre.length)) owedBeforeMatch.add(id);
+  kr.owedBeforeMatch = [...owedBeforeMatch];
 }
 kr.programsAfterTitleModules = engine.renderer.info.programs?.length;
 enterStep("afterBuild");
+const postMeasure = postBuild?.measurePostBuild(noFrameWaitCount);
 // (before the game's prewarm: the post chain it compiles is the one the settings ask for)
 try { display?.apply(); } catch (e) { report("display", e); }
 for (const m of [...loaded]) await runAfterBuild(m, false);
@@ -353,7 +393,7 @@ if (!gameMode) {
       applyView(engine.camera, spec, engine.terrain);
     } else await setView(viewId!);
   } catch (e) { report("view", e); }
-  if (q.has("fly")) enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn));
+  if (flag("fly")) enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn));
   engine.start();
 } else {
   kr.stage = "game";
@@ -378,11 +418,25 @@ if (gameMode) {
   kr.warmAllMs = Math.round(performance.now() - tw);
 }
 // the live title does not wait for what only a match shows (the HUD map image is painted in a worker: 2-3 s after the
-// prewarm on a fast desktop). View-camera pages (?view / ?cam / ?shot) wait for every hold.
-const MATCH_ONLY_HOLDS = /^ui:map/;
+// prewarm on a fast desktop), nor for the far big trees' splat bake: it is cosmetic, can outlast the 90 s budget on a
+// slow GPU (~130 s on SwiftShader), and finishes after ready on its own (until then those trees are unlinked and not
+// drawn; the bake re-links every pool, or falls back to impostor cards). View-camera pages (?view / ?cam / ?shot) wait
+// for every hold.
+const MATCH_ONLY_HOLDS = /^(ui:map|veg-impostors$)/;
 const blocking = () => engine.pendingHolds().filter((h) => !(gameMode && MATCH_ONLY_HOLDS.test(h)));
 kr.settleHolds = engine.pendingHolds();
-while (!kr.bootError && blocking().length && performance.now() - t0 < 90_000) await new Promise((r) => setTimeout(r, 50));
+// the 90 s budget counts only time the browser paints (a frame within the last 5 s): frame hooks release some holds
+// (veg-impostors on view pages), and Safari paints nothing while its window is off screen — the player who comes back should find the
+// load going on, not the reload card. A slow renderer (frames seconds apart) still counts.
+let settling = true, paintedAt = performance.now(), heldMs = 0;
+const watchPaint = () => { paintedAt = performance.now(); if (settling) requestAnimationFrame(watchPaint); };
+requestAnimationFrame(watchPaint);
+while (!kr.bootError && blocking().length && heldMs < 90_000) {
+  const t = performance.now();
+  await new Promise((r) => setTimeout(r, 50));
+  if (performance.now() - paintedAt < 5_000) heldMs += performance.now() - t;
+}
+settling = false;
 if (!kr.bootError && blocking().length) bootFail("ready", `timed out waiting for: ${blocking().join(", ")}`);
 kr.settleHoldsMs = Math.round(performance.now() - t0);
 const settleFrom = engine.frames;
@@ -391,6 +445,8 @@ const settleFrom = engine.frames;
 const SETTLE = gameMode ? 6 : 20;
 while (!kr.bootError && engine.frames - settleFrom < SETTLE) await new Promise((r) => requestAnimationFrame(r));
 kr.programsAtReady = engine.renderer.info.programs?.length;
+kr.noFrameWaits = noFrameWaitCount();
+postMeasure?.stop();
 if (kr.bootError) {
   // a failed boot never becomes a playable "ready" title (the loading screen shows the reload card)
   kr.stage = "failed";
@@ -399,14 +455,15 @@ if (kr.bootError) {
   bootReady = true;
   kr.stage = "ready";
   kr.readyAt = Math.round(performance.now());
+  postMeasure?.finish(kr, gameMode && streamOn);
   kr.ready = true;
   document.documentElement.dataset.ready = "1";
 }
 // DEV VIEW: ?dev=annotate opens it, ?dev alone waits for F8. Without ?dev nothing of it
 // is fetched or run (a dynamic import behind the flag).
-if (bootReady && q.has("dev")) {
+if (bootReady && flag("dev") !== null) {
   const go = () => import("./dev/annotate").then((m) => m.startDevView(kr as unknown as Parameters<typeof m.startDevView>[0])).catch((e) => report("devview", e));
-  if (q.get("dev") === "annotate") void go();
+  if (flag("dev") === "annotate") void go();
   else addEventListener("keydown", function f8(e) { if (e.code !== "F8") return; removeEventListener("keydown", f8); void go(); });
 }
 if (display && bootReady) void import("./ui/settings").then(({ createVideoMenu, mountVideoUi }) => {
@@ -417,8 +474,8 @@ if (display && bootReady) void import("./ui/settings").then(({ createVideoMenu, 
   const first = display.firstVisit;
   // (automated tools — navigator.webdriver — get no toasts over their captures unless ?announce / ?guard asks for them)
   const bot = !!navigator.webdriver;
-  void display.firstVisitBench().then(() => { if (first && !q.has("noannounce") && (!bot || q.has("announce"))) ui.announceAuto(); }).catch((e) => report("display-bench", e));
-  if (!bot || q.has("guard")) display.startGuard(inMatch);
+  void display.firstVisitBench().then(() => { if (first && !flag("noannounce") && (!bot || flag("announce"))) ui.announceAuto(); }).catch((e) => report("display-bench", e));
+  if (!bot || flag("guard")) display.startGuard(inMatch);
 }).catch((e) => report("settings-ui", e));
 
 // ---- stream the rest of the island in (game page)
@@ -426,12 +483,15 @@ let urgent = false;
 /** a streamed module whose build (est, ms) is this long is built behind the PRACTICE card, never in the warm-up */
 // (default: none — the match starts at once; a module that ignores the ctx.yield() contract then stalls warm-up frames,
 // which the POI modules should fix. ?heavyms=1500 = build the heavy ones behind the card.)
-const HEAVY_MS = Number(q.get("heavyms") ?? Infinity);
+const HEAVY_MS = flag("heavyms");
+const beforeMatch = (id: string) => est(id) >= HEAVY_MS || owedBeforeMatch.has(id);
 let streamNow: string | null = null;
 /** while PRACTICE waits only for the game's prefab warm-up, the island stream holds between modules — the
  *  measured 5.5 s click → match was 2.7 s of prefab warm-up + a 2.2 s module build the card sat through */
 let streamHold = false;
 const streamDone: Promise<void> = streamOn ? stream() : Promise.resolve();
+let streamFailed = false;
+streamDone.catch((e) => { streamFailed = true; report("stream", e); });
 if (!streamOn) { kr.streamed = true; engine.endStream(); startFarBuild(); }
 /**
  * called by the game before a match can start (PRACTICE / CREATE / JOIN): resolves at once when the island is complete;
@@ -448,14 +508,14 @@ kr.prepare = () => {
   // largest first, plus the game's prefab warm-up; the light rest streams in during the warm-up, time-sliced. The
   // offline host's warm-up clock is held until the island is complete, so the plane never flies over an unbuilt POI;
   // online, the plane phase switches the stream to back to back. ?prepare=full = build everything behind the card.
-  if (q.get("prepare") !== "full") {
+  if (flag("prepare") !== "full") {
     holdWarmupUntilStreamed();
-    const heavyLeft = () => !kr.streamed && (streamList.some((id) => est(id) >= HEAVY_MS) || (streamNow !== null && est(streamNow) >= HEAVY_MS));
+    const heavyLeft = () => !kr.streamed && !streamFailed && (streamList.some(beforeMatch) || (streamNow !== null && beforeMatch(streamNow)));
     if (!heavyLeft() && (!prefabs || kr.warmDone === true)) return Promise.resolve();
     return (preparing ??= (async () => {
-      const card = prepareCard(); const tick = setInterval(() => card.set(), 100);
+      const card = (await prepareCardImport).prepareCard(kr); const tick = setInterval(() => card.set(), 100);
       const t0 = performance.now();
-      streamList.sort((a, b) => est(b) - est(a));
+      streamList.sort((a, b) => Number(beforeMatch(b)) - Number(beforeMatch(a)) || est(b) - est(a));
       urgent = true; kr.prepareUrgent = true; engine.sliceMs = 1e9; engine.suspended = true;
       try {
         while (heavyLeft()) await new Promise((r) => setTimeout(r, 30));
@@ -473,7 +533,7 @@ kr.prepare = () => {
   return (preparing ??= (async () => {
     urgent = true; kr.prepareUrgent = true;
     engine.sliceMs = 1e9;
-    const card = prepareCard();
+    const card = (await prepareCardImport).prepareCard(kr);
     // the card covers the title: no title frames while the island finishes (the main thread goes to the stream)
     engine.suspended = true;
     const t0 = performance.now();
@@ -486,24 +546,6 @@ kr.prepare = () => {
     preparing = null;
   })());
 };
-function prepareCard() {
-  const el = document.createElement("div");
-  el.id = "kr-preparing";
-  el.style.cssText = "position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:radial-gradient(ellipse at center,rgba(8,26,40,.72),rgba(6,14,22,.9));font-family:'Barlow Condensed',Arial Narrow,sans-serif;color:#f6efc6;pointer-events:auto";
-  el.innerHTML = `<div style="text-align:center;min-width:min(520px,80vw)"><div style="font-size:clamp(28px,4vw,48px);font-weight:800;letter-spacing:.08em;color:#ffd400">PREPARING THE ISLAND</div><div style="margin:18px 0 10px;height:12px;border-radius:6px;background:rgba(246,239,198,.16);overflow:hidden"><i style="display:block;height:100%;width:100%;transform-origin:left;transform:scaleX(0);background:linear-gradient(90deg,#ffb800,#ffe066);transition:transform .25s linear"></i></div><div data-t style="font-size:20px;font-weight:700;letter-spacing:.06em;opacity:.85"></div></div>`;
-  document.body.appendChild(el);
-  const bar = el.querySelector("i") as HTMLElement, txt = el.querySelector("[data-t]") as HTMLElement;
-  const total = Math.max(1, (kr.streamTotal as number | undefined) ?? 1);
-  const set = () => {
-    const left = ((kr.streamPending as (() => string[]) | undefined)?.() ?? []).length + (kr.streamed ? 0 : 1);
-    const k = kr.streamed ? (kr.warmDone === true ? 1 : 0.95) : Math.min(0.94, 1 - left / (total + 1));
-    bar.style.transform = `scaleX(${k.toFixed(3)})`;
-    const cur = String(kr.streamStage ?? "").replace(/^(build|integrate):(poi:)?/, "").replace(/-/g, " ").toUpperCase();
-    txt.textContent = kr.streamed ? "WAKING THE KONGS" : cur ? `BUILDING ${cur}` : "";
-  };
-  set();
-  return { set, remove: () => el.remove() };
-}
 
 let holding = 0;
 function holdWarmupUntilStreamed() {
@@ -539,20 +581,22 @@ async function stream(): Promise<void> {
   streamList.sort((a, b) => dist(a) - dist(b));
   // the HEAVY modules first (the PRACTICE card waits only for them — the longer the player stays in the title, the
   // likelier they are done), then nearest to the islet first
-  streamList.sort((a, b) => (est(b) >= 1500 ? 1 : 0) - (est(a) >= 1500 ? 1 : 0));
+  streamList.sort((a, b) => Number(owedBeforeMatch.has(b)) - Number(owedBeforeMatch.has(a)) || (est(b) >= 1500 ? 1 : 0) - (est(a) >= 1500 ? 1 : 0));
   kr.streamTotal = streamList.length;
   kr.streamPending = () => streamList.slice();
   const streamMs: Record<string, number> = {};
   kr.streamMs = streamMs;
-  const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
+  const trim = (incoming: string | null) => postBuild!.trimStreamed(engine, world, incoming, streamList, streamMs, POIS);
+  if (LOW_MEM) setInterval(() => void trim(null), 2000);
   const inflight: Promise<void>[] = [];
   // a grace of 2.5 s after ready before the first module build — several streamed POIs still build in single
   // 1-3 s tasks, and a PRACTICE click right at ready sat through one (measured 5.5-6.3 s click → match with a
   // 1.7-1.8 s card). A click in the grace holds the stream until the match is in; otherwise it starts 2.5 s later.
-  { const graceUntil = performance.now() + Number(q.get("streamgrace") ?? 2500);
+  { const graceUntil = performance.now() + flag("streamgrace");
     while (!urgent && !inMatch() && performance.now() < graceUntil) await new Promise((r) => setTimeout(r, 50)); }
-  while (streamList.length) {
-    const id = streamList.shift()!;
+  while (streamList.length || LOW_MEM) {
+    const id = LOW_MEM ? await postBuild!.nextNearModule(streamList, engine.camera, POIS, flag("lowmemr"), flag("lowmemview")) : streamList.shift()!;
+    if (LOW_MEM && id.startsWith("poi:")) await trim(id);
     streamNow = id;
     // in the title / lobby: one module per idle gap at the title's slice budget. In a match (warm-up) the plane must
     // not see an unbuilt POI: go flat out, and once the plane phase starts build the rest back to back.
@@ -566,21 +610,11 @@ async function stream(): Promise<void> {
     engine.sliceMs = fast ? 1e9 : engine.streamSlice(inMatch(), matchPhase(), 1.4 * (est(id) + streamList.reduce((a, x) => a + est(x), 0)), warmLeftMs()); // (×1.4: + integration)
     if (!fast) await nextFrame();
     const t0 = performance.now();
-    const m = await buildOne(id, true);
-    if (m) await runAfterBuild(m, true);
-    registerStatics(id, true);
-    registerFar(id, m, true);
-    registerOcclusion(id, true);
-    kr.streamStage = `integrate:${id}`;
-    try { atmos()?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
-    // pipelined: this module's programs compile on the driver's threads while the NEXT module builds (its fresh
-    // materials stay hidden until its integration ends); at most one integration in flight
-    // (the build gate opens right here: integrateFresh hides every not-yet-compiled material synchronously before any frame)
-    const bg = buildGates.get(id); if (bg) { bg.gate.active = false; for (const o of bg.adds) ungate(o, bg.gate); buildGates.delete(id); engine.cull.reveal(bg.adds); }
-    const done = integrateFresh(fast, moduleRoots(id, true)).then(() => { engine.markBuilt(id); streamMs[id] = Math.round(performance.now() - t0); });
+    const { integrated } = await buildStreamed(id, fast);
+    const done = integrated.then(() => { streamMs[id] = Math.round(performance.now() - t0); });
     inflight.push(done);
     if (inflight.length > 1) await inflight.shift();
-    if (est(id) >= HEAVY_MS) await done; // (the PRACTICE card waits for the heavy ones — integrated, not just built)
+    if (beforeMatch(id)) await done; // (the PRACTICE card waits for the heavy ones — integrated, not just built)
     streamNow = null;
   }
   await Promise.all(inflight.splice(0));
@@ -610,7 +644,7 @@ const releaseFresh = (m: THREE.Material) => { const h = heldFresh.get(m); if (!h
  * post chain's HDR target (KHR_parallel_shader_compile — the main thread never waits on the driver), first-used, their
  * textures uploaded one per slice, and only then shown. Nothing a streamed module adds can stall a frame.
  */
-async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = []) {
+async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], buildGate?: Gate, openGate?: () => void) {
   const r = engine.renderer;
   const props = r.properties as unknown as { get(o: object): Record<string, unknown> };
   const fresh = new Map<THREE.Material, boolean>();
@@ -689,7 +723,9 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = []) {
   // player first looks at it (the arrival hitch). Restored before any frame runs.
   phase("draw");
   if (roots.length) {
-    if (urgent) engine.warmDraw(roots);
+    // (a streamed module's build gate is still shut: open for each synchronous offscreen draw only)
+    const warm = (c: THREE.Object3D[]) => { if (buildGate) buildGate.active = false; try { engine.warmDraw(c); } finally { if (buildGate) buildGate.active = true; } };
+    if (urgent) warm(roots);
     else {
       await nextFrame();
       const chunks: THREE.Object3D[][] = [];
@@ -705,10 +741,11 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = []) {
       };
       for (const root of roots) split(root);
       if (cur.length) chunks.push(cur);
-      for (const c of chunks) { engine.warmDraw(c); await engine.yield(); }
+      for (const c of chunks) { warm(c); await engine.yield(); }
     }
   }
   // first use: uniform / attribute tables of the new programs (a sync driver round trip — the compile is done now)
+  openGate?.();
   phase("first-use");
   for (const pr of (r.info.programs ?? []) as unknown as Array<{ getUniforms?: () => unknown; getAttributes?: () => unknown; isReady?: () => boolean }>) {
     try { if (!pr.isReady || pr.isReady()) { pr.getUniforms?.(); pr.getAttributes?.(); } } catch { /* reported by three */ }
