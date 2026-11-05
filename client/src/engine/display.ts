@@ -135,7 +135,7 @@ export function bootQuality(): Quality | null {
 function detectLevel(): Level | null {
   const spoof = flag("gpu");
   if (spoof) return classifyGpu(spoof);
-  const gl = document.createElement("canvas").getContext("webgl2");
+  const gl = document.createElement("canvas").getContext("webgl2", { powerPreference: "high-performance", antialias: false, stencil: false });
   if (!gl) return null;
   const level = classifyGpu(gpuString(gl));
   gl.getExtension("WEBGL_lose_context")?.loseContext();
