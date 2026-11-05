@@ -85,7 +85,7 @@ type StaticEntry = Parameters<StaticCache["unfreeze"]>[0];
 const hooksOf = new Map<string, Hook[]>(), ctxOf = new Map<string, Engine>(), evicted = new Set<string>();
 
 export function moduleCtx(engine: Engine, w: World, id: string): Engine {
-  (globalThis as unknown as { __kr: { rebuildModule?: (id: string) => Promise<void> } }).__kr.rebuildModule ??= async (x) => { if (w.modOf.has(x)) await evictStreamed(engine, w, x); const queued = pendingRef.indexOf(x); if (queued >= 0) pendingRef.splice(queued, 1); delete streamMsRef[x]; refreshImpostors(w.modOf); const t0 = performance.now(); await (await w.build(x)).integrated; streamMsRef[x] = Math.round(performance.now() - t0); refreshImpostors(w.modOf); setTimeout(() => refreshImpostors(w.modOf), IMPOSTOR_HOLD_MS); };
+  (globalThis as unknown as { __kr: { rebuildModule?: (id: string) => Promise<void> } }).__kr.rebuildModule ??= async (x) => { if (w.modOf.has(x)) await evictStreamed(engine, w, x); const queued = pendingRef.indexOf(x); if (queued >= 0) pendingRef.splice(queued, 1); delete streamMsRef[x]; refreshImpostors(w.modOf); const t0 = performance.now(); await (await w.build(x)).integrated; if (!w.modOf.has(x)) { if (queued >= 0) pendingRef.push(x); return; } streamMsRef[x] = Math.round(performance.now() - t0); refreshImpostors(w.modOf); setTimeout(() => refreshImpostors(w.modOf), IMPOSTOR_HOLD_MS); };
   engine.rebuilding = evicted.has(id);
   const known = ctxOf.get(id);
   if (known) return known;
