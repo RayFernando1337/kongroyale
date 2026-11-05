@@ -123,10 +123,9 @@ and the paths below come from.
 1. **Enter on the loading screen** (ScopeHasOwner, ButtonsAnswer), 1 step. The loading screen swallows clicks but not
    Enter, so Enter reaches the title's PLAY (or JOIN, on a page opened with an invite link). `offline()` calls `wire()` before the prefabs exist: the new
    `GameRender` opens the `match` scope, then its constructor reads `kits.viewModel`, which is still null, and throws.
-   The scope stays open with no owner, so every later PLAY fails with "already has a live child named match". In the
-   real game it is worse: the loading screen turns into "THE ISLAND COULDN'T LOAD" and stays that way after ready, so
-   nothing but a reload gets you to the title. On the
-   JOIN path, `online()` catches the same throw and shows "NO SERVER", which is visible but names the wrong cause.
+   The scope stays open with no owner, so every later PLAY fails with "already has a live child named match". On a load
+   that takes over 120 s (as on SwiftShader), the error also trips the loading screen's watchdog (errors before ready
+   after 120 s, index.html), and "THE ISLAND COULDN'T LOAD" stays up for good. On the JOIN path, `online()` catches the same throw and shows "NO SERVER", which is visible but names the wrong cause.
 2. **Removed for inactivity** (NoFrozenMatch), 5 steps: title, CREATE, START, then 180 s with no input. The server
    sends `REMOVED FOR INACTIVITY` without `afk: true` and no room frame. The client shows the text over a match that
    no longer updates.
