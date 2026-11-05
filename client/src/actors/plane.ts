@@ -737,7 +737,7 @@ const isBitmap = (img: unknown): img is ImageBitmap => typeof ImageBitmap !== "u
 function paintPlane(): Promise<PlanePainted<Img>> {
   const t0 = performance.now();
   const out: Partial<Record<PaintName, Img | Layers<Img>>> = {};
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let finished = false;
     const finishHere = async () => {
       if (finished) return;
@@ -747,9 +747,9 @@ function paintPlane(): Promise<PlanePainted<Img>> {
       console.info(`[plane] textures ready ${(performance.now() - t0).toFixed(0)} ms after start (${k} painted on the main thread)`);
       resolve(out as PlanePainted<Img>);
     };
-    if (typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined") return void finishHere();
+    if (typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined") return void finishHere().catch(reject);
     const scope = resources.root.child("plane-paint");
-    const stop = () => { scope.dispose(); void finishHere(); };
+    const stop = () => { scope.dispose(); finishHere().catch(reject); };
     try {
       const w = scope.worker(new Worker(new URL("./plane-paint.worker.ts", import.meta.url), { type: "module" }));
       let left = PAINT_NAMES.length;
@@ -831,7 +831,7 @@ export async function createPlane(ctx: WorldCtx, opts: { crew?: boolean } = {}):
 
   // ---- textures + materials
   // painted once per page and shared by every plane (the lobby's parked plane + the flight plane)
-  if (!TEX) { const p = await (painting ??= paintPlane()); TEX ??= wrapAll(p); painting = null; }
+  if (!TEX) { const p = await (painting ??= paintPlane()).finally(() => { painting = null; }); TEX ??= wrapAll(p); }
   const { fT, wT, sT, finT, cT, nT, spT, tyT, trT, inT, webT, hazT, pgT, crT, discT } = TEX as TexSet;
   const paint = (t: Tex, o: THREE.MeshPhysicalMaterialParameters = {}) => new THREE.MeshPhysicalMaterial({
     map: t.map, normalMap: t.normal, normalScale: new THREE.Vector2(0.9, 0.9), roughnessMap: t.rough, roughness: 1, metalness: 0,
