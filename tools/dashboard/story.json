@@ -70,7 +70,7 @@
   ],
   "safari": {
     "title": "Safari on a 16 GB Mac mini: whole-match survival, before and after",
-    "plain": "One scripted player (it drops near the harbor, then keeps moving toward the next safe place) was played until the match ended or Safari closed the tab. Landing came at 104 to 106 s in every run. Peak WebContent is the size of the part of Safari that runs the game's page, which is the part Safari closes. Times below are seconds since the test started.",
+    "plain": "One scripted player (it drops near the harbor, then keeps moving toward the next safe place) was played until the match ended or Safari closed the tab. Landing came at 103 to 106 s in every run. Peak WebContent is the size of the part of Safari that runs the game's page, which is the part Safari closes. Times below are seconds since the test started.",
     "columns": [
       "Build",
       "How it ended",
@@ -116,7 +116,7 @@
       }
     ],
     "steps": "In between: the version from #149 (e24cb9c) reached Results in 1 of 2 runs, and a version of #157 (14ecb8b) in 1 of 3. The other runs were killed for memory.",
-    "caveat": "Two runs on one Mac are a signal, not a guarantee. But the peaks, 7.3 and 6.9 GB, sit about 1 GB below the earlier build and well under the 8.4 to 8.8 GB where the kills we saw on this Mac happened, so the margin is no longer thin. In run 1 the scripted player died once after getting stuck on a patch of terrain; that is a limit of the script, and the run still reached Results.",
+    "caveat": "Two runs on one Mac are a signal, not a guarantee. The peaks, 7.3 and 6.9 GB, sit about 1 GB below the earlier build and at least about 0.7 GB below the lowest memory at which we saw a kill on this Mac (8.0 to 8.8 GB). That is better than before, but still not a wide margin. In run 1 the scripted player died once after getting stuck on a patch of terrain; that is a limit of the script, and the run still reached Results.",
     "method": "Mac mini M4, 16 GB, Safari 27, ?seed=42&perfhud, quality Auto (picked Low), production build served locally, peak WebContent = highest per-phase peak (warm-up, plane, glide, on foot). Sources: handoffs/safari-growth/pr160, pr157, pr149-v2 and raw in the project drive; fixes in fork #140, #149, #157 and #160."
   },
   "journey": {
