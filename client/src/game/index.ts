@@ -1009,6 +1009,10 @@ async function prewarmMatch(engine: Engine, kits: Kits, title: TitleScene, isBus
     excursion(look, 0.1);
     for (const a of made) a.setVisible(false);
   }
+  const crowd = (await kongManager(engine)).warmBatches();
+  patchTree(engine, crowd);
+  await engine.compileObjects([crowd]);
+  if (!isBusy()) engine.warmDraw([crowd]);
   made.forEach((a, i) => kits.releaseKong?.(a, i % 6));
   kits.lights?.update();
   kr.matchWarm = "done";
@@ -1185,6 +1189,10 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
     await frames(2);
     for (const a of made) a.setVisible(false);
   }
+  const crowd = (await kongManager(engine)).warmBatches();
+  patchTree(engine, crowd);
+  await engine.compileObjects([crowd]);
+  engine.warmDraw([crowd]);
   made.forEach((a, i) => kits.releaseKong?.(a, i % 6));
   }
   // hide (never dispose) — programs stay cached for the whole session. The chest pool lights go back to the pool

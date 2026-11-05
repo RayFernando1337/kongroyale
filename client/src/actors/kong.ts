@@ -802,9 +802,9 @@ class KongManager {
     return d;
   }
 
-  releaseGpu() {
-    for (const b of this.batches) b.geo.dispose();
-    for (const b of this.velWpn.values()) b.geo.dispose();
+  warmBatches(): THREE.Object3D {
+    for (const id of this.wpnGeo.keys()) { this.weaponBatch(id, 0); this.weaponBatch(id, 1); this.weaponShadowBatch(id); }
+    return this.group;
   }
 
   private addBatch(tier: Batch["tier"], mat: Batch["mat"], merged: THREE.BufferGeometry, material: THREE.Material, proxy: boolean, weapon = false): Batch {
@@ -1010,8 +1010,6 @@ export function kongManager(ctx: WorldCtx): Promise<KongManager> {
     } finally { release(); }
   })());
 }
-
-export function releaseKongBatchesGpu() { void manager?.then((m) => m.releaseGpu()); }
 
 /** (caster) turn the team outline + x-ray passes on (built on the first call; the player game never calls it) */
 export async function kongOutlines(ctx: WorldCtx): Promise<KongOutlines> { return (await kongManager(ctx)).enableOutlines(); }
