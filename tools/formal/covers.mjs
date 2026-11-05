@@ -86,6 +86,26 @@ export function modelHash(model) {
   return h.digest("hex").slice(0, 16);
 }
 
+/** the file's text with comments and string literals blanked out, so a pattern only ever matches code */
+const codeTexts = new Map();
+function codeText(sf) {
+  let t = codeTexts.get(sf);
+  if (t !== undefined) return t;
+  const chars = sf.text.split("");
+  const blank = (from, to) => { for (let i = from; i < to; i++) if (chars[i] !== "\n") chars[i] = " "; };
+  const comments = (ranges) => { for (const r of ranges ?? []) blank(r.pos, r.end); };
+  const visit = (n) => {
+    comments(ts.getLeadingCommentRanges(sf.text, n.pos));
+    comments(ts.getTrailingCommentRanges(sf.text, n.end));
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isTemplateHead(n) || ts.isTemplateMiddle(n) || ts.isTemplateTail(n) || ts.isRegularExpressionLiteral(n)) blank(n.getStart(sf), n.end);
+    n.getChildren(sf).forEach(visit);
+  };
+  visit(sf);
+  t = chars.join("");
+  codeTexts.set(sf, t);
+  return t;
+}
+
 /** the .ts files a writes entry scans: a file, or every .ts file directly in a folder ending in "/" */
 const scanFiles = (entry) => entry.endsWith("/") ? fs.readdirSync(path.join(root, entry)).filter((f) => f.endsWith(".ts")).map((f) => entry + f) : [entry];
 
@@ -99,7 +119,7 @@ export function strayWrites(c) {
     const re = new RegExp(w.pattern, "g");
     for (const file of w.files.flatMap(scanFiles)) {
       const sf = source(file); if (!sf) continue;
-      for (const m of sf.text.matchAll(re)) {
+      for (const m of codeText(sf).matchAll(re)) {
         const line = sf.getLineAndCharacterOfPosition(m.index).line + 1;
         if (!inside(file, line, spans) && !inside(file, line, allowed)) out.push({ at: `${file}:${line}`, text: m[0], pattern: w.pattern });
       }
