@@ -342,34 +342,28 @@ if (streamOn) {
   }
 }
 const LOW_MEM = (await postBuildImport)?.lowMemoryDevice(flag("lowmem"), flag("prepare") === "full");
+const owedBeforeMatch = new Set<string>();
 // ---- pre-ready stream (READY_BY above): largest first, each only while the predicted ready time still fits
-if (streamOn && READY_BY > 0 && !LOW_MEM) {
+if (streamOn && READY_BY > 0 && !LOW_MEM && postBuild) {
   const done = titleIds.filter((id) => buildMs[id] !== undefined);
   const want = done.reduce((a, id) => a + est(id), 0), got = done.reduce((a, id) => a + buildMs[id], 0);
   const factor = Math.min(3, Math.max(0.8, want > 0 ? got / want : 1));
   kr.bootFactor = +factor.toFixed(2);
-  const postEst = (flag("readyest") ? await postBuildImport : postBuild)?.postBuildEstimate(factor);
-  if (postEst) kr.postBuildEstimate = { ms: Math.round(postEst.ms), stored: postEst.stored };
-  const rest = postEst && flag("readyest")
-    ? (_n: number, preMs: number) => postEst.rest(preMs)
-    : (n: number) => (EXPECT.afterBuild + EXPECT.game + EXPECT.settle + 120 * n) * factor;
-  const plan = (t: number, ids: string[]) => {
-    const out: string[] = [];
-    let preMs = 0;
-    for (const id of [...ids].sort((a, b) => est(b) - est(a))) if (t + est(id) * factor + rest(out.length + 1, preMs + est(id) * factor) <= READY_BY) { out.push(id); t += est(id) * factor; preMs += est(id) * factor; }
-    return out;
-  };
-  const planned = plan(performance.now(), streamList);
+  const planner = postBuild.preReadyPlanner(est, factor, READY_BY, EXPECT.afterBuild + EXPECT.game + EXPECT.settle, flag("readyest"));
+  kr.postBuildEstimate = planner.estimate;
+  const planned = planner.plan(streamList);
   planSteps(planned);
   kr.preReadyPlan = planned.slice();
   const pre: string[] = [];
   for (const id of planned) {
-    if (performance.now() + est(id) * factor + rest(pre.length + 1, pre.reduce((a, p) => a + buildMs[p], 0) + est(id) * factor) > READY_BY) continue;
+    if (!planner.fits(id, pre.length, pre.reduce((a, p) => a + buildMs[p], 0))) continue;
     streamList.splice(streamList.indexOf(id), 1);
     pre.push(id);
     await buildOne(id, false);
   }
   kr.preReady = pre;
+  for (const id of planner.owed(streamList, pre.length)) owedBeforeMatch.add(id);
+  kr.owedBeforeMatch = [...owedBeforeMatch];
 }
 kr.programsAfterTitleModules = engine.renderer.info.programs?.length;
 enterStep("afterBuild");
@@ -490,11 +484,14 @@ let urgent = false;
 // (default: none — the match starts at once; a module that ignores the ctx.yield() contract then stalls warm-up frames,
 // which the POI modules should fix. ?heavyms=1500 = build the heavy ones behind the card.)
 const HEAVY_MS = flag("heavyms");
+const beforeMatch = (id: string) => est(id) >= HEAVY_MS || owedBeforeMatch.has(id);
 let streamNow: string | null = null;
 /** while PRACTICE waits only for the game's prefab warm-up, the island stream holds between modules — the
  *  measured 5.5 s click → match was 2.7 s of prefab warm-up + a 2.2 s module build the card sat through */
 let streamHold = false;
 const streamDone: Promise<void> = streamOn ? stream() : Promise.resolve();
+let streamFailed = false;
+streamDone.catch((e) => { streamFailed = true; report("stream", e); });
 if (!streamOn) { kr.streamed = true; engine.endStream(); startFarBuild(); }
 /**
  * called by the game before a match can start (PRACTICE / CREATE / JOIN): resolves at once when the island is complete;
@@ -513,12 +510,12 @@ kr.prepare = () => {
   // online, the plane phase switches the stream to back to back. ?prepare=full = build everything behind the card.
   if (flag("prepare") !== "full") {
     holdWarmupUntilStreamed();
-    const heavyLeft = () => !kr.streamed && (streamList.some((id) => est(id) >= HEAVY_MS) || (streamNow !== null && est(streamNow) >= HEAVY_MS));
+    const heavyLeft = () => !kr.streamed && !streamFailed && (streamList.some(beforeMatch) || (streamNow !== null && beforeMatch(streamNow)));
     if (!heavyLeft() && (!prefabs || kr.warmDone === true)) return Promise.resolve();
     return (preparing ??= (async () => {
       const card = (await prepareCardImport).prepareCard(kr); const tick = setInterval(() => card.set(), 100);
       const t0 = performance.now();
-      streamList.sort((a, b) => est(b) - est(a));
+      streamList.sort((a, b) => Number(beforeMatch(b)) - Number(beforeMatch(a)) || est(b) - est(a));
       urgent = true; kr.prepareUrgent = true; engine.sliceMs = 1e9; engine.suspended = true;
       try {
         while (heavyLeft()) await new Promise((r) => setTimeout(r, 30));
@@ -584,7 +581,7 @@ async function stream(): Promise<void> {
   streamList.sort((a, b) => dist(a) - dist(b));
   // the HEAVY modules first (the PRACTICE card waits only for them — the longer the player stays in the title, the
   // likelier they are done), then nearest to the islet first
-  streamList.sort((a, b) => (est(b) >= 1500 ? 1 : 0) - (est(a) >= 1500 ? 1 : 0));
+  streamList.sort((a, b) => Number(owedBeforeMatch.has(b)) - Number(owedBeforeMatch.has(a)) || (est(b) >= 1500 ? 1 : 0) - (est(a) >= 1500 ? 1 : 0));
   kr.streamTotal = streamList.length;
   kr.streamPending = () => streamList.slice();
   const streamMs: Record<string, number> = {};
@@ -614,10 +611,10 @@ async function stream(): Promise<void> {
     if (!fast) await nextFrame();
     const t0 = performance.now();
     const { integrated } = await buildStreamed(id, fast);
-    const done = integrated.then(() => { streamMs[id] = Math.round(performance.now() - t0); if (LOW_MEM) postBuild!.showImpostors(modOf, streamMs); });
+    const done = integrated.then(() => { streamMs[id] = Math.round(performance.now() - t0); });
     inflight.push(done);
     if (inflight.length > 1) await inflight.shift();
-    if (est(id) >= HEAVY_MS) await done; // (the PRACTICE card waits for the heavy ones — integrated, not just built)
+    if (beforeMatch(id)) await done; // (the PRACTICE card waits for the heavy ones — integrated, not just built)
     streamNow = null;
   }
   await Promise.all(inflight.splice(0));
