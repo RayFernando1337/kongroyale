@@ -280,7 +280,7 @@ function main(): void {
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(data.title) + "</title><style>" + css + "</style></head><body>" +
     '<header><div class="brand">' + esc(data.title) + '</div><nav>' + pages.map((p) => '<a href="#' + p[0] + '" data-page="' + p[0] + '">' + p[1] + "</a>").join("") + "</nav></header><main>" +
     pages.map((p) => '<section id="' + p[0] + '" class="page">' + p[2] + "</section>").join("") +
-    '</main><footer>Updated ' + stamp(now.toISOString()) + ". Counts are live from GitHub. Measurements come from tools/dashboard/data.json, where each one names its source.</footer>" +
+    '</main><footer>Updated ' + stamp(now.toISOString()) + ". Counts are live from GitHub. Measurements come from tools/dashboard/data.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
     "<script>function show(){var id=(location.hash||'#summary').slice(1);if(!document.getElementById(id))id='summary';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){a.classList.toggle('on',a.dataset.page===id)});scrollTo(0,0)}addEventListener('hashchange',show);show();</script></body></html>";
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, "index.html"), html);
