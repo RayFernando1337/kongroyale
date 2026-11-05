@@ -21,7 +21,7 @@ import { programMergeSafe, releaseShaderRecorder } from "./shader-src";
 import { DITHER, clearDither, setDither } from "./dither";
 import { flag } from "../flags";
 
-interface FarPoi {
+export interface FarPoi {
   id: string;
   roots: THREE.Object3D[];
   cx: number; cy: number; cz: number;
@@ -38,7 +38,6 @@ interface FarPoi {
   /** snapshot meshes that appeared since registration; true if there were any (the build then waits 90 frames) */
   late(): boolean;
   tries: number;
-  evicted?: boolean;
 }
 
 /** the proxy preparation (scene walk + merge) runs in slices of ~this many ms, one per frame (a far POI's merge in one
@@ -92,7 +91,7 @@ const _m3 = new THREE.Matrix3();
 const _v = new THREE.Vector3();
 
 export class FarMerge {
-  private pois: FarPoi[] = [];
+  readonly pois: FarPoi[] = [];
   private group = new THREE.Group();
   private building = false;
   /** diagnostics (__kr.engine.far.info()) */
@@ -126,17 +125,8 @@ export class FarMerge {
     this.pois.push({ id, roots, cx: centre.x, cy: centre.y, cz: centre.z, near, gate: { active: false }, proxies: [], sources: [], state: "wait", readyAt: this.engine.frames + 90, moved, late, tries: 0 });
   }
 
-  evict(id: string) {
-    const p = this.pois.find((q) => q.id === id);
-    if (!p) return;
-    if (p.state !== "built") { this.drop(p); return; }
-    p.roots = []; p.sources = []; p.evicted = true;
-    p.moved = () => true; p.late = () => false;
-  }
-
-  private drop(p: FarPoi) {
+  drop(p: FarPoi) {
     this.pois.splice(this.pois.indexOf(p), 1);
-    p.state = "none"; p.roots = []; p.sources = [];
     for (const o of [...this.group.children]) if (o.userData.krFar === p.id) { this.outgoing.delete(o); o.removeFromParent(); (o as THREE.Mesh).geometry.dispose(); }
   }
 
@@ -325,7 +315,7 @@ export class FarMerge {
     for (const p of this.pois) {
       if (p.state !== "built") continue;
       const d = Math.hypot(c.x - p.cx, c.y - p.cy, c.z - p.cz);
-      const want = p.evicted || (p.gate.active ? d > p.near : d > p.near + HYST);
+      const want = p.gate.active ? d > p.near : d > p.near + HYST;
       // the module's own POI-level culling wins: no proxy while any POI root is hidden
       let rootsVisible = true;
       for (const r of p.roots) if (!r.visible || !r.parent) { rootsVisible = false; break; }

@@ -240,7 +240,7 @@ async function buildOne(id: string, streamed: boolean): Promise<WorldModule | nu
   // behind the loading screen: start the parallel compile of what this module drew right away — the driver compiles on
   // its own threads while the next module builds (the game's prewarm compile then mostly hits the program cache)
   if (!streamed && gameMode && m) {
-    try { (engine.shared.get("atmos") as { sweep?: () => number } | undefined)?.sweep?.(); } catch { /* atmos reports */ }
+    try { atmos()?.sweep?.(); } catch { /* atmos reports */ }
     void engine.compileObjects(adds.filter((c) => c.parent === engine.scene));
   }
   rootsOf.set(id, [...new Set(adds)].filter((c) => c.parent === engine.scene));
@@ -299,6 +299,8 @@ function registerFar(id: string, m: WorldModule | null, streamed: boolean) {
 
 const world = { modOf, scopeOf, rootsOf, loaded, roots: (id: string) => moduleRoots(id, true), report };
 
+const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
+
 async function buildStreamed(id: string, fast: boolean): Promise<{ integrated: Promise<void> }> {
   const m = await buildOne(id, true);
   if (m) await runAfterBuild(m, true);
@@ -307,7 +309,7 @@ async function buildStreamed(id: string, fast: boolean): Promise<{ integrated: P
   if (LOW_MEM) startFarBuild();
   registerOcclusion(id, true);
   kr.streamStage = `integrate:${id}`;
-  try { (engine.shared.get("atmos") as { sweep?: () => number } | undefined)?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
+  try { atmos()?.sweep?.(); } catch (e) { report(`stream-sweep:${id}`, e); }
   // pipelined: this module's programs compile on the driver's threads while the NEXT module builds (its fresh
   // materials stay hidden until its integration ends); at most one integration in flight
   // (the build gate stays shut until integrateFresh's offscreen first draw has uploaded the module's vertex buffers:
@@ -319,10 +321,7 @@ async function buildStreamed(id: string, fast: boolean): Promise<{ integrated: P
   return { integrated: integrateFresh(fast, moduleRoots(id, true), bg?.gate, open).finally(open).then(() => engine.markBuilt(id)) };
 }
 
-async function rebuild(id: string) {
-  await (await buildStreamed(id, false)).integrated;
-}
-kr.rebuildModule = async (id: string) => { await postBuild!.evictStreamed(engine, world, id); await rebuild(id); };
+kr.rebuildModule = async (id: string) => { await postBuild!.evictStreamed(engine, world, id); await (await buildStreamed(id, false)).integrated; };
 
 // ---- title modules (everything, in ?view / ?cam / ?shot pages or with ?nostream)
 const streamList: string[] = [];
@@ -590,7 +589,6 @@ async function stream(): Promise<void> {
   kr.streamMs = streamMs;
   const trim = (incoming: string | null) => postBuild!.trimStreamed(engine, world, incoming, streamList, streamMs, POIS);
   if (LOW_MEM) setInterval(() => void trim(null), 2000);
-  const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
   const inflight: Promise<void>[] = [];
   // a grace of 2.5 s after ready before the first module build — several streamed POIs still build in single
   // 1-3 s tasks, and a PRACTICE click right at ready sat through one (measured 5.5-6.3 s click → match with a

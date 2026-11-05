@@ -85,7 +85,7 @@ export class Engine implements WorldCtx {
   /** animation time; frozen in shot mode unless ?t is advanced by the caller */
   time = 0;
   timeScale = 1;
-  private updates: Array<(dt: number, t: number) => void> = [];
+  readonly updates: Array<(dt: number, t: number) => void> = [];
   private failed = new Set<number>();
   private post: PostPipeline | null = null;
   private holds = new Map<number, string>();
@@ -243,10 +243,8 @@ export class Engine implements WorldCtx {
     const kr = (globalThis as { __kr?: { stage?: string; streamStage?: string } }).__kr;
     this.updLabels.push(String(kr?.streamStage || kr?.stage || "?"));
   }
-  private updLabels: string[] = [];
-  removeUpdates(fns: ReadonlySet<(dt: number, t: number) => void>) {
-    for (let i = this.updates.length - 1; i >= 0; i--) if (fns.has(this.updates[i])) { this.updates.splice(i, 1); this.updLabels.splice(i, 1); }
-  }
+  readonly updLabels: string[] = [];
+
   /** tools set `engine.hitchLog = []` → every frame whose step takes > 30 ms,
    *  or whose interval is > 50 ms, is logged with the costliest update hooks (by registering stage), idle work, render */
   hitchLog: Array<Record<string, unknown>> | null = null;

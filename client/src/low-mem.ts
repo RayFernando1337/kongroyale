@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Poi } from "../../shared/world/map";
 import { Phase } from "../../shared/sim/match";
 import type { Engine } from "./engine/engine";
+import type { StaticCache } from "./engine/static-cache";
 import type { WorldModule } from "./world/module";
 import type { Scope } from "./engine/res/scope";
 import { flag } from "./flags";
@@ -58,6 +59,7 @@ export async function nextNearModule(pending: string[], camera: THREE.Camera, po
 }
 
 type Hook = (dt: number, t: number) => void;
+type StaticEntry = Parameters<StaticCache["unfreeze"]>[0];
 const hooksOf = new Map<string, Hook[]>(), ctxOf = new Map<string, Engine>(), evicted = new Set<string>();
 
 export function moduleCtx(engine: Engine, id: string): Engine {
@@ -88,10 +90,20 @@ type World = {
 
 export async function evictStreamed(engine: Engine, w: World, id: string) {
   const m = w.modOf.get(id)!, roots = w.roots(id);
-  engine.removeUpdates(new Set(hooksOf.get(id)));
+  const hooks = new Set(hooksOf.get(id)), u = engine.updates;
+  for (let i = u.length - 1; i >= 0; i--) if (hooks.has(u[i])) { u.splice(i, 1); engine.updLabels.splice(i, 1); }
   engine.occlusion.unregister(id);
-  engine.far.evict(id);
-  for (const r of roots) { engine.statics.unregister(r); engine.cull.unregister(r); r.removeFromParent(); }
+  const far = engine.far.pois.find((q) => q.id === id);
+  if (far?.state === "built") Object.assign(far, { roots: [], sources: [], near: -Infinity, moved: () => true, late: () => false });
+  else if (far) engine.far.drop(far);
+  const statics = engine.statics;
+  for (const r of roots) {
+    const e = (r as unknown as Record<string, StaticEntry | undefined>)[statics.rootKey];
+    if (e) { statics.unfreeze(e); delete (r as unknown as Record<string, unknown>)[statics.rootKey]; statics.entries.splice(statics.entries.indexOf(e), 1); }
+    const cull = engine.cull;
+    if (cull.roots.includes(r)) { cull.drop(r); cull.stale.delete(r); cull.touchedAt.delete(r); cull.staleSince.delete(r); }
+    r.removeFromParent();
+  }
   try { await m.release?.(engine); } catch (e) { w.report(`release:${id}`, e); }
   const freed = disposeUnused(roots, engine.scene);
   try { w.scopeOf.get(id)?.dispose(); } catch (e) { w.report(`release:${id}`, e); }
