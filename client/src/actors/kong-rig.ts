@@ -378,6 +378,8 @@ function hoverPose(p: Pose, w: number, t: number) {
 // ------------------------------------------------------------------------------------------- animator
 export interface Spring { x: number; v: number }
 const springStep = (s: Spring, dt: number, k = 120, d = 12) => { const a = -k * s.x - d * s.v; s.v += a * dt; s.x += s.v * dt; };
+/** longest spring integration step (s): a frame at 30 fps or better is one step, as before */
+const SPRING_DT = 1 / 30;
 const approach = (x: number, to: number, step: number) => (x < to ? Math.min(to, x + step) : Math.max(to, x - step));
 
 /** rest height of the ankle JOINT above the sole (the planted-foot target: sole on the ground) */
@@ -545,7 +547,9 @@ export class KongAnimator {
     if (p.fired) this.recoil.v += this.twoHanded ? 9 : 14;
     if (p.hurt) this.hurt.v += 7;
     this.stepReload(p, dt);
-    springStep(this.recoil, dt, 220, 18); springStep(this.hurt, dt, 90, 9); springStep(this.land, dt, 140, 12);
+    // (a budgeted far kong's update spans several frames, kong.ts ANIM_SMALL_S / ANIM_HIDDEN_S: the springs take it in
+    // steps of at most SPRING_DT, so a long step neither overshoots nor diverges)
+    for (let n = Math.ceil(dt / SPRING_DT - 1e-6), k = 0; k < n; k++) { const h = dt / n; springStep(this.recoil, h, 220, 18); springStep(this.hurt, h, 90, 9); springStep(this.land, h, 140, 12); }
     this.twoHanded = p.weapon !== null && p.weapon !== "pistol";
 
     // locomotion parameters
@@ -652,6 +656,23 @@ export class KongAnimator {
     else if (zip) this.solveZip(p);
     else if (drive && p.grips) this.solveBars(p);
     else if (this.holdIK && armed && !this.showPose) this.solveHold(p);
+    this.atX = p.x; this.atY = p.y; this.atZ = p.z; this.atYaw = p.yaw;
+  }
+
+  /** where the last update() / follow() put the kong (its pose's position + yaw) */
+  private atX = 0; private atY = 0; private atZ = 0; private atYaw = 0;
+  private followM = new THREE.Matrix4();
+  /** between two budgeted updates (kong.ts): carry the last pose rigidly to the kong's new position + yaw — every bone,
+   *  the root and so the hand sockets move with the body, no re-pose (no clock, springs, IK or face) */
+  follow(p: KongPose) {
+    const dy = p.yaw - this.atYaw, c = Math.cos(dy), s = Math.sin(dy);
+    if (dy === 0 && p.x === this.atX && p.y === this.atY && p.z === this.atZ) return;
+    // T(new) · Ry(dy) · T(−old)
+    const M = this.followM.makeRotationY(dy);
+    M.setPosition(p.x - (c * this.atX + s * this.atZ), p.y - this.atY, p.z - (-s * this.atX + c * this.atZ));
+    for (const w of this.world) w.premultiply(M);
+    this.root.premultiply(M);
+    this.atX = p.x; this.atY = p.y; this.atZ = p.z; this.atYaw = p.yaw;
   }
 
   /** swimming (see the generators above): treading ↔ breaststroke ↔ crawl on the surface, hovering ↔ breaststroke under
