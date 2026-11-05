@@ -1,3 +1,7 @@
+// The playtest chunk, loaded after boot on every game page. It shows the build badge, and when the perf HUD (?perfhud)
+// or player diagnostics (?diag, or a build made with VITE_KR_DIAG=1) is on, it starts the metrics recorder, has the
+// match record its input replay (__kr.recordReplay, read by game/net.ts) and gives KONGBOT reports a bundle. F8 marks
+// a moment under ?perfhud.
 import type { Engine } from "../engine/engine";
 import { BUILD } from "../build";
 import { flag, flagQuery } from "../flags";
@@ -8,6 +12,8 @@ interface Kr {
   playtest?: { timeline: () => unknown };
   replayLog?: () => { opts: Record<string, unknown> };
   playtestBundle?: () => unknown;
+  recordReplay?: boolean;
+  diag?: { snapshot: () => unknown };
   kongbot?: { mark: (message: string) => boolean };
   game?: { inMatch?: boolean; cm?: { time: number } | null };
 }
@@ -29,11 +35,25 @@ function markMessage(): string {
   return `F8 mark ${where} (page ${Math.round(performance.now() / 1000)} s)`;
 }
 
+/** ?diag or ?diag=1 on, ?diag=0 off, absent = the build's VITE_KR_DIAG (Ray's stream build sets 1) */
+function diagOn(): boolean {
+  const v = flag("diag");
+  if (v !== null) return v !== "0";
+  return (import.meta as unknown as { env?: { VITE_KR_DIAG?: string } }).env?.VITE_KR_DIAG === "1";
+}
+
 export function installPlaytest(engine: Engine, game: boolean): void {
   if (BUILD.channel !== "stable" && flag("badge")) void import("../ui/build-badge").then((m) => m.showBuildBadge());
-  if (!game || !flag("perfhud")) return;
-  void import("./perf-hud").then((m) => m.installPerfHud(engine));
+  const hud = flag("perfhud"), diag = diagOn();
+  if (!game || (!hud && !diag)) return;
+  kr().recordReplay = true;
   kr().playtestBundle = bundle;
+  void Promise.all([import("./recorder"), hud ? import("./perf-hud") : null, diag ? import("./diag") : null]).then(([rec, hudMod, diagMod]) => {
+    const draw = hudMod?.installPerfHud(engine), sample = diagMod?.installDiag(engine);
+    if (diagMod) kr().diag = { snapshot: diagMod.snapshot };
+    rec.startRecorder(engine, (at) => { draw?.(at); sample?.(at); });
+  });
+  if (!hud) return;
   let lastMark = -Infinity;
   addEventListener("keydown", (e) => {
     if (e.code !== "F8") return;

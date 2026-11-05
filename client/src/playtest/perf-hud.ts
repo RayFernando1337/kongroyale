@@ -1,18 +1,9 @@
+// The playtest perf HUD (?perfhud): a small panel in the top-left corner that shows the newest second of the metrics
+// ring (recorder.ts): fps, frame p95 and max, GPU ms, ping and jitter, heap, and the renderer's resource counts.
 import type { Engine } from "../engine/engine";
 import { BUILD, buildLabel } from "../build";
 import { flag } from "../flags";
-import { CAPACITY_S, FIELDS, WIDTH, cursor, pauseClock, recordFrame, ring, rollSecond } from "./metrics.hot";
-
-export interface Timeline { fields: readonly string[]; rows: number[][]; dropped: number }
-
-export function timeline(): Timeline {
-  const kept = Math.min(cursor.rows, CAPACITY_S), rows: number[][] = [];
-  for (let r = cursor.rows - kept; r < cursor.rows; r++) {
-    const at = (r % CAPACITY_S) * WIDTH;
-    rows.push(Array.from(ring.subarray(at, at + WIDTH), (v) => Math.round(v * 100) / 100));
-  }
-  return { fields: FIELDS, rows, dropped: cursor.rows - kept };
-}
+import { ring } from "./metrics.hot";
 
 const CSS = `.kr-perfhud { position: fixed; left: 8px; top: 30vh; z-index: 99998; pointer-events: none; user-select: none;
   font: 600 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #fbf3c9; background: rgba(10,30,46,0.72);
@@ -23,7 +14,8 @@ const CSS = `.kr-perfhud { position: fixed; left: 8px; top: 30vh; z-index: 99998
 const fixed = (v: number, d: number) => (v < 0 ? "–" : v.toFixed(d));
 const warn = (bad: boolean, text: string) => (bad ? `<span class="bad">${text}</span>` : text);
 
-export function installPerfHud(engine: Engine): void {
+/** add the panel and return the function that redraws it from a ring row */
+export function installPerfHud(engine: Engine): (at: number) => void {
   if (!flag("notimer")) engine.timeGpu();
   const style = document.createElement("style");
   style.textContent = CSS;
@@ -32,10 +24,7 @@ export function installPerfHud(engine: Engine): void {
   el.className = "kr-perfhud";
   el.dataset.channel = BUILD.channel;
   document.body.appendChild(el);
-  engine.onDraw = recordFrame;
-  addEventListener("visibilitychange", pauseClock);
-  setInterval(() => {
-    const at = rollSecond(engine);
+  return (at) => {
     const v = (i: number) => ring[at + i];
     el.innerHTML = [
       `<b>${fixed(v(1), 0)}</b> fps · p95 ${warn(v(3) > 33.4, fixed(v(3), 1) + " ms")} · max ${warn(v(4) > 50, fixed(v(4), 0))} · gpu ${v(7) > 0 ? fixed(v(7), 1) : "–"} ms`,
@@ -43,6 +32,5 @@ export function installPerfHud(engine: Engine): void {
       `tex ${v(11)} · geo ${v(12)} · prog ${v(13)} · scale ${fixed(v(14), 2)}`,
       buildLabel(),
     ].join("\n");
-  }, 1000);
-  (window as unknown as { __kr?: Record<string, unknown> }).__kr!.playtest = { timeline };
+  };
 }
