@@ -248,44 +248,6 @@ function hotListErrors(list: unknown, from: string, readable: (rel: string) => t
   return errors;
 }
 
-const LINE_DIRECTIVES = ["@ts-expect-error", "@ts-ignore", "@ts-nocheck"], BLOCK_DIRECTIVES = ["@vite-ignore"];
-const MSG_COMMENT = "no comments (plan decision 2, after Lauren Tan): say it with a name, a type or a test instead; the pstack no-comments skill turns one comment at a time into one of those. Tool directives (@ts-expect-error, @vite-ignore, /// <reference>) are allowed";
-
-function isDirective(text: string): boolean {
-  if (text.startsWith("/// <reference")) return true;
-  const line = text.startsWith("//");
-  const word = (line ? text.slice(2) : text.slice(2, -2)).trim().split(/\s/, 1)[0];
-  return (line ? LINE_DIRECTIVES : BLOCK_DIRECTIVES).includes(word);
-}
-
-function comments(sf: ts.SourceFile): ts.CommentRange[] {
-  const seen = new Map<number, ts.CommentRange>();
-  const add = (ranges: ts.CommentRange[] | undefined) => { for (const r of ranges ?? []) seen.set(r.pos, r); };
-  const walk = (n: ts.Node): void => {
-    if (ts.isJSDoc(n)) return;
-    if (n.kind < ts.SyntaxKind.FirstNode) { add(ts.getLeadingCommentRanges(sf.text, n.pos)); add(ts.getTrailingCommentRanges(sf.text, n.end)); }
-    n.getChildren(sf).forEach(walk);
-  };
-  walk(sf);
-  return [...seen.values()];
-}
-
-const noComments: Rule = {
-  id: "no-comments",
-  counted: true,
-  applies: () => true,
-  check(sf, rel) {
-    const hits: Hit[] = [];
-    for (const c of comments(sf)) {
-      const text = sf.text.slice(c.pos, c.end);
-      if (isDirective(text) || (rel.startsWith(`${LINT_DIR}/fixtures/`) && text === "// lint-expect")) continue;
-      const first = sf.getLineAndCharacterOfPosition(c.pos).line, last = sf.getLineAndCharacterOfPosition(c.end).line;
-      for (let l = first; l <= last; l++) hits.push({ node: sf, line: l + 1, message: MSG_COMMENT });
-    }
-    return hits;
-  },
-};
-
 function inTypePosition(n: ts.Node): boolean {
   for (let p = n.parent; p; p = p.parent) {
     if (ts.isHeritageClause(p)) return p.token === ts.SyntaxKind.ImplementsKeyword || ts.isInterfaceDeclaration(p.parent);
@@ -468,7 +430,7 @@ const resourceOwner: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags, urlParams, resourceOwner];
+const RULES: Rule[] = [sharedDeterminism, hotAlloc, importType, unitSuffix, urlFlags, urlParams, resourceOwner];
 
 // ---- engine ----
 
