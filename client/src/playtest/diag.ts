@@ -3,7 +3,8 @@
 //              (Chrome and Edge; plain long tasks where only those exist), match phase changes, world modules streamed in
 //              or evicted, shader-program jumps, 3D-resolution steps, a heap drop over 50 MB (a collection), WebGL context
 //              loss, visibility, fullscreen and uncaught errors. Modules come from __kr.streamMs: what streams in after the
-//              title (the builds a player can feel; ?nostream has none) with its build ms, and lowmem evictions and rebuilds.
+//              title (the builds a player can feel; ?nostream has none) with its build ms, failed builds, and lowmem
+//              evictions and rebuilds (residency from __kr.modules).
 //   path       the player's position and view once a second in a match (up to an hour): the route a camera-path bench
 //              replays on another GPU
 //   heartbeat  a small record in localStorage every 5 s, marked clean on pagehide. A session that never marked clean and
@@ -23,8 +24,9 @@ const PATH_FIELDS = ["t", "x", "y", "z", "yawDeg", "pitchDeg", "phase"] as const
 export type DiagEvent = [number, string, number, string];
 interface Beat { v: 1; sid: string; sha: string; at: number; upS: number; phase: number; poi: string | null; heapMB: number; textures: number; geometries: number; fps: number; hidden: boolean; clean: boolean }
 interface KrGame { inMatch?: boolean; cm?: { pred?: { x: number; y: number; z: number } } | null; input?: { yaw: number; pitch: number } }
-/** streamMs (main.ts): the streamed modules built and integrated now, with their build ms; a lowmem eviction deletes */
-type Kr = Record<string, unknown> & { ready?: boolean; game?: KrGame; streamMs?: Record<string, number> };
+/** main.ts: streamMs = build ms of each module streamed in after the title, once integrated (a failed build too);
+ *  modules = the modules resident now (a lowmem eviction removes one) */
+type Kr = Record<string, unknown> & { ready?: boolean; game?: KrGame; streamMs?: Record<string, number>; modules?: string[] };
 const kr = () => (window as unknown as { __kr: Kr }).__kr;
 
 const events: DiagEvent[] = [];
@@ -114,7 +116,7 @@ export function installDiag(engine: Engine): (at: number) => void {
   addEventListener("error", (e) => push("error", 0, e.message || String(e.error)));
   addEventListener("unhandledrejection", (e) => push("rejection", 0, String((e.reason as Error | undefined)?.message ?? e.reason)));
 
-  const resident = new Set<string>();
+  const resident = new Set<string>(), failed = new Set<string>();
   const last = { phase: -2, programs: -1, scale: -1, heap: -1 };
   let beat: Beat = { v: 1, sid, sha: BUILD.sha, at: Date.now(), upS: 0, phase: -1, poi: null, heapMB: -1, textures: 0, geometries: 0, fps: 0, hidden: false, clean: false };
   addEventListener("pagehide", () => { beat.clean = true; beat.at = Date.now(); writeBeat(beat); });
@@ -133,9 +135,13 @@ export function installDiag(engine: Engine): (at: number) => void {
     if (last.scale >= 0 && scale !== last.scale) push("scale", r1(scale * 100) / 100);
     if (last.heap >= 0 && heap >= 0 && last.heap - heap > GC_DROP_MB) push("gc", Math.round(last.heap - heap));
     last.phase = phase; last.programs = programs; last.scale = scale; last.heap = heap;
-    const streamed = K.streamMs ?? {};
-    for (const id in streamed) if (!resident.has(id)) { resident.add(id); push("module-built", streamed[id], id); }
-    for (const id of resident) if (!(id in streamed)) { resident.delete(id); push("module-dropped", 0, id); }
+    const streamed = K.streamMs ?? {}, modules = K.modules ?? [];
+    for (const id in streamed) {
+      if (resident.has(id) || failed.has(id)) continue;
+      if (modules.includes(id)) { resident.add(id); push("module-built", streamed[id], id); }
+      else { failed.add(id); push("module-failed", streamed[id], id); }
+    }
+    for (const id of resident) if (!modules.includes(id)) { resident.delete(id); push("module-dropped", 0, id); }
     if (p && g?.input) {
       const row = (pathCursor.rows % PATH_S) * PATH_W;
       path[row] = ring[at]; path[row + 1] = p.x; path[row + 2] = p.y; path[row + 3] = p.z;
