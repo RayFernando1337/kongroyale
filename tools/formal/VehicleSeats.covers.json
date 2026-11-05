@@ -1,5 +1,6 @@
 {
   "skill": ".agents/skills/verify-vehicle-seats/SKILL.md",
+  "note": "stepVehicle and stepTumble (tipping, sinking) are not regions on purpose: the model lets any vehicle tip or sink at any time, so their physics may change without a re-check. A seat or rider write added there still fails the writes check.",
   "regions": [
     "shared/sim/vehicle.ts#freeSeat",
     "shared/sim/vehicle.ts#enterVehicle",
@@ -58,7 +59,7 @@
     }
   ],
   "verified": {
-    "model": "060f226063d4f649",
+    "model": "9fad33c96212325d",
     "regions": {
       "shared/sim/vehicle.ts#freeSeat": "706a387d7a9bfacb",
       "shared/sim/vehicle.ts#enterVehicle": "5da2594d416b51fb",
