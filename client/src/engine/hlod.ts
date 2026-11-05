@@ -155,7 +155,7 @@ export class FarMerge {
   buildNext(): boolean {
     if (!this.enabled) return true;
     if (this.building) return false;
-    if (!this.pois.some((q) => q.state === "wait")) { releaseShaderRecorder(); return true; }
+    if (!this.pois.some((q) => q.state === "wait")) { if (!this.engine.streaming) releaseShaderRecorder(); return true; }
     // capture a POI's FAR state only: the camera beyond its near distance, every POI root drawn (a module that hides
     // its POI at that distance is retried later), and every mesh observed static for ≥ 90 frames
     const c = this.engine.camera.position, f = this.engine.frames;
