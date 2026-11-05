@@ -1,9 +1,9 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size.  Rebalanced when entry.ts started importing the game on demand: the old boot chunks moved from boot to lazy; boot + lazy + entry did not grow.",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size.",
   "gzBytes": {
-    "entry": 3120,
-    "boot": 208600,
+    "entry": 34200,
+    "boot": 1163000,
     "workers": 4701000,
-    "lazy": 4062000
+    "lazy": 3055000
   }
 }

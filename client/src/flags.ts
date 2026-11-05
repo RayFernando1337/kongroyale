@@ -97,7 +97,7 @@ const FLAGS = {
   manual: { kind: present, owner: "caster", purpose: "caster camera starts in manual instead of autopilot" },
   map: { kind: one, owner: "ui", purpose: "open the full-screen map (view-camera captures)" },
   mode: { kind: text, owner: "caster", routing: true, purpose: "mode of the lobby a caster creates: trios, else solo" },
-  mobile: { kind: text, owner: "boot", purpose: "=1 shows the desktop-only screen on any device (test it on a desktop); =0 boots the game on a phone or tablet anyway; absent = detect a touch-only device" },
+  mobile: { kind: text, owner: "boot", purpose: "desktop-only screen: =1 shows, =0 skips (index.html)" },
   modules: { kind: subset, owner: "boot", purpose: "build only these modules (ids or prefixes)" },
   murkdbg: { kind: num(0), owner: "pois", purpose: "The Murk water debug mode" },
   murknoscene: { kind: present, owner: "pois", purpose: "The Murk water without its scene grab" },
@@ -220,9 +220,6 @@ function readQuery(): URLSearchParams {
 }
 
 const q = readQuery();
-
-/** the page's own query string, untouched by the saved flags: what a copied link to this page should carry */
-export const pageSearch: string = globalThis.location?.search ?? "";
 
 export const flagQuery: Readonly<Record<string, string>> = Object.fromEntries(q);
 
