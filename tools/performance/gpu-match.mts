@@ -69,6 +69,7 @@ const PAN_S = Number(arg("--pan-s", "15")), TIMEOUT_S = Number(arg("--timeout-s"
 const PAN_RATE = 0.6, PAN_PITCH = -0.08, SEED = 42, WARM_WINDOW_S = 15;
 const HEADED = process.argv.includes("--headed");
 const SHOTS = arg("--shots", ""), TRACE = arg("--trace", ""), TRACE_S = Number(arg("--trace-s", "30"));
+const HEAPPROF = arg("--heap-profile", "");
 const EXTRA = arg("--query", "");
 const ANGLE = arg("--angle", process.platform === "win32" ? "d3d11" : process.platform === "darwin" ? "metal" : "vulkan");
 const CHROME = arg("--chrome", process.env.KR_CHROME ?? "");
@@ -347,6 +348,9 @@ try {
   if (ROUTE !== "pan") await page.evaluate("globalThis.__krTourFns = { steer: " + steer.toString() + ", runner: " + tourRunner.toString() + " }");
 
   if (TRACE) await browser.startTracing(page, { path: TRACE, screenshots: false, categories: ["devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.frame", "v8.execute", "blink.user_timing", "gpu", "disabled-by-default-v8.gc"] });
+  const cdp = HEAPPROF ? await page.context().newCDPSession(page) : null;
+  if (cdp) await cdp.send("HeapProfiler.enable");
+  let profiling = "", profN0 = 0;
   const click0 = Date.now();
   await page.evaluate((m) => { (window as any).__kr.gpuCollector.arm = true; void (window as any).__kr.game.practice(m); }, MODE);
   await page.waitForFunction(() => (window as any).__kr.gpuCollector.on === true, null, { timeout: 300_000, polling: 50 });
@@ -378,6 +382,15 @@ try {
         const tag = s.seg + " " + s.segPhase;
         if (landedAt && tag !== lastSeg) {
           lastSeg = tag; log("  " + (SEGS[s.seg]?.id ?? "-") + " " + s.segPhase + " at " + s.x + ", " + s.z);
+          if (cdp && profiling) {
+            const { profile } = await cdp.send("HeapProfiler.stopSampling") as { profile: unknown };
+            const n1 = await page.evaluate(() => (window as any).__kr.gpuCollector.n as number), f = path.resolve(HEAPPROF + "-" + profiling + ".heapprofile");
+            fs.writeFileSync(f, JSON.stringify({ frames: n1 - profN0, ...(profile as object) })); artifacts.push(f); log("  heap profile of " + profiling + ": " + (n1 - profN0) + " frames, " + f); profiling = "";
+          }
+          if (cdp && s.segPhase === "run") {
+            await cdp.send("HeapProfiler.startSampling", { samplingInterval: 32768, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true } as never);
+            profiling = SEGS[s.seg].id; profN0 = await page.evaluate(() => (window as any).__kr.gpuCollector.n as number);
+          }
           if (s.segPhase === "run") { const at = s.seg; setTimeout(() => { void page.evaluate(() => (window as any).__kr.tourRun?.index).then((now) => now === at ? shot("tour-" + SEGS[at].id) : undefined).catch(() => {}); }, Math.min(8, SEGS[at].seconds / 2) * 1000); }
         }
         if (s.done) { await sleep(500); break; }
