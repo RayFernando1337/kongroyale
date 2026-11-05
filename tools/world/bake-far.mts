@@ -123,7 +123,12 @@ async function simplify(raw: Extracted, target: number): Promise<Soup> {
     if (j === undefined) { j = keys.size; keys.set(k, j); pos.push(raw.pos[i * 3], raw.pos[i * 3 + 1], raw.pos[i * 3 + 2]); col.push(raw.col[i * 3], raw.col[i * 3 + 1], raw.col[i * 3 + 2]); }
     remap[i] = j;
   }
-  const P = new Float32Array(pos), C = new Float32Array(col), welded = raw.idx.map((v) => remap[v]);
+  const P = new Float32Array(pos), C = new Float32Array(col), tri: number[] = [];
+  for (let t = 0; t < raw.idx.length; t += 3) {
+    const a = remap[raw.idx[t]], b = remap[raw.idx[t + 1]], c = remap[raw.idx[t + 2]];
+    if (a !== b && b !== c && a !== c) tri.push(a, b, c);
+  }
+  const welded = new Uint32Array(tri);
   await MeshoptSimplifier.ready;
   const run = (e: number) => MeshoptSimplifier.simplifyWithAttributes(welded, P, 3, C, 3, COLOR_WEIGHTS, null, Math.min(welded.length, target * 3), e, ["Permissive"])[0];
   let error = ERROR_START, out = run(error);
