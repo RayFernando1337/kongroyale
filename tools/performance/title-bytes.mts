@@ -8,7 +8,7 @@
 //
 // log: one cold Chrome load (dpr 2, 1600x900) through a logging reverse proxy, so worker-initiated fetches count
 // (a page-level CDP request log misses every Worker fetch). Writes every request (url, start/end ms, wire bytes,
-// status) and the ready time; --after S (5) keeps logging S seconds past ready, for what the prefab warm-up fetches. replay: fetches the unique URLs requested before ready through a shared link
+// status) and the ready time (the game's own __kr.readyAt, on the proxy's clock); a request counts as before ready when it STARTS before it; --after S (5) keeps logging S seconds past ready, for what the prefab warm-up fetches. replay: fetches the unique URLs requested (started) before ready through a shared link
 // (--net MBPS,RTT_MS; 6 connections, one round trip before each response) and prints the download seconds. It
 // fetches everything at once, so it is a lower bound: the game discovers its requests over the boot.
 // Only local servers (AGENTS.md rule 7): both steps refuse any host but 127.0.0.1 / localhost.
@@ -48,30 +48,33 @@ if (cmd === "log") {
   await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
   const port = (proxy.address() as import("node:net").AddressInfo).port;
   const angle = process.platform === "darwin" ? "metal" : process.platform === "win32" ? "d3d11" : "swiftshader";
-  const ctx = await chromium.launchPersistentContext(fs.mkdtempSync("/tmp/kr-title-bytes-"), {
+  const profile = fs.mkdtempSync("/tmp/kr-title-bytes-");
+  const ctx = await chromium.launchPersistentContext(profile, {
     channel: "chrome", headless: true, viewport: { width: 1600, height: 900 }, deviceScaleFactor: 2,
     args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"],
   });
   const page = await ctx.newPage();
-  await page.goto("http://127.0.0.1:" + port + "/");
+  await page.goto("http://127.0.0.1:" + port + target.pathname + target.search + target.hash);
   let readyAt = 0;
   while (Date.now() - t0 < 600_000) {
-    if (await page.evaluate("window.__kr && window.__kr.ready === true").catch(() => false)) { readyAt = Date.now() - t0; break; }
+    const at = await page.evaluate("window.__kr && window.__kr.ready === true ? performance.timeOrigin + (window.__kr.readyAt || performance.now()) : 0").catch(() => 0) as number;
+    if (at) { readyAt = Math.round(at - t0); break; }
     await sleep(1000);
   }
   await sleep(Number(opt("--after", "5")) * 1000);
   fs.mkdirSync(out.replace(/[^/]*$/, "") || ".", { recursive: true });
   fs.writeFileSync(out, JSON.stringify({ readyAt, log } satisfies Log));
-  const pre = log.filter((r) => r.end <= readyAt), mb = (rs: Req[]) => (rs.reduce((s, r) => s + r.bytes, 0) / 1e6).toFixed(2);
-  console.log(JSON.stringify({ readyAt, requests: log.length, preReadyMB: mb(pre), afterReadyMB: mb(log.filter((r) => r.end > readyAt)), out }));
+  const pre = log.filter((r) => r.t <= readyAt), mb = (rs: Req[]) => (rs.reduce((s, r) => s + r.bytes, 0) / 1e6).toFixed(2);
+  console.log(JSON.stringify({ readyAt, requests: log.length, preReadyMB: mb(pre), afterReadyMB: mb(log.filter((r) => r.t > readyAt)), out }));
   await ctx.close();
+  fs.rmSync(profile, { recursive: true, force: true });
   proxy.close();
   process.exit(readyAt ? 0 : 1);
 } else if (cmd === "replay") {
   const { readyAt, log } = JSON.parse(fs.readFileSync(argv[1], "utf8")) as Log;
   const base = local(new URL(opt("--url", "http://127.0.0.1:3140")));
   const [mbps, rtt] = opt("--net", "50,20").split(",").map(Number), runs = Number(opt("--runs", "3")), conc = 6;
-  const urls = log.filter((r) => r.end <= readyAt && r.status === 200).sort((a, b) => a.t - b.t).map((r) => r.url).filter((u, i, a) => a.indexOf(u) === i);
+  const urls = log.filter((r) => r.t <= readyAt && r.status === 200).sort((a, b) => a.t - b.t).map((r) => r.url).filter((u, i, a) => a.indexOf(u) === i);
   for (let run = 0; run < runs; run++) {
     const agent = new http.Agent({ keepAlive: true, maxSockets: conc });
     const q = [...urls];
