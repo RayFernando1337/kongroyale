@@ -10,7 +10,8 @@ const g = globalThis as Record<string, unknown>;
 g.location = { search: "?lowmem=1" };
 g.__kr = { game: { inMatch: true, cm: { phase: Phase.Plane } } };
 
-const PICK_WAIT_MS = 700, VIEW_CAP = 2, AHEAD_M = 600, LOOK_HALF_H_M = 150;
+const PICK_WAIT_MS = 500, VIEW_CAP = 2, AHEAD_M = 600, LOOK_HALF_H_M = 150;
+const CHASE_YAW_RAD = -0.62, CHASE_PITCH_RAD = -0.2, CHASE_BEHIND_M = [900, 300];
 const streamed = POIS.filter((p) => p.id !== "lobby-islet");
 let run = 0;
 
@@ -19,6 +20,16 @@ function planeCamera(heading: number, offM: number, lookAt: (from: THREE.Vector3
   const cam = new THREE.PerspectiveCamera(PLANE_FOV, 16 / 9, 0.5, 2 * PLANE_CHORD_R + 2000);
   cam.position.set(-dz * offM - dx * AHEAD_M, PLANE_ALT, dx * offM - dz * AHEAD_M);
   cam.lookAt(lookAt(cam.position));
+  cam.updateMatrixWorld(true);
+  cam.updateProjectionMatrix();
+  return cam;
+}
+
+function chaseCamera(heading: number, offM: number, behindM: number) {
+  const dx = Math.cos(heading), dz = Math.sin(heading);
+  const cam = new THREE.PerspectiveCamera(PLANE_FOV, 16 / 9, 0.5, 2 * PLANE_CHORD_R + 2000);
+  cam.position.set(-dz * offM - dx * behindM, PLANE_ALT, dx * offM - dz * behindM);
+  cam.quaternion.setFromEuler(new THREE.Euler(CHASE_PITCH_RAD, Math.atan2(-dx, -dz) + CHASE_YAW_RAD, 0, "YXZ"));
   cam.updateMatrixWorld(true);
   cam.updateProjectionMatrix();
   return cam;
@@ -42,7 +53,7 @@ async function picks(cam: THREE.Camera, n: number) {
 
 const island = () => new THREE.Vector3(0, 0, 0);
 const seaward = (from: THREE.Vector3) => from.clone().multiplyScalar(2).setY(0);
-let paths = 0;
+let paths = 0, chased = 0, chasedSeeing = 0;
 for (let k = 0; k < 8; k++) for (const off of [-380, 0, 380]) {
   const heading = (k * Math.PI) / 4, where = `heading ${k * 45}°, offset ${off} m`;
   const toIsland = planeCamera(heading, off, island);
@@ -55,6 +66,16 @@ for (let k = 0; k < 8; k++) for (const off of [-380, 0, 380]) {
   const strays = (await picks(away, 1)).filter((id) => !streamed.some((p) => `poi:${p.id}` === id && inView(away, p)));
   assert.deepEqual(strays, [], `${where}: looking out to sea queues nothing out of view`);
   paths++;
+  for (const behind of CHASE_BEHIND_M) {
+    const chase = chaseCamera(heading, off, behind), at = `${where}, ${behind} m before the island, gameplay chase camera`;
+    const inChase = streamed.filter((p) => inView(chase, p)).map((p) => `poi:${p.id}`);
+    const queued = await picks(chase, VIEW_CAP + 1);
+    assert.equal(queued.length, Math.min(VIEW_CAP, inChase.length), `${at}: queues ${Math.min(VIEW_CAP, inChase.length)} POIs in view, got ${queued.join(", ") || "none"}`);
+    for (const id of queued) assert.ok(inChase.includes(id), `${at}: ${id} was queued but is not in view`);
+    chased++;
+    if (inChase.length) chasedSeeing++;
+  }
 }
-console.log(`plane view (lowmem): ${paths} flight paths queue the POIs in view, at most ${VIEW_CAP}, and nothing out of view`);
+assert.ok(chasedSeeing * 2 > chased, `the gameplay chase camera sees POIs on most paths (${chasedSeeing} of ${chased})`);
+console.log(`plane view (lowmem): ${paths} flight paths aimed at the island and ${chased} chase-camera views (${chasedSeeing} seeing POIs) queue the POIs in view, at most ${VIEW_CAP}, and nothing out of view`);
 process.exit(0);
