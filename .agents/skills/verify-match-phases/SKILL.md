@@ -174,9 +174,9 @@ path to each broken rule in plain words, and for MatchEnds or PlayEnds a loop th
 | match.ts `checkEnd`, `enterResults` | End |
 | match.ts `step`: the Results branch (`RESULTS_S`, `endAfterResults`, `over`); server/lobby.ts `Lobby.pump`, `endMatch` | ResultsTick |
 
-Coverage record: the model describes these as of commit `76ebf89` (re-checked 2026-11-05 against the code the model was
-written from, `369734c`, which is not in main's history: since then `Lobby` moved to server/lobby.ts and `Match.step`
-reads the hold through `warmupHeld`, which records it for replays and returns the same value). To see whether it may be
+Coverage record: the model describes these as of commit `76ebf89` (re-checked 2026-11-05 from `369734c`: #44 moved `Lobby` to
+server/lobby.ts unchanged, and #45 made `Match.step` read the hold through `warmupHeld`, which records it for replays and
+returns the same value; #46, #47 and #82 touch nothing in the table). To see whether it may be
 out of date:
 
 ```sh

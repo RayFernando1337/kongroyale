@@ -68,9 +68,8 @@ same pull request and run the check:
 | match.ts `spawnTuks` with `resetForMatch` in `enterWarmup` / `enterPlane` | Phase |
 | match.ts `stepRespawns`, warm-up respawn, buy-back | Respawn |
 
-Coverage record: the model describes the files above as of commit `76ebf89` (re-checked 2026-11-05 against the code the
-model was written from, `369734c`, which is not in main's history: since then `stepRide` moved unchanged to
-shared/sim/player.hot.ts). To see whether it may be out of date:
+Coverage record: the model describes the files above as of commit `76ebf89` (re-checked 2026-11-05 from `369734c`: #78 moved
+`stepRide` unchanged to shared/sim/player.hot.ts; #44, #45, #46, #47 and #82 touch nothing in the table). To see whether it may be out of date:
 
 ```sh
 git log --oneline 76ebf89..HEAD -- shared/sim/vehicle.ts shared/sim/match.ts shared/sim/player.ts shared/sim/player.hot.ts
