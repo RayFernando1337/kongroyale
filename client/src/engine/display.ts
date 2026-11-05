@@ -15,7 +15,7 @@
 import type * as THREE from "three";
 import type { Engine, Quality } from "./engine";
 import { flag } from "../flags";
-import { gpuScore, type GpuScore } from "./gpu-score";
+import { gpuScore } from "./gpu-score";
 
 export type Level = "low" | "medium" | "high" | "epic";
 export type PresetId = "auto" | Level | "custom";
@@ -86,7 +86,7 @@ const RULES: Array<[RegExp, Level]> = [
   [/apple m[4-9](?! (pro|max|ultra))|apple m[4-9] pro|apple m\d max|apple m\d ultra|rtx 20[7-8]0|rtx 30[6]0|rtx 40[6]0|rtx 50[5-6]0|gtx 10[7-8]0|rx 6[6-7]00|rx 7[6]00|arc a7|arc b/i, "high"],
   [/rtx 30[7-9]0|rtx 40[7-9]0|rtx 50[7-9]0|rtx a\d000|rx 6[8-9]00|rx 7[7-9]00|rx 9\d{3}|titan/i, "epic"],
 ];
-const APPLE_GPU_HIGH_SCORE = 2000, APPLE_GPU_MEDIUM_SCORE = 1300;
+const APPLE_HIGH_DRAWS_PER_S = 2000, APPLE_MEDIUM_DRAWS_PER_S = 1300;
 const SCORE_KEY = "kr-gpu-score";
 const anonymousMacGpu = (gpu: string) => /^apple gpu$/i.test(gpu.trim()) && /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints < 2;
 function storedScore(): number | null {
@@ -95,11 +95,15 @@ function storedScore(): number | null {
     return Number.isFinite(v) && v > 0 ? v : null;
   } catch { return null; }
 }
-const scoreLevel = (score: number): Level => score >= APPLE_GPU_HIGH_SCORE ? "high" : score >= APPLE_GPU_MEDIUM_SCORE ? "medium" : "low";
+function measuredScore(gpu: string): number | null {
+  const r = gpuScore();
+  if (r) try { localStorage.setItem(SCORE_KEY, JSON.stringify({ score: r.score, gpu })); } catch { void 0; }
+  return r?.score ?? null;
+}
 export function deviceLevel(gpu: string): Level {
   if (!anonymousMacGpu(gpu)) return classifyGpu(gpu);
-  const score = storedScore();
-  return score === null ? "low" : scoreLevel(score);
+  const score = storedScore() ?? measuredScore(gpu);
+  return score === null ? "low" : score >= APPLE_HIGH_DRAWS_PER_S ? "high" : score >= APPLE_MEDIUM_DRAWS_PER_S ? "medium" : "low";
 }
 export function gpuString(gl: WebGLRenderingContext | WebGL2RenderingContext): string {
   try {
@@ -166,11 +170,9 @@ interface VegQualityApi { setQuality?(tier: Level): VegQualityState }
 export class Display {
   settings: VideoSettings;
   readonly gpu: string;
-  gpuLevel: Level;
+  readonly gpuLevel: Level;
   firstVisit: boolean;
   private recalibrating = false;
-  private needsScore: boolean;
-  score: GpuScore | null = null;
   /** first-visit bench result (tools) */
   bench: { gpuMs: number; fps: number; from: Level; to: Level; timer: boolean } | null = null;
   /** what veg reported for the last apply (tools read it per preset) */
@@ -186,7 +188,6 @@ export class Display {
     this.gpu = gpuString(engine.renderer.getContext());
     const spoof = flag("gpu"); // tools: ?gpu=<renderer string>
     this.gpuLevel = deviceLevel(spoof || this.gpu);
-    this.needsScore = anonymousMacGpu(spoof || this.gpu) && storedScore() === null;
     const saved = store.get();
     const reclassified = !!saved && saved.preset === "auto" && !saved.stepped && saved.auto !== this.gpuLevel;
     this.firstVisit = !saved || reclassified;
@@ -290,27 +291,13 @@ export class Display {
    *  frames, and only for a clear miss (frame time > 1.5 × the budget); every step down is persisted and shown as a
    *  notice with the new 3D resolution until the player dismisses it. */
   async firstVisitBench(): Promise<void> {
-    const scoring = this.needsScore;
-    if (!this.firstVisit && !scoring) return;
-    let bench = this.firstVisit;
-    this.firstVisit = this.needsScore = false;
+    if (!this.firstVisit) return;
+    this.firstVisit = false;
     const e = this.engine;
     const t0 = performance.now();
     while (!(globalThis as { __kr?: { streamed?: boolean } }).__kr?.streamed && performance.now() - t0 < 40000) await sleep(250);
     const timer = hasTimer(e);
     await sleep(timer ? 1200 : 3000);
-    if (scoring) {
-      this.score = gpuScore();
-      if (this.score) {
-        try { localStorage.setItem(SCORE_KEY, JSON.stringify({ score: this.score.score, gpu: this.gpu })); } catch { void 0; }
-        const lvl = scoreLevel(this.score.score);
-        if (lvl !== this.gpuLevel) {
-          this.gpuLevel = lvl;
-          if (this.settings.preset === "auto" && !this.settings.stepped) { this.set({ auto: lvl, preset: "auto" }); bench = true; await sleep(3000); }
-        }
-      }
-    }
-    if (!bench) return;
     const r = await measure(e, 2000);
     // (a refresh measured under a starved main thread reads far below 60 Hz — e.g. "7 Hz" → a 140 ms budget that
     // never stepped down; a display is 60-120 Hz for this purpose)

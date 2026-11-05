@@ -10,7 +10,7 @@ void main() {
   for (int i = 0; i < 128; i++) { q = vec2(q.x * q.y + 0.13, sin(q.x + q.y)); a += q.x; }
   color = vec4(fract(a), q, 1.0);
 }`;
-const SIDE_PX = 1024, TRIAL_MS = 30, TRIALS = 5, MAX_DRAWS = 4096;
+const SIDE_PX = 1024, TRIAL_MS = 30, TRIALS_N = 5, MAX_DRAWS_N = 4096;
 
 export interface GpuScore { score: number; draws: number; trialMs: number[]; capped: boolean }
 
@@ -41,11 +41,11 @@ export function gpuScore(): GpuScore | null {
     };
     trial(1);
     let draws = 2;
-    while (draws < MAX_DRAWS && trial(draws) < TRIAL_MS) draws *= 2;
+    while (draws < MAX_DRAWS_N && trial(draws) < TRIAL_MS) draws *= 2;
     const trialMs: number[] = [];
-    for (let i = 0; i < TRIALS; i++) trialMs.push(trial(draws));
+    for (let i = 0; i < TRIALS_N; i++) trialMs.push(trial(draws));
     const sorted = [...trialMs].sort((a, b) => a - b);
-    const median = sorted[TRIALS >> 1];
-    return { score: Math.round(draws / Math.max(median, 0.1) * 1000), draws, trialMs: trialMs.map((t) => Math.round(t * 10) / 10), capped: draws >= MAX_DRAWS };
+    const median = sorted[TRIALS_N >> 1];
+    return { score: Math.round(draws / Math.max(median, 0.1) * 1000), draws, trialMs: trialMs.map((t) => Math.round(t * 10) / 10), capped: draws >= MAX_DRAWS_N };
   } finally { gl.getExtension("WEBGL_lose_context")?.loseContext(); }
 }
