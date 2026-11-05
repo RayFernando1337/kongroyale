@@ -737,7 +737,7 @@ export async function buildGorillaStatue(ctx: WorldCtx, height = 3.4, pace: Pace
   for (const o of [body, bunch]) { o.castShadow = true; o.receiveShadow = true; group.add(o); }
   // perf: the body's ~26 k tris never cast — a ~2.5 k-tri decimated twin casts instead (invisible in the main pass)
   await pace.pause();
-  const caster = await statueCaster(g);
+  const caster = await pace.wait(statueCaster(g));
   await pace.pause();
   if (caster) {
     body.castShadow = false; body.userData.castShadow = false;
