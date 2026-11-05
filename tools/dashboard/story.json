@@ -30,14 +30,15 @@
   "cards": [
     {
       "head": "A 16 GB Mac can play a whole match in Safari",
-      "plain": "Before, the game kept every location it had built, so memory only went up. Safari closed the tab (killed for memory) about 80 seconds after the player landed. The game now keeps about four locations at a time and drops the farthest ones as the player moves on. In the test below it reached the results screen both times.",
+      "plain": "Before, the game kept every location it had built, so memory only went up. Safari closed the tab (killed for memory) about 80 seconds after the player landed. The game now keeps at most four locations at a time and drops the farthest ones as the player moves on. In the newest test below it reached the results screen both times, with peak memory about 1 GB lower than the version before it.",
       "notice": "What you'll notice: on a 16 GB Mac in Safari, the match no longer ends with the tab closing on you.",
       "prs": [
         140,
         149,
-        157
+        157,
+        160
       ],
-      "method": "Mac mini M4, 16 GB, Safari 27, quality Auto (picked Low), ?seed=42, scripted moving player, production build served locally. Before: main 1ee1f52, 1 run. After: main b49187b, 2 runs. Details in the Safari panel below."
+      "method": "Mac mini M4, 16 GB, Safari 27, quality Auto (picked Low), ?seed=42, scripted moving player, production build served locally. Newest: main 3248912, 2 runs. Before: main 1ee1f52, 1 run. Details in the Safari panel below."
     },
     {
       "head": "Textures are stored smaller, with no visible loss at the default",
@@ -69,7 +70,7 @@
   ],
   "safari": {
     "title": "Safari on a 16 GB Mac mini: whole-match survival, before and after",
-    "plain": "One scripted player (it drops near the harbor, then keeps moving toward the next safe place) was played until the match ended or Safari closed the tab. Landing came at 104 to 105 s in every run. Peak WebContent is the size of the part of Safari that runs the game's page, which is the part Safari closes. Times below are seconds since the test started.",
+    "plain": "One scripted player (it drops near the harbor, then keeps moving toward the next safe place) was played until the match ended or Safari closed the tab. Landing came at 104 to 106 s in every run. Peak WebContent is the size of the part of Safari that runs the game's page, which is the part Safari closes. Times below are seconds since the test started.",
     "columns": [
       "Build",
       "How it ended",
@@ -79,30 +80,44 @@
     ],
     "rows": [
       {
-        "build": "Before: main 1ee1f52 (1 run)",
-        "end": "Killed for memory, 82 s after landing",
-        "time": "185 s",
-        "peak": "8.5 GB",
-        "pois": "10"
+        "build": "Newest: main 3248912 (#160), run 1",
+        "end": "Reached Results",
+        "time": "896 s",
+        "peak": "7.3 GB",
+        "pois": "4 at most"
       },
       {
-        "build": "After: main b49187b, run 1",
+        "build": "Newest: main 3248912 (#160), run 2",
+        "end": "Reached Results",
+        "time": "814 s",
+        "peak": "6.9 GB",
+        "pois": "4 at most"
+      },
+      {
+        "build": "Earlier: main b49187b, run 1",
         "end": "Reached Results",
         "time": "892 s",
         "peak": "8.4 GB",
         "pois": "4 (5 for about a second)"
       },
       {
-        "build": "After: main b49187b, run 2",
+        "build": "Earlier: main b49187b, run 2",
         "end": "Reached Results",
         "time": "930 s",
         "peak": "7.8 GB",
         "pois": "4 (5 for about a second)"
+      },
+      {
+        "build": "Before: main 1ee1f52 (1 run)",
+        "end": "Killed for memory, 82 s after landing",
+        "time": "185 s",
+        "peak": "8.5 GB",
+        "pois": "10"
       }
     ],
     "steps": "In between: the version from #149 (e24cb9c) reached Results in 1 of 2 runs, and a version of #157 (14ecb8b) in 1 of 3. The other runs were killed for memory.",
-    "caveat": "Three runs of this test on one Mac are a signal, not a guarantee. Two 14ecb8b kills happened with memory flat around 8.0 to 8.2 GB, so the margin on a 16 GB Mac is thin and depends on how Safari starts. The scripted player's deaths in the storm near one spot are a limit of the script, not of the game.",
-    "method": "Mac mini M4, 16 GB, Safari 27, ?seed=42&perfhud, quality Auto (picked Low), production build served locally, peak WebContent = highest per-phase peak (warm-up, plane, glide, on foot). Sources: handoffs/safari-growth/pr149-v2, pr157 and raw in the project drive; fixes in fork #140, #149 and #157."
+    "caveat": "Two runs on one Mac are a signal, not a guarantee. But the peaks, 7.3 and 6.9 GB, sit about 1 GB below the earlier build and well under the 8.4 to 8.8 GB where the kills we saw on this Mac happened, so the margin is no longer thin. In run 1 the scripted player died once after getting stuck on a patch of terrain; that is a limit of the script, and the run still reached Results.",
+    "method": "Mac mini M4, 16 GB, Safari 27, ?seed=42&perfhud, quality Auto (picked Low), production build served locally, peak WebContent = highest per-phase peak (warm-up, plane, glide, on foot). Sources: handoffs/safari-growth/pr160, pr157, pr149-v2 and raw in the project drive; fixes in fork #140, #149, #157 and #160."
   },
   "journey": {
     "title": "The journey so far",
@@ -137,7 +152,7 @@
       },
       {
         "pr": 160,
-        "text": "Building a location and dropping one now use the same ranking."
+        "text": "Building a location and dropping one now use the same ranking. In the Safari test, both runs reached Results and peak memory fell by about 1 GB."
       }
     ]
   },
