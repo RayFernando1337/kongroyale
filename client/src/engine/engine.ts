@@ -130,6 +130,11 @@ export class Engine implements WorldCtx {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     watchContext(this.canvas, this);
+    // initTexture runs outside the frame loop (stream integration, the GPU warmer, the title art) and three never stops it
+    // on a lost context: a first compressed upload there caches the BPTC/ASTC extensions as missing. It uploads on its
+    // first draw after the restore instead.
+    const initTexture = this.renderer.initTexture.bind(this.renderer);
+    this.renderer.initTexture = (t) => { if (!this.contextLost) initTexture(t); };
     // ?dpr=N overrides the device pixel ratio (A/B of the fill-rate share). The canvas backing store is the
     // screen's NATIVE pixels (devicePixelRatio, e.g. 1.5 on a 150 %-scaled 4K monitor, 2 on a Retina MacBook; capped at
     // 2 for phones); the "3D resolution" setting scales the scene inside the post chain (TAAU), never the canvas
@@ -354,7 +359,7 @@ export class Engine implements WorldCtx {
    * this draw compiles synchronously. Objects behind a visibility gate (far-POI merge) keep their state.
    */
   warmDraw(roots: THREE.Object3D[], depthOnly = false) {
-    if (!roots.length) return;
+    if (!roots.length || this.contextLost) return;
     if (!this.depthVariantsWarm && this.warmShadowOn) this.warmDepthVariants();
     const LAYER = 30, DEPTH_LAYER = 28, ROOT_LAYER = depthOnly ? DEPTH_LAYER : LAYER;
     const r = this.renderer;
