@@ -21,18 +21,40 @@ async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
   }
 }
 
+const DECODER_IDLE_MS = 10000;
+
 export class Assets {
-  private gltf = new GLTFLoader();
+  private gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   private tex = new THREE.TextureLoader();
   private cache = new Map<string, Promise<unknown>>();
+  private decoders: { draco: DRACOLoader; ktx2: KTX2Loader } | null = null;
+  private decoding = 0;
+  private decoderIdle: ReturnType<typeof setTimeout> | undefined;
   readonly maxAniso: number;
-  readonly ktx2: KTX2Loader;
 
-  constructor(renderer: THREE.WebGLRenderer, private hold: (label: string) => () => void) {
-    const draco = new DRACOLoader().setDecoderPath(assetUrl("assets/decoders/draco/"));
-    this.ktx2 = new KTX2Loader().setTranscoderPath(assetUrl("assets/actors/basis/")).setWorkerLimit(4).detectSupport(renderer);
-    this.gltf.setMeshoptDecoder(MeshoptDecoder).setDRACOLoader(draco).setKTX2Loader(this.ktx2);
+  constructor(private renderer: THREE.WebGLRenderer, private hold: (label: string) => () => void) {
     this.maxAniso = renderer.capabilities.getMaxAnisotropy();
+  }
+
+  private async decode<T>(f: (d: { draco: DRACOLoader; ktx2: KTX2Loader }) => Promise<T>): Promise<T> {
+    clearTimeout(this.decoderIdle);
+    if (!this.decoders) {
+      this.decoders = {
+        draco: new DRACOLoader().setDecoderPath(assetUrl("assets/decoders/draco/")),
+        ktx2: new KTX2Loader().setTranscoderPath(assetUrl("assets/actors/basis/")).setWorkerLimit(4).detectSupport(this.renderer),
+      };
+      this.gltf.setDRACOLoader(this.decoders.draco).setKTX2Loader(this.decoders.ktx2);
+    }
+    this.decoding++;
+    try { return await f(this.decoders); }
+    finally { if (--this.decoding === 0) this.decoderIdle = setTimeout(() => this.releaseDecoders(), DECODER_IDLE_MS); }
+  }
+
+  private releaseDecoders() {
+    if (this.decoding > 0 || !this.decoders) return;
+    this.decoders.draco.dispose();
+    this.decoders.ktx2.dispose();
+    this.decoders = null;
   }
 
   private once<T>(key: string, make: () => Promise<T>): Promise<T> {
@@ -46,7 +68,11 @@ export class Assets {
   }
 
   model(path: string): Promise<GLTF> {
-    return this.once("gltf:" + path, () => retry(() => this.gltf.loadAsync(assetUrl(path))));
+    return this.once("gltf:" + path, () => this.decode(() => retry(() => this.gltf.loadAsync(assetUrl(path)))));
+  }
+
+  compressedTexture(path: string): Promise<THREE.CompressedTexture> {
+    return this.decode(({ ktx2 }) => ktx2.loadAsync(assetUrl(path)));
   }
 
   /** color textures get sRGB; pass { srgb: false } for normal/roughness/AO data maps */
