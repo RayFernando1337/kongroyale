@@ -110,7 +110,7 @@ engine.renderer.debug.onShaderError = (gl, program, vs, fs) => {
   const name = (engine.renderer.info.programs as unknown as Array<{ program: WebGLProgram; name?: string }> | undefined)?.find((p) => p.program === program)?.name ?? "?";
   report("shader", `program "${name}" failed: ${log(vs) || log(fs) || (gl.getProgramInfoLog(program) ?? "").trim().slice(0, 300)}`);
 };
-kr.bench = (n?: number) => engine.bench(n);
+kr.bench = (n?: number) => import("./engine/dev-probes").then((m) => m.bench(engine, n));
 kr.fps = () => engine.liveFps();
 kr.info = () => ({ ...engine.renderer.info.render, geometries: engine.renderer.info.memory.geometries, textures: engine.renderer.info.memory.textures, programs: engine.renderer.info.programs?.length });
 // bug reports: `/` → /kongbot <message> (screenshot + context → the server)
