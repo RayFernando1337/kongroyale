@@ -45,7 +45,7 @@ WireScopeAfter == IF WireScope = 0 THEN 1 ELSE WireScope
 (* PLAY vs bots: offline() (index.ts:251-266): leaveAll, new OfflineLink, wire, start in 50 ms. Before ready only
    Enter reaches the lobby (the loading screen swallows clicks, not Enter: index.html:389-404, ui/lobby.ts:333-350) *)
 Play ==
-  /\ view = "title" /\ ctx = "ok"
+  /\ view = "title"   \* a lost context does not disable the title's buttons (restore.ts watchContext)
   /\ boot = "loading" \/ prefabs   \* after ready, kr.prepare() waits for the prefabs (main.ts:502-531); before, it is undefined
   /\ scope' = WireScopeAfter /\ render' = WireOk
   /\ link' = "offline"
@@ -53,18 +53,21 @@ Play ==
   /\ silent' = ~WireOk
   /\ UNCHANGED <<boot, prefabs, seated, err, why, ctx, restores>>
 
-(* CREATE/JOIN: online() (index.ts:230-244) reuses any online link without checking it is open (231) *)
+(* CREATE/JOIN: online() (index.ts:230-244) reuses any online link without checking it is open (231). Like PLAY,
+   create and join await prepareIsland(), which waits for the prefabs after ready and resolves at once before it;
+   before ready only Enter reaches the lobby, and Enter is JOIN when the page was opened with an invite (?join=) *)
 Connect ==
-  /\ Online /\ boot = "ready" /\ prefabs /\ view = "title" /\ ctx = "ok"
+  /\ Online /\ view = "title"
+  /\ boot = "loading" \/ prefabs
   /\ IF link = "closed"
        THEN /\ silent' = TRUE   \* link?.sendJSON does nothing on a closed socket (net.ts:42); no busy, no error
             /\ UNCHANGED <<view, link, scope, render>>
        ELSE /\ link' = "online" /\ scope' = WireScopeAfter /\ render' = WireOk
             /\ view' = (IF WireOk THEN "room" ELSE "title") /\ silent' = ~WireOk
   /\ UNCHANGED <<boot, prefabs, phase, seated, err, why, ctx, restores>>
-\* a JOIN that fails ("NO SUCH LOBBY") leaves the socket open at the title
+\* a JOIN that fails ("NO SUCH LOBBY") leaves the socket open at the title; the JOIN went out after the renderer was wired
 JoinFails ==
-  /\ Online /\ boot = "ready" /\ view = "title" /\ link \in {"none", "offline"} /\ ctx = "ok"
+  /\ Online /\ boot = "ready" /\ prefabs /\ view = "title" /\ link \in {"none", "offline"}
   /\ link' = "online" /\ err' = TRUE
   /\ scope' = WireScopeAfter /\ render' = WireOk
   /\ UNCHANGED <<boot, prefabs, view, phase, seated, why, silent, ctx, restores>>

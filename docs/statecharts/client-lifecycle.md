@@ -39,19 +39,20 @@ stateDiagram-v2
       [*] --> s0
       s0 --> s1: the title is ready
       s1 --> s0: the page reloads [unless Drawing]
+      s0 --> s2: the title is ready
       s1 --> s2: the server link closes
-      s1 --> s3: you press PLAY [when Drawing]
-      s1 --> s4: you press CREATE or JOIN [when Drawing]
+      s1 --> s3: you press PLAY
+      s1 --> s4: you press CREATE or JOIN
       s3 --> s1: you leave
       s4 --> s1: you leave
       s4 --> s5: the host presses START
       s2 --> s0: the page reloads [unless Drawing]
       s3 --> s0: the page reloads [unless Drawing]
       s4 --> s0: the page reloads [unless Drawing]
-      s2 --> s1: you press PLAY [when Drawing]
-      s2 --> s3: you press PLAY [when Drawing]
+      s2 --> s3: you press PLAY
       s5 --> s1: you leave
       s5 --> s4: the match crashes on the server
+      s2 --> s1: you press PLAY
       s3 --> s6: the match moves on
       s5 --> s0: the page reloads [unless Drawing]
       s5 --> s7: the match moves on
@@ -121,7 +122,7 @@ and the paths below come from.
 ## The paths that break a rule
 
 1. **Enter on the loading screen** (ScopeHasOwner, ButtonsAnswer), 1 step. The loading screen swallows clicks but not
-   Enter, so Enter reaches the title's PLAY. `offline()` calls `wire()` before the prefabs exist: the new
+   Enter, so Enter reaches the title's PLAY (or JOIN, on a page opened with an invite link). `offline()` calls `wire()` before the prefabs exist: the new
    `GameRender` opens the `match` scope, then its constructor reads `kits.viewModel`, which is still null, and throws.
    The scope stays open with no owner, so every later PLAY fails with "already has a live child named match".
 2. **Removed for inactivity** (NoFrozenMatch), 5 steps: title, CREATE, START, then 180 s with no input. The server

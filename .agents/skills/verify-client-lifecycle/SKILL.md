@@ -34,7 +34,7 @@ node tools/formal/tlc.mjs ClientLifecycle --mutants
 ```
 
 It needs Java 11 or newer on PATH; the first run downloads the pinned TLA+ tools jar into node_modules/.cache. A run
-takes about a second (422 distinct states, `Online = TRUE`). Expected output: one `PASS ClientLifecycle` line and one
+takes about a second (400 distinct states, `Online = TRUE`). Expected output: one `PASS ClientLifecycle` line and one
 `PASS ... mutant` line per entry in `ClientLifecycle.mutants.json`. Each mutant takes one guard out of a scratch copy
 of the model and must make TLC report the rule its entry names; a mutant that passes means the model can no longer see
 that guard. Fix the model, not the mutant.
@@ -66,8 +66,9 @@ Read the shortest path, then decide which it is:
 | lobby.ts `housekeeping` (AFK), `unseat`, `leave`; `pump`, `endMatch` (crash, end) | RemovedAfk, Crashed, MatchOver |
 | restore.ts `watchContext`; restore-run.ts `restoreAll` | Lose, Restored, RestoreDone, Reload |
 
-One fact no region can name: main.ts sets `__kr.prepare` at top level after ready. The model's PLAY guard (before ready,
-no prepare) depends on it, so read it when main.ts's boot order changes.
+Two facts no region can name: main.ts sets `__kr.prepare` and `__kr.ready` at top level. The model's PLAY, CREATE and
+JOIN guards (before ready there is no prepare, so a button goes straight on) depend on that order, and the drift check
+cannot see it change. Read main.ts's boot order against the model whenever it changes.
 
 Coverage record: `tools/formal/ClientLifecycle.covers.json` names the code above (one region per function) and the
 writes the model guards (`inMatch` and `staleMatch` in index.ts, `contextLost` in the engine), and records a token
