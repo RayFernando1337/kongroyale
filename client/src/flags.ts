@@ -52,6 +52,7 @@ const FLAGS = {
   fullcam: { kind: present, owner: "engine", purpose: "full scene-graph camera updates instead of the camera-only walk" },
   fxlive: { kind: present, owner: "weapons", purpose: "weapon stages play effects live instead of frozen" },
   fxt: { kind: text, owner: "weapons", purpose: "time (s) the fx stage freezes at; default 0.2" },
+  geofree: { kind: one, owner: "engine", purpose: "=1 drops the CPU vertex arrays of static town-kit batches once they are on the GPU" },
   geoshare: { kind: on, owner: "engine", purpose: "copies of one asset share their identical vertex arrays (crates per rarity, the two planes); =0 keeps a copy each" },
   gpu: { kind: text, owner: "engine", purpose: "renderer string to classify instead of the real GPU's" },
   guard: { kind: present, owner: "boot", purpose: "run the display frame-rate guard in automated browsers too" },
