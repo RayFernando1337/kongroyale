@@ -22,7 +22,7 @@ const VIEW_HALF_H_M = 150;
 const OFFSCREEN_RANK_M = 1e6;
 let viewBuilds = 0, pickedByView = false;
 const view = new THREE.Frustum(), viewProj = new THREE.Matrix4(), poiSphere = new THREE.Sphere();
-const LOOKAHEAD_S = 5, SAMPLE_MS = 200, TELEPORT_MPS = 150, FAST_MPS = 12, FAST_BUILD_GAP_MS = 8000;
+const LOOKAHEAD_S = 5, AHEAD_MIN_M = 0.01, SAMPLE_MS = 200, TELEPORT_MPS = 150, FAST_MPS = 12, FAST_BUILD_GAP_MS = 8000;
 const motion = { x: 0, z: 0, at: 0, vx: 0, vz: 0, builtAt: -Infinity };
 
 function track(camera: THREE.Camera) {
@@ -38,7 +38,7 @@ function track(camera: THREE.Camera) {
 function distM(camera: THREE.Camera, p: Poi): number {
   const e = camera.matrixWorld.elements;
   const here = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
-  return here <= 0 ? here : Math.hypot(e[12] + motion.vx * LOOKAHEAD_S - p.x, e[14] + motion.vz * LOOKAHEAD_S - p.z) - p.r;
+  return here <= 0 ? here : Math.max(AHEAD_MIN_M, Math.hypot(e[12] + motion.vx * LOOKAHEAD_S - p.x, e[14] + motion.vz * LOOKAHEAD_S - p.z) - p.r);
 }
 
 function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number, viewCap: number): string | null {
