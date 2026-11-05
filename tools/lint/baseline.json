@@ -15,6 +15,7 @@
       "const fs = await import(/* @vite-ignore */ [\"node\", \"fs\"].join(\":\")) as { readFileSync(p: URL): Uint8Array };"
     ]
   },
+  "shared-math": {},
   "hot-alloc": {
     "shared/net/host.ts": [
       "const summary = JSON.stringify([state.outcomeTime, state.placement, state.totalSquads, state.kills, state.damage, state.winner, state.squadOut]);"

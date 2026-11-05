@@ -109,12 +109,18 @@ export function createTitleScene(engine: Engine, plane: PlaneProps, kits: TitleK
     if (!on && engine.camera.layers.mask === 1 << TITLE_LAYER) engine.camera.layers.mask = 1;
   }
 
-  let visible = true, t0 = 0;
+  let visible = true, t0 = 0, frozen = false;
   const CAM = new THREE.Vector3(), FWD = new THREE.Vector3(), RIGHT = new THREE.Vector3(), LOOK = new THREE.Vector3();
   const gy = (x: number, z: number) => Math.max(0, T.height(x, z));
   plane.object.visible = false;
   return {
-    group, freeze: false,
+    group,
+    // the hero leaves the kong manager while the prewarm owns the camera: an excursion (the post-title match warm-up)
+    // ticks LODs from far-off viewpoints, where the hero dropped to the min tier — and the next real frame crossfaded it
+    // back to hi through the screen door (no TAA on the title to hide it): a dithered, low-detail kong for as long as the
+    // warm-up ran. A kong that was not drawn comes back at its tier at once.
+    get freeze() { return frozen; },
+    set freeze(v: boolean) { frozen = v; hero?.setVisible(!v); },
     setVisible(v: boolean) { visible = v; group.visible = v; if (!v) { plane.object.visible = false; setDraw(false); } },
     update(dt: number) {
       if (!visible || this.freeze) { setDraw(false); return; }

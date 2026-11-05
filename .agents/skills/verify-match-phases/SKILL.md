@@ -163,8 +163,8 @@ path to each broken rule in plain words, and for MatchEnds or PlayEnds a loop th
 
 | Code | Model action |
 |---|---|
-| match.ts `step`: the warm-up branch (`phaseT`, `warmWall`, `holdWarmup`, `skipWarmup`, `enterPlane`) | WarmTick, HoldOn |
-| match.ts `startNow`; server/index.ts onJSON "start" during a match | StartNow |
+| match.ts `step`: the warm-up branch (`phaseT`, `warmWall`, `holdWarmup` through `warmupHeld`, `skipWarmup`, `enterPlane`) | WarmTick, HoldOn |
+| match.ts `startNow`; server/index.ts onJSON "start" during a match (`Lobby.start` before one) | StartNow |
 | host.ts `holdForStream`; server/index.ts onJSON "stream" | HoldOn, Stream |
 | match.ts `stepPlane`, `enterPlay` | PlaneTick |
 | storm.ts `stormAt` and `PHASE_REF` (which phases keep resurgence) | Storm |
@@ -172,17 +172,21 @@ path to each broken rule in plain words, and for MatchEnds or PlayEnds a loop th
 | match.ts `kill`, `eliminate`, `squadsLeft` | Wipe, SquadsLeft |
 | match.ts `stepRespawns` | Redeploy |
 | match.ts `checkEnd`, `enterResults` | End |
-| match.ts `step`: the Results branch (`RESULTS_S`, `endAfterResults`, `over`); server/index.ts `Lobby.pump` | ResultsTick |
+| match.ts `step`: the Results branch (`RESULTS_S`, `endAfterResults`, `over`); server/lobby.ts `Lobby.pump`, `endMatch` | ResultsTick |
 
-Coverage record: the model describes these as of commit `369734c`. To see whether it may be out of date:
+Coverage record: tools/formal/MatchPhases.covers.json names the code this model describes (one region per function,
+method or switch case in the table above) and the writes it guards, and records a token hash of each region as of the
+last run that passed. npm test's `formal` check (tools/formal/drift.mjs, no Java) fails when a region changed, moved or
+vanished, when the model's own files changed, or when code outside the regions writes the guarded state. Then read each
+change against the table: if the code changed shape, change the model and cite the line; if a function moved or a new
+one writes the state, update the regions or the `allow` list (a function, each write it may make there, listed once per occurrence, and why). Re-verify and record in one step:
 
 ```sh
-git log --oneline 369734c..HEAD -- shared/sim/match.ts shared/sim/storm.ts shared/net/host.ts server/index.ts
+node tools/formal/tlc.mjs MatchPhases --mutants --record
 ```
 
-For each commit listed, check whether it touched a row of the table. Move the commit forward only after you have
-confirmed that the model describes the code at the new commit (the pstack `/maintain-formal-verification-skill` skill
-walks through this).
+It writes the hashes only when the model and every mutant pass, so a model can't be marked verified without TLC.
+The pstack `/maintain-formal-verification-skill` skill walks through a larger catch-up.
 
 ## What it does not cover
 
