@@ -137,10 +137,11 @@ export function installDiag(engine: Engine): (at: number) => void {
     last.phase = phase; last.programs = programs; last.scale = scale; last.heap = heap;
     const streamed = K.streamMs ?? {}, modules = K.modules ?? [];
     for (const id in streamed) {
-      if (resident.has(id) || failed.has(id)) continue;
-      if (modules.includes(id)) { resident.add(id); push("module-built", streamed[id], id); }
-      else { failed.add(id); push("module-failed", streamed[id], id); }
+      if (resident.has(id)) continue;
+      if (modules.includes(id)) { failed.delete(id); resident.add(id); push("module-built", streamed[id], id); }
+      else if (!failed.has(id)) { failed.add(id); push("module-failed", streamed[id], id); }
     }
+    for (const id of failed) if (!(id in streamed)) failed.delete(id);
     for (const id of resident) if (!modules.includes(id)) { resident.delete(id); push("module-dropped", 0, id); }
     if (p && g?.input) {
       const row = (pathCursor.rows % PATH_S) * PATH_W;
