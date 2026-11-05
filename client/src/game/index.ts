@@ -186,17 +186,21 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   // the game's own full screen is asked for ON the PLAY / FIRING RANGE / CREATE / JOIN click (a user
   // gesture lasts ~5 s: asked again at match start, after the island prepared or the host pressed START, it was refused)
   const fsOnPlay = () => input.autoFullscreen();
+  // the title behind the loading screen is not playable until main.ts marks it ready: a session started earlier (Enter,
+  // a controller's A, a Tab-focused button) wires a GameRender before the prefabs exist, which throws and strands the
+  // match scope
+  const titleReady = () => document.documentElement.dataset.ready === "1";
   const actions: LobbyActions = {
     skipCoach() { coach.skip(); },
     replayCoach() { coach.replay(); coachObserver.reset(); },
     setName(name) { link?.sendJSON({ t: "hello", name }); },
-    async create(mode) { fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "create", mode }); },
-    async join(code) { lobbyState.ended = null; fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "join", code, tok: playerTok }); },
+    async create(mode) { if (!titleReady()) return; fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "create", mode }); },
+    async join(code) { if (!titleReady()) return; lobbyState.ended = null; fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "join", code, tok: playerTok }); },
     setMode(mode) { lobbyState.mode = mode; link?.sendJSON({ t: "mode", mode }); },
     start() { link?.sendJSON({ t: "start", mode: lobbyState.mode }); },
-    practice(mode, difficulty) { fsOnPlay(); void offline(mode, false, difficulty ?? botDifficulty); },
+    practice(mode, difficulty) { if (!titleReady()) return; fsOnPlay(); void offline(mode, false, difficulty ?? botDifficulty); },
     setDifficulty(difficulty) { botDifficulty = difficulty; lobbyState.difficulty = difficulty; try { localStorage.setItem("kr-bot-difficulty", difficulty); } catch { /* private mode */ } lobby.update(lobbyState); },
-    range() { fsOnPlay(); offline("solo", true); },
+    range() { if (!titleReady()) return; fsOnPlay(); offline("solo", true); },
     leave() { leaveAll(); },
     pickTeam(team) { link?.sendJSON({ t: "team", team }); },
   };

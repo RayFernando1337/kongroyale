@@ -333,9 +333,6 @@ export function createLobby(actions: LobbyActions): LobbyScreen {
   addEventListener("keydown", (ev) => {
     if (root.classList.contains("kr-hide") || ev.defaultPrevented || ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (ev.key !== "Enter" && ev.key !== "Escape") return;
-    // the loading screen covers the title until main.ts marks it ready; it swallows clicks, and Enter must wait too, or
-    // PLAY / JOIN start a session before the prefabs exist (GameRender throws and the loading screen fails for good)
-    if (document.documentElement.dataset.ready !== "1") return;
     if (document.querySelector(".kr-video.on")) return;      // (settings handles its own keys)
     const t = ev.target as HTMLElement | null;
     if (t && t !== document.body && !root.contains(t)) return; // another overlay (the bug report bar, a toast) owns it

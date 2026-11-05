@@ -122,8 +122,9 @@ and the paths below come from.
    Enter, so Enter reached PLAY (or JOIN on an invite link) before the prefabs existed: `GameRender` opened the `match`
    scope, threw on the missing view model, and left the scope open, so every later PLAY failed with "already has a live
    child named match" (and on a load over 120 s the loading screen's watchdog showed "THE ISLAND COULDN'T LOAD"). The
-   lobby's Enter now waits for `dataset.ready`, the model's PLAY and CREATE/JOIN need the prefabs, and ScopeHasOwner
-   holds; the mutant "Enter reaches PLAY before ready" puts the old guard back and breaks it.
+   lobby's actions now do nothing until `dataset.ready`, whatever the input (Enter, a controller, a focused button), the
+   model's PLAY and CREATE/JOIN need the prefabs, and ScopeHasOwner holds; the mutant "PLAY runs before ready" puts the
+   old guard back and breaks it.
 2. **Removed for inactivity** (NoFrozenMatch), 5 steps: title, CREATE, START, then 180 s with no input. The server
    sends `REMOVED FOR INACTIVITY` without `afk: true` and no room frame. The client shows the text over a match that
    no longer updates.

@@ -67,9 +67,9 @@ Read the shortest path, then decide which it is:
 | restore.ts `watchContext`; restore-run.ts `restoreAll` | Lose, Restored, RestoreDone, Reload |
 
 Facts no region can name: main.ts sets `__kr.prepare`, `__kr.ready` and `dataset.ready` at top level, and the lobby's
-Enter handler (inside ui/lobby.ts `createLobby`) waits for `dataset.ready`. The model's PLAY, CREATE and JOIN guards
+actions (index.ts `startGame`'s `actions`, through `titleReady`) wait for `dataset.ready`. The model's PLAY, CREATE and JOIN guards
 (nothing before the prefabs) depend on both, and the drift check cannot see either change. Read them against the model
-whenever main.ts's boot order or the lobby's keyboard handling changes.
+whenever main.ts's boot order or those actions change.
 
 Coverage record: `tools/formal/ClientLifecycle.covers.json` names the code above (one region per function) and the
 writes the model guards (`inMatch` and `staleMatch` in index.ts, `contextLost` in the engine), and records a token
