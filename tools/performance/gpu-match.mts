@@ -69,7 +69,8 @@ const PAN_S = Number(arg("--pan-s", "15")), TIMEOUT_S = Number(arg("--timeout-s"
 const PAN_RATE = 0.6, PAN_PITCH = -0.08, SEED = 42, WARM_WINDOW_S = 15;
 const HEADED = process.argv.includes("--headed");
 const SHOTS = arg("--shots", ""), TRACE = arg("--trace", ""), TRACE_S = Number(arg("--trace-s", "30"));
-const HEAPPROF = arg("--heap-profile", "");
+const HEAPPROF = arg("--heap-profile", ""), CENSUS = process.argv.includes("--census");
+const census: Record<string, Array<[string, number]>> = {};
 const EXTRA = arg("--query", "");
 const ANGLE = arg("--angle", process.platform === "win32" ? "d3d11" : process.platform === "darwin" ? "metal" : "vulkan");
 const CHROME = arg("--chrome", process.env.KR_CHROME ?? "");
@@ -387,6 +388,17 @@ try {
             const n1 = await page.evaluate(() => (window as any).__kr.gpuCollector.n as number), f = path.resolve(HEAPPROF + "-" + profiling + ".heapprofile");
             fs.writeFileSync(f, JSON.stringify({ frames: n1 - profN0, ...(profile as object) })); artifacts.push(f); log("  heap profile of " + profiling + ": " + (n1 - profN0) + " frames, " + f); profiling = "";
           }
+          if (CENSUS && s.segPhase === "run") census[SEGS[s.seg].id] = await page.evaluate(() => new Promise<Array<[string, number]>>((res) => {
+            const r = (window as any).__kr.engine.renderer, orig = r.renderBufferDirect, m = new Map<string, number>();
+            r.renderBufferDirect = function (cam: any, scene: any, geo: any, mat: any, obj: any) {
+              const rt = r.getRenderTarget(), pass = scene === null ? "shadow" : rt ? "rt " + rt.width + "x" + rt.height : "screen";
+              const names: string[] = []; for (let o = obj; o && names.length < 8; o = o.parent) if (o.name) names.push(o.name);
+              const k = pass + " | " + (obj.isInstancedMesh ? "inst " : obj.isSkinnedMesh ? "skin " : "") + names.slice(-3).reverse().join("/") + " | " + mat.type + (mat.name ? ":" + mat.name : "");
+              m.set(k, (m.get(k) ?? 0) + 1);
+              return orig.apply(this, arguments as any);
+            };
+            requestAnimationFrame(() => requestAnimationFrame(() => { r.renderBufferDirect = orig; res([...m].sort((a, b) => b[1] - a[1]).slice(0, 80)); }));
+          }));
           if (cdp && s.segPhase === "run") {
             await cdp.send("HeapProfiler.startSampling", { samplingInterval: 32768, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true } as never);
             profiling = SEGS[s.seg].id; profN0 = await page.evaluate(() => (window as any).__kr.gpuCollector.n as number);
@@ -527,7 +539,7 @@ const result: RunResult = {
   cases, errors: [...errors, ...pageErrors.map((e) => "pageerror: " + e), ...((pageInfo.krErrors as string[] | undefined) ?? []).map((e) => "__kr.errors: " + e.split("\n")[0])], artifacts,
 };
 (result as unknown as Record<string, unknown>).detail = {
-  marks, route, page: pageInfo, ...(ROUTE === "pan" ? {} : { tour, longFrames }), host: { hostname: os.hostname(), ...winInfo }, timer: data ? { invalid: data.invalid, disjoints: data.disjoints, frames: data.n } : null,
+  marks, route, page: pageInfo, ...(ROUTE === "pan" ? {} : { tour, longFrames }), ...(CENSUS ? { census } : {}), host: { hostname: os.hostname(), ...winInfo }, timer: data ? { invalid: data.invalid, disjoints: data.disjoints, frames: data.n } : null,
   // the raw per-frame series (ms since the first recorded frame; gpu -1 = no valid sample), for re-windowing later
   frames: data ? { t: data.T.map((x) => +(x - data!.T[0]).toFixed(2)), cpu: data.CPU.map((x) => +x.toFixed(3)), gpu: data.GPU.map((x) => +x.toFixed(3)), phase: data.PH, st: data.ST, streamed: data.SR, pan: data.PN,
     ...(ROUTE === "pan" ? {} : Object.fromEntries(ATTRIB.map((k) => [k.toLowerCase(), data![k].map((x) => +x.toFixed(3))]))) } : null,
