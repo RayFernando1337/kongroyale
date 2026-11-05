@@ -20,6 +20,8 @@ export async function ktx2Texture(path: string, load: (ktx2Path: string) => Prom
     if (k) { t.mipmaps = m.slice(k); t.image = { width: m[k].width, height: m[k].height }; }
     return t;
   };
-  const t = releaseAfterUpload(await capped(), async () => { const f = await capped(); t.mipmaps = f.mipmaps; return f.image; });
+  // A context restore refills the existing level objects rather than swapping the array: shareTexture clones hold the
+  // same objects, and restoreAll runs every hook before the next frame, so the clones upload the restored pixels too.
+  const t = releaseAfterUpload(await capped(), async () => { const f = await capped(); f.mipmaps.forEach((x, i) => { t.mipmaps[i].data = x.data; }); return f.image; });
   return t;
 }
