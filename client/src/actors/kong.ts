@@ -802,6 +802,11 @@ class KongManager {
     return d;
   }
 
+  warmBatches(): THREE.Object3D {
+    for (const id of this.wpnGeo.keys()) { this.weaponBatch(id, 0); this.weaponBatch(id, 1); this.weaponShadowBatch(id); }
+    return this.group;
+  }
+
   private addBatch(tier: Batch["tier"], mat: Batch["mat"], merged: THREE.BufferGeometry, material: THREE.Material, proxy: boolean, weapon = false): Batch {
     const geo = new THREE.InstancedBufferGeometry();
     for (const k of Object.keys(merged.attributes)) geo.setAttribute(k, merged.attributes[k]);

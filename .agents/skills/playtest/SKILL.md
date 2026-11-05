@@ -15,16 +15,18 @@ are at least 5 s apart and share KONGBOT's per-address rate limit (20 reports pe
 
 ## Where bundles land
 
-The game server writes bundles to disk only when `KR_PLAYTEST_BUNDLES` is set. Production never sets it.
+The game server writes bundles to disk when `KR_PLAYTEST_BUNDLES` says so. `npm run server` (detected by npm's script name, so it works on every OS) and `tools/serve-channel.mts`
+(stable and next) default it to `1`, so our own runs save bundles with nothing set. `npm start` and any other deploy leave
+it unset: they still accept the report but save no bundle until the operator sets it. `KR_PLAYTEST_BUNDLES=0` switches it off everywhere.
 
 | `KR_PLAYTEST_BUNDLES` | Folder |
 |---|---|
-| unset, empty or `0` | none (reports go to MongoDB or the server queue as before) |
+| unset (`npm start`, other deploys), empty or `0` | none (reports go to MongoDB or the server queue as before) |
 | `1` | `playtest-bundles/` in the server's checkout (git-ignored) |
 | a path | that folder |
 
-`tools/serve-channel.mts` sets it to `playtest-bundles/` in the checkout you run it from, so stable and next served
-side by side both write there. For the dev pair: `KR_PLAYTEST_BUNDLES=1 KR_EVENT_MODE=0 npm run server` and
+`tools/serve-channel.mts` writes to `playtest-bundles/` in the checkout you run it from, so stable and next served
+side by side both write there. For the dev pair: `KR_EVENT_MODE=0 npm run server` and
 `npm run dev`, then open <http://localhost:5317/?perfhud>.
 
 Each bundle is a folder `<UTC time>-<report id>/` with `bundle.json` and `shot.jpg`. The server stops writing at

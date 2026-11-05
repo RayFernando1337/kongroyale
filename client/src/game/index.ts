@@ -923,18 +923,21 @@ async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean,
   // one offscreen draw: first use, texture uploads, VAOs (the shadow maps are left alone)
   kr.prefabWarm = "draw";
   await idle();
-  if (engine.contextLost) { kr.prefabWarm = "stopped (context lost)"; rt.dispose(); return; }
-  const sm = r.shadowMap, au = sm.autoUpdate;
-  for (const l of lights) l.layers.enable(LAYER);
-  sm.autoUpdate = false;
-  try { r.setRenderTarget(rt); r.render(engine.scene, cam); } catch (e) { console.warn("[prewarm] draw", e); }
-  finally { r.setRenderTarget(prev); sm.autoUpdate = au; for (const l of lights) l.layers.disable(LAYER); }
+  const lost = engine.contextLost;
+  if (!lost) {
+    const sm = r.shadowMap, au = sm.autoUpdate;
+    for (const l of lights) l.layers.enable(LAYER);
+    sm.autoUpdate = false;
+    try { r.setRenderTarget(rt); r.render(engine.scene, cam); } catch (e) { console.warn("[prewarm] draw", e); }
+    finally { r.setRenderTarget(prev); sm.autoUpdate = au; for (const l of lights) l.layers.disable(LAYER); }
+  }
   rt.dispose();
   // hide (never dispose — a disposed material would compile again); the pool lights go back to the pool
   const pool: THREE.Object3D[] = []; g.traverse((o) => { if ((o as THREE.PointLight).isPointLight) pool.push(o); });
   for (const l of pool) l.removeFromParent();
   g.visible = false;
   kits.lights?.update();
+  if (lost) { kr.prefabWarm = "stopped (context lost)"; return; }
   kr.prefabWarm = "done";
   kr.prefabWarmMs = Math.round(performance.now() - t0);
 }
@@ -1010,6 +1013,10 @@ async function prewarmMatch(engine: Engine, kits: Kits, title: TitleScene, isBus
     excursion(look, 0.1);
     for (const a of made) a.setVisible(false);
   }
+  const crowd = (await kongManager(engine)).warmBatches();
+  patchTree(engine, crowd);
+  await engine.compileObjects([crowd]);
+  if (!isBusy()) engine.warmDraw([crowd]);
   made.forEach((a, i) => kits.releaseKong?.(a, i % 6));
   kits.lights?.update();
   kr.matchWarm = "done";
@@ -1186,6 +1193,10 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
     await frames(2);
     for (const a of made) a.setVisible(false);
   }
+  const crowd = (await kongManager(engine)).warmBatches();
+  patchTree(engine, crowd);
+  await engine.compileObjects([crowd]);
+  engine.warmDraw([crowd]);
   made.forEach((a, i) => kits.releaseKong?.(a, i % 6));
   }
   // hide (never dispose) — programs stay cached for the whole session. The chest pool lights go back to the pool

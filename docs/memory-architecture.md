@@ -284,7 +284,8 @@ uploads geometry and textures again from their CPU copies. On its own that leave
 - three.js's dispose listeners from the lost context still on every older object, deleting objects that belong to the
   old context when it is disposed.
 
-`engine/res/restore.ts` restores in place, and `engine/engine.ts` owns both events:
+`engine/res/restore.ts` owns both events (`watchContext`, called from `engine/engine.ts`), and the restore itself runs
+from `engine/res/restore-run.ts`, loaded on the first loss:
 
 1. **On `webglcontextlost`** the frame loop pauses and a 10 s timer starts that reloads the page if no restore comes.
 2. **On `webglcontextrestored`** `restoreAll()` runs three phases, then `__kr.restores` goes up and frames resume:
