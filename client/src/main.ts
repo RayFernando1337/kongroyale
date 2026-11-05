@@ -81,7 +81,7 @@ gameImport?.catch(() => { /* reported by the game stage */ });
 if (gameMode) { startStaticWorld(); startLootSpotsWorker(); } // (perf: the loot spots off the main thread too)
 
 
-if (flag("resaudit")) kr.resAudit = (await import("./engine/res/audit")).auditRenderer(() => (kr.engine as Engine | undefined)?.renderer);
+if (flag("resaudit")) void import("./engine/res/audit").then((m) => { kr.resAudit = m.auditRenderer(() => (kr.engine as Engine | undefined)?.renderer); });
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 // the game page builds at the tier of the player's video preset (?q= wins; view-camera pages ignore it)
 const videoQ = gameMode && !shot && flag("q") === null ? bootQuality() : null;
