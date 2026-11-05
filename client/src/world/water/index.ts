@@ -121,8 +121,9 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     // the sky irradiance of the (atmos) environment for an up normal: measured once per environment, a uniform
     await brk("step");
     const skyIrr = new SkyIrradianceProbe();
-    const measureSky = () => { if (skyIrr.update(ctx.renderer, ctx.scene)) (uniforms.wtrSkyIrr.value as THREE.Color).copy(skyIrr.value); };
-    measureSky();
+    const measureSky = () => skyIrr.update(ctx.renderer, ctx.scene)?.then((changed) => { if (changed) (uniforms.wtrSkyIrr.value as THREE.Color).copy(skyIrr.value); });
+    const releaseSky = ctx.hold("water:sky");
+    void Promise.resolve(measureSky()).finally(releaseSky);
     await brk("step");
     // the foam stack inside the main pass: ONE blended colour pass for the whole surface (dual-source), measured cheaper
     // than its own early-discard pass (A/B: eye level −0.15 ms, aerial −0.08). ?wfoampass = the separate pass
@@ -265,7 +266,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
       const c = ctx.camera.position;
       for (const m of [preMesh, mulMesh, mesh, meshMid, foamMesh, meshFar, foamMeshFar]) m.position.set(Math.round(c.x / SNAP) * SNAP, LEVEL, Math.round(c.z / SNAP) * SNAP);
       grab.poll(ctx.renderer);
-      if (frame % 30 === 0) measureSky();            // (re-measures only when atmos swapped its environment)
+      if (frame % 30 === 0) void measureSky();            // (re-measures only when atmos swapped its environment)
       if (grab.visible) lastSeen = frame;
       // nothing of the water survived the depth test for a few frames (jungle, interiors): sleep
       const awake = frame - lastSeen < 12 || under.active;
