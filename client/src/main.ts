@@ -344,39 +344,25 @@ if (streamOn) {
 const LOW_MEM = (await postBuildImport)?.lowMemoryDevice(flag("lowmem"), flag("prepare") === "full");
 const owedBeforeMatch = new Set<string>();
 // ---- pre-ready stream (READY_BY above): largest first, each only while the predicted ready time still fits
-if (streamOn && READY_BY > 0 && !LOW_MEM) {
+if (streamOn && READY_BY > 0 && !LOW_MEM && postBuild) {
   const done = titleIds.filter((id) => buildMs[id] !== undefined);
   const want = done.reduce((a, id) => a + est(id), 0), got = done.reduce((a, id) => a + buildMs[id], 0);
   const factor = Math.min(3, Math.max(0.8, want > 0 ? got / want : 1));
   kr.bootFactor = +factor.toFixed(2);
-  const postEst = (flag("readyest") ? await postBuildImport : postBuild)?.postBuildEstimate(factor);
-  if (postEst) kr.postBuildEstimate = { ms: Math.round(postEst.ms), stored: postEst.stored };
-  const fixedRest = (n: number) => (EXPECT.afterBuild + EXPECT.game + EXPECT.settle + 120 * n) * factor;
-  const rest = postEst && flag("readyest") ? (_n: number, preMs: number) => postEst.rest(preMs) : fixedRest;
-  const plan = (t: number, ids: string[], restMs: (n: number, preMs: number) => number) => {
-    const out: string[] = [];
-    let preMs = 0;
-    for (const id of [...ids].sort((a, b) => est(b) - est(a))) if (t + est(id) * factor + restMs(out.length + 1, preMs + est(id) * factor) <= READY_BY) { out.push(id); t += est(id) * factor; preMs += est(id) * factor; }
-    return out;
-  };
-  const planned = plan(performance.now(), streamList, rest);
-  const fixedPlanned = rest === fixedRest ? [] : plan(performance.now(), streamList, fixedRest);
+  const planner = postBuild.preReadyPlanner(est, factor, READY_BY, EXPECT.afterBuild + EXPECT.game + EXPECT.settle, flag("readyest"));
+  kr.postBuildEstimate = planner.estimate;
+  const planned = planner.plan(streamList);
   planSteps(planned);
   kr.preReadyPlan = planned.slice();
   const pre: string[] = [];
   for (const id of planned) {
-    if (performance.now() + est(id) * factor + rest(pre.length + 1, pre.reduce((a, p) => a + buildMs[p], 0) + est(id) * factor) > READY_BY) continue;
+    if (!planner.fits(id, pre.length, pre.reduce((a, p) => a + buildMs[p], 0))) continue;
     streamList.splice(streamList.indexOf(id), 1);
     pre.push(id);
     await buildOne(id, false);
   }
   kr.preReady = pre;
-  let fixedT = performance.now();
-  for (const id of fixedPlanned) {
-    if (pre.includes(id) || fixedT + est(id) * factor + fixedRest(pre.length + owedBeforeMatch.size + 1) > READY_BY) continue;
-    owedBeforeMatch.add(id);
-    fixedT += est(id) * factor;
-  }
+  for (const id of planner.owed(streamList, pre.length)) owedBeforeMatch.add(id);
   kr.owedBeforeMatch = [...owedBeforeMatch];
 }
 kr.programsAfterTitleModules = engine.renderer.info.programs?.length;
