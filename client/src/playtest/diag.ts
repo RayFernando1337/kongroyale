@@ -38,6 +38,8 @@ const pathCursor = { rows: 0 };
 const sid = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("");
 let prev: Beat | null = null;
 let loafKind: string | null = null;
+/** settles once this load knows whether an earlier session died (report.ts waits on it for the crash card) */
+export const deadChecked = { done: Promise.resolve() };
 
 const pageS = () => Math.round(performance.now() / 10) / 100;
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -132,7 +134,7 @@ export function installDiag(engine: Engine, ring: Float32Array): (at: number) =>
   const resident = new Set<string>(), failed = new Set<string>();
   const last = { phase: -2, programs: -1, scale: -1, heap: -1 };
   let beat: Beat = { v: 1, sid, sha: BUILD.sha, at: Date.now(), upS: 0, phase: -1, x: null, z: null, poi: null, heapMB: -1, textures: 0, geometries: 0, fps: 0, hidden: false, clean: false };
-  if (locks) void goLive(locks, beat).then(() => findDeadSession(locks));
+  if (locks) deadChecked.done = goLive(locks, beat).then(() => findDeadSession(locks));
   addEventListener("pagehide", () => { beat.clean = true; beat.at = Date.now(); writeBeat(beat); });
   addEventListener("pageshow", (e) => { if (e.persisted) { beat.clean = false; writeBeat(beat); } });
   addEventListener("visibilitychange", () => {
