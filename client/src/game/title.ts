@@ -86,13 +86,13 @@ export function createTitleScene(engine: Engine, plane: PlaneProps, kits: TitleK
   const scope = resources.root.child("title");
   const kt = scope.target(new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
   const quad = new THREE.Mesh(scope.geometry("geo.world", new THREE.PlaneGeometry(2, 2)), new THREE.MeshBasicMaterial({ map: kt.texture }));
-  const compScene = new THREE.Scene(); compScene.add(quad);
+  const compScene = new THREE.Scene().add(quad);
   const compCam = new THREE.Camera();
   const draw = () => {
     const r = engine.renderer, S = engine.scene, cam = engine.camera;
     syncLayers(); fit();
     r.getDrawingBufferSize(size);
-    if (kt.width !== size.x || kt.height !== size.y) kt.setSize(size.x, size.y);
+    kt.setSize(size.x, size.y);
     // (no shadow pass: atmos's sun cascades re-plan against the camera they are handed — its layer mask included — so the
     // title never hands them its title-layer camera; the kong keeps the atlas the boot drew, and the frame skips the pass)
     const sm = r.shadowMap, smAuto = sm.autoUpdate, smNeeds = sm.needsUpdate;
@@ -112,7 +112,7 @@ export function createTitleScene(engine: Engine, plane: PlaneProps, kits: TitleK
     const r = engine.renderer, cam = engine.camera, mask = cam.layers.mask;
     cam.layers.set(TITLE_LAYER); r.setRenderTarget(kt);
     const done = () => { warm = "yes"; };
-    try { void r.compileAsync(group, cam, engine.scene).then(done, done); if (kongs) void r.compileAsync(kongs, cam, engine.scene).catch(() => {}); r.setRenderTarget(null); void r.compileAsync(compScene, compCam).catch(() => {}); }
+    try { void Promise.all([r.compileAsync(group, cam, engine.scene), kongs && r.compileAsync(kongs, cam, engine.scene), (r.setRenderTarget(null), r.compileAsync(compScene, compCam))]).then(done, done); }
     catch { done(); } finally { cam.layers.mask = mask; }
   }
   function setDraw(on: boolean) {
