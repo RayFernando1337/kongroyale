@@ -157,7 +157,7 @@ function heliLoader() {
   return L;
 }
 
-/** start fetching the model (render.ts calls it at boot; createHeli works before it lands and fills in after) */
+/** start fetching the model (the prefab warm-up calls it once the title is ready; createHeli works before it lands and fills in after) */
 export function loadHeli(): Promise<Kit> {
   return (loading ??= (async () => {
     const L = heliLoader();
@@ -167,13 +167,12 @@ export function loadHeli(): Promise<Kit> {
     return (KIT = K);
   })());
 }
-function loadsLazily() {
+export function loadsLazily() {
   const f = flag("helilazy");
   if (f !== null) return f === "1";
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
   return mem < 8 || /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
 }
-if (typeof document !== "undefined" && !loadsLazily()) void loadHeli().catch((e) => console.error("[heli] model failed", e));
 
 interface Inst {
   model: THREE.Group;
