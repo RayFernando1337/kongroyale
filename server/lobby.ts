@@ -38,7 +38,10 @@ export const sendJSON = (ws: WebSocket, o: unknown) => { if (ws.readyState === W
 export interface Client { uid: number; token: string; name: string; lobby: Lobby | null; pid: number; squad: number; sock: Sock; aux: Sock[];
   /** the binary transports: the WebSocket pair (always), the WebTransport session (KR_WT=1, when the client opened one)
    *  and the one that carries the hot path now (the session while it lives, else the pair) */
-  ws: WsTransport; wt: WtTransport | null; bin: Transport; lastInputAt: number; peer: HostPeer; /** last relayed map marker (ms) */ markAt: number;
+  ws: WsTransport; wt: WtTransport | null; bin: Transport; lastInputAt: number;
+  /** removed from its match for inactivity and not seated since (housekeeping): a host role it holds goes to the first
+   *  room member who presses START (Lobby.claimHost) */
+  away: boolean; peer: HostPeer; /** last relayed map marker (ms) */ markAt: number;
   /** (caster) a commentator seat in its lobby (−1 = a player); the last relayed camera sync (ms) */
   seat: number; camAt: number;
   /** (caster) a PROGRAM output window (OBS): a seat that only mirrors the seat on air */
@@ -119,7 +122,7 @@ export class Lobby {
     if (Number(process.env.KR_WARMUP_S) > 0) m.warmupS = Number(process.env.KR_WARMUP_S);   // (test servers only)
     this.inputGaps = trackInputGaps(m);
     const h = this.host = new MatchHost(m); h.holdForStream();
-    seated.forEach((c, i) => { c.pid = i; c.peer.pid = i; c.peer.opSeq = -1; c.lastInputAt = Date.now(); h.peers.push(c.peer); });
+    seated.forEach((c, i) => { c.pid = i; c.away = false; c.peer.pid = i; c.peer.opSeq = -1; c.lastInputAt = Date.now(); h.peers.push(c.peer); });
     if (this.event) { this.event.seats.clear(); for (const c of seated) eventSeated(this, c); }   // a dropped player's seat
     for (const c of this.casters) h.peers.push(c.peer);
     m.onPhase = (ph) => { this.broadcastJSON({ t: "phase", phase: ph, plane: m.plane, time: m.time, tick: m.tick, plan: m.plan }); if (this.event) eventsDirty(); };
@@ -164,13 +167,11 @@ export class Lobby {
       const p = this.match?.players[c.pid]; if (!p || p.eliminated || !alive(p)) continue;
       // the lobby keeps its player: a bot plays the seat on, and the player waits in the room for the next match (afk: the
       // client goes back to the room and keeps the reason on screen). A normal lobby's host role passes on, so the others
-      // can START without them: to a seated player who sent an input in the AFK window, else to anyone in it (a connect
-      // stamps it too), else to anyone still seated. Never to a player this sweep already unseated (stale, no seat), or the
-      // role bounces back to them; with nobody left it stays put
-      if (!this.event && this.owner === c) {
-        const fresh = (o: Client) => o !== c && now - o.lastInputAt <= AFK_IN_MATCH_MS;
-        this.owner = this.clients.find((o) => fresh(o) && o.pid >= 0) ?? this.clients.find(fresh) ?? this.clients.find((o) => o !== c && o.pid >= 0) ?? c;
-      }
+      // can START without them: at once to a seated player who is playing (an input in the AFK window), else the role stays
+      // with the away host and the first room member to press START takes it (claimHost). Who else is idle is not known
+      // here, so the sweep never guesses
+      c.away = true;
+      if (!this.event && this.owner === c) this.owner = this.clients.find((o) => o !== c && o.pid >= 0 && now - o.lastInputAt <= AFK_IN_MATCH_MS) ?? c;
       this.unseat(c); sendJSON(c.sock.ws, { t: "error", msg: "REMOVED FOR INACTIVITY", afk: true });
     }
   }
@@ -182,10 +183,16 @@ export class Lobby {
     server.log(`lobby ${this.code}: ${c.name} AFK in the match → a bot plays the seat, the player stays in the room`);
     voiceRosters(this); this.pushState();
   }
+  /** (normal lobby) START from a room member while the host is away (removed for inactivity, not seated since): the role
+   *  passes to that member, so an idle host never locks the room */
+  claimHost(c: Client) {
+    if (this.event || this.owner === c || !this.owner.away || !this.clients.includes(c)) return;
+    this.owner = c; this.pushState();
+  }
   join(c: Client) {
     if (this.clients.includes(c)) return;
     if (this.clients.length >= MAX_PLAYERS) { sendJSON(c.sock.ws, { t: "error", msg: "LOBBY FULL" }); return; }
-    this.clients.push(c); c.lobby = this; c.pid = -1; c.peer.pid = -1;
+    this.clients.push(c); c.lobby = this; c.pid = -1; c.away = false; c.peer.pid = -1;
     if (this.match && this.host) {
       const m = this.match;
       // back after a dropped link (event lobby, the SAME session token): your own seat again while it still

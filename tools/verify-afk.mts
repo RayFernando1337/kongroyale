@@ -2,7 +2,8 @@
 // over real WebSockets (KONG-76 S4, RAY-181). Three raw clients in join order B, C, A: B creates the lobby (so it is the
 // host) and starts the match, A plays (sends an input every tick), B and C send no input at all. The server's
 // housekeeping (every 10 s of match time) finds B and C AFK in the same sweep after KR_AFK_S (2 s here; 180 s on a real
-// server), so the host role has to skip C, who that sweep removes too, and land on A.
+// server), so the host role has to skip C, who that sweep removes too, and land on A. A second lobby runs beside it with
+// nobody playing (D the host, E): both are removed, the role stays with D (away), and E's START takes it (Lobby.claimHost).
 //
 //   npx tsx tools/verify-afk.mts
 //
@@ -57,18 +58,31 @@ try {
   await until(() => A.code === B.code, "A joins");
   B.ws.send(JSON.stringify({ t: "start" }));
   await until(() => A.pid >= 0 && B.pid >= 0 && C.pid >= 0, "all three seated");
+  const D = connect("D"); await until(() => D.uid > 0, "D welcome");
+  D.ws.send(JSON.stringify({ t: "hello", name: "AFK D" })); D.ws.send(JSON.stringify({ t: "create", mode: "trios" }));
+  await until(() => !!D.code, "D's lobby");
+  const E = connect("E"); await until(() => E.uid > 0, "E welcome");
+  E.ws.send(JSON.stringify({ t: "hello", name: "AFK E" })); E.ws.send(JSON.stringify({ t: "join", code: D.code }));
+  await until(() => E.code === D.code, "E joins");
+  D.ws.send(JSON.stringify({ t: "start" }));
+  await until(() => D.pid >= 0 && E.pid >= 0, "D and E seated");
   // A plays: one input per 60 Hz tick; B and C never send one
   const w = new Writer(new ArrayBuffer(64)), inp = makeInput(); let seq = 0;
   drive = setInterval(() => { inp.seq = ++seq; inp.mz = 1; writeInput(w.reset(), inp); A.ws.send(w.view()); }, 1000 / 60);
   const removedAt = (p: Peer) => p.json.findIndex((j) => j.t === "error" && j.msg === "REMOVED FOR INACTIVITY");
   const removed = () => removedAt(B);
-  await until(() => removed() >= 0 && removedAt(C) >= 0, "B and C removed for inactivity", 40_000);
+  await until(() => removed() >= 0 && removedAt(C) >= 0 && removedAt(D) >= 0 && removedAt(E) >= 0, "B, C, D and E removed for inactivity", 40_000);
   await sleep(1500);
   const i = removed(), err = B.json[i], after = B.json.slice(i + 1);
   const room = [...B.json].reverse().find((j) => j.t === "lobby") as { host: number; inMatch: boolean; players: { id: number; pid: number }[] } | undefined;
   const snapsAt = B.snaps; await sleep(1000); const snapsLater = B.snaps - snapsAt;
   const aSnaps = A.snaps; await sleep(500); const aLive = A.snaps - aSnaps;
   clearInterval(drive);
+  const hostOf = (p: Peer) => ([...p.json].reverse().find((j) => j.t === "lobby") as { host: number } | undefined)?.host;
+  const idleHost = hostOf(E);
+  if (idleHost !== D.uid) problems.push("with nobody playing the host role should stay with D until someone asks (host " + idleHost + ", D is " + D.uid + ")");
+  E.ws.send(JSON.stringify({ t: "start" }));
+  await until(() => hostOf(E) === E.uid, "E's START takes the host role from away D", 5_000).catch(() => problems.push("E's START did not take the host role from away D (host " + hostOf(E) + ")"));
   if (C.json[removedAt(C)].afk !== true) problems.push("C's removal has no afk flag");
   if (room?.players.find((p) => p.id === C.uid)?.pid !== -1) problems.push("C is not in the room frame without a seat");
   if (err.afk !== true) problems.push("frozen: the removal has no afk flag, so the client stays on its match");
@@ -82,7 +96,7 @@ try {
   if (snapsLater > 0) problems.push("B still gets snapshots after its removal (" + snapsLater + " in 1 s)");
   if (aLive === 0) problems.push("A's match stopped");
   if (B.ws.readyState !== WebSocket.OPEN) problems.push("B's socket was closed");
-  const summary = { afk: err.afk === true, roomListsB: !!me, bSeat: me?.pid ?? null, hostIsA: room?.host === A.uid, cSeat: room?.players.find((p) => p.id === C.uid)?.pid ?? null, framesAfterError: after.map((j) => j.t), bSnapsAfter: snapsLater, aSnapsIn500ms: aLive };
+  const summary = { afk: err.afk === true, roomListsB: !!me, bSeat: me?.pid ?? null, hostIsA: room?.host === A.uid, cSeat: room?.players.find((p) => p.id === C.uid)?.pid ?? null, idleHostIsD: idleHost === D.uid, claimedByE: hostOf(E) === E.uid, framesAfterError: after.map((j) => j.t), bSnapsAfter: snapsLater, aSnapsIn500ms: aLive };
   if (problems.length) { console.error("VERIFY AFK FAILED:\n  " + problems.join("\n  ") + "\n" + JSON.stringify(summary)); process.exitCode = 1; }
   else console.log("VERIFY AFK PASSED " + JSON.stringify(summary));
 } catch (e) {
