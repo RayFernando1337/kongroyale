@@ -60,14 +60,14 @@ async function wsClient(port: number) {
 type Lib = { WebTransport: new (url: string, o: unknown) => any; quicheLoaded: Promise<unknown> };
 // the QUIC module ships ready builds for Linux and macOS (x64, arm64) and Windows x64; elsewhere the server runs
 // WebSocket-only (part 1 above still ran) and this part is skipped, never on a platform that has a build. The build is
-// fetched by the binding's install script, so `npm ci --ignore-scripts` (CI) leaves it out: that skips too, saying how
-// to fetch it
+// fetched by the binding's install script, so `npm ci --ignore-scripts` leaves it out: that fails, saying how to fetch
+// it (CI runs that rebuild)
 const prebuilt = process.platform === "linux" || process.platform === "darwin" || (process.platform === "win32" && process.arch === "x64");
 const BINDING = "@fails-components/webtransport-transport-http3-quiche";
 const binary = [`build_${process.platform}_${process.arch}`, "build"].some((d) => fs.existsSync(path.join(root, "node_modules", BINDING, d, "Release/webtransport.node")));
 if (prebuilt && !binary) {
-  console.log(`SKIP  KR_WT=1 checks: the QUIC binding's native module isn't installed (npm ci --ignore-scripts skips its install script); fetch it with npm rebuild ${BINDING}`);
-  process.exit(failed ? 1 : 0);
+  console.log(`FAIL  KR_WT=1 checks: the QUIC binding's native module isn't installed (npm ci --ignore-scripts skips its install script); fetch it with npm rebuild ${BINDING}`);
+  process.exit(1);
 }
 let lib: Lib;
 try { await import(BINDING as string); lib = await import("@fails-components/webtransport" as string) as Lib; await lib.quicheLoaded; }
