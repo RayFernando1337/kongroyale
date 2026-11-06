@@ -6,10 +6,10 @@ const POST_BUILD_STORED_MIN_MS = 2000, POST_BUILD_STORED_MAX_MS = 90_000;
 const POST_BUILD_TICK_MS = 250, POST_BUILD_TICK_LATE_MS = 1000, POST_BUILD_NO_FRAME_MS = 2000;
 
 function storedPostBuild(): { baseMs: number | null; readyMs: number | null } {
-  const inRange = (v: unknown, min: number) => { const ms = Number(v); return Number.isFinite(ms) && ms >= min && ms <= POST_BUILD_STORED_MAX_MS ? ms : null; };
+  const inRange = (v: unknown) => { const ms = Number(v); return Number.isFinite(ms) && ms >= POST_BUILD_STORED_MIN_MS && ms <= POST_BUILD_STORED_MAX_MS ? ms : null; };
   try {
     const s = JSON.parse(localStorage.getItem(POST_BUILD_STORE_KEY) ?? "null") as { baseMs?: unknown; readyMs?: unknown } | null;
-    return { baseMs: inRange(s?.baseMs, POST_BUILD_STORED_MIN_MS), readyMs: inRange(s?.readyMs, 0) };
+    return { baseMs: inRange(s?.baseMs), readyMs: inRange(s?.readyMs) };
   } catch { return { baseMs: null, readyMs: null }; }
 }
 
@@ -75,8 +75,11 @@ export function measurePostBuild(noFrameWaitCount: () => number) {
       const baseMs = postMs - POST_MS_PER_PRE_READY_BUILD_MS * preMs;
       kr.postBuildMs = Math.round(postMs);
       if (baseMs < POST_BUILD_STORED_MIN_MS || baseMs > POST_BUILD_STORED_MAX_MS) return;
-      const prev = storedPostBuild().baseMs;
-      try { localStorage.setItem(POST_BUILD_STORE_KEY, JSON.stringify({ baseMs: Math.round(prev === null ? baseMs : (prev + baseMs) / 2), readyMs: kr.readyAt })); } catch { kr.postBuildStoreFailed = true; }
+      const prev = storedPostBuild();
+      // (only a load the pre-ready planner ran on sets the ready time the next one plans against: ?readyby=0 or low memory
+      // plan nothing, and their earlier title would cap a normal load below what it can reach)
+      const readyMs = kr.preReadyPlan ? kr.readyAt : prev.readyMs ?? undefined;
+      try { localStorage.setItem(POST_BUILD_STORE_KEY, JSON.stringify({ baseMs: Math.round(prev.baseMs === null ? baseMs : (prev.baseMs + baseMs) / 2), readyMs })); } catch { kr.postBuildStoreFailed = true; }
     },
   };
 }
