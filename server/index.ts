@@ -90,11 +90,13 @@ const settled = { wt: 0, ws: Object.fromEntries(FALLBACK_REASONS.map((r) => [r, 
 /** a client's last report and how many it sent: a link reports once per change, so a few is plenty */
 const netSaid = new WeakMap<Client, { last: string; n: number }>();
 const NET_REPORTS_MAX = 8;
-/** /health: clients by transport, how links settled, and the WebTransport endpoint's sessions (or why it is off) */
+/** /health: clients by transport, how links settled, the WebTransport endpoint's sessions (or why it is off), and the
+ *  running matches' human inputs: lost (a seq never queued), recovered by an input window, dropped from a full queue */
 function transportHealth() {
-  const by: Record<string, number> = {};
+  const by: Record<string, number> = {}, inputs = { lost: 0, recovered: 0, dropped: 0 };
   for (const c of byToken.values()) by[c.bin.kind] = (by[c.bin.kind] ?? 0) + 1;
-  return { clients: by, settled, webtransport: wt ? { port: wt.welcome().port, ...wt.counts } : { off: wtOff } };
+  for (const l of lobbies.values()) { const n = l.match?.netStats; if (n) { inputs.lost += n.inputsLost; inputs.recovered += n.inputsRecovered; inputs.dropped += n.inputsDropped; } }
+  return { clients: by, settled, inputs, webtransport: wt ? { port: wt.welcome().port, ...wt.counts } : { off: wtOff } };
 }
 function allow(s: Sock): boolean { if (take(s)) return true; strike(s, "rate"); return false; }
 /** `weight`: a frame no honest client ever sends (a host-only or malformed event message) costs more than a rate blip */
@@ -225,7 +227,7 @@ wss.on("connection", (ws, req) => {
 
   const aux: Sock[] = [];
   const wsT = new WsTransport(s, aux, strike);
-  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux, ws: wsT, wt: null, bin: wsT, lastInputAt: Date.now(), peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
+  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux, ws: wsT, wt: null, bin: wsT, lastInputAt: Date.now(), away: false, peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
   wsT.onMessage = (u8, _at, from) => onBinary(c, u8, from);
   c.peer = { pid: -1, invSeq: 0, send: (u8) => sendFrame(c.bin, u8), sendResult: (state) => sendJSON(c.sock.ws, { t: "result", state }) };
   byToken.set(c.token, c);
@@ -255,8 +257,9 @@ function logClose(c: Client, s: Sock, code: number, reason: Buffer, aux: boolean
 /** one binary frame from a client, on any of its transport's paths */
 function onBinary(c: Client, u8: Uint8Array, from: Path) {
   const host = c.lobby?.host;
-  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
-  if (u8[0] === M.Input) c.lastInputAt = Date.now();
+  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Inputs && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
+  // a single input (WebSockets) or an input window (WebTransport): the player is here (lobby.ts housekeeping)
+  if (u8[0] === M.Input || u8[0] === M.Inputs) c.lastInputAt = Date.now();
   if (!host.receive(c.peer, u8, from.reply)) from.strike("bad frame");
 }
 const helloAt = new WeakMap<Client, number>(), helloLater = new WeakMap<Client, NodeJS.Timeout>();
@@ -344,7 +347,7 @@ function onJSON(c: Client, msg: { t?: unknown; [k: string]: unknown }) {
     }
     // (admin lobby) in an event lobby only the admin changes the mode or starts: a player asking is refused (and struck)
     case "mode": if (c.lobby?.event) { strike(c.sock, "not the host", 10); break; } if (c.lobby && c.lobby.owner === c && !c.lobby.match) { c.lobby.mode = msg.mode === "trios" ? "trios" : "solo"; c.lobby.assignSquads(); c.lobby.broadcastJSON(c.lobby.state()); } break;
-    case "start": if (c.lobby?.event) { strike(c.sock, "not the host", HEAVY); break; } if (c.lobby && c.lobby.owner === c) { if (!c.lobby.match) c.lobby.start(); else c.lobby.match.startNow(); } break;
+    case "start": if (c.lobby?.event) { strike(c.sock, "not the host", HEAVY); break; } c.lobby?.claimHost(c); if (c.lobby && c.lobby.owner === c) { if (!c.lobby.match) c.lobby.start(); else c.lobby.match.startNow(); } break;
     case "leave": leaveLobby(c); break;
     // which transport the link settled on and why (client/src/game/net.ts). Only counted when it matches what the
     // server sees (a "wt" claim needs an attached session), on a change, and a few times per client
