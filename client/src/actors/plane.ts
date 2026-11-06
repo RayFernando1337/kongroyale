@@ -14,6 +14,8 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import type { WorldCtx } from "../engine/engine";
 import type { CamSpec } from "../engine/views";
 import { shareGeometries } from "../engine/geo-share";
+import { releaseGeometryAfterUpload } from "../engine/geometry-release";
+import { onRestore } from "../engine/res/restore";
 import { flag } from "../flags";
 import { actorLook } from "./look";
 import { createKong, type KongActorEx } from "./kong";
@@ -733,6 +735,7 @@ let paintGen = 0, paintReleased = false;
 let restoring: Promise<void> | null = null;
 const PAINT_FREE = flag("planefree");
 const yieldT = () => new Promise<void>((r) => setTimeout(r, 0));
+const staticMeshes = (root: THREE.Object3D) => { const out: THREE.Mesh[] = []; root.traverse((o) => { if ((o as THREE.Mesh).isMesh) out.push(o as THREE.Mesh); }); return out; };
 const isBitmap = (img: unknown): img is ImageBitmap => typeof ImageBitmap !== "undefined" && img instanceof ImageBitmap;
 
 function paintPlane(): Promise<PlanePainted<Img>> {
@@ -884,21 +887,28 @@ export async function createPlane(ctx: WorldCtx, opts: { crew?: boolean } = {}):
   const railYM = actorLook(new THREE.MeshStandardMaterial({ color: "#f0c01a", roughness: 0.5, metalness: 0.2 }), { key: "bay-rail" });
   for (const t of [trT, crT]) for (const x of [t.map, t.normal, t.rough]) x.wrapS = x.wrapT = THREE.RepeatWrapping;
 
-  // ---- geometry
-  await yieldT();
-  const { shell, lining } = buildFuselage(fuseM, interiorM);
-  await yieldT();
-  const ramp = buildRamp(fuseM, interiorM, treadM, metalM);
-  const door = buildUpperDoor(fuseM, interiorM);
-  const bayB = buildCargoBay({ tread: treadM, metal: metalM, crate: crateM, seat: seatM, lamp: lampM, rib: ribM, frame: bayFrameM, strap: strapM, jump: jumpM, glass: glassBayM, hazard: hazM, railY: railYM, dark: bayDarkM }), bay = bayB.group;
-  const wings = buildWings(wingM);
-  const canoes = new THREE.Mesh(merge(wings.canoes), wingM); canoes.castShadow = true;
-  const stabs = buildStabs(stabM), fin = buildFin(finM), spons = buildSponsons(sponM);
-  await yieldT();
-  const gear = buildGear(tyreM, hubM, strutM, wellM);
-  const engines = [-1, 1].map((s) => buildEngine(cowlM, nacM, darkM, spinM, bladeM, discM, sootM, s));
-  const details = buildDetails(metalM, darkM, redM, greenM, whiteM, glassM, frameM, wings.shape);
-  object.add(shell, lining, ramp.group, door, bay, wings.mesh, canoes, stabs, fin, spons, gear.wells, gear.nose, ...gear.main, details, ...engines.map((e) => e.eng));
+  // ---- geometry (a generator: the build yields between parts; a context restore replays it in one go)
+  function* parts(into: THREE.Object3D) {
+    yield;
+    const { shell, lining } = buildFuselage(fuseM, interiorM);
+    yield;
+    const ramp = buildRamp(fuseM, interiorM, treadM, metalM);
+    const door = buildUpperDoor(fuseM, interiorM);
+    const bayB = buildCargoBay({ tread: treadM, metal: metalM, crate: crateM, seat: seatM, lamp: lampM, rib: ribM, frame: bayFrameM, strap: strapM, jump: jumpM, glass: glassBayM, hazard: hazM, railY: railYM, dark: bayDarkM });
+    const wings = buildWings(wingM);
+    const canoes = new THREE.Mesh(merge(wings.canoes), wingM); canoes.castShadow = true;
+    const stabs = buildStabs(stabM), fin = buildFin(finM), spons = buildSponsons(sponM);
+    yield;
+    const gear = buildGear(tyreM, hubM, strutM, wellM);
+    const engines = [-1, 1].map((s) => buildEngine(cowlM, nacM, darkM, spinM, bladeM, discM, sootM, s));
+    const details = buildDetails(metalM, darkM, redM, greenM, whiteM, glassM, frameM, wings.shape);
+    into.add(shell, lining, ramp.group, door, bayB.group, wings.mesh, canoes, stabs, fin, spons, gear.wells, gear.nose, ...gear.main, details, ...engines.map((e) => e.eng));
+    return { lining, ramp, door, bayB, gear, engines };
+  }
+  const build = parts(object);
+  let step = build.next();
+  while (!step.done) { await yieldT(); step = build.next(); }
+  const { lining, ramp, door, bayB, gear, engines } = step.value, bay = bayB.group;
 
   // ---- state
   const rampExit = new THREE.Vector3();
@@ -930,7 +940,19 @@ export async function createPlane(ctx: WorldCtx, opts: { crew?: boolean } = {}):
     redM.emissiveIntensity = blink;
   };
   void gearDown;
+  // ?geofree: the airframe's meshes drop their CPU arrays after upload (the ramp, door and gear move as whole meshes);
+  // a context restore replays the build once and refills every mesh from its twin in the same traversal order
+  const own = staticMeshes(object);
   shareGeometries("plane", object);
+  let fresh: THREE.Mesh[] | null = null;
+  if (own.length) own[0].geometry.addEventListener("dispose", onRestore("bake", () => { if (fresh) for (const m of fresh) m.geometry.dispose(); fresh = null; }));
+  own.forEach((m, i) => releaseGeometryAfterUpload(m.geometry, () => {
+    if (!fresh) { const again = new THREE.Group(), replay = parts(again); while (!replay.next().done); fresh = staticMeshes(again); }
+    const g = fresh[i].geometry, out: Record<string, THREE.TypedArray> = {};
+    for (const [name, a] of Object.entries(g.attributes)) out[name] = (a as THREE.BufferAttribute).array;
+    if (g.index) out.index = g.index.array;
+    return out;
+  }));
   // ---- the crew: seated, harnessed kongs along both walls
   const crew = opts.crew === false ? null : await buildCrew(ctx, object, bayB.seats, bay);
   const update2 = (dt: number, t: number) => { update(dt, t); crew?.pose(dt); };
