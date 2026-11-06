@@ -28,6 +28,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      # the WebTransport QUIC binding's install script fetches its prebuilt native module, which --ignore-scripts skips;
+      # run that one package's script so npm test's wt checks run (tools/net/wt-endpoint.test.mts fails without it)
+      - run: npm rebuild @fails-components/webtransport-transport-http3-quiche
       - run: npm run build
       - run: npm test
 
