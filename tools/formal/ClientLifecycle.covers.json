@@ -1,6 +1,6 @@
 {
   "skill": ".agents/skills/verify-client-lifecycle/SKILL.md",
-  "note": "main.ts sets __kr.prepare at top level after ready (main.ts: kr.prepare = ...), which no region can name; the model's Play guard (before ready: no prepare) depends on it.",
+  "note": "main.ts sets __kr.prepare at top level after ready (main.ts: kr.prepare = ...), which no region can name; the model's Play guard (before ready: no prepare) depends on it. prepareIsland (a region) waits for dataset.ready, which main.ts sets at top level just before it installs __kr.prepare with no await between them; the model's PLAY and CREATE/JOIN guards depend on that order.",
   "regions": [
     "client/src/game/index.ts#startGame.online",
     "client/src/game/index.ts#startGame.prepareIsland",
@@ -49,10 +49,10 @@
     }
   ],
   "verified": {
-    "model": "656b0ee624b6aa04",
+    "model": "ad29f802ecc094fc",
     "regions": {
       "client/src/game/index.ts#startGame.online": "1527455257c5daee",
-      "client/src/game/index.ts#startGame.prepareIsland": "ab6e79e0e15b3e76",
+      "client/src/game/index.ts#startGame.prepareIsland": "a60414b7ba8c24b5",
       "client/src/game/index.ts#startGame.offline": "b98b9176c358e63d",
       "client/src/game/index.ts#startGame.wire": "7b7861aa561871a9",
       "client/src/game/index.ts#startGame.onJSON": "477338984638c38e",
