@@ -69,7 +69,7 @@ export class Lobby {
   /** casters only (seat roster, camera sync) */
   castJSON(o: unknown, except: Client | null = null) { const s = JSON.stringify(o); for (const c of this.casters) if (c !== except && c.sock.ws.readyState === WebSocket.OPEN) c.sock.ws.send(s); }
   state() {
-    return { t: "lobby", code: this.code, mode: this.mode, host: this.owner.uid, inMatch: !!this.match, phase: this.match?.phase ?? -1,
+    return { t: "lobby", code: this.code, mode: this.mode, host: this.owner.uid, hostAway: this.owner.away, inMatch: !!this.match, phase: this.match?.phase ?? -1,
       players: this.clients.map((c) => ({ id: c.uid, name: c.name, squad: c.squad, pid: c.pid, host: c === this.owner })),
       casters: this.casters.map((c) => ({ id: c.uid, name: c.name, seat: c.seat, host: c === this.owner, program: c.program })), exhibit: this.exhibit, auto: this.auto, onAir: this.onAir,
       ...(this.event ? { ev: eventRoom(this) } : {}) };

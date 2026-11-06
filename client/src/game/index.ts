@@ -315,7 +315,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     }
     else if (m.t === "lobby") {
       const players = m.players as Array<{ id: number; name: string; squad: number; pid: number; host: boolean }>;
-      lobbyState.code = m.code as string; lobbyState.mode = m.mode as Mode; lobbyState.isHost = (m.host as number) === myUid;
+      lobbyState.code = m.code as string; lobbyState.mode = m.mode as Mode; lobbyState.isHost = (m.host as number) === myUid; lobbyState.hostAway = m.hostAway === true;
       lobbyState.inviteUrl = link?.offline ? null : `${location.origin}${location.pathname}?join=${lobbyState.code}`;
       lobbyState.players = players.map((p) => ({ id: p.id, name: p.name, bot: false, host: p.host, squad: p.squad, ready: true }));
       lobbyState.matchRunning = m.inMatch === true && !inMatch;
