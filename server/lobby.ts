@@ -164,8 +164,9 @@ export class Lobby {
       const p = this.match?.players[c.pid]; if (!p || p.eliminated || !alive(p)) continue;
       // the lobby keeps its player: a bot plays the seat on, and the player waits in the room for the next match (afk: the
       // client goes back to the room and keeps the reason on screen). A normal lobby's host role passes on, so the others
-      // can START without them
-      if (!this.event && this.owner === c) this.owner = this.clients.find((o) => o !== c) ?? c;
+      // can START without them: to a player who sent an input in the AFK window (not one this sweep is about to remove,
+      // or the role bounces back to an unseated player), else to anyone else in the room
+      if (!this.event && this.owner === c) this.owner = this.clients.find((o) => o !== c && now - o.lastInputAt <= AFK_IN_MATCH_MS) ?? this.clients.find((o) => o !== c) ?? c;
       this.unseat(c); sendJSON(c.sock.ws, { t: "error", msg: "REMOVED FOR INACTIVITY", afk: true });
     }
   }
