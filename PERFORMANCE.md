@@ -3,16 +3,31 @@
 This document owns the proposed measurement, optimization and continuous-regression workflow for Kong Royale.
 It complements [ARCHITECTURE.md](ARCHITECTURE.md), not the implementation rules in [AGENTS.md](AGENTS.md) and
 [CONTRIBUTING.md](CONTRIBUTING.md). Dispatch instructions are in [PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md).
+Memory work has its own plan in [docs/memory-architecture.md](docs/memory-architecture.md).
 
 ## Status and recommendation
 
 Written 2026-11-03 from a read-only investigation of client CPU, rendering, simulation, networking and diagnostics.
-**No benchmarks were run for this plan. The five optimization candidates are hypotheses, not measured bottlenecks
-or promised improvements.** File references describe the investigated revision; verify them before implementation.
+The five optimization candidates below started as hypotheses, not measured bottlenecks or promised improvements.
+
+Updated 2026-11-05 against fork main (6f684aba, after #201). Every item is marked **done** with the
+pull request that did it, **open** with the lane that owns it where one exists, or **obsolete** with the reason.
+File references were re-checked on that revision; verify them again before implementation.
+
+| Status | Count | Items |
+|---|---|---|
+| Done | 14 | Benchmark warmup split and real-play scenario, timing without packet hashing, achieved load, in-match real-GPU timing, result contract and compare, browser collectors, PERF-01 kong animation budget, PERF-05 water SSR, shared benchmark helpers, local Basis transcoder, metrics flight recorder, context-loss events, replay, no-GPU CI gates |
+| Open | 12 | Storm/endgame and multi-lobby scenarios, network tail gates, Windows server wrapper, one GPU query owner, PERF-02, PERF-03, ray collider dedup, PERF-04, GI samples, DOM helpers, automatic incident upload, hardware regression lane |
+| Obsolete | 4 | "No benchmarks were run", "no memory leak was established", FND as the first assignment, CI described as build and secrets only |
+
+Lanes that own open work: textures KONG-44, geometry and impostors KONG-45, resource ownership KONG-47, shader-compile
+stalls KONG-59, in-game FPS KONG-68, determinism RAY-152 (deterministic math for every platform landed in #184). An open item with no lane named has no owner
+yet.
 
 Build a small performance lab around the existing tools, then assign narrowly scoped experiments. Do not start with
 a renderer rewrite, a general-purpose framework, or broad cleanup. Shared measurement and lifecycle procedures
-should make extensions safe without forcing unrelated systems into one abstraction.
+should make extensions safe without forcing unrelated systems into one abstraction. The lab now exists (section 1);
+the optimization tracks in section 2 are where most of the open work is.
 
 This plan is not approval to change protected areas. Discuss dependencies, CI, security-sensitive server code,
 wire formats, map/terrain contracts and balance as required by AGENTS.md. No public-server tests, automatic
@@ -28,52 +43,60 @@ production rollout, or automatic merging are authorized by this document.
 
 ## 1. Establish trustworthy measurements first (FND)
 
-FND is the first implementation milestone. Optimization owners may investigate in parallel, but must not claim a
-win until their scenario produces repeatable baseline/candidate comparisons.
+FND was the first implementation milestone and its core landed in #10, #11 and #12. Optimization owners still must not
+claim a win until their scenario produces repeatable baseline/candidate comparisons.
 
 ### Existing foundations
 
 | Capability | Existing entry points |
 |---|---|
-| Statistics, environment and JSON output | `tools/performance/common.mts` |
-| Simulation/serialization timings | `tools/performance/host.mts` |
+| Result contract, statistics, environment and JSON output | `tools/performance/schema.ts`, `tools/performance/common.mts` (#10) |
+| Interleaved baseline/candidate runs and verdicts | `tools/performance/run.mts`, `tools/performance/compare.mts`, `tools/performance/budgets.json` (#10, #12, #50) |
+| Simulation/serialization timings | `tools/performance/host.mts`, seeded `scenarios/real-play.mts` (#11, #12) |
+| Bytes allocated per tick and GC | `tools/performance/alloc.mts` (#42) |
 | Private server/socket workload | `tools/performance/server-bench.mjs`, `tools/performance/sockets.mts` |
 | Latency/jitter hit-registration checks | `tools/netlab.mts` |
 | Wire, matrix, geometry and splat coverage checks | `npm run bench:verify` |
 | Real-GPU view captures and synchronous render benchmark | `tools/shot.mjs`, `await __kr.bench(n)` (`bench()` in `client/src/engine/dev-probes.ts`) |
+| Real-GPU in-match frame timing | `tools/performance/gpu-match.mts` (#18) with the fixed-seed play route `--route tour` and the per-POI `--route survey` (#201), the `?perfhud` per-second timeline (#97) |
+| Page load to playable title and match | `tools/performance/load-profile.mts` (#22) |
+| Whole-browser memory and what holds it | `tools/performance/memory.mts` (#96) |
 | Tick/event-loop histograms, CPU and memory | `server/perf.ts`, enabled by `KR_PERF_METRICS=1` |
 | Bounded error/frame evidence | `client/src/kongbot/capture.ts` |
-| Player reports, context, durable server queue and triage | `client/src/kongbot/`, `server/kongbot.ts`, `tools/kongbot/cli.mts` |
+| Player reports, playtest bundles, durable server queue and triage | `client/src/kongbot/`, `server/kongbot.ts`, `tools/kongbot/cli.mts` (#105) |
 
 ### Fix benchmark blind spots
 
-1. **Separate match warmup from benchmark warmup and add real-play scenarios.** `host.mts` has a 240-tick
-   benchmark warmup, but `m.warmupS = 1e9` keeps that match in its warmup phase. The server wrapper sets
-   `KR_WARMUP_S` to the run duration plus 90 seconds, so its timed socket workload also remains in match warmup.
-   Add seeded ground combat, loot acquisition, storm/endgame and multiple-lobby scenarios; do not label synthetic
-   islet combat or a warmup-only run as representative full-match coverage.
-2. **Separate correctness instrumentation from timing.** Host packet hashing runs inside timed calls. Preserve a
-   verified trace mode, but distinguish its overhead from representative timing. Align CPU/memory windows with
-   the reported tick window and report what includes warmup.
-3. **Record achieved load.** Socket input generation can skip generator ticks. Capture actual inputs per second,
-   generator lateness and server/client counts; reject an under-driven run rather than celebrating low latency.
-4. **Gate relevant network tails.** `tools/performance/net-tail.mts` reports RTT, input ack, snapshot gaps, corrections,
-   remote holds and hit confirm/ghost rates at 50, 150 and 250 ms RTT with jitter and loss profiles, against
-   `net-budgets.json` (report-only until the budgets are agreed). Real-socket and WAN numbers still need runs over
-   `netpath.py` or a real network; see [tools/performance/README.md](tools/performance/README.md#network-tails).
+1. **Separate match warmup from benchmark warmup and add real-play scenarios.** **Done:** `bench:host` plays the real
+   start, plane and drop untimed and times only the PLAY phase, and `bench:server` waits for PLAY too (#11). A seeded
+   all-bot trios `real-play` scenario is the representative one (#12). **Open:** storm/endgame and multiple-lobby
+   scenarios still don't exist; do not label synthetic islet combat as representative full-match coverage.
+2. **Separate correctness instrumentation from timing.** **Done (#12):** the timed ticks hash nothing; a digest of the
+   match state after the window checks that both sides replayed the same match, and `--trace` hashes every packet in a
+   separate, slower mode that only compares with traced runs.
+3. **Record achieved load.** **Done (#11):** results record inputs per player per second and skipped generator steps,
+   and the `inputLoadAchieved` and `serverKeptTickRate` gates reject an under-driven run.
+4. **Gate relevant network tails.** **Open; a report exists (#192).** `tools/performance/net-tail.mts` reports RTT,
+   input ack, snapshot gaps, corrections, remote holds and hit confirm/ghost rates at 50, 150 and 250 ms RTT with jitter
+   and loss profiles, against `net-budgets.json`. It is report-only until the budgets are agreed, so no tail fails a run
+   yet. Real-socket and WAN numbers still need runs over `netpath.py` or a real network; see
+   [tools/performance/README.md](tools/performance/README.md#network-tails).
 5. **Keep platform prerequisites explicit.** The server wrapper sets `KR_EVENT_MODE=0` for private room creation.
-   Its extensionless `node_modules/.bin/tsx` spawn targets Linux/macOS; Windows compatibility is not established.
+   **Open:** its extensionless `node_modules/.bin/tsx` spawn still targets Linux/macOS; Windows compatibility is not
+   established.
 6. **Do not confuse render throughput with live latency.** `__kr.bench()` forces completion with `readPixels`.
-   Keep it for controlled rendering comparisons; add normal-rAF, moving-camera/in-match measurements.
-7. **Unify GPU query ownership.** The engine's continuous timer and display calibration have separate query
-   lifecycles, validity rules and aggregation. One bounded query owner should serve calibration, dynamic resolution,
-   profiling and collection. Avoid overlapping elapsed-time queries; use exclusive pass-profiling leases.
-   Retain raw valid samples, explicitly mark unsupported timing and discard disjoint results. The existing smoothed
-   controller estimate is not a suitable raw regression distribution.
+   Keep it for controlled rendering comparisons. **Done:** normal-rAF in-match measurement exists in
+   `gpu-match.mts` (#18) and the `?perfhud` timeline (#97).
+7. **Unify GPU query ownership.** **Open (KONG-68).** Elapsed-time queries are still owned separately by the
+   engine (`client/src/engine/engine.ts:715-760`), display calibration (`client/src/engine/display.ts:360-373`) and the
+   storm volume (`client/src/game/storm/volume.ts:615`). The water grab's query (`client/src/world/water/grab.ts:97`) is
+   an `ANY_SAMPLES_PASSED_CONSERVATIVE` occlusion query, not a timer, so the timer owner doesn't need to serve it. One bounded
+   query owner should serve calibration, dynamic resolution, profiling and collection. Avoid overlapping elapsed-time
+   queries; use exclusive pass-profiling leases. Retain raw valid samples, explicitly mark unsupported timing and
+   discard disjoint results. The existing smoothed controller estimate is not a suitable raw regression distribution.
 
-Evidence: `tools/performance/host.mts:17-38`, `tools/performance/server-bench.mjs:16`,
-`tools/performance/sockets.mts:29-41`, `client/src/engine/engine.ts:723-810`,
-`client/src/engine/display.ts:315-344`.
+Evidence: `tools/performance/host.mts`, `tools/performance/server-bench.mjs:16-17`,
+`tools/performance/sockets.mts:75-84`, `client/src/engine/engine.ts:715-760`, `client/src/engine/display.ts:360-373`.
 
 ### Measure four different sources of lag
 
@@ -84,30 +107,23 @@ Evidence: `tools/performance/host.mts:17-38`, `tools/performance/server-bench.mj
 | Server | Tick execution, deadline lateness, accumulator debt, catch-up batches/cap hits, rolling event-loop delay/utilization | Fast individual ticks do not prove timely delivery under multiple lobbies or GC. |
 | Network | RTT/jitter, snapshot age/gaps, input ack age, reconciliation frequency/magnitude, queue depth | Loopback and simulated pipes do not prove WAN or input-to-photon latency. |
 
-Also record cold/warm boot milestones and memory/resource trends across repeated matches. No concrete memory leak
-was established in the investigation.
+Also record cold/warm boot milestones (`load-profile.mts`, #22) and memory/resource trends across repeated matches
+(`memory.mts`, #96). The original investigation found no concrete memory leak; that is **obsolete**. Matches did
+leak, and the leaks were fixed (#108, #110, #146) and are now gated in CI by a match-to-match check (#123).
 
 At 60 FPS the frame interval is 16.67 ms; at 120 FPS it is 8.33 ms. These are interval budgets, not a license for every
 subsystem to consume that whole time. Server tick execution needs headroom inside its 16.67 ms fixed step.
 Choose supported-device targets after baselining. Browser long-animation-frame entries start above 50 ms and miss
 many frame-budget failures, so use them for attribution, not as the only game performance metric.
 
-### Minimal proposed additions
+### The measurement contract
 
-Extend the existing directory and helpers; these files are proposals, not existing commands:
+**Done.** The files this section proposed now exist in `tools/performance/`: `schema.ts` and `compare.mts` (#10),
+`run.mts`, `scenarios/real-play.mts` and `budgets.json` (#12, #50). [tools/performance/README.md](tools/performance/README.md)
+describes the contract. Extend these rather than adding a competing harness.
 
-```text
-tools/performance/
-  common.mts       # Extend existing statistics/environment/report helpers
-  schema.ts        # Versioned results and scenario contracts
-  run.mts          # Bounded orchestration around existing tools
-  compare.mts      # Baseline/candidate analysis and exit status
-  scenarios/       # Seeded host workloads and browser camera/input routes
-  budgets.json     # Scenario/device-specific limits, calibrated from evidence
-```
-
-Browser runtime collection must remain browser-safe; do not import Node-dependent `common.mts` into the client.
-Keep platform collectors separate while sharing portable types and metric semantics.
+Browser runtime collection must remain browser-safe; `schema.ts` imports nothing from Node so a browser or GPU
+collector can share its types. Keep platform collectors separate while sharing portable types and metric semantics.
 
 Each result should include:
 
@@ -131,6 +147,8 @@ Each result should include:
 6. Pass correctness and visual/motion gates. Preserve evidence of failed or rejected experiments.
 7. Recheck the accepted candidate against the broader scenario suite and the current integration base.
 
+The `perf` skill (`.agents/skills/perf/`) scripts this procedure for host and allocation changes.
+
 Maintain two modes:
 
 - **Fixed quality:** disable dynamic resolution and pin settings to compare efficiency.
@@ -142,15 +160,19 @@ results. Do not add blocking GL reads to production hot paths to make profiling 
 ## 2. Five initial optimization tracks
 
 The order is a dispatch recommendation based on code evidence and experiment scope, not a measured cost ranking.
-Keep each experiment single-variable; no claimed percentage gains are available yet.
+Keep each experiment single-variable. PERF-01 and PERF-05 have landed; the other three are still hypotheses.
 
 ### PERF-01: Budget procedural character animation
+
+**Status: done (#187).** A kong drawn at the min tier re-poses at most every `ANIM_SMALL_S` (1/30 s), and one neither
+in view nor casting a shadow into it every `ANIM_HIDDEN_S` (0.1 s). In between, its last pose follows the body rigidly,
+the springs step at most `SPRING_DT_S`, and shots and hits it skipped still play (`client/src/actors/kong.ts`,
+`client/src/actors/kong-rig.ts`). Drawing is unchanged; IK, overlays, staged poses and shot mode re-pose every frame.
 
 **Hypothesis:** full animation work is paid for remote characters that are tiny or off-screen, even though drawing
 already uses screen-size LOD. `updateActors` calls `apply`, which runs the full pose/IK/face pipeline.
 
-Evidence: `client/src/game/render.ts:2065-2093`, `client/src/actors/kong.ts:1117-1155`,
-`client/src/actors/kong-rig.ts:538-656`.
+Evidence: `client/src/game/render.ts:2072-2112`, `client/src/actors/kong.ts:1150`, `client/src/actors/kong-rig.ts`.
 
 - First experiment: keep near animation unchanged; reduce distant pose update cadence and/or omit unnecessary
   face/foot-IK work using existing projected-size information. Avoid blindly multiplying spring integration `dt`;
@@ -165,10 +187,12 @@ Evidence: `client/src/game/render.ts:2065-2093`, `client/src/actors/kong.ts:1117
 
 ### PERF-02: Invalidate and cache interaction queries
 
+**Status: open (KONG-68).** The interact prompt is still recomputed every frame.
+
 **Hypothesis:** per-frame HUD interaction work scans world collections unnecessarily. The prompt block queries
 vehicles twice and checks loot, chests, glass and ziplines; the loot helper scans all items.
 
-Evidence: `client/src/game/render.ts:2454-2461`, `shared/sim/pickup.ts:36-53`.
+Evidence: `client/src/game/render.ts:2500-2516`, `shared/sim/pickup.ts:37`.
 
 - First experiment: reuse same-frame results and cache prompt candidates until relevant player/aim/world changes,
   with a bounded refresh interval. Test cadence before building a new index.
@@ -179,14 +203,18 @@ Evidence: `client/src/game/render.ts:2454-2461`, `shared/sim/pickup.ts:36-53`.
 - Gates: unchanged pickup choice/reachability; no stale prompt or perceptible interaction delay. A provisional
   100 ms maximum refresh bound is a hypothesis to test, not a guaranteed acceptable feel.
 - Preserve existing HUD dirty checks and server-side validation.
-- Owner: gameplay/UI engineer; coordinate `game/render.ts` with PERF-01.
+- Owner: gameplay/UI engineer.
 
 ### PERF-03: Deterministic loot candidate indexing
+
+**Status: open.** No lane owns simulation CPU; any change must pass the determinism gates RAY-152 owns. #46 removed the
+per-item closure allocation in `autoPickup`, but pickup and bot acquisition still scan every item.
 
 **Hypothesis:** automatic pickup and bot acquisition repeatedly scan loot collections; cost grows with players
 multiplied by world loot.
 
-Evidence: `shared/sim/match.ts:1208-1211`, `shared/sim/bots.ts:701-732`.
+Evidence: `shared/sim/match.ts:1213-1217`, `shared/sim/bots.hot.ts:466`, `shared/sim/bots.hot.ts:569`
+(the per-tick bot code moved there in #76).
 
 - First experiment: a match-owned, allocation-free spatial candidate index for bounded pickup queries.
   Expand to bot acquisition only after proving weighted search coverage and tie ordering remain equivalent.
@@ -194,21 +222,27 @@ Evidence: `shared/sim/match.ts:1208-1211`, `shared/sim/bots.ts:701-732`.
   A local-radius lookup must not silently replace a bot's global search.
 - Scenarios: hot-drop loot, many dropped items, sparse late game and multiple fixed seeds.
 - Metrics: inspected candidates, query/bot CPU, simulation p95/p99 and bot arming/acquisition times.
-- Gates: deterministic state/event trace comparisons, pickup tests, path/movement checks and full seeded matches.
-  Share candidate lookup where appropriate, not every caller's decision policy.
+- Gates: deterministic state/event trace comparisons (the `sim` step's golden hashes), pickup tests, path/movement
+  checks and full seeded matches. Share candidate lookup where appropriate, not every caller's decision policy.
 - Preserve existing think staggering and pickup cadence. Do not start by indexing the 50 players; maintenance may
   exceed savings and a once-per-tick index could change sequential observation semantics.
 - Owner: simulation engineer.
 
-Follow-up after profiling: ray-local collider deduplication in `shared/sim/world.ts:813-870`. Boxes occupy multiple
-grid cells, so a ray may retest them. Preserve equal-distance selection, normals, terrain precedence, glass and nested
-query safety. Existing grids/DDA already provide a broadphase; do not replace them without comparative evidence.
+Follow-up after profiling: ray-local collider deduplication in `shared/sim/world.ts:826-941`. **Status: open**, same
+owner note as PERF-03. #13 and #19 cut the boxes and cells a ray tests, but a box spanning several cells can still be
+tested once per cell; the capsule queries already deduplicate with a generation stamp, the raycast doesn't. Preserve
+equal-distance selection, normals, terrain precedence, glass and nested query safety. Existing grids/DDA already
+provide a broadphase; do not replace them without comparative evidence.
 
 ### PERF-04: Separate tree and understory splat budgets
 
+**Status: open (KONG-68).** The density sweep hasn't been run. `gpu-match.mts --route tour` (#201) now gives a
+fixed-seed motion route to run it on. Quality tiers still apply one `dist` and one `density`
+multiplier (`client/src/world/veg/index.ts:228-300`).
+
 **Hypothesis:** the same quality multiplier for trees and understory spends unnecessary far-vegetation work.
 
-Evidence: `client/src/world/veg/index.ts:283-288`, `client/src/world/veg/splat.ts:36-44`.
+Evidence: `client/src/world/veg/index.ts:228-300`, `client/src/world/veg/splat.ts:36-44`.
 
 - First experiment: hold trees fixed; sweep understory density in small steps, such as baseline, -10%, -20%.
   Evaluate tree density independently afterward. Reuse existing `SplatSet` density controls.
@@ -222,23 +256,13 @@ Evidence: `client/src/world/veg/index.ts:283-288`, `client/src/world/veg/splat.t
 
 ### PERF-05: Reduce water SSR refinement cost
 
-**Hypothesis:** high-quality screen-space reflection refinement is expensive over large water-covered screen areas.
-The shader uses up to 20 march steps plus five binary refinements.
-
-Evidence: `client/src/world/water/shader.ts:1070-1114`.
-
-- First experiment: binary refinements five to three only. Keep march count, reflection reach/strength, scene
-  copies and depth/contact behavior fixed.
-- Scenarios: `water-harbor-bow`, `water-wreck-wade`, beach, open ocean and an open-ground negative control.
-- Metrics: water-pass and whole-frame GPU tails, frame pacing and water coverage.
-- Gates: stable thin-object, hull and pier reflections, screen edges, contact foam and underwater crossings.
-- Preserve existing visibility sleeping, combined color/depth grab, occlusion, cadence and blending fallbacks.
-  Do not clip framebuffer copies to the water horizon without proving all SSR reads remain initialized.
-- Owner: water engineer.
+**Status: done (#21).** High-tier SSR refines its hit in three binary steps instead of five
+(`client/src/world/water/shader.ts:1073-1100`); march count, reach and strength were left alone.
 
 Separate later experiment: GI samples eight to six, without changing AO resolution or temporal blending.
-`client/src/world/atmos/post.ts:454-534` already uses blur/history and staggered work; compare compute frames
-separately from reused frames. Prior quarter-resolution AO artifacts are documented there; do not repeat that shortcut.
+**Status: open (KONG-68).** `GI_SAMPLES` is still 8 (`client/src/world/atmos/post.ts:467`). The file already uses
+blur/history and staggered work; compare compute frames separately from reused frames. Prior quarter-resolution AO
+artifacts are documented there; do not repeat that shortcut.
 
 ## 3. Extension and DRY procedures
 
@@ -250,17 +274,20 @@ Every new subsystem or substantial extension should describe:
 4. Which counters/spans identify its cost without per-frame allocation.
 5. Which scenario, correctness test and visual/motion gate exercise it.
 
-Build on `WorldModule` in `client/src/world/module.ts`. Preserve idempotent `afterBuild`, sliced builds,
-readiness holds and shared authoritative collision layouts. Add contract fields only for demonstrated reuse.
+Build on `WorldModule` in `client/src/world/module.ts`, which now takes a region resource scope and an optional
+`release` (#122). Preserve idempotent `afterBuild`, sliced builds, readiness holds and shared authoritative collision
+layouts. Add contract fields only for demonstrated reuse. Resource ownership rules are in
+[docs/memory-architecture.md](docs/memory-architecture.md) and enforced by the `resource-owner` lint rule (#103).
 
 Small DRY work worth considering, in separate scoped changes:
 
-- One GPU query lifecycle and portable metric semantics.
-- Existing benchmark statistics/environment helpers rather than new per-runner implementations.
+- One GPU query lifecycle and portable metric semantics. **Open (KONG-68)**, the same item as FND-7.
+- Existing benchmark statistics/environment helpers rather than new per-runner implementations. **Done (#10):**
+  every runner writes the shared `kong-perf-result` contract.
 - Shared DOM `el`/dirty-text/class/clock helpers, preserving differing behavior instead of mechanically replacing it.
-- Consistent decoder configuration: `engine/assets.ts:30` uses a CDN Basis path, while
-  `world/pois/lobby-islet/atlas.ts:654` uses checked-in `public/assets/actors/basis/` files.
-  Verify compatibility before reuse. The title atlas already uses local files; do not claim a proven title-CDN stall.
+  **Open**, no lane.
+- Consistent decoder configuration. **Done (#167):** the Basis transcoder is self-hosted and one KTX2 pool serves both
+  `engine/assets.ts` and the lobby atlas.
 
 Do not attach an unrelated cleanup to an optimization PR. Fewer lines or abstractions alone are not performance wins.
 
@@ -269,11 +296,13 @@ Do not attach an unrelated cleanup to an optimization PR. Fewer lines or abstrac
 Extend KONGBOT's bounded capture and triage rather than replacing it. Current submission is player-initiated;
 capturing errors in a local buffer is not automatic crash delivery.
 
-Add a cheap, bounded flight recorder for build/asset identity, CPU/GPU/frame summaries, render-scale changes,
-shader/upload hitches, network/reconciliation summaries, match phase and subsystem ids. Add context-loss/restoration
-events and test the instrumentation with a local simulated WebGL loss.
+**Done:** a cheap, bounded flight recorder exists. `?perfhud` keeps a per-second metrics timeline for the session
+(#97); KONGBOT reports and F8 marks save playtest bundles with metrics, flags, build identity and the input replay
+(#105); every report carries the build (#91). Context loss has a policy (#109), restores in place with reload as the
+fallback (#150), and is checked in CI on SwiftShader (#153, #179).
 
-Separate cheap incident data from expensive on-demand context:
+**Open**, no lane: automatic incident upload. The rules below still apply before anything is sent without the player
+pressing a button.
 
 - Do not run visual raycasts, screenshots, large serialization or synchronous GL diagnostics in a hitch callback.
 - Sample, deduplicate and rate-limit automatic reports; cap storage, payloads and retry/backoff.
@@ -283,8 +312,8 @@ Separate cheap incident data from expensive on-demand context:
 - Distinguish handled errors, context loss, disconnects, stalls and confirmed process exits. A killed renderer/GPU
   process may never execute a reporting callback. Combine breadcrumbs with private runner watchdogs and server
   evidence; no client-only system guarantees complete crash capture.
-- Manual report snapshots are not deterministic replays. A seed plus movement trail does not capture all inputs,
-  network timing and world events; add an explicit replay design if exact reproduction becomes necessary.
+- Manual report snapshots are not deterministic replays on their own. **Done:** an explicit replay design exists, an
+  input recorder with `replayMatch` (#45) and `tools/replay.mts` with a round-trip test (#80).
 
 Server-side telemetry ingestion is a protected area requiring discussion. Preserve existing quotas and durable
 fallbacks. Heavy report handling/storage must not starve the authoritative match event loop.
@@ -314,36 +343,42 @@ Incident or regression
 - Re-run integrated changes; independently beneficial patches can interact badly.
 - Produce PRs, not automatic merges or deployments. CI/runner/service additions require the repository's discussion.
 
-Current `.github/workflows/ci.yml` runs build/tests and secret checks, not a hardware performance gate.
-A staged rollout is: local FND artifacts -> private repeatable runs -> reviewed regression lane -> scheduled
-soak/incident intake. This plan installs none of those services or schedules.
+**Done:** `.github/workflows/ci.yml` now runs more than build, tests and secret checks. It also runs a no-GPU boot
+smoke with a title memory budget (#33, #114), a match-to-match memory check (#123) and a context-restore check (#153),
+and `npm test` checks download size against its budgets (#61). The earlier description of CI as build and secrets only
+is obsolete.
+
+**Open**, no lane: a hardware performance regression lane. Real-GPU timing is still a manual step, the flight check in
+the release GPU smokes (#141, #152), not a CI gate or a scheduled run. A staged rollout is still: local FND artifacts
+-> private repeatable runs -> reviewed regression lane -> scheduled soak/incident intake. This plan installs none of
+those services or schedules.
 
 ## 6. Commands and validation
 
 Existing examples, run from the repository root after installing dependencies. Use only servers you run.
-These commands were inspected, not executed for this plan:
 
 ```sh
 npm run build
 npm test
-npm run bench:host -- --root . --ticks 1800 --out reports/performance/host-base.json
+npm run bench:host -- --out reports/performance/host-base.json
 npm run netlab -- 20,80,160,250,320 --jitter 20 --secs 20 --weapon ar
 npm run sim -- trios 42
 node tools/shot.mjs biome-01-beach --bench --q high --out shots/performance/base
 ```
 
-The current host/socket workloads have the limitations described above; their results are not real-play coverage.
-`bench:splat-viewport` is a CPU-side coverage regression check, not a GPU speed benchmark.
-`shot --bench` is a synchronous view benchmark, not a live CPU/input-latency test.
+`bench:host` times the PLAY phase, and its `real-play` scenario is the representative one; the other host scenarios
+are synthetic. `bench:splat-viewport` is a CPU-side coverage regression check, not a GPU speed benchmark.
+`shot --bench` is a synchronous view benchmark, not a live CPU/input-latency test; use `gpu-match.mts` or
+`?perfhud` for in-match frame timing.
 
-For the current private server wrapper on Linux/macOS, build first, then:
+For the private server wrapper on Linux/macOS, build first, then:
 
 ```sh
-KR_EVENT_MODE=0 npm run bench:server -- --seconds 60 --out reports/performance/sockets-base.json
+npm run bench:server -- --seconds 60 --out reports/performance/sockets-base.json
 ```
 
-PowerShell environment assignment uses `$env:KR_EVENT_MODE = "0"`, but this does not by itself make the current
-wrapper's process spawning Windows-compatible. Do not work around a failed launch by pointing tests at a public host.
+The wrapper sets `KR_EVENT_MODE=0` itself, but its process spawning is still not Windows-compatible. Do not work around
+a failed launch by pointing tests at a public host.
 
 Before every PR, run `npm run build` then `npm test`, plus the narrow scenario/correctness gates.
 Visible changes also need a real-GPU local play check and screenshot or clip. Record unavailable checks as blocked,
@@ -351,11 +386,14 @@ not passed. Do not install dependencies or change CI just to conceal an environm
 
 ## 7. Dispatch order and completion evidence
 
-1. FND: shared measurement contracts, representative scenarios and reliable comparisons.
-2. PERF-01/PERF-02: independent investigation, coordinated shared renderer edits.
-3. PERF-03: deterministic query indexing after trace fixtures are available.
-4. PERF-04/PERF-05: independent GPU experiments using the shared measurement owner.
-5. OBS/OPS: reviewed telemetry and scheduled private regression lanes, building on FND.
+1. FND: **done** for host and socket workloads (#10, #11, #12). Still open: storm/endgame and multi-lobby scenarios,
+   network tail gates, the Windows server wrapper and the GPU query owner.
+2. PERF-01: done (#187). PERF-02: open, KONG-68.
+3. PERF-03 and ray deduplication: open, no lane; trace fixtures exist (the `sim` step's golden hashes), and RAY-152 owns
+   determinism.
+4. PERF-04 and GI samples: open, KONG-68. PERF-05 is done (#21).
+5. OBS/OPS: the bounded recorder, replay and no-GPU CI gates are done; automatic upload and a hardware regression lane
+   are open with no lane.
 
 Each delivered task needs: hypothesis, before/after commit ids, full scenario/configuration, repetitions and noise,
 primary and guardrail metrics, correctness/visual results, artifacts, limitations and a recommendation to keep,
