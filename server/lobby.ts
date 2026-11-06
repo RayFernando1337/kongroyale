@@ -19,7 +19,7 @@ import { assignEventSquads, eventRoom, eventSeatOf, eventSeated, eventsDirty, ty
 
 /** commentator seats per lobby (client/src/caster) */
 const MAX_SEATS = 8;
-const AFK_IN_MATCH_MS = 180_000;          // seated in a running match without sending a single input
+const AFK_IN_MATCH_MS = Number(process.env.KR_AFK_S) > 0 ? Number(process.env.KR_AFK_S) * 1000 : 180_000;   // seated in a running match without sending a single input (KR_AFK_S: test servers only)
 
 /** what a lobby needs from the server around it (server/index.ts): the island its matches run on, the log, and the
  *  tick-time recorder (null when off) */
@@ -160,12 +160,13 @@ export class Lobby {
     for (const c of [...this.clients]) {
       if (c.pid < 0 || now - c.lastInputAt <= AFK_IN_MATCH_MS) continue;
       // only a seat still in play can be AFK. One that is out (dead, spectating, eliminated) has nothing
-      // to steer — and its player may be back in the room (BACK TO LOBBY stops the inputs): removing it would take that player
-      // out of the lobby without their screen knowing (a ghost room, left out of the next START)
+      // to steer — and its player may be back in the room already (BACK TO LOBBY stops the inputs)
       const p = this.match?.players[c.pid]; if (!p || p.eliminated || !alive(p)) continue;
-      // an event lobby keeps its player: a bot plays the seat on, the player waits in the room for the next round
-      if (this.event) { this.unseat(c); sendJSON(c.sock.ws, { t: "error", msg: "REMOVED FOR INACTIVITY", afk: true }); continue; }
-      sendJSON(c.sock.ws, { t: "error", msg: "REMOVED FOR INACTIVITY" }); this.leave(c);
+      // the lobby keeps its player: a bot plays the seat on, and the player waits in the room for the next match (afk: the
+      // client goes back to the room and keeps the reason on screen). A normal lobby's host role passes on, so the others
+      // can START without them
+      if (!this.event && this.owner === c) this.owner = this.clients.find((o) => o !== c) ?? c;
+      this.unseat(c); sendJSON(c.sock.ws, { t: "error", msg: "REMOVED FOR INACTIVITY", afk: true });
     }
   }
   /** (AFK) out of the match, still in the room: the seat becomes a bot (as when its player leaves) */
