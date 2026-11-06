@@ -131,7 +131,10 @@ function main(): void {
   const merged24 = merged.filter((p) => inDay(p.mergedAt));
   const released = new Set<number>();
   for (const r of releases) for (const m of r.body.matchAll(/^- #(\d+)/gm)) released.add(Number(m[1]));
-  const unreleased = merged.filter((p) => !released.has(p.number));
+  const sinceNewest = nextTag
+    ? gh(["api", "--paginate", "repos/" + data.repo + "/compare/" + nextTag + "...main", "--jq", ".commits[].commit.message | split(\"\\n\")[0]"]).split("\n").map((l) => Number(/\(#(\d+)\)\s*$/.exec(l)?.[1])).filter(Boolean)
+    : [...released];
+  const unreleased = nextTag ? merged.filter((p) => sinceNewest.includes(p.number) && !released.has(p.number)) : merged.filter((p) => !released.has(p.number));
 
   const areaName = new Map(data.areas.map((a) => [a.id, a.name]));
   const areaOf = (p: Pr): string => {
@@ -217,7 +220,7 @@ function main(): void {
   }).join("");
   const releasesPage =
     '<h2>Release channels</h2><div class="stats">' +
-    stat(nextTag ?? "none", "next", "the newest release, being tested on real graphics cards") +
+    stat(nextTag ?? "none", "next", nextTag && nextTag === stableTag ? "the newest release, which is also stable" : "the newest release, being tested on real graphics cards") +
     stat(stableTag ?? "not set yet", "stable", stableTag ? "what players get" : "a release moves here after it passes the Mac and Windows checks") +
     stat(unreleased.length, "merged since the last release", "these go out in the next release") + "</div>" +
     '<div class="card"><h3>Release schedule</h3><p class="plain">' + esc(data.releaseTrain.plain) + "</p></div>" +
