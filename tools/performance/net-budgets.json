@@ -57,6 +57,19 @@
       "why": "same: no hit marker the server rejects"
     },
     {
+      "id": "hitConfirm250",
+      "metric": "confirmPct",
+      "min": 99,
+      "rtt": [
+        151,
+        250
+      ],
+      "profiles": [
+        "jitter20"
+      ],
+      "why": "netlab --check already holds this on a steady link up to 250 ms"
+    },
+    {
       "id": "ghostHits250",
       "metric": "ghost",
       "max": 0,
@@ -68,7 +81,7 @@
         "jitter20",
         "loss1"
       ],
-      "why": "no hit marker the server rejects on slow links either: above about 220 ms RTT, or while the link stalls, the client shows no predicted hit and the server's verdict draws the marker (ClientMatch.linkSlow, KONG-78 2b). It replaces hitConfirm250 (confirm ≥ 99% at 151-250 ms on jitter20), because there are no predicted hits left to confirm at 250 ms"
+      "why": "no hit marker the server rejects on slow links either: while the link stalls, or above about 220 ms of RTT on a rough link, the client shows no predicted hit and the server's verdict draws the marker (ClientMatch.linkSlow, KONG-78 2b)"
     },
     {
       "id": "instantMarkers",
@@ -76,12 +89,12 @@
       "max": 1,
       "rtt": [
         0,
-        150
+        250
       ],
       "profiles": [
         "jitter20"
       ],
-      "why": "a steady link keeps its instant hit markers: at most 1% of hits wait for the server (KONG-78 §4 2b's gate); the wait is for slow and stalled links only"
+      "why": "a steady link keeps its instant hit markers up to 250 ms: at most 1% of hits wait for the server (KONG-78 §4 2b's gate); the wait is for stalled, rough or past-the-rewind-cap links only"
     },
     {
       "id": "snapshotGap",

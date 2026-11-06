@@ -13,10 +13,11 @@
 //             the numbers below and older results keep their meaning. tools/performance/net-tail.mts always sets it.
 //   --check: exit 1 when hit registration regresses. At every RTT up to CHECK_MAX_RTT_MS (250) the run must fire pellets and
 //            hit, confirm at least CHECK_MIN_CONFIRM_PCT (99) of its predicted hits and show 0 ghost hits; on a steady simulated
-//            link (RTT up to CHECK_STEADY_RTT_MS, 150, jitter ≤ 20, no loss) at most CHECK_MAX_DEFERRED_PCT (1) of its hits
-//            may wait for the server. Longer RTTs are only reported as KNOWN ISSUE lines, never failed. Above about 220 ms RTT,
-//            or while the link stalls, the client predicts no hits at all (ClientMatch.linkSlow): the server's verdict draws
-//            the marker, so there are no ghosts, and no predicted hits to confirm. Whole grid:
+//            link (RTT up to CHECK_STEADY_RTT_MS, 250, jitter ≤ 20, no loss) at most CHECK_MAX_DEFERRED_PCT (1) of its hits
+//            may wait for the server. Longer RTTs are only reported as KNOWN ISSUE lines, never failed. While the link stalls,
+//            above about 220 ms RTT on a rough link, or past the RTT the rewind cap allows, the client predicts no hit
+//            (ClientMatch.linkSlow): the server's verdict draws the marker, so those rows have no ghosts and fewer (or no)
+//            predicted hits to confirm. Whole grid:
 //              for w in pistol smg ar shotgun sniper; do npx tsx tools/netlab.mts --weapon $w --jitter 20 --check; done
 //   --serve PORT / --connect URL: the same duel over REAL WebSockets and a real clock, so a real or emulated network sets
 //           the RTT, jitter and loss (the RTT list, --jitter and --loss are ignored). --serve runs the host side (Match +
@@ -345,7 +346,7 @@ if (servePort) {
   process.exit();
 }
 
-const CHECK_MAX_RTT_MS = 250, CHECK_MIN_CONFIRM_PCT = 99, CHECK_STEADY_RTT_MS = 150, CHECK_MAX_DEFERRED_PCT = 1;
+const CHECK_MAX_RTT_MS = 250, CHECK_MIN_CONFIRM_PCT = 99, CHECK_STEADY_RTT_MS = 250, CHECK_MAX_DEFERRED_PCT = 1;
 const failures: string[] = [];
 // --connect: one duel over the real network, judged at its measured RTT; otherwise one simulated duel per RTT
 const runs = connectUrl ? [() => connect(connectUrl, token)] : rtts.map((rtt) => () => run(rtt));
