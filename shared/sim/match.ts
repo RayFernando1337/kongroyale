@@ -136,6 +136,10 @@ export class Match {
   /** rewound hitboxes for the shot being resolved: [x, y, z, h] per player id (h = 0: not a target) */
   readonly targets = new Float64Array(MAX_PLAYERS * TARGET_STRIDE);
   shotProbe: ShotProbe | null = null;
+  /** input-pacing telemetry: called once per human per tick with the queued inputs it ran (n), the ticks its queue has
+   *  now been empty (starve) and the seq of the last input it queued (0 = none since the seat was taken);
+   *  shared/net/input-gaps.ts installs it on the server and in netlab */
+  declare inputProbe: ((id: number, n: number, starve: number, queued: number) => void) | undefined;
   /** counters (tests / telemetry) */
   /** inputsLost: seqs skipped when a later input was queued (never arrived, or arrived too late to use);
    *  inputsRecovered: inputs queued from an input window entry other than its newest (shared/net/host.ts) */
@@ -345,6 +349,7 @@ export class Match {
       const nI = this.neutral; copyInput(nI, last); nI.mx = 0; nI.mz = 0; nI.buttons &= B.CROUCH | B.SCOPE;
       this.simulate(p, nI); this.netStats.starveSteps++;
     }
+    this.inputProbe?.(id, n, this.starve[id], this.lastQueued[id]);
     // clock drift: a queue that never drains below 2 for 0.5 s earns one extra step (≤ 3 % speed, far below any exploit)
     const len = this.qLen[id]; if (len < this.qMin[id]) this.qMin[id] = len;
     if (++this.qWin[id] >= 30) { if (this.qMin[id] >= 2) { this.credit[id] += 1; this.netStats.driftCredits++; } this.qMin[id] = 1 << 30; this.qWin[id] = 0; }
