@@ -402,7 +402,9 @@ export function bananaStand(): Built {
   detail.add(mk);
   built.root.add(detail);
   detail.traverse((c) => { if ((c as THREE.Mesh).isMesh) { c.castShadow = false; c.userData.noCast = true; } });
-  let tris = 0; built.root.traverse((c) => { const g = (c as THREE.Mesh).geometry as THREE.BufferGeometry | undefined; if ((c as THREE.Mesh).isMesh && g) tris += (g.index ? g.index.count : g.attributes.position.count) / 3; });
+  // frozen matrices: three recomposed all 36 nodes of every stand (16 a match) each frame for a kiosk that never moves;
+  // the placement sets the root's (bananaStand users call updateMatrix after moving it), tickStands the monkey's pivots
+  let tris = 0; built.root.traverse((c) => { c.updateMatrix(); c.matrixAutoUpdate = false; const g = (c as THREE.Mesh).geometry as THREE.BufferGeometry | undefined; if ((c as THREE.Mesh).isMesh && g) tris += (g.index ? g.index.count : g.attributes.position.count) / 3; });
   return { root: built.root, meshes: built.meshes, tris, pivots: {} };
 }
 
@@ -463,5 +465,6 @@ export function tickStands(views: readonly THREE.Object3D[], cx: number, cz: num
     // tail swish, blinks
     a.tail.rotation.set(Math.sin(ph * 1.05) * 0.12, 0, Math.sin(ph * 1.6) * 0.3);
     a.eyes.scale.y = (ph % 4.1) < 0.11 ? 0.12 : 1;
+    a.root.updateMatrix(); a.body.updateMatrix(); a.head.updateMatrix(); a.armL.updateMatrix(); a.armR.updateMatrix(); a.tail.updateMatrix(); a.eyes.updateMatrix();
   }
 }
