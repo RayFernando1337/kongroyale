@@ -15,6 +15,7 @@ import { afterPaint } from "./frame";
 import { refreshFromIntervals } from "./refresh";
 import { flag } from "../flags";
 import { contextEpoch, watchContext } from "./res/restore";
+import "./geometry-release"; // in boot: the geofree owners in lazy chunks share this copy, fewer bytes than a chunk of its own
 
 const STREAM_SLICE_MS: readonly number[] = flag("streamslice") ?? [];
 
