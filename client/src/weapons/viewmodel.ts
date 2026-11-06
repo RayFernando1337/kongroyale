@@ -549,6 +549,10 @@ export async function createViewModel(fxRef: () => VmFx | null, onBuilt?: (o: TH
       };
     }
     root.visible = false;
+    // a hidden loadout skips the matrix walk: three recomposed every node of every gun built so far each frame (the
+    // camera moves, so its whole subtree is forced); show() brings the drawn one up to date before anything reads it
+    const umw = root.updateMatrixWorld;
+    root.updateMatrixWorld = function (force?: boolean) { if (this.visible) umw.call(this, force); };
     pose.add(root);
     loadouts.set(id, lo);
     onBuilt?.(root);
@@ -592,6 +596,7 @@ export async function createViewModel(fxRef: () => VmFx | null, onBuilt?: (o: TH
     cur = id ? build(id) : null;
     if (!cur) return;
     cur.root.visible = true;
+    cur.root.updateMatrixWorld(true);
     // a mythic wears the animated mythic camo (camo.ts; atmos-patched like the stock materials)
     tintAccent(cur.accent, rarity); camoSkin(cur.skin, skinCol); if (skinCol) onBuilt?.(cur.root);
     equipT = 0; reloadT = -1; useT = -1; cancelT = -1; dropT = -1;
