@@ -96,6 +96,14 @@ the server answers `{ t: "wt-ok" }`. If it can't be had, or closes later, the li
 WebSocket pair. Either way the client tells the server once which transport it settled on and why (`{ t: "net" }`),
 and `/health` counts those reasons across players.
 
+Over datagrams nothing is resent, so the frames carry their own repair. Each tick the client sends its **input window**
+(`M.Inputs`): every input the snapshots haven't acknowledged yet, at most `INPUT_WINDOW` (30, the most the server can
+catch up), oldest first. A lost datagram costs nothing because the next one carries the same inputs, and the server
+queues each seq once, in order (`Match.pushInput`). Each snapshot goes out as two datagrams
+(`SNAPSHOT_DATAGRAM_COPIES`), the same downstream cost as the WebSocket pair. Over WebSockets the client keeps sending
+single `M.Input` frames: on TCP a window is pure overhead. `/health` counts inputs lost (a seq never queued) and recovered
+(queued from a window entry other than its newest).
+
 When a client connects, the server's `welcome` message carries `NET_VERSION` and a hash of the whole collision world.
 A client with a different world refuses to play and asks the player to reload.
 

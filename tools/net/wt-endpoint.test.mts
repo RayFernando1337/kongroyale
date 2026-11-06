@@ -4,7 +4,8 @@
 // Checks: off by default (no "wt" in welcome, /health says why); with KR_WT=1 welcome announces the port and the
 // certificate hash; a session with a wrong token, and a second one for the same client, are refused; an attached session
 // is told so ({ t: "wt-ok" } on its stream); an authenticated
-// session carries inputs (the snapshots' lastSeq follows them), pings (a pong comes back as a datagram), snapshots as
+// session carries inputs, on the stream and as input-window datagrams with lost windows repaired by the next one and
+// gaps past the window counted (the snapshots' lastSeq follows them, /health counts them), pings (a pong comes back as a datagram), snapshots as
 // datagrams and the reliable frames (inventory) on the stream; /health counts the client on "wt"; a flood of frames
 // past the rate limit closes the session and the client's frames go back to its WebSockets. A session counts against the
 // per-address cap like a WebSocket, and closing the primary WebSocket closes the session and frees both slots.
@@ -14,7 +15,7 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
-import { M, Reader, Writer, readSnapHeader, writeInput, type SnapHeader } from "../../shared/net/proto";
+import { INPUT_WINDOW, M, Reader, Writer, readSnapHeader, writeInput, writeInputs, type SnapHeader } from "../../shared/net/proto";
 import { makeInput } from "../../shared/sim/player";
 import { Deframer, frame } from "../../shared/net/frames";
 
@@ -33,7 +34,7 @@ async function startServer(env: Record<string, string>): Promise<{ port: number;
   if (!ok) throw new Error("server did not start:\n" + out);
   return { port, proc, log: () => out };
 }
-const health = async (port: number) => (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as { transports: { clients: Record<string, number>; webtransport: { off?: string; open?: number; refused?: Record<string, number> } } };
+const health = async (port: number) => (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as { transports: { clients: Record<string, number>; inputs: { lost: number; recovered: number; dropped: number }; webtransport: { off?: string; open?: number; refused?: Record<string, number> } } };
 
 /** a WebSocket client: JSON control + binary frames */
 async function wsClient(port: number) {
@@ -123,6 +124,23 @@ try {
   check(w.dgrams.some((d) => d[0] === M.Pong && new Reader(d.subarray(1)).f64() === pingAt), "a ping datagram is answered by a pong datagram");
   check(await waitFor(() => w.frames.some((f) => f[0] === M.Inventory), 3000), "reliable frames (inventory) arrive on the stream");
   check(c.bin.length === wsBinBefore, `no binary frames on the WebSocket while the session lives (${c.bin.length - wsBinBefore})`);
+
+  // input windows as datagrams (M.Inputs): the windows for seqs 35, 36 and 50 are "lost"; the next window carries them
+  const ring = Array.from({ length: 64 }, makeInput), winW = new Writer(new ArrayBuffer(512));
+  for (let seq = 31; seq <= 60; seq++) {
+    ring[seq % 64].seq = seq;
+    if (seq === 35 || seq === 36 || seq === 50) continue;
+    const first = Math.max(31, seq - INPUT_WINDOW + 1);
+    writeInputs(winW.reset(), ring, first, seq - first + 1); await w.dw.write(winW.view().slice()); await sleep(5);
+  }
+  check(await waitFor(() => snaps().some((d) => { const r = new Reader(d); r.u8(); readSnapHeader(r, h); return h.lastSeq === 60; }), 5000), "input windows as datagrams reach the match: a snapshot acknowledges seq 60");
+  let hin = (await health(s.port)).transports.inputs;
+  check(hin.recovered === 3 && hin.lost === 0, `the three inputs whose window was lost are recovered from the next one, none lost (/health inputs ${JSON.stringify(hin)})`);
+  // a window that starts past a gap the window can't cover: the skipped seqs count as lost
+  ring[100 % 64].seq = 100; writeInputs(winW.reset(), ring, 100, 1); await w.dw.write(winW.view().slice());
+  check(await waitFor(() => snaps().some((d) => { const r = new Reader(d); r.u8(); readSnapHeader(r, h); return h.lastSeq === 100; }), 5000), "a window past a gap is queued (snapshot acknowledges seq 100)");
+  hin = (await health(s.port)).transports.inputs;
+  check(hin.lost === 39, `seqs 61-99 count as lost (${hin.lost})`);
 
   // the stream, not datagrams: every frame of the flood arrives, so the count past the bucket (400) is exact
   for (let i = 0; i < 1200; i++) { inW.reset().u8(M.Ping).f64(i); void w.sw.write(frame(inW.view())); }

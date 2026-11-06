@@ -14,7 +14,7 @@ import { IK, lootReachable, type Chest, type Item } from "../../../shared/sim/lo
 import { B, PS, currentSpread, eyeY, invDrop, invMove, makeInput, makePlayer, pelletDamage, poseFlags, stepPlayer, weaponDef, copyInput, type Input, type Player } from "../../../shared/sim/player";
 import { makeStormState, stormAt, type StormPlan, type StormState } from "../../../shared/sim/storm";
 import type { StaticWorld } from "../../../shared/sim/world";
-import { EV, INV, KILL_BOMB, KILL_GUN, KILL_HELI, KILL_TUK, M, Reader, yawDec, Writer, makeCastStat, makePlayerSnap, makeSelfState, makeVehSnap, quantizeInput, readCastHeader, readCastStat, readInventory, readPlayer, readSelf, readSnapHeader, readVehicle, writeInput, writeInvOp, type CastHeader, type CastStat, type GunSelf, type PlayerSnap, type SelfState, type SnapHeader, type VehSelf, type VehSnap } from "../../../shared/net/proto";
+import { EV, INV, KILL_BOMB, KILL_GUN, KILL_HELI, KILL_TUK, M, Reader, yawDec, Writer, makeCastStat, makePlayerSnap, makeSelfState, makeVehSnap, quantizeInput, readCastHeader, readCastStat, readInventory, readPlayer, readSelf, readSnapHeader, readVehicle, writeInput, writeInputs, writeInvOp, INPUT_BODY_BYTES, INPUT_WINDOW, INPUTS_HEAD_BYTES, type CastHeader, type CastStat, type GunSelf, type PlayerSnap, type SelfState, type SnapHeader, type VehSelf, type VehSnap } from "../../../shared/net/proto";
 import { SEAT_EYE, TUK, VF, VKind, VS, VehicleSet, blendVeh, rayVehicle, seatPoint, seatRiderAt, vehPose, vehicleInReach, type Vehicle } from "../../../shared/sim/vehicle";
 import { GUN_SHOT, TOP_BANANA, gunBarrel, gunOf } from "../../../shared/sim/heli";
 import { fleetSpots, type TukSpot } from "../../../shared/sim/tuk-spots";
@@ -167,7 +167,7 @@ export class ClientMatch {
   private inputSeq = 0; private ackedSeq = 0;
   private readonly inRing: Input[] = Array.from({ length: PRING }, makeInput);
   private readonly pRing = new Float64Array(PRING * PS_STRIDE); private readonly pSeq = new Int32Array(PRING).fill(-1);
-  private readonly inputW = new Writer(new ArrayBuffer(64)); private readonly pingW = new Writer(new ArrayBuffer(16));
+  private readonly inputW = new Writer(new ArrayBuffer(64)); private readonly inputsW = new Writer(new ArrayBuffer(INPUTS_HEAD_BYTES + INPUT_WINDOW * INPUT_BODY_BYTES)); private readonly pingW = new Writer(new ArrayBuffer(16));
   private readonly scratch: Player;
   // ---- clocks
   private tickOffset = 0; private haveOffset = false; private lastPingAt = 0; private lastPongSent = 0;
@@ -263,6 +263,13 @@ export class ClientMatch {
     writeInvOp(this.invOpW.reset(), this.invOpSeq, op, a, b); this.link.sendBinary(this.invOpW.view());
     this.sink?.inventory();
     return true;
+  }
+  /** over datagrams (WebTransport) every input not yet acknowledged, so the next datagram repairs a lost one; over a
+   *  reliable link the one new input */
+  private sendInput(inp: Input) {
+    if (this.link.transport?.kind !== "wt") { writeInput(this.inputW.reset(), inp); this.link.sendBinary(this.inputW.view()); return; }
+    const first = Math.max(this.ackedSeq + 1, inp.seq - INPUT_WINDOW + 1);
+    writeInputs(this.inputsW.reset(), this.inRing, first, inp.seq - first + 1); this.link.sendBinary(this.inputsW.view());
   }
   private sendPing() { this.pingW.reset().u8(M.Ping).f64(performance.now()); this.link.sendBinary(this.pingW.view()); this.pingsSent++; }
   private readonly pings = new Float64Array(5); private readonly pingSort = new Float64Array(5); private pingN = 0; private pingsSent = 0;
@@ -746,7 +753,7 @@ export class ClientMatch {
       if (p.fired > 0) this.sink?.localFire();
       if (p.thrown > 0) this.sink?.localThrow?.(p.thrown);
       this.onTick?.(inp);
-      writeInput(this.inputW.reset(), inp); this.link.sendBinary(this.inputW.view());
+      this.sendInput(inp);
     }
     if (this.acc > DT * 6) this.acc = 0;
     this.stepStorm();

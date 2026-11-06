@@ -104,8 +104,8 @@ KONGBOT is the in-game bug reporter (`/kongbot <message>` in the chat bar). With
 ## WebTransport
 
 With `KR_WT=1` the server also listens for WebTransport (HTTP/3 over QUIC, so UDP) on `KR_WT_PORT`. Players who
-open the page with `?wt=1` get snapshots and pings as datagrams there, so one lost packet no longer stalls the ones
-behind it; inputs and the other frames ride the session's reliable stream. The WebSocket stays open as the control channel and is the fallback: a player whose network blocks UDP, or
+open the page with `?wt=1` send their inputs and get snapshots and pings as datagrams there, so one lost packet no longer
+stalls the ones behind it; the other frames ride the session's reliable stream. The WebSocket stays open as the control channel and is the fallback: a player whose network blocks UDP, or
 whose browser has no WebTransport, plays over WebSockets as before.
 
 - **UDP**: open `KR_WT_PORT` for UDP in the firewall. Nothing may sit in front of it: CDNs and the usual reverse proxies
