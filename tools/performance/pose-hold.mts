@@ -9,8 +9,8 @@
 //   npx tsx tools/performance/pose-hold.mts --browser safari --query dpr=1 --out reports/performance/hold-dpr1-1.json
 //
 // Options: --browser safari|chrome|chromium (chromium = Playwright's own build; on a machine without a GPU add
-// --software, which checks the route and the counts, never the timing), --root <checkout> (serve its dist/; build first),
-// --port 3032, --viewport 1592x960 (CSS px; Safari renders at the display's own DPR, Chrome at --dpr 2),
+// --software, which checks the route and the counts, never the timing), --root <checkout> (serve its dist/; build
+// first), --port 3032, --viewport 1592x960 (CSS px; Safari renders at the display's own DPR, Chrome at --dpr 2),
 // --preset low|medium|high|epic|auto (default high; auto leaves the game's own pick), --query "a=1&b=2" (extra URL
 // flags), --pose x,z,yawDeg,pitchDeg (default: Ray's Banana Temple report, RAY-186), --settle-s 20, --hold-s 10,
 // --capture "<command>" (a shell command started when the match starts and stopped after the hold, e.g. a screen
@@ -23,7 +23,8 @@
 // renderer.info's draw calls, triangles, points and program count. Safari has no GPU timer query, so GPU time is not
 // measured; attribute it with arms that remove one cost (?dpr=1 for pixels, ?vegsplat=0 for the far-tree splats).
 // After the hold the engine is suspended for 180 frames (3 s at 60 Hz) and bare rAF intervals are recorded: the
-// display's refresh as the browser paces it right now (a capture running or not), next to what engine.refreshHz measured.
+// display's refresh as the browser paces it right now (a capture running or not), next to what engine.refreshHz
+// measured.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
