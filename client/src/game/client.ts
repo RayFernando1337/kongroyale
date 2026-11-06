@@ -183,7 +183,7 @@ export class ClientMatch {
   private arrOff = 0; private haveArr = false; private readonly late = new Float64Array(LATE_WIN); private readonly lateSort = new Float64Array(LATE_WIN); private lateN = 0; private lateI = 0;
   private rtOff = 0; private rtInit = false; private lastClockT = 0; private rt = 0; private viewValid = false;
   private readonly snapTicks = new Int32Array(TICKS_RING); private snapN = 0; private lastSnapTick = -1;
-  /** when the newest snapshot arrived, and when linkSlow last saw a stall (performance.now) */
+  /** when the newest snapshot arrived, and when the link last stalled: a snapshot or an input's ack late (performance.now) */
   private lastSnapAt = 0; private lastStallAt = -1e9;
   // ---- the blend of the last drawn frame (sent with every input) + the hitboxes drawn in it
   viewA = 0; viewSpan = 0; viewF = 0;
@@ -406,6 +406,9 @@ export class ClientMatch {
     if (!this.started || this.me < 0) return;
     if (h.tick <= this.lastSnapTick) { if (h.tick === this.lastSnapTick) this.netStats.dupFrames++; else this.netStats.staleFrames++; return; }
     const gGap = this.lastSnapTick >= 0 ? h.tick - this.lastSnapTick : SNAP_EVERY;
+    // a stall (linkSlow's memory, so a stall between shots counts too): this snapshot came DEFER_SNAP_GAPS intervals
+    // after the last, or acknowledges an input sent longer than the RTT plus DEFER_ACK_SLACK_MS ago (once the RTT is known)
+    if (this.pingN >= 5 && ((this.lastSnapAt > 0 && at - this.lastSnapAt > DEFER_SNAP_GAPS * SNAP_EVERY * DT * 1000) || (h.lastSeq > this.authSeq && at - this.sentAt[h.lastSeq % PRING] > this.ping + DEFER_ACK_SLACK_MS))) this.lastStallAt = at;
     this.lastSnapTick = h.tick; this.lastSnapAt = at; this.netStats.snapshots++;
     const nowT = at / 1000 / DT;
     this.clockSample(h.tick, nowT, performance.now());
