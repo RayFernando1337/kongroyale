@@ -2,7 +2,7 @@
 // sits past the half-rate line, never below Auto's floor, steps back up after a run of full-rate seconds, and backs off
 // instead of oscillating when an up-step falls back (RAY-186).
 import assert from "node:assert/strict";
-import { AUTO_RES_FLOOR, UP_AFTER_MAX_S, UP_AFTER_S, decide, guardBudgetMs, newGuardState } from "../../client/src/engine/res-guard";
+import { AUTO_RES_FLOOR, UP_AFTER_MAX_S, UP_AFTER_S, decide, guardBudgetMs, guardRefreshHz, newGuardState } from "../../client/src/engine/res-guard";
 
 const HZ60 = 1000 / 60;
 /** run the guard for "seconds" with a frame model (median ms of a second at a scale); the steps it took */
@@ -72,13 +72,18 @@ assert.equal(run(3, () => 4 * HZ60).steps[0].to, 0.85, "big step at 15 fps");
 // refresh re-estimate reads 30 Hz is still judged against 60 Hz and keeps stepping down
 assert.equal(guardBudgetMs(30, 60), 1000 / 30, "cap");
 assert.equal(guardBudgetMs(0, 0), HZ60, "refresh unknown");
+// a window moved from a 60 Hz to a 30 Hz display between matches is judged by the 30 Hz one, so its full-rate 30 fps
+// is left alone; in a match the 60 Hz reference holds
+assert.equal(guardRefreshHz(60, 30, false), 30, "monitor change at the title");
+assert.equal(guardRefreshHz(60, 30, true), 60, "half-rate re-estimate in a match");
+assert.equal(run(60, () => 1000 / 30, { budgetMs: guardBudgetMs(0, guardRefreshHz(60, 30, false)) }).steps.length, 0, "30 Hz display, full rate");
 {
-  let maxHz = 0;
+  let refHz = 0;
   const st = newGuardState();
   let scale = 1, downs = 0;
   for (let s = 0; s < 30; s++) {
-    maxHz = Math.max(maxHz, s < 20 ? 60 : 30);
-    const d = decide(st, 2 * HZ60, 2 * HZ60, 30, guardBudgetMs(0, maxHz), 7, 0, scale, 1, s);
+    refHz = guardRefreshHz(refHz, s < 20 ? 60 : 30, true);
+    const d = decide(st, 2 * HZ60, 2 * HZ60, 30, guardBudgetMs(0, refHz), 7, 0, scale, 1, s);
     if (d && d.why === "halfrate") { downs++; scale = d.to; }
   }
   assert.equal(scale, AUTO_RES_FLOOR, "keeps stepping after the refresh re-estimate reads 30 Hz (" + downs + " steps)");

@@ -32,11 +32,16 @@ export const HOLD_S = 2;
 export const STEP = 0.92;
 export const BIG_STEP = 0.85;
 export const BIG_PERIODS = 3;
-/** The guard's frame budget (ms): the player's frame cap, else the display refresh. The refresh is the highest the
- *  engine has measured this session: its estimate is retaken every 20 s, and a match locked at half rate on a 60 Hz
- *  screen (every frame two vsyncs) reads as a 30 Hz display, which would make the same 30 fps look like full rate. */
-export function guardBudgetMs(capFps: number, maxHz: number): number {
-  return capFps > 0 ? 1000 / capFps : 1000 / (maxHz || 60);
+/** The guard's frame budget (ms): the player's frame cap, else the display refresh (guardRefreshHz). */
+export function guardBudgetMs(capFps: number, refHz: number): number {
+  return capFps > 0 ? 1000 / capFps : 1000 / (refHz || 60);
+}
+/** The refresh the guard judges by, from the engine's estimate (retaken every 20 s). In a match it only goes up: a match
+ *  locked at half rate on a 60 Hz screen (every frame two vsyncs) reads as a 30 Hz display, which would make the same
+ *  30 fps look like full rate. Outside a match it follows the estimate, so a window moved to a slower display between
+ *  matches is judged by that display. */
+export function guardRefreshHz(prevHz: number, measuredHz: number, inMatch: boolean): number {
+  return inMatch ? Math.max(prevHz, measuredHz) : measuredHz;
 }
 /** without a GPU timer, a main thread under this many reference periods per frame can't be what misses vsync: the
  *  miss is GPU work, which fewer pixels shorten. Above it the frame is CPU-bound and the guard leaves the scale alone */
@@ -87,7 +92,7 @@ export function decide(st: GuardState, medMs: number, p95Ms: number, frames: num
 }
 
 /** one step: page and match seconds, phase, the second's fps and frame p95 before it, the scale before and after,
- *  why, the display refresh it judged by (guardBudgetMs), the canvas backing size, and whether the page was hidden or
+ *  why, the display refresh it judged by (guardRefreshHz), the canvas backing size, and whether the page was hidden or
  *  focused */
 export interface ResStep { at: number; t: number; ph: number; fps: number; p95: number; from: number; to: number; why: StepWhy; hz: number; cv: [number, number]; hid: boolean; foc: boolean }
 export const resLog: ResStep[] = [];
@@ -102,17 +107,17 @@ export function startResGuard(engine: Engine): void {
   const kr = (window as unknown as { __kr: Kr }).__kr;
   kr.resLog = resLog;
   const st = newGuardState(), iv = new Float32Array(engine.frameMs.length);
-  let seen = engine.frameCount, stepped = false, maxHz = 0;
+  let seen = engine.frameCount, stepped = false, refHz = 0;
   const r1 = (v: number) => Math.round(v * 10) / 10;
   const log = (why: StepWhy, from: number, to: number, fps: number, p95: number) => {
     const cm = kr.game?.inMatch ? kr.game.cm ?? null : null, c = engine.renderer.domElement;
-    resLog.push({ at: r1(performance.now() / 1000), t: cm ? r1(cm.time) : -1, ph: cm ? cm.phase : -1, fps: r1(fps), p95: r1(p95), from, to, why, hz: maxHz, cv: [c.width, c.height], hid: document.visibilityState === "hidden", foc: document.hasFocus() });
+    resLog.push({ at: r1(performance.now() / 1000), t: cm ? r1(cm.time) : -1, ph: cm ? cm.phase : -1, fps: r1(fps), p95: r1(p95), from, to, why, hz: refHz, cv: [c.width, c.height], hid: document.visibilityState === "hidden", foc: document.hasFocus() });
     if (resLog.length > RES_LOG_MAX) resLog.splice(0, resLog.length - RES_LOG_MAX);
   };
   setInterval(() => {
     const ring = engine.frameMs, count = engine.frameCount, n = Math.min(count - seen, ring.length);
     seen = count;
-    maxHz = Math.max(maxHz, engine.refreshHz);
+    refHz = guardRefreshHz(refHz, engine.refreshHz, !!kr.game?.inMatch);
     const top = engine.resBase, scale = engine.renderScale;
     if (!kr.game?.inMatch) {
       Object.assign(st, newGuardState());
@@ -125,7 +130,7 @@ export function startResGuard(engine: Engine): void {
     for (let i = 0; i < n; i++) { const v = ring[(count - n + i) % ring.length]; iv[i] = v; sum += v; }
     const s = iv.subarray(0, n).sort();
     const med = n ? s[n >> 1] : 0, p95 = n ? s[Math.min(n - 1, Math.floor(n * 0.95))] : 0;
-    const d = decide(st, med, p95, n, guardBudgetMs(engine.frameCap, maxHz), engine.stepEma, engine.gpuMs, scale, top, performance.now() / 1000);
+    const d = decide(st, med, p95, n, guardBudgetMs(engine.frameCap, refHz), engine.stepEma, engine.gpuMs, scale, top, performance.now() / 1000);
     if (!d) return;
     const fps = sum > 0 ? (n * 1000) / sum : 0;
     if (d.to === scale) { log(d.why, scale, scale, fps, p95); return; }
