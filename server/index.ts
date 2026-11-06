@@ -3,7 +3,8 @@
 //   npm run start    → production: serves the built client (dist/) + ws on ONE port (KR_PORT or PORT, default 3020)
 // Hardening: every frame is size-checked and decoded through the sanitising readers (shared/net/proto.ts); per-socket
 // token-bucket rate limit; ws heartbeat + idle timeouts; connection caps (total / per IP); one misbehaving lobby can never
-// take the process down (tick errors are contained). Each client may attach ONE redundant "aux" socket (see net.ts).
+// take the process down (tick errors are contained). Each client may attach ONE redundant "aux" socket (see net.ts), and
+// with KR_WT=1 one WebTransport session (server/wt.ts), which then carries its binary frames.
 import { addrKey } from "./addr";
 import http from "node:http";
 import fs from "node:fs";
@@ -17,6 +18,11 @@ import { buildStaticWorld } from "../shared/sim/static-world";
 import { lootSpots } from "../shared/sim/loot-spots";
 import { alive } from "../shared/sim/player";
 import { M, NET_VERSION } from "../shared/net/proto";
+import { sendFrame, type Path } from "../shared/net/transport";
+import { WsTransport } from "./transport-ws";
+import type { WtTransport } from "./transport-wt";
+import { startWt, type WtEndpoint } from "./wt";
+import { makeBucket, struck, take } from "./limits";
 import { kongbotDb } from "./kongbot";
 import { annotationsApi } from "./annotations";
 import { serveStatic } from "./static";
@@ -42,8 +48,7 @@ const MAX_PAYLOAD = 16384;
 const MAX_CONNS = Number(process.env.KR_MAX_CONNS || 2000), MAX_CONNS_PER_IP = Number(process.env.KR_MAX_PER_IP || 120);
 const MAX_LOBBIES = 400;
 const MAX_LOBBIES_PER_IP = 4;             // lobbies / exhibitions one address may own at once (event mode off)
-const RATE_PER_S = 150, RATE_BURST = 400;  // inputs are 60/s; a TCP stall releases a burst of queued inputs at once
-const MAX_STRIKES = 400;                  // rate-limited or malformed frames before the socket is closed
+// frames per second and strikes per socket: server/limits.ts (shared with WebTransport sessions)
 const HEARTBEAT_MS = 10_000;              // ws ping cadence (+ the silence check below)
 // a socket is terminated only after this long with NOTHING from it — no message and no pong. ONE missed pong (10-20 s of
 // silence, pongs only) is too strict: a few seconds of bad Wi-Fi / a TCP stall would cut players out of the
@@ -75,33 +80,25 @@ initLobbies({ world, log, perf });
 // ---- sockets
 const socks = new Set<Sock>();
 const perIp = new Map<string, number>();
-function allow(s: Sock): boolean {
-  const now = performance.now();
-  s.tokens = Math.min(RATE_BURST, s.tokens + ((now - s.refill) / 1000) * RATE_PER_S); s.refill = now; s.lastMsg = Date.now();
-  if (s.tokens >= 1) { s.tokens -= 1; return true; }
-  strike(s, "rate"); return false;
+const addIp = (ip: string) => perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
+const dropIp = (ip: string) => { const n = (perIp.get(ip) ?? 1) - 1; if (n > 0) perIp.set(ip, n); else perIp.delete(ip); };
+/** the WebTransport endpoint (null: KR_WT unset, or its module could not load) */
+let wt: WtEndpoint | null = null;
+/** /health: clients by transport, and the WebTransport endpoint's sessions (or why it is off) */
+function transportHealth() {
+  const by: Record<string, number> = {};
+  for (const c of byToken.values()) by[c.bin.kind] = (by[c.bin.kind] ?? 0) + 1;
+  return { clients: by, webtransport: wt ? { port: wt.welcome().port, ...wt.counts } : { off: wtOff } };
 }
+function allow(s: Sock): boolean { if (take(s)) return true; strike(s, "rate"); return false; }
 /** `weight`: a frame no honest client ever sends (a host-only or malformed event message) costs more than a rate blip */
-function strike(s: Sock, why: string, weight = 1) { s.strikes += weight; if (s.strikes > MAX_STRIKES) { log(`closing a socket: ${why}`); s.closedBy ||= `strikes (${why})`; s.ws.close(1008, why); } }
+function strike(s: Sock, why: string, weight = 1) { if (struck(s, weight)) { log(`closing a socket: ${why}`); s.closedBy ||= `strikes (${why})`; s.ws.close(1008, why); } }
 /** (admin lobby) hostile-only messages: ~8 of them close the socket */
 const HEAVY = 50;
 const ADMIN_SHAPED = new Set(["act", "admin", "hub-admin", "hub-hello", "kick", "unkick", "ban", "move", "close", "end", "launch", "lock", "teamlock", "casters", "balance", "shuffle", "rename", "cap", "name"]);
 
 // ---- clients + lobbies
 const byToken = new Map<string, Client>();
-/** binary to every socket of a client (primary + aux). One copy per frame: `u8` may be a view over a reused buffer.
- * Backpressure: a socket with a large send backlog skips snapshots (each one is self-contained) instead of queueing. */
-function sendBin(c: Client, u8: Uint8Array) {
-  let buf: Buffer | null = null;
-  for (let i = -1; i < c.aux.length; i++) {
-    const s = i < 0 ? c.sock : c.aux[i], ws = s.ws;
-    if (ws.readyState !== WebSocket.OPEN) continue;
-    if (u8[0] === M.Snapshot && ws.bufferedAmount > 64 * 1024) continue;
-    if (ws.bufferedAmount > 4 * 1024 * 1024) { s.closedBy ||= "send backlog > 4 MB"; ws.terminate(); continue; }   // hopelessly behind
-    buf ??= Buffer.from(u8);
-    ws.send(buf, { binary: true });
-  }
-}
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newCode = (len = 4) => { let c = ""; do { c = ""; for (let i = 0; i < len; i++) c += CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]; } while (lobbies.has(c)); return c; };
@@ -144,7 +141,7 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (url === "/health") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify({ ok: true, feedback: kongbot.health(), lobbies: lobbies.size, clients: [...lobbies.values()].reduce((a, l) => a + l.clients.length, 0), sockets: socks.size, inputs: [...lobbies.values()].flatMap((l) => (l.match && l.inputGaps ? [l.inputGaps.report()] : [])), ...(perf ? { performance: perf.read() } : {}) })); return; }
+  if (url === "/health") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify({ ok: true, feedback: kongbot.health(), lobbies: lobbies.size, clients: [...lobbies.values()].reduce((a, l) => a + l.clients.length, 0), sockets: socks.size, transports: transportHealth(), inputs: [...lobbies.values()].flatMap((l) => (l.match && l.inputGaps ? [l.inputGaps.report()] : [])), ...(perf ? { performance: perf.read() } : {}) })); return; }
   if (!serve || (req.method !== "GET" && req.method !== "HEAD")) { res.writeHead(404); res.end(); return; }
   void serveStatic(req, res, url, dist).catch((error) => { log("asset request failed", error); if (!res.headersSent) res.writeHead(500); res.end(); });
 });
@@ -171,7 +168,7 @@ const wss = new WebSocketServer({
   noServer: true, maxPayload: MAX_PAYLOAD, perMessageDeflate: false,
   verifyClient: (info: { origin: string; req: http.IncomingMessage }) => {
     if (ORIGINS.length && !ORIGINS.includes(info.origin)) return false;
-    if (socks.size >= MAX_CONNS) return false;
+    if (socks.size + (wt?.counts.open ?? 0) >= MAX_CONNS) return false;
     return (perIp.get(ipOf(info.req)) ?? 0) < MAX_CONNS_PER_IP;
   },
 });
@@ -184,8 +181,8 @@ server.on("upgrade", (req, socket, head) => {
 let uidSeq = 1;
 wss.on("connection", (ws, req) => {
   const ip = ipOf(req);
-  const s: Sock = { ws, ip, tokens: RATE_BURST, refill: performance.now(), strikes: 0, lastMsg: Date.now(), rtt: 0, openedAt: Date.now(), lastPong: Date.now(), closedBy: "" };
-  socks.add(s); perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
+  const s: Sock = { ws, ip, ...makeBucket(), rtt: 0, openedAt: Date.now(), lastPong: Date.now(), closedBy: "" };
+  socks.add(s); addIp(ip);
   ws.on("pong", (d: Buffer) => {
     s.lastPong = Date.now();
     // (admin lobby) the pings the server times (payload "h<ms>"): the admin console's ping column
@@ -194,7 +191,7 @@ wss.on("connection", (ws, req) => {
   });
   ws.on("error", () => { /* close follows */ });
   const params = new URL(req.url || "/", "http://x").searchParams;
-  ws.on("close", () => { socks.delete(s); const n = (perIp.get(ip) ?? 1) - 1; if (n > 0) perIp.set(ip, n); else perIp.delete(ip); });
+  ws.on("close", () => { socks.delete(s); dropIp(ip); });
 
   // ---- a redundant binary channel for an existing client. (admin lobby) Its token is the FIRST
   // message (`{ t: "aux", token }` within 3 s), never in the URL — URLs end up in access logs. `?aux=` is refused.
@@ -204,7 +201,7 @@ wss.on("connection", (ws, req) => {
     let c: Client | null = null;
     ws.on("message", (data: RawData, isBinary: boolean) => {
       if (!allow(s)) return;
-      if (c) { if (isBinary) onBinary(c, s, data); return; }
+      if (c) { if (isBinary) c.ws.receive(s, data); return; }
       let m: { t?: unknown; token?: unknown } | null = null;
       try { m = isBinary ? null : JSON.parse(String(data)); } catch { /* below */ }
       const owner = m && m.t === "aux" && typeof m.token === "string" ? byToken.get(m.token) : undefined;
@@ -220,19 +217,22 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
-  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux: [], lastInputAt: Date.now(), peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
-  c.peer = { pid: -1, invSeq: 0, send: (u8) => sendBin(c, u8), sendResult: (state) => sendJSON(c.sock.ws, { t: "result", state }) };
+  const aux: Sock[] = [];
+  const wsT = new WsTransport(s, aux, strike);
+  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux, ws: wsT, wt: null, bin: wsT, lastInputAt: Date.now(), peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
+  wsT.onMessage = (u8, _at, from) => onBinary(c, u8, from);
+  c.peer = { pid: -1, invSeq: 0, send: (u8) => sendFrame(c.bin, u8), sendResult: (state) => sendJSON(c.sock.ws, { t: "result", state }) };
   byToken.set(c.token, c);
-  sendJSON(ws, { t: "welcome", uid: c.uid, aux: c.token, terrain: td.hash, world: worldHashV, boxes: boxes.length, net: NET_VERSION });
+  sendJSON(ws, { t: "welcome", uid: c.uid, aux: c.token, terrain: td.hash, world: worldHashV, boxes: boxes.length, net: NET_VERSION, ...(wt ? { wt: wt.welcome() } : {}) });
   ws.on("message", (data: RawData, isBinary: boolean) => {
     if (!allow(s)) return;
-    if (isBinary) { onBinary(c, s, data); return; }
+    if (isBinary) { c.ws.receive(s, data); return; }
     let msg: { t?: unknown; [k: string]: unknown };
     try { msg = JSON.parse(String(data)); } catch { strike(s, "bad json"); return; }
     if (!msg || typeof msg !== "object") { strike(s, "bad json"); return; }
     try { onJSON(c, msg); } catch (e) { log("json handler error", e); strike(s, "handler"); }
   });
-  ws.on("close", (code: number, reason: Buffer) => { logClose(c, s, code, reason, false); byToken.delete(c.token); leaveLobby(c); for (const a of c.aux) { a.closedBy ||= "primary closed"; a.ws.close(); } });
+  ws.on("close", (code: number, reason: Buffer) => { logClose(c, s, code, reason, false); byToken.delete(c.token); leaveLobby(c); c.ws.close(); c.wt?.close("primary closed"); });
 });
 
 /** one line per player socket close: who, where (room / match phase, alive or not), the close code + reason,
@@ -246,13 +246,12 @@ function logClose(c: Client, s: Sock, code: number, reason: Buffer, aux: boolean
   log(`disconnect${aux ? " (aux)" : ""}: ${c.name} · ${where} · code ${code}${why ? ` "${why}"` : ""} · by ${by} · up ${sec(s.openedAt)} · last msg ${sec(s.lastMsg)} ago, last pong ${sec(s.lastPong)} ago${aux ? "" : ` · aux ${c.aux.length ? "open" : "none"}`}`);
 }
 
-function onBinary(c: Client, s: Sock, data: RawData) {
-  const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-  const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+/** one binary frame from a client, on any of its transport's paths */
+function onBinary(c: Client, u8: Uint8Array, from: Path) {
   const host = c.lobby?.host;
-  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Ping && u8[0] !== M.InvOp) strike(s, "bad frame"); return; }
+  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
   if (u8[0] === M.Input) c.lastInputAt = Date.now();
-  if (!host.receive(c.peer, u8, (r) => { if (s.ws.readyState === WebSocket.OPEN) s.ws.send(Buffer.from(r), { binary: true }); })) strike(s, "bad frame");
+  if (!host.receive(c.peer, u8, from.reply)) from.strike("bad frame");
 }
 const helloAt = new WeakMap<Client, number>(), helloLater = new WeakMap<Client, NodeJS.Timeout>();
 const ownedLobbies = (ip: string) => { let n = 0; for (const l of lobbies.values()) if (!l.event && l.owner && l.owner.sock?.ip === ip) n++; return n; };
@@ -384,6 +383,7 @@ function shutdown(sig: string) {
   clearInterval(hb);
   for (const l of [...lobbies.values()]) { l.broadcastJSON({ t: "error", msg: "SERVER RESTARTING" }); l.destroy(true); }
   adminHttp.shutdown();
+  wt?.close();
   for (const s of socks) { s.closedBy ||= "server restart"; s.ws.close(1001, "restart"); }
   void kongbot.close(); void annotations.close();   // (stops its timers; an in-flight queue import finishes first)
   server.close(() => process.exit(0));
@@ -394,4 +394,26 @@ process.on("uncaughtException", (e) => log("uncaught", e));
 process.on("unhandledRejection", (e) => log("unhandled rejection", e));
 const HOST = process.env.KR_HOST || (serve ? "0.0.0.0" : "127.0.0.1");
 if (serve && !TRUST_PROXY) log("note: KR_TRUST_PROXY is off — behind nginx / Cloudflare every player shares one address (set KR_TRUST_PROXY=1)");
+// ---- WebTransport (KR_WT=1): datagrams for the hot path, the WebSocket pair stays the fallback (server/wt.ts). Behind
+// a proxy (KR_TRUST_PROXY=1) on loopback UDP still comes straight from players, so it listens on every address; any
+// other KR_HOST is kept
+const wtOwner = new WeakMap<WtTransport, Client>();
+let wtOff = process.env.KR_WT === "1" ? "" : "off (KR_WT unset)";
+if (!wtOff) {
+  try {
+    wt = await startWt({
+      port: Number(process.env.KR_WT_PORT || PORT), host: process.env.KR_WT_HOST || (TRUST_PROXY && (isLoop(HOST) || HOST === "localhost") ? "0.0.0.0" : HOST), certFile: process.env.KR_WT_CERT, keyFile: process.env.KR_WT_KEY,
+      url: process.env.KR_WT_URL, maxPayload: MAX_PAYLOAD, origins: ORIGINS, silentMaxMs: SILENT_MAX_MS,
+    }, {
+      admit: (ip) => socks.size + wt!.counts.open < MAX_CONNS && (perIp.get(ip) ?? 0) < MAX_CONNS_PER_IP,
+      opened: addIp, closed: dropIp, log,
+      attach: (token, t) => {
+        const c = byToken.get(token); if (!c || c.wt) return false;
+        c.wt = t; c.bin = t; wtOwner.set(t, c); t.onMessage = (u8, _at, from) => onBinary(c, u8, from);
+        return true;
+      },
+      detach: (t) => { const c = wtOwner.get(t); if (c && c.wt === t) { c.wt = null; c.bin = c.ws; } },
+    });
+  } catch (e) { wtOff = (e as Error).message; log(`webtransport unavailable: ${wtOff}`); }
+}
 server.listen(PORT, HOST, () => log(`KONG ROYALE server on ${HOST}:${PORT} (${serve ? "serving dist/ + /ws" : "ws only"})${EVENT_MODE ? " · EVENT MODE (players join by link only)" : ""} · admin ${process.env.KR_ADMIN_KEY_SHA256 ? "key set" : "OFF (no KR_ADMIN_KEY_SHA256)"}`));
