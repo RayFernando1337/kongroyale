@@ -33,8 +33,8 @@ pieces fit; read it before changing networking, the simulation or world loading.
 | `npm run dev` | Dev client on <http://localhost:5317/>. It listens on your network too (`--host`). Hot reload is off: reload the page after a change. |
 | `npm run server` | Game server on port 3020, restarted when a file changes. Add `KR_EVENT_MODE=0` to allow creating rooms. |
 | `npm run build` | Production build into `dist/` and `dist-admin/`, then precompression. About 15 s. |
-| `npm test` | Every check that needs no GPU, network or database. Run `npm run build` first. About 4 min. |
-| `npm test -- --fast` | Skips the six slow checks (solver, glass, parity, sim, redteam, planeview). About 30 s. `--list` shows each check's id and `--only lint,sim` runs some of them. |
+| `npm test` | Every check that needs no GPU, network or database. Run `npm run build` first. About 6 min (8 on 2 vCPU). |
+| `npm test -- --fast` | Skips the seven slow checks (solver, glass, parity, sim, nettail, redteam, planeview). About 30 s. `--list` shows each check's id and `--only lint,sim` runs some of them. |
 | `npm run typecheck` | The TypeScript check alone (the first step of `npm test`). |
 | `npm run sim` | A headless 50-bot match (trios, seed 42). Fast feedback for simulation changes. |
 | `npm run netlab` | Hit registration under simulated latency, using the real client and server code. Add `-- --check` to fail on a regression. |
