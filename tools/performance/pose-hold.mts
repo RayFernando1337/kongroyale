@@ -81,9 +81,12 @@ const INSTALL = `(() => {
   e.hitchLog = [];
   const step = e.step;
   e.step = function (dt) {
-    const s0 = performance.now();
+    // renderer.info resets on every render() call (the post chain makes many): count the whole frame instead
+    const s0 = performance.now(), ar = info.autoReset;
+    if (c.on) { info.autoReset = false; info.reset(); }
     try { step.call(this, dt); }
     finally {
+      info.autoReset = ar;
       if (c.on && c.n < N) { const i = c.n++; c.T[i] = s0; c.CPU[i] = performance.now() - s0; c.CALLS[i] = info.render.calls; c.TRIS[i] = info.render.triangles; c.PTS[i] = info.render.points; c.PROG[i] = (info.programs || []).length; }
     }
   };
