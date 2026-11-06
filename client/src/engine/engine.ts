@@ -12,7 +12,7 @@ import { onStructure, ownVisible, activeGates, type Gate } from "./scene-hooks";
 import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
 import { afterPaint } from "./frame";
-import { refreshFromIntervals } from "./refresh";
+import { heldRefresh, refreshSample } from "./refresh";
 import { flag } from "../flags";
 import { contextEpoch, watchContext } from "./res/restore";
 import "./geometry-release"; // in boot: the geofree owners in lazy chunks share this copy, fewer bytes than a chunk of its own
@@ -659,6 +659,9 @@ export class Engine implements WorldCtx {
   refreshHz = 0;
   private rafSamples: number[] = [];
   private rafNext = 0;
+  /** the highest steady refresh reading on this screen (refresh.ts heldRefresh); a new screen size starts it over */
+  private steadyHz = 0;
+  private steadyScreen = "";
   private refreshListeners: Array<(hz: number) => void> = [];
   onRefresh(fn: (hz: number) => void) { this.refreshListeners.push(fn); if (this.refreshHz) fn(this.refreshHz); }
   private sampleRefresh(d: number) {
@@ -666,7 +669,10 @@ export class Engine implements WorldCtx {
     if (now < this.rafNext || d <= 0 || d > 100) return;
     this.rafSamples.push(d);
     if (this.rafSamples.length < 90) return;
-    const v = refreshFromIntervals(this.rafSamples);
+    const s = refreshSample(this.rafSamples), scr = globalThis.screen ? screen.width + "x" + screen.height : "";
+    if (scr !== this.steadyScreen) { this.steadyScreen = scr; this.steadyHz = 0; }
+    if (s.steady) this.steadyHz = Math.max(this.steadyHz, s.hz);
+    const v = heldRefresh(s, this.steadyHz);
     this.rafSamples = [];
     this.rafNext = now + 20000;
     if (v !== this.refreshHz) {
