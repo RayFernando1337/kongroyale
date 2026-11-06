@@ -17,7 +17,7 @@ import type { BotDifficulty } from "../ui/api";
 import type { StaticWorld } from "../../../shared/sim/world";
 import { MatchHost, matchInfo, type HostPeer } from "../../../shared/net/host";
 import { flag } from "../flags";
-import { ReplayRecorder } from "../../../shared/net/replay";
+import { ReplayRecorder, packLog } from "../../../shared/net/replay";
 import { countSent, makeTransportStats, sendFrame, type Channel, type FallbackReason, type Path, type Transport } from "../../../shared/net/transport";
 import type { WtOffer } from "./wt";
 
@@ -170,7 +170,7 @@ export class OfflineLink implements Link {
         if ((globalThis as { __kr?: { recordReplay?: boolean } }).__kr?.recordReplay) {
           const { world: _world, ...recOpts } = opts;
           const rec = match.rec = new ReplayRecorder(recOpts);
-          this.setReplay(() => rec.log(match));
+          this.setReplay(() => packLog(rec.log(match)));
         }
         const host = this.host = new MatchHost(match); host.peers.push(this.peer); host.holdForStream();
         match.onPhase = (ph) => this.emit({ t: "phase", phase: ph, plane: match.plane, time: match.time, tick: match.tick, plan: match.plan });
