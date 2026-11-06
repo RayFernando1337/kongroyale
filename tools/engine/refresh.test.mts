@@ -38,8 +38,9 @@ assert.deepEqual(refreshSample(vsync(60, repeat([1, 1, 1, 1, 2], 90))), { hz: 60
 // jitter skewed to one side (a few early timestamps, the rest a little late) still reads its mean, the period
 assert.deepEqual(refreshSample([...repeat([14], 6), ...repeat([16.9], 84)]), { hz: 60, steady: true }, "skewed jitter");
 assert.deepEqual(refreshSample([...repeat([14], 5), ...repeat([17], 85)]), { hz: 60, steady: true }, "whole-ms jitter");
-// a steady sample errs low, never high: intervals that cannot all be one period read their mean, not their tail
-assert.ok(refreshSample([...repeat([1000 / 60], 6), ...repeat([20], 84)]).hz <= 60, "late frames never read high");
+// a tight 20 ms cluster with a few 16.7 ms intervals is a 50 Hz screen's jitter: on a 60 Hz one, 84 callbacks 20 ms
+// apart with no vsync skipped would end 280 ms after their vsync. It reads its mean, 50, and not its 60 Hz tail
+assert.deepEqual(refreshSample([...repeat([1000 / 60], 6), ...repeat([20], 84)]), { hz: 50, steady: true }, "50 Hz jitter");
 
 // the engine's running estimate, on one screen ("width,height,availLeft,availTop")
 const SCREEN = "1920,1080,0,0";
