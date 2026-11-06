@@ -29,7 +29,7 @@ function originRepo(url: string): string | undefined {
 }
 
 function withoutStamp(html: string): string {
-  return html.replace(/<footer>Updated [^<]*?\. /, "<footer>");
+  return html.replace(/(<footer>Built from main .*?<\/a>) at [^<]*?\. /, "$1. ");
 }
 
 function main(): void {
@@ -37,6 +37,9 @@ function main(): void {
   const data = JSON.parse(fs.readFileSync(path.join(HERE, "data.json"), "utf8")) as { repo: string; hide: string };
   const origin = run("git", ["remote", "get-url", "origin"]).trim();
   if (originRepo(origin) !== data.repo.toLowerCase()) throw new Error("refusing to publish: origin is not " + data.repo + " on " + HOSTS.join(" or "));
+  run("git", ["fetch", "-q", "origin", "main"]);
+  const sha = run("git", ["rev-parse", "HEAD"]).trim();
+  if (!dryRun && sha !== run("git", ["rev-parse", "origin/main"]).trim()) throw new Error("refusing to publish: HEAD " + sha.slice(0, 7) + " is not origin/main; the page is built from the data in this checkout, so check out main at its tip first");
   const forbidden = new RegExp(ALWAYS_FORBIDDEN + "|" + data.hide, "gi");
   const site = fs.mkdtempSync(path.join(os.tmpdir(), "kr-dash-site-"));
   const work = path.join(os.tmpdir(), "kr-dash-pages-" + process.pid);
@@ -44,7 +47,7 @@ function main(): void {
   let worktree = false;
   let orphanMade = false;
   try {
-    run(process.execPath, ["--import", "tsx", path.join(HERE, "build.mts"), "--out", site]);
+    run(process.execPath, ["--import", "tsx", path.join(HERE, "build.mts"), "--out", site, "--sha", sha]);
     const html = fs.readFileSync(path.join(site, "index.html"), "utf8");
     const hits = html.match(forbidden);
     if (hits) throw new Error("refusing to publish: forbidden words in the page: " + [...new Set(hits.map((h) => h.toLowerCase()))].join(", "));
