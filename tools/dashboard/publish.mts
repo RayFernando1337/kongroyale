@@ -29,7 +29,7 @@ function originRepo(url: string): string | undefined {
 }
 
 function withoutStamp(html: string): string {
-  return html.replace(/(<footer>Built from main .*?<\/a>) at [^<]*?\. /, "$1. ");
+  return html.replace(/(<footer>Built from commit .*?<\/a>) at [^<]*?\. /, "$1. ");
 }
 
 function main(): void {
@@ -40,6 +40,7 @@ function main(): void {
   run("git", ["fetch", "-q", "origin", "main"]);
   const sha = run("git", ["rev-parse", "HEAD"]).trim();
   if (!dryRun && sha !== run("git", ["rev-parse", "origin/main"]).trim()) throw new Error("refusing to publish: HEAD " + sha.slice(0, 7) + " is not origin/main; the page is built from the data in this checkout, so check out main at its tip first");
+  if (!dryRun && run("git", ["status", "--porcelain", "--", "tools/dashboard"]).trim()) throw new Error("refusing to publish: tools/dashboard has uncommitted changes, so the page would show values the stamped commit does not contain");
   const forbidden = new RegExp(ALWAYS_FORBIDDEN + "|" + data.hide, "gi");
   const site = fs.mkdtempSync(path.join(os.tmpdir(), "kr-dash-site-"));
   const work = path.join(os.tmpdir(), "kr-dash-pages-" + process.pid);
