@@ -306,6 +306,7 @@ const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | und
 async function buildStreamed(id: string, fast: boolean): Promise<{ integrated: Promise<void> }> {
   const m = await buildOne(id, true);
   if (m) await runAfterBuild(m, true);
+  if (LOW_MEM) await postBuild!.warmTextures(moduleRoots(id, true));
   registerStatics(id, true);
   registerFar(id, m, true);
   if (LOW_MEM) startFarBuild();
