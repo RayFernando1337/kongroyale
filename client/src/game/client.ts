@@ -119,8 +119,11 @@ export interface EventSink {
 const PRING = 256;
 /** a predicted hit's marker waits for the server's verdict (ClientMatch.linkSlow) above DEFER_RTT_MS of RTT on a
  *  rough link: snapshot jitter over DEFER_JITTER_MS, or a stall in the last DEFER_STALL_MS. A stall is no snapshot for
- *  DEFER_SNAP_GAPS snapshot intervals, or an input unacked for longer than the RTT plus DEFER_ACK_SLACK_MS */
-const DEFER_RTT_MS = 220, DEFER_JITTER_MS = 25, DEFER_STALL_MS = 5000, DEFER_SNAP_GAPS = 2, DEFER_ACK_SLACK_MS = 50;
+ *  DEFER_SNAP_GAPS snapshot intervals, or an input unacked for longer than the RTT plus DEFER_ACK_SLACK_MS. Both sit above
+ *  a steady link's natural wait (an input waits up to a tick to run and a snapshot interval to be acked): on an emulated
+ *  250 ms path with 20 ms jitter and no loss, snapshot gaps peaked at 53 ms and acks at 45 ms over the RTT, while a lost
+ *  packet stalls both for 100-350 ms */
+const DEFER_RTT_MS = 220, DEFER_JITTER_MS = 25, DEFER_STALL_MS = 5000, DEFER_SNAP_GAPS = 3, DEFER_ACK_SLACK_MS = 100;
 const PS_STRIDE = 22;
 const enum PF { X = 0, Y, Z, VX, VY, VZ, COYOTE, JUMPBUF, AIRT, FALLV, ST, BITS, PREVB, SHOTSEQ, PRE, MVT, MVY, VEH, SEAT, BUFF, BREATH, SWGUN }
 /** my tuk-tuk's predicted state after each input seq (while I drive): the fields of proto.ts VehSelf the step owns */
