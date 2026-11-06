@@ -131,9 +131,12 @@ function main(): void {
   const merged24 = merged.filter((p) => inDay(p.mergedAt));
   const released = new Set<number>();
   for (const r of releases) for (const m of r.body.matchAll(/^- #(\d+)/gm)) released.add(Number(m[1]));
-  const sinceNewest = nextTag
-    ? gh(["api", "--paginate", "repos/" + data.repo + "/commits?sha=main&per_page=100&since=" + gh(["api", "repos/" + data.repo + "/commits/" + shaOf(nextTag), "--jq", ".commit.committer.date"]).trim(), "--jq", ".[].commit.message | split(\"\\n\")[0]"]).split("\n").map((l) => Number(/\(#(\d+)\)\s*$/.exec(l)?.[1])).filter(Boolean)
-    : [...released];
+  const subjectsSince = (tag: string): number[] => {
+    const sha = shaOf(tag) as string;
+    execFileSync("git", ["fetch", "-q", "origin", sha, "main"], { cwd: HERE });
+    return execFileSync("git", ["log", "--format=%s", sha + "..origin/main"], { cwd: HERE, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").map((l) => Number(/\(#(\d+)\)\s*$/.exec(l)?.[1])).filter(Boolean);
+  };
+  const sinceNewest = nextTag ? subjectsSince(nextTag) : [];
   const unreleased = nextTag ? merged.filter((p) => sinceNewest.includes(p.number) && !released.has(p.number)) : merged.filter((p) => !released.has(p.number));
 
   const areaName = new Map(data.areas.map((a) => [a.id, a.name]));
