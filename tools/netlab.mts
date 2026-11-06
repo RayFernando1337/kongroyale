@@ -17,10 +17,12 @@
 //             every frame on both and the client sends every input on both; the first copy wins). Off by default, so
 //             the numbers below and older results keep their meaning. tools/performance/net-tail.mts always sets it.
 //   --check: exit 1 when hit registration regresses. At every RTT up to CHECK_MAX_RTT_MS (250) the run must fire pellets and
-//            have predicted hits, confirm at least CHECK_MIN_CONFIRM_PCT (99) of them and show 0 ghost hits. Longer RTTs are only
-//            reported as KNOWN ISSUE lines, never failed: at 320 ms RTT with 20 ms jitter every pellet is clamped by the 350 ms
-//            rewind cap; the client re-traces each predicted hit against the pose at the cap (ClientMatch.lateVerdict), and
-//            shotgun still confirms 92.9% with 2 ghost hits (89.7% and 3 before it did). Whole grid:
+//            hit, confirm at least CHECK_MIN_CONFIRM_PCT (99) of its predicted hits and show 0 ghost hits; on a steady simulated
+//            link (RTT up to CHECK_STEADY_RTT_MS, 250, jitter ≤ 20, no loss) at most CHECK_MAX_DEFERRED_PCT (1) of its hits
+//            may wait for the server. Longer RTTs are only reported as KNOWN ISSUE lines, never failed. While the link stalls,
+//            above about 220 ms RTT on a rough link, or past the RTT the rewind cap allows, the client predicts no hit
+//            (ClientMatch.linkSlow): the server's verdict draws the marker, so those rows have no ghosts and fewer (or no)
+//            predicted hits to confirm. Whole grid:
 //              for w in pistol smg ar shotgun sniper; do npx tsx tools/netlab.mts --weapon $w --jitter 20 --check; done
 //   --serve PORT / --connect URL: the same duel over REAL WebSockets and a real clock, so a real or emulated network sets
 //           the RTT, jitter and loss (the RTT list, --jitter and --loss are ignored). --serve runs the host side (Match +
@@ -42,6 +44,9 @@
 //   ghost   = predicted hits the server rejected;  surprise = server hits the client predicted as misses
 //   clamped = shots older than the rewind cap (MAX_REWIND_TICKS);  withheld = pellets that hit what was drawn but that the
 //             client expects to miss at the cap, so it showed no hit (ClientMatch.predLate): they count as predicted misses
+//   deferred = pellets whose drawn hit the client left to the server because the link was slow or stalled
+//             (ClientMatch.predDefer, by signal: rtt / snap / ack), also counted as predicted misses;
+//             deferredMarkerPct = the server's hits whose marker waited for it; markerDelayMs = how long (fire → verdict)
 //   serverInputs = the server's input pacing over the whole duel (shared/net/input-gaps.ts): live ticks, ticks a player's
 //             queue was empty (inputGapTicksPct, worst player too) and catch-up bursts of more than one input per tick
 // and the transport tails of the window the shooter fires in, as the clients see them (first copy of each frame):
@@ -60,10 +65,10 @@ import { DT, MAX_REWIND_TICKS, WEAPON_DEFS } from "../shared/sim/const";
 import { B, PS, SK } from "../shared/sim/player";
 import { makeShotResult } from "../shared/sim/hitscan";
 import { POIS, WEAPONS, type WeaponId } from "../shared/world/map";
-import { M, Reader, readSnapHeader, type SnapHeader } from "../shared/net/proto";
+import { M, Reader, SURF_PLAYER, readSnapHeader, type SnapHeader } from "../shared/net/proto";
 import { Channel, SNAPSHOT_DATAGRAM_COPIES, channelOf, makeTransportStats, type Transport } from "../shared/net/transport";
 import { stats } from "./performance/common.mts";
-import { ClientMatch } from "../client/src/game/client";
+import { ClientMatch, type EventSink } from "../client/src/game/client";
 import type { Link } from "../client/src/game/net";
 import { WebSocket, WebSocketServer } from "ws";
 import { randomBytes } from "node:crypto";
@@ -170,11 +175,28 @@ function makeClients(sendUp: (pid: number, u8: Uint8Array) => void) {
   const pred: number[] = [], R = makeShotResult();
   // a pellet the client withholds (its hit would miss at the server's rewind cap: no marker shown) counts as a predicted miss
   let withheld = 0;
-  clients[0].cm.onTick = () => { const c = clients[0].cm; if (c.pred.fired > 0) for (let k = 0; k < c.pred.fired; k++) { pred.push(c.predictShot(k, R).victim); if (c.predLate) withheld++; } };
+  // a pellet whose hit the client left to the server (ClientMatch.linkSlow): when it was fired (-1 = predicted as usual),
+  // which signals fired, and how long the server's verdict took to draw its marker (EV.Shot comes with that pellet's EV.Hit)
+  const deferAt: number[] = [], deferBy = [0, 0, 0], markerMs: number[] = []; let ownShots = 0, ownHits = 0;
+  clients[0].cm.onTick = () => {
+    const c = clients[0].cm; if (c.pred.fired === 0) return;
+    for (let k = 0; k < c.pred.fired; k++) {
+      pred.push(c.predictShot(k, R).victim); if (c.predLate) withheld++;
+      deferAt.push(c.predDefer ? now : -1); for (let b = 0; b < 3; b++) if (c.predDefer & (1 << b)) deferBy[b]++;
+    }
+  };
+  const ownShot = (_w: number, _x: number, _y: number, _z: number, surf: number, hit: boolean) => { const at = deferAt[ownShots++]; if (!hit || surf !== SURF_PLAYER) return; ownHits++; if (at >= 0) markerMs.push(now - at); };
+  clients[0].cm.sink = new Proxy({ ownShot } as Record<string | symbol, unknown>, { get: (o, k) => o[k] ?? (() => {}) }) as unknown as EventSink;
   return {
     clients, pred,
     /** pellets whose drawn hit the client did not show because it misses at the rewind cap */
     withheld: () => withheld,
+    /** hits whose marker waited for the server: pellets deferred (and by which signal), the share of the server's hits
+     *  whose marker came late, and how late (fire → the server's verdict) */
+    deferrals() {
+      const s = stats(markerMs), r1 = (x: number) => Math.round(x * 10) / 10;
+      return { deferred: deferAt.filter((a) => a >= 0).length, deferredBy: { rtt: deferBy[0], snap: deferBy[1], ack: deferBy[2] }, deferredMarkerPct: ownHits ? r1((100 * markerMs.length) / ownHits) : 0, markerDelayMs: { n: s.n, p50: r1(s.p50), p95: r1(s.p95), max: r1(s.max) } };
+    },
     /** a frame from the server reached client `pid` (on any of its sockets) */
     receive(pid: number, u8: Uint8Array | null, json?: unknown) {
       const c = clients[pid], tl = tails[pid];
@@ -269,7 +291,7 @@ async function run(rtt: number) {
     if (now >= nextFrame) { C.frame(1 / 144); nextFrame += 1000 / 144; }
   }
   const cm = C.clients[0].cm;
-  return { transport, rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, withheld: C.withheld(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, serverInputs: H.gaps.report(), ...C.tails() };
+  return { transport, rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, withheld: C.withheld(), ...C.deferrals(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, serverInputs: H.gaps.report(), ...C.tails() };
 }
 
 /** --serve: the host side of one duel over real WebSockets. Every socket must say hello with the duel's token before
@@ -350,7 +372,7 @@ async function connect(url: string, token: string) {
   for (let waited = 0; !verdict; waited += 10) { if (waited > 10000) throw Error("no verdicts from the server"); await new Promise((r) => setTimeout(r, 10)); }
   for (const s of sockets.flat()) s.close();
   const v = verdict as { serv: number[]; clamped: number; deaths: number; inputs: unknown }, t = C.tails(), cm = C.clients[0].cm;
-  return { transport: "ws", url, rtt: t.rttMs.p50, jitter: "real", weapon, ...(killable ? { kills: v.deaths } : {}), ...verdicts(C.pred, v.serv), clamped: v.clamped, withheld: C.withheld(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, serverInputs: v.inputs, ...t };
+  return { transport: "ws", url, rtt: t.rttMs.p50, jitter: "real", weapon, ...(killable ? { kills: v.deaths } : {}), ...verdicts(C.pred, v.serv), clamped: v.clamped, withheld: C.withheld(), ...C.deferrals(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, serverInputs: v.inputs, ...t };
 }
 
 if (servePort) {
@@ -358,7 +380,7 @@ if (servePort) {
   process.exit();
 }
 
-const CHECK_MAX_RTT_MS = 250, CHECK_MIN_CONFIRM_PCT = 99;
+const CHECK_MAX_RTT_MS = 250, CHECK_MIN_CONFIRM_PCT = 99, CHECK_STEADY_RTT_MS = 250, CHECK_MAX_DEFERRED_PCT = 1;
 const failures: string[] = [];
 // --connect: one duel over the real network, judged at its measured RTT; otherwise one simulated duel per RTT
 const runs = connectUrl ? [() => connect(connectUrl, token)] : rtts.map((rtt) => () => run(rtt));
@@ -367,9 +389,11 @@ for (const go of runs) {
   console.log(JSON.stringify(r));
   if (!check) continue;
   const problems: string[] = [];
-  if (r.pellets === 0 || r.predHits === 0) problems.push(`no data (${r.pellets} pellets, ${r.predHits} predicted hits)`);
+  if (r.pellets === 0 || r.servHits === 0) problems.push(`no data (${r.pellets} pellets, ${r.servHits} hits)`);
   if (r.predMissing !== 0) problems.push(`${r.predMissing} predicted pellets have no server verdict`);
-  if (r.confirmPct < CHECK_MIN_CONFIRM_PCT) problems.push(`confirm ${r.confirmPct}% < ${CHECK_MIN_CONFIRM_PCT}%`);
+  if (r.predHits > 0 && r.confirmPct < CHECK_MIN_CONFIRM_PCT) problems.push(`confirm ${r.confirmPct}% < ${CHECK_MIN_CONFIRM_PCT}%`);
+  // a steady link must keep its instant markers: the deferral is for slow and stalled links only
+  if (!connectUrl && rtt <= CHECK_STEADY_RTT_MS && jitter <= 20 && loss === 0 && r.deferredMarkerPct > CHECK_MAX_DEFERRED_PCT) problems.push(`${r.deferredMarkerPct}% of hits waited for the server > ${CHECK_MAX_DEFERRED_PCT}%`);
   if (r.ghost > 0) problems.push(`${r.ghost} ghost hits`);
   if (!problems.length) continue;
   const label = `${weapon} rtt=${rtt}ms jitter=${r.jitter}${killable ? " kill" : ""}: ${problems.join(", ")}`;
