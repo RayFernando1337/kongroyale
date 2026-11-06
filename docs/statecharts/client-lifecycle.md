@@ -19,9 +19,9 @@ title: "The game client, from page load to the next match"
 stateDiagram-v2
   direction LR
   state "Legend" as legend {
-    lg0: Breaks ButtonsAnswer or NoFrozenMatch or OneRestore or ReasonStays or ScopeHasOwner
-    lg1: Breaks ButtonsAnswer or NoFrozenMatch or OneRestore or ReasonStays or ScopeHasOwner in some cases
-    lg2: Path to the ButtonsAnswer or NoFrozenMatch or OneRestore or ReasonStays or ScopeHasOwner bug
+    lg0: Breaks NoFrozenMatch or OneRestore or ReasonStays
+    lg1: Breaks NoFrozenMatch or OneRestore or ReasonStays in some cases
+    lg2: Path to the NoFrozenMatch or OneRestore or ReasonStays bug
   }
   class lg0 breaks
   class lg1 mayBreak
@@ -76,9 +76,7 @@ stateDiagram-v2
   }
   classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
   classDef mayBreak fill:#fff3e6,stroke:#e8730c,stroke-width:2.5px,color:#b85a06
-  class s0 mayBreak
   class s0 bugPath
-  class s1 mayBreak
   class s1 bugPath
   class s3 mayBreak
   class s3 bugPath
@@ -102,24 +100,25 @@ broken rule.
 |---|---|---|
 | NoMatchWithoutRenderer | A match on screen always has its renderer. | Yes |
 | LeaveFreesTheSeat | Once you are back on the title, the server no longer holds a seat in a match for you. | Yes |
-| ScopeHasOwner | The match's resource scope is open only while a match view owns it, so the next PLAY can open its own. | No: Enter on the loading screen |
-| ButtonsAnswer | Pressing PLAY, CREATE or JOIN always does something you can see. | No: Enter on the loading screen |
+| ScopeHasOwner | The match's resource scope is open only while a match view owns it, so the next PLAY can open its own. | Yes |
+| ButtonsAnswer | Pressing PLAY, CREATE or JOIN always does something you can see. | Yes |
 | NoFrozenMatch | A match on screen is one the server still plays for you. | No: removed for inactivity |
 | ReasonStays | When the server ends your match with a reason, the reason stays on screen until you move on. | No: a crashed match |
 | OneRestore | One context restore at a time. | No: lose, restore, lose, restore |
 
-`tools/formal/ClientLifecycle.cfg` checks the two rules that hold, so `node tools/formal/tlc.mjs ClientLifecycle` passes
+`tools/formal/ClientLifecycle.cfg` checks the four rules that hold, so `node tools/formal/tlc.mjs ClientLifecycle` passes
 and catches a regression in them. `tools/formal/ClientLifecycle.findings.cfg` checks all seven; it is what this chart
 and the paths below come from.
 
 ## The paths that break a rule
 
-1. **Enter on the loading screen** (ScopeHasOwner, ButtonsAnswer), 1 step. The loading screen swallows clicks but not
-   Enter, so Enter reaches the title's PLAY (or JOIN, on a page opened with an invite link). `offline()` calls `wire()` before the prefabs exist: the new
-   `GameRender` opens the `match` scope, then its constructor reads `kits.viewModel`, which is still null, and throws.
-   The scope stays open with no owner, so every later PLAY fails with "already has a live child named match". On a load
-   that takes over 120 s (as on SwiftShader), the error also trips the loading screen's watchdog (errors before ready
-   after 120 s, index.html), and "THE ISLAND COULDN'T LOAD" stays up for good. On the JOIN path, `online()` catches the same throw and shows "NO SERVER", which is visible but names the wrong cause.
+1. **Enter on the loading screen** (ScopeHasOwner, ButtonsAnswer), fixed. The loading screen swallowed clicks but not
+   Enter, so Enter reached PLAY (or JOIN on an invite link) before the prefabs existed: `GameRender` opened the `match`
+   scope, threw on the missing view model, and left the scope open, so every later PLAY failed with "already has a live
+   child named match" (and on a load over 120 s the loading screen's watchdog showed "THE ISLAND COULDN'T LOAD"). Now
+   `prepareIsland` waits for `dataset.ready`, so a PLAY, CREATE or JOIN asked for during the load (Enter, a controller, a
+   focused button) starts once the title is ready; the model's PLAY and CREATE/JOIN need the prefabs, and ScopeHasOwner holds; the mutant "PLAY runs before ready" puts the
+   old guard back and breaks it.
 2. **Removed for inactivity** (NoFrozenMatch), 5 steps: title, CREATE, START, then 180 s with no input. The server
    sends `REMOVED FOR INACTIVITY` without `afk: true` and no room frame. The client shows the text over a match that
    no longer updates.
