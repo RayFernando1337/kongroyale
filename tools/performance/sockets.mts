@@ -63,7 +63,10 @@ try{
   }
   // the window's last stretch: a pause after the final drive() would otherwise never enter loopGaps
   const end=performance.now();loopGaps.push(end-lastLoop);const elapsed=end-start;active=false;
-  const health=await(await fetch(base+'/health')).json();await assetRequest;
+  // …and while the last /health answers: the server would count that pause as input gaps
+  let health:any=null;fetch(base+'/health').then(r=>r.json()).then(j=>{health=j;},e=>errors.push(String(e)));
+  while(health===null){if(errors.length)throw Error(errors[0]);drive(performance.now());await sleep(2);}
+  await assetRequest;
   const perf0=(health0 as any).performance,perf1=(health as any).performance;
   // the server's input pacing in the window (shared/net/input-gaps.ts, one match): the change between the two /health reads
   const in0=(health0 as any).inputs?.[0],in1=(health as any).inputs?.[0],inputs=in0&&in1?{liveTicks:in1.liveTicks-in0.liveTicks,inputGapTicks:in1.inputGapTicks-in0.inputGapTicks,catchupBursts:in1.catchupBursts-in0.catchupBursts,catchupBurstMaxMatch:in1.catchupBurstMax}:null;
