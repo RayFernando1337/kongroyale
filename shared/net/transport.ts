@@ -1,7 +1,8 @@
 // The binary link between a player and the host, the same shape on the client and the server. A Transport carries the
 // hot path (inputs, pings, snapshots, events, inventory); JSON (lobby, welcome, results, voice relay) stays on the
 // primary WebSocket, which is the control channel for every transport. Implementations: client/src/game/net.ts and
-// server/transport-ws.ts (WebSocket, today's redundant primary + aux pair). Types and pure helpers only: shared/ stays
+// server/transport-ws.ts (WebSocket, the redundant primary + aux pair), server/transport-wt.ts (WebTransport: QUIC
+// datagrams + one reliable stream). Types and pure helpers only: shared/ stays
 // free of DOM and Node APIs. Which channel a frame takes is decided here and nowhere else (channelOf).
 //
 // Ordering rules live with the receivers, not the transport, because every transport needs them: ClientMatch keeps the
@@ -17,7 +18,7 @@ export function channelOf(type: number): Channel {
   return type === M.Input || type === M.Ping || type === M.Pong || type === M.Snapshot ? Channel.Unreliable : Channel.Reliable;
 }
 
-export type TransportKind = "ws";
+export type TransportKind = "ws" | "wt";
 
 /** per-transport counters, the same fields for every kind, so sessions compare across transports */
 export interface TransportStats {
