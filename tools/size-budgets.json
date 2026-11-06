@@ -1,8 +1,8 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-05 at 3d24764 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 4725691, lazy 3051867).",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-05 at 3d24764 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 4725691, lazy 3051867). 2026-11-06: entry raised to 33217 and boot to 1166591 (measured 33207 and 1166581, plus 10 B) for a context-restore correctness fix (#214): engine.contextLost also reads gl.isContextLost(), and the engine skips initTexture and warmDraw while the context is lost (Captain-approved exception).",
   "gzBytes": {
-    "entry": 33170,
-    "boot": 1166520,
+    "entry": 33217,
+    "boot": 1166591,
     "workers": 4725716,
     "lazy": 3051892
   }
