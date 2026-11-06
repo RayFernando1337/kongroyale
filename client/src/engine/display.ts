@@ -2,7 +2,8 @@
 // One persisted object (localStorage "kr-video"), five presets (Auto / Low / Medium / High / Epic) and per-option
 // overrides ("Custom"). Everything applies LIVE through the engine and the atmos area's `video()` API:
 //   3D resolution  → engine.setResolution (TAAU inside the post chain; the canvas stays at the screen's native pixels)
-//   dynamic res    → engine.setDynamicRes (opt-in; 0.75 × … 1 × the 3D resolution, aiming at the frame cap)
+//   dynamic res    → engine.setDynamicRes (opt-in; 0.75 × … 1 × the 3D resolution, aiming at the frame cap). With it
+//                    off, the half-rate guard (res-guard.ts) steps the 3D resolution down in a match that misses vsync
 //   frame limit    → engine.setFrameCap (30 … 240 / Unlimited = every display refresh; default = the measured refresh)
 //   AA / AO / post / shadows / effects → atmos `video()` (post.ts configure, shadows.ts setQuality)
 //   view distance  → engine.cull (screen-size culling) + the veg area's distances (VegApi.setQuality, when present)
@@ -17,6 +18,7 @@ import type { Engine, Quality } from "./engine";
 import { flag } from "../flags";
 import { contextEpoch } from "./res/restore";
 import { gpuScore } from "./gpu-score";
+import { AUTO_RES_FLOOR } from "./res-guard";
 
 export type Level = "low" | "medium" | "high" | "epic";
 export type PresetId = "auto" | Level | "custom";
@@ -58,7 +60,7 @@ export interface VideoSettings {
 const AUTO_MPX: Record<Level, number> = { low: 2.7, medium: 3.9, high: Infinity, epic: Infinity };
 export function presetRes(level: Level, backingPx: number) {
   const r = Math.sqrt((AUTO_MPX[level] * 1e6) / Math.max(1, backingPx));
-  return Math.min(1, Math.max(0.67, Math.floor(r * 100) / 100));
+  return Math.min(1, Math.max(AUTO_RES_FLOOR, Math.floor(r * 100) / 100));
 }
 
 /** a preset's options. `auto` = this is AUTO's pick (the only case that may lower the 3D resolution, and only on
