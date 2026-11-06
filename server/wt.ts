@@ -1,7 +1,7 @@
 // The WebTransport endpoint (RAY-184): off unless KR_WT=1. Players' inputs, pings and snapshots ride QUIC datagrams
 // here, everything else binary rides one reliable stream; the primary WebSocket stays the control channel (JSON) and
 // authenticates the session: its first stream frame is `{ t: "wt", token }` with the token from "welcome", exactly like
-// the aux socket (never in the URL). A session counts against the same total and per-address caps as a WebSocket, gets
+// the aux socket (never in the URL), and the server answers `{ t: "wt-ok" }` on the stream once it is attached. A session counts against the same total and per-address caps as a WebSocket, gets
 // the same token bucket and strikes (server/limits.ts), at most one per client, and frames no longer than MAX_PAYLOAD.
 // Needs UDP to KR_WT_PORT and a certificate: KR_WT_CERT + KR_WT_KEY (PEM, a real one for the page's host name), or a
 // self-signed one made here and announced by its SHA-256 (server/wt-cert.ts). No proxy or CDN may sit in front.
@@ -10,7 +10,7 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 import { addrKey } from "./addr";
-import { Deframer } from "../shared/net/frames";
+import { Deframer, frame } from "../shared/net/frames";
 import { WtTransport, type WtSessionLike } from "./transport-wt";
 import { makeBucket, struck, take } from "./limits";
 import { selfSigned } from "./wt-cert";
@@ -104,6 +104,8 @@ export async function startWt(cfg: WtConfig, hooks: WtHooks): Promise<WtEndpoint
         const next = new WtTransport(s, dw, sw, strike);
         if (!m || m.t !== "wt" || typeof m.token !== "string" || !hooks.attach(m.token, next)) { end("auth"); return; }
         t = next;
+        // the client switches its binary frames over only once it reads this (a JSON frame: "{" is no frame type)
+        void sw.write(frame(new TextEncoder().encode(JSON.stringify({ t: "wt-ok" })))).catch(() => {});
         void (async () => { for await (const dg of each(s.datagrams.readable)) { if (done) return; if (!take(bucket)) strike("rate"); else t!.receive(dg, t!.datagramPath); } })().catch(() => {});
       });
       for await (const chunk of each(bidi.readable)) { def.push(chunk); if (def.bad) { end("bad frame"); return; } if (done) return; }

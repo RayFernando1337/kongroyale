@@ -2,7 +2,8 @@
 // Node WebTransport client from the same QUIC module. No browser, no root, about 20 s.
 //   npx tsx tools/net/wt-endpoint.test.mts
 // Checks: off by default (no "wt" in welcome, /health says why); with KR_WT=1 welcome announces the port and the
-// certificate hash; a session with a wrong token, and a second one for the same client, are refused; an authenticated
+// certificate hash; a session with a wrong token, and a second one for the same client, are refused; an attached session
+// is told so ({ t: "wt-ok" } on its stream); an authenticated
 // session carries inputs (the snapshots' lastSeq follows them), pings (a pong comes back as a datagram), snapshots as
 // datagrams and the reliable frames (inventory) on the stream; /health counts the client on "wt"; a flood of frames
 // past the rate limit closes the session and the client's frames go back to its WebSockets. A session counts against the
@@ -94,6 +95,7 @@ try {
   await waitFor(() => c.json.some((m) => m.t === "lobby"), 5000);
   const w = await open(c.welcome.aux);
   await sleep(300);
+  check(await waitFor(() => w.frames.some((f) => new TextDecoder().decode(f) === '{"t":"wt-ok"}'), 3000), "an attached session gets { t: \"wt-ok\" } on its stream");
   check((await health(s.port)).transports.clients.wt === 1, "/health counts the client on wt");
   const twice = await open(c.welcome.aux);
   check(await waitFor(twice.closed, 5000) && !w.closed(), "a second session for the same client is refused, the first stays");
