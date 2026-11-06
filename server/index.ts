@@ -412,13 +412,14 @@ process.on("unhandledRejection", (e) => log("unhandled rejection", e));
 const HOST = process.env.KR_HOST || (serve ? "0.0.0.0" : "127.0.0.1");
 if (serve && !TRUST_PROXY) log("note: KR_TRUST_PROXY is off — behind nginx / Cloudflare every player shares one address (set KR_TRUST_PROXY=1)");
 // ---- WebTransport (KR_WT=1): datagrams for the hot path, the WebSocket pair stays the fallback (server/wt.ts). Behind
-// a proxy (KR_TRUST_PROXY=1, KR_HOST usually loopback) UDP still comes straight from players, so it listens on every address
+// a proxy (KR_TRUST_PROXY=1) on loopback UDP still comes straight from players, so it listens on every address; any
+// other KR_HOST is kept
 const wtOwner = new WeakMap<WtTransport, Client>();
 let wtOff = process.env.KR_WT === "1" ? "" : "off (KR_WT unset)";
 if (!wtOff) {
   try {
     wt = await startWt({
-      port: Number(process.env.KR_WT_PORT || PORT), host: process.env.KR_WT_HOST || (TRUST_PROXY ? "0.0.0.0" : HOST), certFile: process.env.KR_WT_CERT, keyFile: process.env.KR_WT_KEY,
+      port: Number(process.env.KR_WT_PORT || PORT), host: process.env.KR_WT_HOST || (TRUST_PROXY && (isLoop(HOST) || HOST === "localhost") ? "0.0.0.0" : HOST), certFile: process.env.KR_WT_CERT, keyFile: process.env.KR_WT_KEY,
       url: process.env.KR_WT_URL, maxPayload: MAX_PAYLOAD, origins: ORIGINS, silentMaxMs: SILENT_MAX_MS,
     }, {
       admit: (ip) => socks.size + wt!.counts.open < MAX_CONNS && (perIp.get(ip) ?? 0) < MAX_CONNS_PER_IP,
