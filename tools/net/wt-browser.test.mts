@@ -51,16 +51,17 @@ import { makeInput } from "./shared/sim/player";
   link.sendJSON({ t: "hello", name: "WT" }); link.sendJSON({ t: "create", mode: "solo" });
   while (performance.now() - t0 < 12000 && !inLobby) await new Promise((r) => setTimeout(r, 20));
   // a lobby where nobody plays yet: only the link's own keepalive rides the session
-  // then a frame half a second after a keepalive went out, with nothing heard since the lobby began (as when a match
-  // starts): the unanswered keepalive must not make the session look stalled
+  // then, half a second after a keepalive went out and with nothing heard since the lobby began, a match's first frames
+  // (a ping every tick for 300 ms, before any snapshot comes back): neither the unanswered keepalive nor the quiet lobby
+  // may make the session look stalled
   if (idleMs) {
     await new Promise((r) => setTimeout(r, idleMs));
     const sentU = () => link.transport?.stats.sent[1] ?? 0, n0 = sentU(), t3 = performance.now();
     while (performance.now() - t3 < 11000 && sentU() === n0) await new Promise((r) => setTimeout(r, 20));
     out.keepalives = sentU() - n0;
     await new Promise((r) => setTimeout(r, 500));
-    link.sendBinary(new Writer(new ArrayBuffer(16)).u8(M.Ping).f64(performance.now()).view());
-    await new Promise((r) => setTimeout(r, 300));
+    const pw = new Writer(new ArrayBuffer(16));
+    for (let i = 0; i < 18; i++) { link.sendBinary(pw.reset().u8(M.Ping).f64(performance.now()).view()); await new Promise((r) => setTimeout(r, 16)); }
     out.idle = { kind: link.transport?.kind, fallback: link.fallback ?? null };
   }
   link.sendJSON({ t: "start" });
@@ -121,7 +122,7 @@ try {
     else {
       const on = await run("?wt=1", s.port, true, 25_000);
       check(on.kind === "wt" && on.fallback === null, `?wt=1: the link settles on WebTransport (${on.kind}, ${on.fallback})`);
-      check(on.idle?.kind === "wt" && on.idle.fallback === null && (on.keepalives ?? 0) > 0, `25 s in a lobby with nothing to send (heartbeat timeout 15 s), then a frame just after a keepalive: still on WebTransport (${on.idle?.kind}, ${on.idle?.fallback}, ${on.keepalives} keepalive)`);
+      check(on.idle?.kind === "wt" && on.idle.fallback === null && (on.keepalives ?? 0) > 0, `25 s in a lobby with nothing to send (heartbeat timeout 15 s), then a match's first frames just after a keepalive: still on WebTransport (${on.idle?.kind}, ${on.idle?.fallback}, ${on.keepalives} keepalive)`);
       check(on.pong, "a ping through the WebTransport link is answered");
       check((on.stats.recv ?? 0) > 0 && (on.stats.sent?.[1] ?? 0) > 0, `the wt transport counts what it sends and receives (sent ${on.stats.sent}, recv ${on.stats.recv})`);
       check(on.report?.transport === "wt" && on.report.fallback === null && on.report.stats.recv > 0, `the KONGBOT report names the link's transport, fallback and counters (${JSON.stringify(on.report && { ...on.report, stats: on.report.stats.recv })})`);
