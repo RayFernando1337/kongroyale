@@ -19,9 +19,9 @@ title: "The game client, from page load to the next match"
 stateDiagram-v2
   direction LR
   state "Legend" as legend {
-    lg0: Breaks ButtonsAnswer or NoFrozenMatch or OneRestore or ReasonStays
-    lg1: Breaks ButtonsAnswer or NoFrozenMatch or OneRestore or ReasonStays in some cases
-    lg2: Path to the ButtonsAnswer or NoFrozenMatch or OneRestore or ReasonStays bug
+    lg0: Breaks NoFrozenMatch or OneRestore or ReasonStays
+    lg1: Breaks NoFrozenMatch or OneRestore or ReasonStays in some cases
+    lg2: Path to the NoFrozenMatch or OneRestore or ReasonStays bug
   }
   class lg0 breaks
   class lg1 mayBreak
@@ -32,10 +32,9 @@ stateDiagram-v2
       s1: Title
       s2: Practice match
       s3: Waiting room
-      s4: Title, server link closed
-      s5: Online match
-      s6: Practice results
-      s7: Online results
+      s4: Online match
+      s5: Practice results
+      s6: Online results
       [*] --> s0
       s0 --> s1: the title is ready
       s1 --> s0: the page reloads [unless Drawing]
@@ -43,39 +42,36 @@ stateDiagram-v2
       s1 --> s3: you press CREATE or JOIN
       s2 --> s1: you leave
       s3 --> s1: you leave
-      s3 --> s5: the host presses START
-      s1 --> s4: the server link closes
+      s3 --> s4: the host presses START
       s2 --> s0: the page reloads [unless Drawing]
       s3 --> s0: the page reloads [unless Drawing]
-      s4 --> s2: you press PLAY
-      s5 --> s1: you leave
-      s5 --> s3: the match crashes on the server
-      s2 --> s6: the match moves on
+      s4 --> s1: you leave
+      s4 --> s3: the match crashes on the server
+      s2 --> s5: the match moves on
       s4 --> s0: the page reloads [unless Drawing]
+      s4 --> s6: the match moves on
+      s5 --> s1: you leave
       s5 --> s0: the page reloads [unless Drawing]
-      s5 --> s7: the match moves on
       s6 --> s1: you leave
+      s6 --> s3: the match ends or the match crashes on the server
       s6 --> s0: the page reloads [unless Drawing]
-      s7 --> s1: you leave
-      s7 --> s3: the match ends or the match crashes on the server
-      s7 --> s0: the page reloads [unless Drawing]
     }
     --
     state "Graphics" as r1 {
-      s8: Drawing
-      s9: Context lost
-      s10: Restoring
-      s11: Two restores at once
-      [*] --> s8
-      s8 --> s9: the GPU context is lost [unless Loading screen]
-      s9 --> s8: the page reloads
-      s9 --> s10: the context comes back
-      s10 --> s8: the page reloads or the restore finishes
-      s10 --> s9: the GPU context is lost
-      s9 --> s11: the context comes back
-      s11 --> s8: the page reloads
-      s11 --> s10: the restore finishes
-      s11 --> s9: the GPU context is lost
+      s7: Drawing
+      s8: Context lost
+      s9: Restoring
+      s10: Two restores at once
+      [*] --> s7
+      s7 --> s8: the GPU context is lost [unless Loading screen]
+      s8 --> s7: the page reloads
+      s8 --> s9: the context comes back
+      s9 --> s7: the page reloads or the restore finishes
+      s9 --> s8: the GPU context is lost
+      s8 --> s10: the context comes back
+      s10 --> s7: the page reloads
+      s10 --> s9: the restore finishes
+      s10 --> s8: the GPU context is lost
     }
   }
   classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
@@ -86,15 +82,13 @@ stateDiagram-v2
   class s3 bugPath
   class s4 mayBreak
   class s4 bugPath
-  class s5 mayBreak
-  class s5 bugPath
-  class s7 mayBreak
+  class s6 mayBreak
+  class s7 bugPath
+  class s8 mayBreak
   class s8 bugPath
-  class s9 mayBreak
   class s9 bugPath
+  class s10 breaks
   class s10 bugPath
-  class s11 breaks
-  class s11 bugPath
 ```
 
 Red states break a rule on every path through them, orange ones on some paths. Blue edges are the shortest path to a
@@ -107,12 +101,12 @@ broken rule.
 | NoMatchWithoutRenderer | A match on screen always has its renderer. | Yes |
 | LeaveFreesTheSeat | Once you are back on the title, the server no longer holds a seat in a match for you. | Yes |
 | ScopeHasOwner | The match's resource scope is open only while a match view owns it, so the next PLAY can open its own. | Yes |
-| ButtonsAnswer | Pressing PLAY, CREATE or JOIN always does something you can see. | No: CREATE after the socket closed at the title |
+| ButtonsAnswer | Pressing PLAY, CREATE or JOIN always does something you can see. | Yes |
 | NoFrozenMatch | A match on screen is one the server still plays for you. | No: removed for inactivity |
 | ReasonStays | When the server ends your match with a reason, the reason stays on screen until you move on. | No: a crashed match |
 | OneRestore | One context restore at a time. | No: lose, restore, lose, restore |
 
-`tools/formal/ClientLifecycle.cfg` checks the three rules that hold, so `node tools/formal/tlc.mjs ClientLifecycle` passes
+`tools/formal/ClientLifecycle.cfg` checks the four rules that hold, so `node tools/formal/tlc.mjs ClientLifecycle` passes
 and catches a regression in them. `tools/formal/ClientLifecycle.findings.cfg` checks all seven; it is what this chart
 and the paths below come from.
 
@@ -130,9 +124,9 @@ and the paths below come from.
    no longer updates.
 3. **A crashed match** (ReasonStays), 5 steps. The server sends `MATCH CRASHED` and then the room frame, whose handler
    clears `lobbyState.error` as it returns to the room, so the reason can vanish before you read it.
-4. **CREATE after the socket closed at the title** (ButtonsAnswer). A failed JOIN leaves a socket open at the title;
-   the server closes it after 10 minutes idle, and `online()` reuses the closed link. CREATE sends nothing and shows
-   nothing.
+4. **CREATE after the socket closed at the title** (ButtonsAnswer), fixed. A failed JOIN left a socket open at the
+   title, and when the server closed it, `online()` reused the dead link, so CREATE sent nothing and showed nothing.
+   `wire()`'s `onClose` now drops a link that closes at the title, and the model's SocketClosesAtTitle says so.
 5. **Two restores at once** (OneRestore), 5 steps: lose, restore, lose, restore. Nothing stops a second
    `restoreAll` while the first is still running; only its final bookkeeping checks for a newer loss.
 

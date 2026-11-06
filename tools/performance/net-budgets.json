@@ -1,5 +1,5 @@
 {
-  "about": "Network tail budgets for tools/performance/net-tail.mts. Each row of the matrix (weapon x profile x RTT) is one deterministic tools/netlab.mts run with the game's two sockets (--aux). A budget applies to the rows its rtt range and profiles name. Proposed by RAY-163 (2026-11-05) from main's own numbers; report-only until the Captain agrees them, then net-tail runs with --check.",
+  "about": "Network tail budgets for tools/performance/net-tail.mts. Each row of the matrix (weapon x profile x RTT) is one deterministic tools/netlab.mts run with the game's two sockets (--aux). A budget applies to the rows its rtt range and profiles name. Proposed by RAY-163 from main's own numbers and agreed 2026-11-05; npm test runs net-tail --check against them (check id nettail).",
   "rtts": [
     50,
     150,

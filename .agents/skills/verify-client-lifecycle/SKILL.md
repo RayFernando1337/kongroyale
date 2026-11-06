@@ -23,8 +23,8 @@ the boot smoke walk one order each; this model checks all of them.
 | ReasonStays | A reason the server gives for ending your match stays until you move on. | "MATCH CRASHED" flashes and is gone. |
 | OneRestore | One context restore at a time. | Two `restoreAll` runs upload the same resources at once. |
 
-`ClientLifecycle.cfg` checks the first three, which hold today. `ClientLifecycle.findings.cfg` checks all seven; the
-last four break, and docs/statecharts/client-lifecycle.md gives the shortest path to each. When a fix lands, move its rule
+`ClientLifecycle.cfg` checks the first four, which hold today. `ClientLifecycle.findings.cfg` checks all seven; the
+last three break, and docs/statecharts/client-lifecycle.md gives the shortest path to each. When a fix lands, move its rule
 from the findings config into `ClientLifecycle.cfg` and add a mutant that takes the fix out again.
 
 ## Run it
