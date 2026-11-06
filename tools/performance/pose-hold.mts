@@ -22,8 +22,8 @@
 // What is measured. A wrapper around Engine.step records, per frame: the rAF interval, the main-thread step time, and
 // renderer.info's draw calls, triangles, points and program count. Safari has no GPU timer query, so GPU time is not
 // measured; attribute it with arms that remove one cost (?dpr=1 for pixels, ?vegsplat=0 for the far-tree splats).
-// After the hold the engine is suspended for 180 frames (3 s at 60 Hz) and bare rAF intervals are recorded: the display's refresh as the
-// browser paces it right now (a capture running or not), next to what engine.refreshHz measured.
+// After the hold the engine is suspended for 180 frames (3 s at 60 Hz) and bare rAF intervals are recorded: the
+// display's refresh as the browser paces it right now (a capture running or not), next to what engine.refreshHz measured.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
