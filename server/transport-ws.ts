@@ -5,7 +5,7 @@
 // backlog skips unreliable frames (each snapshot is self-contained) instead of queueing them, and one hopelessly behind
 // is terminated.
 import { WebSocket, type RawData } from "ws";
-import { Channel, countSent, makeTransportStats, type Path, type Transport } from "../shared/net/transport";
+import { Channel, channelOf, countSent, makeTransportStats, type Path, type Transport } from "../shared/net/transport";
 import type { Sock } from "./lobby";
 
 /** queued bytes above which a socket skips unreliable frames */
@@ -44,7 +44,8 @@ export class WsTransport implements Transport {
   private pathOf(s: Sock): Path {
     let p = this.paths.get(s);
     if (!p) {
-      p = { reply: (u8) => { if (s.ws.readyState === WebSocket.OPEN) s.ws.send(Buffer.from(u8), { binary: true }); }, strike: (why) => this.strike(s, why) };
+      // a reply (a pong) goes back on the socket its frame came from only, and counts like any other send
+      p = { reply: (u8) => { countSent(this.stats, channelOf(u8[0]), u8.length); if (s.ws.readyState === WebSocket.OPEN) s.ws.send(Buffer.from(u8), { binary: true }); }, strike: (why) => this.strike(s, why) };
       this.paths.set(s, p);
     }
     return p;
