@@ -16,8 +16,8 @@ File references were re-checked on that revision; verify them again before imple
 
 | Status | Count | Items |
 |---|---|---|
-| Done | 14 | Benchmark warmup split and real-play scenario, timing without packet hashing, achieved load, in-match real-GPU timing, result contract and compare, browser collectors, PERF-01 kong animation budget, PERF-05 water SSR, shared benchmark helpers, local Basis transcoder, metrics flight recorder, context-loss events, replay, no-GPU CI gates |
-| Open | 12 | Storm/endgame and multi-lobby scenarios, network tail gates, Windows server wrapper, one GPU query owner, PERF-02, PERF-03, ray collider dedup, PERF-04, GI samples, DOM helpers, automatic incident upload, hardware regression lane |
+| Done | 15 | Benchmark warmup split and real-play scenario, timing without packet hashing, achieved load, simulated network tail gate, in-match real-GPU timing, result contract and compare, browser collectors, PERF-01 kong animation budget, PERF-05 water SSR, shared benchmark helpers, local Basis transcoder, metrics flight recorder, context-loss events, replay, no-GPU CI gates |
+| Open | 12 | Storm/endgame and multi-lobby scenarios, real-socket and WAN network tails, Windows server wrapper, one GPU query owner, PERF-02, PERF-03, ray collider dedup, PERF-04, GI samples, DOM helpers, automatic incident upload, hardware regression lane |
 | Obsolete | 4 | "No benchmarks were run", "no memory leak was established", FND as the first assignment, CI described as build and secrets only |
 
 Lanes that own open work: textures KONG-44, geometry and impostors KONG-45, resource ownership KONG-47, shader-compile
@@ -76,10 +76,10 @@ claim a win until their scenario produces repeatable baseline/candidate comparis
    separate, slower mode that only compares with traced runs.
 3. **Record achieved load.** **Done (#11):** results record inputs per player per second and skipped generator steps,
    and the `inputLoadAchieved` and `serverKeptTickRate` gates reject an under-driven run.
-4. **Gate relevant network tails.** **Open; a report exists (#192).** `tools/performance/net-tail.mts` reports RTT,
-   input ack, snapshot gaps, corrections, remote holds and hit confirm/ghost rates at 50, 150 and 250 ms RTT with jitter
-   and loss profiles, against `net-budgets.json`. It is report-only until the budgets are agreed, so no tail fails a run
-   yet. Real-socket and WAN numbers still need runs over `netpath.py` or a real network; see
+4. **Gate relevant network tails.** **Done (#192, #216):** `tools/performance/net-tail.mts` reports RTT, input ack,
+   snapshot gaps, corrections, remote holds and hit confirm/ghost rates at 50, 150 and 250 ms RTT with jitter and loss
+   profiles, against `net-budgets.json`; `npm test` fails when a row breaks one (check `nettail`). **Open:**
+   real-socket and WAN numbers still need runs over `netpath.py` or a real network; see
    [tools/performance/README.md](tools/performance/README.md#network-tails).
 5. **Keep platform prerequisites explicit.** The server wrapper sets `KR_EVENT_MODE=0` for private room creation.
    **Open:** its extensionless `node_modules/.bin/tsx` spawn still targets Linux/macOS; Windows compatibility is not
@@ -387,7 +387,7 @@ not passed. Do not install dependencies or change CI just to conceal an environm
 ## 7. Dispatch order and completion evidence
 
 1. FND: **done** for host and socket workloads (#10, #11, #12). Still open: storm/endgame and multi-lobby scenarios,
-   network tail gates, the Windows server wrapper and the GPU query owner.
+   real-socket and WAN network tails, the Windows server wrapper and the GPU query owner.
 2. PERF-01: done (#187). PERF-02: open, KONG-68.
 3. PERF-03 and ray deduplication: open, no lane; trace fixtures exist (the `sim` step's golden hashes), and RAY-152 owns
    determinism.

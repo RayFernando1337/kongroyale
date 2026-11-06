@@ -689,7 +689,8 @@ async function integrateOnce(urgent: boolean, roots: THREE.Object3D[], buildGate
   });
   if (!fresh.size && !roots.length) return true;
   // a context loss resets every program, so an integration in flight would wait on compiles that never finish and
-  // keep its materials hidden: the restore resolves `restored`, the integration stops, and `finally` shows them again
+  // keep its materials hidden: the restore resolves `restored`, this pass returns false, `finally` shows them again, and
+  // integrateFresh runs a new pass on the restored context
   const epoch = contextEpoch();
   let onRestored = () => {};
   const restored = new Promise<void>((res) => { onRestored = res; });
