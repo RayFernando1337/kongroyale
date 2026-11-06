@@ -292,8 +292,9 @@ from `engine/res/restore-run.ts`, loaded on the first loss:
    - `source`: every released texture refills its pixels from the rebuild it gave `releaseAfterUpload(t, rebuild)`
      (a cached file through the cache, a procedural texture through its painter).
    - modules: a module that owns resources with no restore path (`unrestorable()`: a released texture without a
-     rebuild, a `geofree` batch) is rebuilt through `restoreModulesWith`. `low-mem.ts` registers it for streamed
-     modules: the module is evicted during the restore and built again from source once the context is live.
+     rebuild, a `geofree` batch) is rebuilt through `restoreModulesWith`. With `geofree` on, `low-mem.ts` registers it
+     for streamed modules (`low-mem-restore.ts`): the module is evicted during the restore and built again from source
+     through the stream's build queue once the context is live.
    - `bake`: every bake registered with `bake(fn)`, or `onRestore("bake", fn)`, draws again.
 3. **Reload** stays the fallback. If any resource with no restore path belongs to no module, or to a module that cannot
    be rebuilt, `restoreAll()` throws before it touches anything and the page reloads, which is correct for every

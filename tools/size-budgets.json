@@ -1,9 +1,9 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-06 at 5e78c96 plus #211 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 2565597, lazy 3048380); workers and lazy dropped by the shared POI data chunk (#211).",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-06 at 5e78c96 plus #211 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 2565597, lazy 3048380); workers and lazy dropped by the shared POI data chunk (#211). 2026-11-06 (#169): entry 33170 to 33202, boot 1166520 to 1166604 and lazy 3048405 to 3047902 (measured 33192, 1166594 and 3047876 after merging main at 2465464): the geofree context-restore rebuild and the stream build queue add 47 B to entry and 99 B to boot, and the same change takes 503 B out of lazy, so the three budgets together go down by 387 B.",
   "gzBytes": {
-    "entry": 33170,
-    "boot": 1166520,
+    "entry": 33202,
+    "boot": 1166604,
     "workers": 2565622,
-    "lazy": 3048405
+    "lazy": 3047902
   }
 }
