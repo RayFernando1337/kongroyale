@@ -597,12 +597,12 @@
       {
         "category": "load",
         "name": "First visit to title screen, Mac mini (Chrome)",
-        "value": 21,
+        "value": 13.8,
         "unit": "s",
         "target": null,
         "status": "measured",
-        "detail": "Median of 5 cold loads on a Mac mini M4 16 GB. With the test setting that skips pre-building locations (?readyby=0) it is 12.4 s, with an emptier island behind the title.",
-        "source": "RAY-112 (Chrome 154, ANGLE Metal, Mac mini M4 16 GB, interleaved ABBA, 5 cold loads a side)"
+        "detail": "Chrome 154 on ANGLE Metal, kong-v0.6.1: ready at 13.8 s in the boot check and 14.3 s in the play check (single runs each). The earlier 21 s was a median of 5 cold loads on Nov 4 with a different build. Source: Kong Mini renders/v061 (Mac mini M4 16 GB, kong-v0.6.1 ee43574), reported to the Captain.",
+        "source": "Kong Mini renders/v061 (Mac mini M4 16 GB, kong-v0.6.1 ee43574), reported to the Captain"
       },
       {
         "category": "load",
@@ -621,7 +621,7 @@
         "unit": "s",
         "target": null,
         "status": "fixing",
-        "detail": "On the 16 GB Mac mini, Safari used to close the game for using too much memory (main f417032 and kong-v0.5.0, moving player, killed at 8.4 to 8.8 GB). On main 3248912 (#160), 2 of 2 scripted full matches reached Results, with a peak of 6.9 to 7.3 GB. The margin is thin and has not been re-run on kong-v0.6.1 (RAY-104 to RAY-106).",
+        "detail": "Not measured on kong-v0.6.1 (the Safari run recorded match survival, not title time). Earlier Safari killings on the 16 GB Mac mini were at 8.4 to 8.8 GB (main f417032, kong-v0.5.0); see the match-survival row below.",
         "source": "Captain, from RAY-112 Safari half; RAY-104 to RAY-106"
       },
       {
@@ -759,6 +759,17 @@
         "status": "baseline",
         "detail": "Whole browser 60 s into a match, median of 6 runs on a Mac mini M4 16 GB, main 7890f3b, memory.mts v3 (reads the page over CDP). The 12.4 GB reading on Nov 4 came from the older polling harness. About 2.5 GB of swap was already in use before each run and memory pressure read \"warn\". Source: project drive handoffs/memory-baseline-metal-v3/README.md.",
         "source": "project drive handoffs/memory-baseline-metal-v3/README.md"
+      },
+      {
+        "category": "match",
+        "name": "Safari full match on a 16 GB Mac mini: peak page memory on foot",
+        "value": 6763,
+        "baseline": 7029,
+        "unit": "MB",
+        "target": null,
+        "status": "improved",
+        "detail": "Safari 27.0.1, quality Low (Auto), seed 42, kong-v0.6.1 (ee43574): a full 750 s match survived to Results. Peak WebContent on foot 6,763 MB (kong-v0.6.0: 7,029); whole browser 7,889 MB (8,191); during the plane 6,316 MB (5,123 on v0.6.0, being investigated as RAY-187). Safari frame rate median / slowest 5%: warm-up 55 / 13, plane 53 / 43, glide 53 / 33, on foot 47 / 36 fps. A second run lost its WebDriver connection mid-match (a test-driver failure, not a Safari kill): the tab survived, with WebContent peaking at 8,286 MB on foot on a longer town route. One full run is a signal, not a guarantee. Source: Kong Mini renders/v061 (Mac mini M4 16 GB, kong-v0.6.1 ee43574), reported to the Captain.",
+        "source": "Kong Mini renders/v061 (Mac mini M4 16 GB, kong-v0.6.1 ee43574), reported to the Captain"
       },
       {
         "category": "server",
@@ -1034,7 +1045,7 @@
   "inProgress": [
     {
       "name": "Cut memory so 16 GB Macs play without swapping",
-      "estimate": "Chrome uses about 9.9 GB for the whole browser. Safari survived a full match in the latest test with a peak of 6.9 to 7.3 GB, but it was killed at 8.4 to 8.8 GB in earlier runs, so the margin is thin (tracked as RAY-104 to RAY-106)",
+      "estimate": "Chrome uses about 9.9 GB for the whole browser. On kong-v0.6.1 Safari survived a full match with page memory peaking at 6.8 GB on foot, but a longer town route reached 8.3 GB and earlier builds were killed at 8.4 to 8.8 GB, so the margin is thin (tracked as RAY-104 to RAY-106; the plane-phase rise is RAY-187)",
       "source": "handoffs/memory-baseline-metal-v3/README.md; handoffs/safari-growth/pr160/README.md; story.json"
     },
     {
