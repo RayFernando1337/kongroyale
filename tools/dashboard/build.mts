@@ -133,8 +133,12 @@ function main(): void {
   for (const r of releases) for (const m of r.body.matchAll(/^- #(\d+)/gm)) released.add(Number(m[1]));
   const subjectsSince = (tag: string): number[] => {
     const sha = shaOf(tag) as string;
-    if (execFileSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: HERE, encoding: "utf8" }).trim() === "true") throw new Error("this clone is shallow, so the changes since " + tag + " can't be listed; run git fetch --unshallow origin first");
     execFileSync("git", ["fetch", "-q", "origin", sha, "main"], { cwd: HERE });
+    try {
+      execFileSync("git", ["merge-base", "--is-ancestor", sha, "origin/main"], { cwd: HERE });
+    } catch {
+      throw new Error(tag + " is not reachable from origin/main in this clone, so the changes since it can't be listed; if the clone is shallow, run git fetch --unshallow origin");
+    }
     return execFileSync("git", ["log", "--format=%s", sha + "..origin/main"], { cwd: HERE, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").map((l) => Number(/\(#(\d+)\)\s*$/.exec(l)?.[1])).filter(Boolean);
   };
   const sinceNewest = nextTag ? subjectsSince(nextTag) : [];
