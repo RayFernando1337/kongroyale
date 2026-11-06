@@ -52,7 +52,7 @@ After Kong Mini (the M4 with 16 GB; Kong Mac is the fallback) and Kong RTX (D3D1
 npx tsx tools/release.mts promote kong-vX.Y.Z
 ```
 
-This moves `stable` and clears the release's prerelease flag.
+This moves `stable`, clears the release's prerelease flag and republishes the [dashboard](../tools/dashboard/publish.mts) so its Releases page shows the new channel. Run it from a checkout of `main` at its tip: the republish refuses any other checkout and exits non-zero, and when it does the channel has already moved, so rerun `npx tsx tools/dashboard/publish.mts` from `main`.
 
 ## Flight check
 
@@ -93,7 +93,7 @@ npx tsx tools/release.mts rollback --dry-run
 npx tsx tools/release.mts rollback            # or: rollback --to kong-vA.B.C
 ```
 
-`stable` moves back to the previous promoted release, the removed commits are printed, and the bad release goes back to prerelease. Attach the failing evidence to the PR that caused it, then fix forward with a patch.
+`stable` moves back to the previous promoted release, the removed commits are printed, and the bad release goes back to prerelease, and the dashboard is republished the same way as after a promote. Attach the failing evidence to the PR that caused it, then fix forward with a patch.
 
 ## Trying it safely
 
