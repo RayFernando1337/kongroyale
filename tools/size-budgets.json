@@ -1,9 +1,9 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size. 2026-11-05: lazy raised from 3055000 to 3055261 (measured 3055251 at 2f33440): #208 added 229 B of lazy JS (call sites for the deferred heli load; boot and entry did not change) and later PRs the rest. 2026-11-05: boot raised from 1168020 to 1168070 for a context-restore correctness fix (#214): engine.contextLost also reads gl.isContextLost(), and the engine skips initTexture and warmDraw while the context is lost (Captain-approved exception).",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size. 2026-11-05: lazy raised from 3055000 to 3055261 (measured 3055251 at 2f33440): #208 added 229 B of lazy JS (call sites for the deferred heli load; boot and entry did not change) and later PRs the rest. Then raised again, a deliberate exception: the player-diagnostics send sheet (client/src/playtest/report.ts, about 5.1 KB gz, RAY-162) is a lazy chunk that loads only with diag on (?diag or a VITE_KR_DIAG=1 build), so no other page downloads it. Set about 250 bytes over the measured total. 2026-11-06: lazy raised from 3060850 to 3061039 (measured 3061029 after merging main at 3828e81 into #218): #218 moves the ?fly camera from boot into the lazy dev-probes chunk, where it compresses worse than inside boot (lazy about +420 B, entry and boot -115 B, partly absorbed by the headroom above); no behaviour-neutral dev-only trim of that size was found.",
   "gzBytes": {
     "entry": 34200,
-    "boot": 1168070,
+    "boot": 1168020,
     "workers": 4726100,
-    "lazy": 3055261
+    "lazy": 3061039
   }
 }

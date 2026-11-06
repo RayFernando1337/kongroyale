@@ -25,7 +25,6 @@ import * as THREE from "three";
 import { Engine, type Quality } from "./engine/engine";
 import { installKongbot } from "./kongbot";
 import { DEFAULT_VIEWS, applyView, parseCam, type CamSpec } from "./engine/views";
-import { enableFly } from "./engine/fly";
 import { MODULES, TITLE_MODULES } from "./world/registry";
 import type { WorldModule } from "./world/module";
 import { loadTerrain } from "./world/terrain/load";
@@ -38,7 +37,7 @@ import { WARMUP_S } from "../../shared/sim/const";
 import { afterPaint as nextFrame, noFrameWaitCount } from "./engine/frame";
 import { flag } from "./flags";
 import { resources, type Scope } from "./engine/res/scope";
-import { asOwner } from "./engine/res/restore";
+import { asOwner, contextEpoch, onRestore } from "./engine/res/restore";
 
 const shot = flag("shot");
 const errors: string[] = [];
@@ -393,7 +392,7 @@ if (!gameMode) {
       applyView(engine.camera, spec, engine.terrain);
     } else await setView(viewId!);
   } catch (e) { report("view", e); }
-  if (flag("fly")) enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn));
+  if (flag("fly")) void import("./engine/dev-probes").then((m) => m.enableFly(engine.camera, canvas, (fn) => engine.onUpdate(fn)), (e) => report("fly", e));
   engine.start();
 } else {
   kr.stage = "game";
@@ -637,6 +636,11 @@ async function stream(): Promise<void> {
  *  compiled material, the second recorded `visible = false` (the first one's hiding) and restored THAT — Mist Falls' wood
  *  (all three bridges, the lookout) and its water stayed invisible for the whole session. */
 const heldFresh = new Map<THREE.Material, { vis: boolean; n: number }>();
+// materials in the scene when the context came back: their programs are gone, but they were shown before (or were about
+// to be), so the next frame compiles them where they are instead of an integration hiding the whole world until it has
+// compiled everything again. Integrations wait for the restore to finish, so this marking always comes first.
+const drawnBeforeLoss = new WeakSet<THREE.Material>();
+onRestore("source", () => engine.scene.traverse((o) => { const mm = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined; if (mm) for (const m of Array.isArray(mm) ? mm : [mm]) if (m) drawnBeforeLoss.add(m); }));
 const holdFresh = (m: THREE.Material) => { const h = heldFresh.get(m); if (h) h.n++; else heldFresh.set(m, { vis: m.visible, n: 1 }); m.visible = false; };
 const releaseFresh = (m: THREE.Material) => { const h = heldFresh.get(m); if (!h) return; if (--h.n <= 0) { heldFresh.delete(m); m.visible = h.vis; } };
 /**
@@ -645,6 +649,11 @@ const releaseFresh = (m: THREE.Material) => { const h = heldFresh.get(m); if (!h
  * textures uploaded one per slice, and only then shown. Nothing a streamed module adds can stall a frame.
  */
 async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], buildGate?: Gate, openGate?: () => void) {
+  while (!await integrateOnce(urgent, roots, buildGate, openGate));
+}
+
+async function integrateOnce(urgent: boolean, roots: THREE.Object3D[], buildGate?: Gate, openGate?: () => void): Promise<boolean> {
+  while (engine.contextLost) await nextFrame();
   const r = engine.renderer;
   const props = r.properties as unknown as { get(o: object): Record<string, unknown> };
   const fresh = new Map<THREE.Material, boolean>();
@@ -657,7 +666,7 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], bui
       if (!m) continue;
       if (fresh.has(m)) { isFresh = true; continue; }
       const p = props.get(m);
-      if (p.programs === undefined && p.currentProgram === undefined) { fresh.set(m, m.visible); holdFresh(m); isFresh = true; }
+      if (p.programs === undefined && p.currentProgram === undefined && !drawnBeforeLoss.has(m)) { fresh.set(m, m.visible); holdFresh(m); isFresh = true; }
     }
     if (isFresh) objs.push(o);
   });
@@ -678,84 +687,102 @@ async function integrateFresh(urgent: boolean, roots: THREE.Object3D[] = [], bui
     }
     if (hit) objs.push(o);
   });
-  if (!fresh.size && !roots.length) return;
-  const t0 = performance.now();
-  // compile (parallel, against the post chain's HDR target) this module's objects + everything holding a fresh material.
-  // without KHR_parallel_shader_compile (Linux / ANGLE-Vulkan, some drivers) every compile is synchronous —
-  // then the objects go in small batches between frames (the program cache makes repeats free), so a module's shaders
-  // never freeze one frame for 0.5-2.7 s (measured in the warm-up)
-  const parallel = !!r.getContext().getExtension("KHR_parallel_shader_compile");
-  const tag = String(kr.streamStage ?? "").replace(/:(compile|draw|first-use|textures)$/, "");
-  const phase = (p: string) => { if (tag.startsWith("integrate")) kr.streamStage = `${tag}:${p}`; };
-  phase("compile");
-  if (parallel || urgent) await engine.compileObjects(objs);
-  else {
-    const leaves: THREE.Object3D[] = [];
-    // (each mesh once: `objs` holds the module roots AND the fresh objects below them)
-    const selected = new Set<THREE.Object3D>();
-    for (const o of objs) o.traverse((x) => { if ((x as THREE.Mesh).material && !selected.has(x)) { selected.add(x); leaves.push(x); } });
-    // (smaller steps under a small slice — the plane / skydive run at 7 ms; bigger ones made 57-166 ms compile gaps)
-    const cb = engine.sliceMs <= 8 ? 2 : 6;
-    // (already flattened: compiling a leaf's children again would repeat them across batches)
-    for (let i = 0; i < leaves.length; i += cb) { await engine.compileObjects(leaves.slice(i, i + cb), false); await engine.yield(); }
-  }
-  // textures FIRST, one per slice (a first draw uploads every texture it meets in that one task — the
-  // hitch log had 130-320 ms 'integrate:*:draw' gaps in the warm-up and the plane), then the first draw in chunks of
-  // ≤ 24 meshes (a top-level group can hold hundreds), then the programs' first use.
-  phase("textures");
-  const seen = new Set<THREE.Texture>();
-  const upload = (m: THREE.Material) => {
-    const out: THREE.Texture[] = [];
-    for (const v of Object.values(m as unknown as Record<string, unknown>)) {
-      const t = v as THREE.Texture;
-      if (!t || !t.isTexture || seen.has(t) || (t as unknown as { isRenderTargetTexture?: boolean }).isRenderTargetTexture) continue;
-      seen.add(t);
-      if (props.get(t).__webglTexture || !t.image) continue;
-      out.push(t);
-    }
-    // (a ShaderMaterial keeps its textures in uniforms)
-    const us = (m as THREE.ShaderMaterial).uniforms;
-    if (us) for (const k in us) { const t = us[k]?.value as THREE.Texture | undefined; if (t && t.isTexture && !seen.has(t) && !(t as unknown as { isRenderTargetTexture?: boolean }).isRenderTargetTexture) { seen.add(t); if (!props.get(t).__webglTexture && t.image) out.push(t); } }
-    return out;
-  };
-  for (const [m] of fresh) for (const t of upload(m)) { try { r.initTexture(t); } catch { /* skip */ } if (!urgent) await engine.yield(); }
-  // first draw of this module's content (all LOD levels) offscreen: buffers / VAOs / first use, now — not on the frame the
-  // player first looks at it (the arrival hitch). Restored before any frame runs.
-  phase("draw");
-  if (roots.length) {
-    // (a streamed module's build gate is still shut: open for each synchronous offscreen draw only)
-    const warm = (c: THREE.Object3D[]) => { if (buildGate) buildGate.active = false; try { engine.warmDraw(c); } finally { if (buildGate) buildGate.active = true; } };
-    if (urgent) warm(roots);
+  if (!fresh.size && !roots.length) return true;
+  // a context loss resets every program, so an integration in flight would wait on compiles that never finish and
+  // keep its materials hidden: the restore resolves `restored`, this pass returns false, `finally` shows them again, and
+  // integrateFresh runs a new pass on the restored context
+  const epoch = contextEpoch();
+  let onRestored = () => {};
+  const restored = new Promise<void>((res) => { onRestored = res; });
+  const stopWatching = onRestore("source", () => onRestored());
+  const live = (p: Promise<unknown>) => Promise.race([p, restored]);
+  const gone = () => contextEpoch() !== epoch;
+  try {
+    const t0 = performance.now();
+    // compile (parallel, against the post chain's HDR target) this module's objects + everything holding a fresh material.
+    // without KHR_parallel_shader_compile (Linux / ANGLE-Vulkan, some drivers) every compile is synchronous —
+    // then the objects go in small batches between frames (the program cache makes repeats free), so a module's shaders
+    // never freeze one frame for 0.5-2.7 s (measured in the warm-up)
+    const parallel = !!r.getContext().getExtension("KHR_parallel_shader_compile");
+    const tag = String(kr.streamStage ?? "").replace(/:(compile|draw|first-use|textures)$/, "");
+    const phase = (p: string) => { if (tag.startsWith("integrate")) kr.streamStage = `${tag}:${p}`; };
+    phase("compile");
+    if (parallel || urgent) await live(engine.compileObjects(objs));
     else {
-      await nextFrame();
-      const chunks: THREE.Object3D[][] = [];
-      let cur: THREE.Object3D[] = [], n = 0;
-      const CH = engine.sliceMs <= 8 ? 12 : 24;
-      // whole subtrees while they are small, their children otherwise (the mesh count bounds one warm draw)
-      const meshes = (o: THREE.Object3D) => { let k = 0; o.traverse((x) => { if ((x as THREE.Mesh).isMesh) k++; }); return k; };
-      const split = (o: THREE.Object3D) => {
-        const k = meshes(o);
-        if (k <= CH || !o.children.length) { if (n + k > CH && cur.length) { chunks.push(cur); cur = []; n = 0; } cur.push(o); n += k; return; }
-        if ((o as THREE.Mesh).isMesh) { cur.push(o); n++; } // (its own draw; children follow)
-        for (const c of o.children) split(c);
-      };
-      for (const root of roots) split(root);
-      if (cur.length) chunks.push(cur);
-      for (const c of chunks) { warm(c); await engine.yield(); }
+      const leaves: THREE.Object3D[] = [];
+      // (each mesh once: `objs` holds the module roots AND the fresh objects below them)
+      const selected = new Set<THREE.Object3D>();
+      for (const o of objs) o.traverse((x) => { if ((x as THREE.Mesh).material && !selected.has(x)) { selected.add(x); leaves.push(x); } });
+      // (smaller steps under a small slice — the plane / skydive run at 7 ms; bigger ones made 57-166 ms compile gaps)
+      const cb = engine.sliceMs <= 8 ? 2 : 6;
+      // (already flattened: compiling a leaf's children again would repeat them across batches)
+      for (let i = 0; i < leaves.length && !gone(); i += cb) { await live(engine.compileObjects(leaves.slice(i, i + cb), false)); await engine.yield(); }
     }
+    // textures FIRST, one per slice (a first draw uploads every texture it meets in that one task — the
+    // hitch log had 130-320 ms 'integrate:*:draw' gaps in the warm-up and the plane), then the first draw in chunks of
+    // ≤ 24 meshes (a top-level group can hold hundreds), then the programs' first use.
+    if (gone()) return false;
+    phase("textures");
+    const seen = new Set<THREE.Texture>();
+    const upload = (m: THREE.Material) => {
+      const out: THREE.Texture[] = [];
+      for (const v of Object.values(m as unknown as Record<string, unknown>)) {
+        const t = v as THREE.Texture;
+        if (!t || !t.isTexture || seen.has(t) || (t as unknown as { isRenderTargetTexture?: boolean }).isRenderTargetTexture) continue;
+        seen.add(t);
+        if (props.get(t).__webglTexture || !t.image) continue;
+        out.push(t);
+      }
+      // (a ShaderMaterial keeps its textures in uniforms)
+      const us = (m as THREE.ShaderMaterial).uniforms;
+      if (us) for (const k in us) { const t = us[k]?.value as THREE.Texture | undefined; if (t && t.isTexture && !seen.has(t) && !(t as unknown as { isRenderTargetTexture?: boolean }).isRenderTargetTexture) { seen.add(t); if (!props.get(t).__webglTexture && t.image) out.push(t); } }
+      return out;
+    };
+    for (const [m] of fresh) for (const t of upload(m)) { try { r.initTexture(t); } catch { /* skip */ } if (!urgent) await engine.yield(); }
+    // first draw of this module's content (all LOD levels) offscreen: buffers / VAOs / first use, now — not on the frame the
+    // player first looks at it (the arrival hitch). Restored before any frame runs.
+    if (gone()) return false;
+    phase("draw");
+    if (roots.length) {
+      // (a streamed module's build gate is still shut: open for each synchronous offscreen draw only)
+      const warm = (c: THREE.Object3D[]) => { if (buildGate) buildGate.active = false; try { engine.warmDraw(c); } finally { if (buildGate) buildGate.active = true; } };
+      if (urgent) warm(roots);
+      else {
+        await nextFrame();
+        const chunks: THREE.Object3D[][] = [];
+        let cur: THREE.Object3D[] = [], n = 0;
+        const CH = engine.sliceMs <= 8 ? 12 : 24;
+        // whole subtrees while they are small, their children otherwise (the mesh count bounds one warm draw)
+        const meshes = (o: THREE.Object3D) => { let k = 0; o.traverse((x) => { if ((x as THREE.Mesh).isMesh) k++; }); return k; };
+        const split = (o: THREE.Object3D) => {
+          const k = meshes(o);
+          if (k <= CH || !o.children.length) { if (n + k > CH && cur.length) { chunks.push(cur); cur = []; n = 0; } cur.push(o); n += k; return; }
+          if ((o as THREE.Mesh).isMesh) { cur.push(o); n++; } // (its own draw; children follow)
+          for (const c of o.children) split(c);
+        };
+        for (const root of roots) split(root);
+        if (cur.length) chunks.push(cur);
+        for (const c of chunks) { warm(c); await engine.yield(); }
+      }
+    }
+    // first use: uniform / attribute tables of the new programs (a sync driver round trip — the compile is done now)
+    if (gone()) return false;
+    openGate?.();
+    phase("first-use");
+    for (const pr of (r.info.programs ?? []) as unknown as Array<{ getUniforms?: () => unknown; getAttributes?: () => unknown; isReady?: () => boolean }>) {
+      try { if (!pr.isReady || pr.isReady()) { pr.getUniforms?.(); pr.getAttributes?.(); } } catch { /* reported by three */ }
+      if (!urgent) await engine.yield();
+    }
+    // (what held a fresh material dissolves in instead of appearing in one frame — engine/cull.ts reveal)
+    engine.cull.reveal(objs.slice(roots.length));
+    const log = (kr.integrateLog as Array<unknown> | undefined) ?? (kr.integrateLog = []) as Array<unknown>;
+    log.push({ materials: fresh.size, textures: seen.size, ms: Math.round(performance.now() - t0) });
+    return true;
+
+  } finally {
+    stopWatching();
+    for (const [m] of fresh) releaseFresh(m);
   }
-  // first use: uniform / attribute tables of the new programs (a sync driver round trip — the compile is done now)
-  openGate?.();
-  phase("first-use");
-  for (const pr of (r.info.programs ?? []) as unknown as Array<{ getUniforms?: () => unknown; getAttributes?: () => unknown; isReady?: () => boolean }>) {
-    try { if (!pr.isReady || pr.isReady()) { pr.getUniforms?.(); pr.getAttributes?.(); } } catch { /* reported by three */ }
-    if (!urgent) await engine.yield();
-  }
-  for (const [m] of fresh) releaseFresh(m);
-  // (what held a fresh material dissolves in instead of appearing in one frame — engine/cull.ts reveal)
-  engine.cull.reveal(objs.slice(roots.length));
-  const log = (kr.integrateLog as Array<unknown> | undefined) ?? (kr.integrateLog = []) as Array<unknown>;
-  log.push({ materials: fresh.size, textures: seen.size, ms: Math.round(performance.now() - t0) });
 }
 
 function showError(msg: string) {

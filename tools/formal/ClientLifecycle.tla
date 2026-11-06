@@ -17,7 +17,7 @@ VARIABLES
   prefabs,   \* kits.viewModel exists (built after ready by kr.prefabWarmP, index.ts:88,817)
   view,      \* what the player sees: "title" | "room" | "match" | "results"
   phase,     \* the match phase the client shows: "warmup" | "plane" | "play" | "results"
-  link,      \* "none" | "offline" | "online" | "closed" (an online socket that closed)
+  link,      \* "none" | "offline" | "online"
   scope,     \* live "match" resource scopes (resources.root.child("match"), render.ts:163): 0 or 1
   render,    \* a GameRender is wired (render !== null in index.ts)
   seated,    \* online: the server still has this client in the running match
@@ -53,20 +53,17 @@ Play ==
   /\ silent' = ~WireOk
   /\ UNCHANGED <<boot, prefabs, seated, err, why, ctx, restores>>
 
-(* CREATE/JOIN: online() (index.ts:230-244) reuses any online link without checking it is open (231). Like PLAY,
+(* CREATE/JOIN: online() (index.ts:230-244) reuses the online link it has (231); one that closed at the title is
+   already gone (SocketClosesAtTitle). Like PLAY,
    create and join await prepareIsland(), which waits for the prefabs after ready and resolves at once before it;
    before ready only Enter reaches the lobby, and Enter is JOIN when the page was opened with an invite (?join=) *)
 Connect ==
   /\ Online /\ view = "title"
   /\ boot = "loading" \/ prefabs
-  /\ IF link = "closed"
-       THEN /\ silent' = TRUE   \* link?.sendJSON does nothing on a closed socket (net.ts:42); no busy, no error
-            /\ UNCHANGED <<view, link, scope, render>>
-            /\ UNCHANGED err
-       \* wire() runs inside online()'s try: when GameRender throws, the catch drops the link (the socket stays open,
-       \* unreferenced) and shows "NO SERVER", a visible but wrong reason
-       ELSE /\ link' = (IF WireOk THEN "online" ELSE "none") /\ scope' = WireScopeAfter /\ render' = WireOk
-            /\ view' = (IF WireOk THEN "room" ELSE "title") /\ silent' = FALSE /\ err' = ~WireOk
+  \* wire() runs inside online()'s try: when GameRender throws, the catch drops the link (the socket stays open,
+  \* unreferenced) and shows "NO SERVER", a visible but wrong reason
+  /\ link' = (IF WireOk THEN "online" ELSE "none") /\ scope' = WireScopeAfter /\ render' = WireOk
+  /\ view' = (IF WireOk THEN "room" ELSE "title") /\ silent' = FALSE /\ err' = ~WireOk
   /\ UNCHANGED <<boot, prefabs, phase, seated, why, ctx, restores>>
 \* a JOIN that fails ("NO SUCH LOBBY") leaves the socket open at the title; the JOIN went out after the renderer was wired
 JoinFails ==
@@ -74,10 +71,11 @@ JoinFails ==
   /\ link' = "online" /\ err' = TRUE
   /\ scope' = WireScopeAfter /\ render' = WireOk
   /\ UNCHANGED <<boot, prefabs, view, phase, seated, why, silent, ctx, restores>>
-\* the socket closes at the title (server idle close, network drop): ignored unless in a match or a room (index.ts:283)
+\* the socket closes at the title (server idle close, network drop): wire()'s onClose drops the link there, so the next
+\* CREATE / JOIN connects again (in a match or a room it runs linkLost instead, which the model leaves out)
 SocketClosesAtTitle ==
   /\ link = "online" /\ view = "title"
-  /\ link' = "closed"
+  /\ link' = "none"
   /\ UNCHANGED <<boot, prefabs, view, phase, scope, render, seated, err, why, silent, ctx, restores>>
 
 \* the host presses START: the "match" message, enterMatch
