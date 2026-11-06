@@ -1,9 +1,10 @@
 // The server's end of the WebTransport transport (shared/net/transport.ts) for one authenticated session
 // (server/wt.ts): unreliable frames as QUIC datagrams, reliable frames on the session's one bidirectional stream
 // (shared/net/frames.ts). A frame too big for one datagram rides the stream instead. Backpressure: unreliable frames are
-// skipped while too many datagrams wait to be written, and a session whose stream backlog passes 4 MB is closed, like a
+// skipped while too many datagrams wait to be written (a snapshot goes out as SNAPSHOT_DATAGRAM_COPIES datagrams), and a session whose stream backlog passes 4 MB is closed, like a
 // WebSocket that far behind, as is one whose stream fails a write.
-import { Channel, countSent, makeTransportStats, type Path, type Transport } from "../shared/net/transport";
+import { Channel, SNAPSHOT_DATAGRAM_COPIES, countSent, makeTransportStats, type Path, type Transport } from "../shared/net/transport";
+import { M } from "../shared/net/proto";
 import { frame } from "../shared/net/frames";
 
 /** datagrams waiting to be written above which unreliable frames are skipped */
@@ -42,8 +43,11 @@ export class WtTransport implements Transport {
     countSent(this.stats, Channel.Unreliable, u8.length);
     if (u8.length > this.session.datagrams.maxDatagramSize) { this.oversize++; this.writeStream(u8); return; }
     if (this.pendingDatagrams >= SKIP_PENDING_DATAGRAMS) { this.stats.skipped++; return; }
-    this.pendingDatagrams++;
-    this.dgram.write(u8.slice()).then(() => { this.pendingDatagrams--; }, () => { this.pendingDatagrams--; });
+    const copies = u8[0] === M.Snapshot ? SNAPSHOT_DATAGRAM_COPIES : 1;
+    for (let k = 0; k < copies; k++) {
+      this.pendingDatagrams++;
+      this.dgram.write(u8.slice()).then(() => { this.pendingDatagrams--; }, () => { this.pendingDatagrams--; });
+    }
   }
   private writeStream(u8: Uint8Array) {
     const f = frame(u8), n = f.length;
