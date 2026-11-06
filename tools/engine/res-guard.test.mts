@@ -9,16 +9,17 @@ type Frame = { med: number; mean?: number };
 /** run the guard for "seconds" with a frame model (a second's median and mean ms at a scale); the steps it took */
 function run(seconds: number, frameAt: (scale: number, s: number) => Frame, opts: { capFps?: number; top?: number; cpuMs?: number; gpuMs?: number } = {}) {
   const st = newGuardState(), top = opts.top ?? 1, steps: Array<{ s: number; from: number; to: number; why: string }> = [];
-  let scale = top, halfS = 0;
+  let scale = top, halfS = 0, lowS = 0;
   for (let s = 0; s < seconds; s++) {
     const f = frameAt(scale, s), mean = f.mean ?? f.med;
     if (f.med > 25) halfS++;
+    if (scale < top) lowS++;
     const d = decide(st, { medMs: f.med, p95Ms: f.med, meanMs: mean, frames: Math.round(1000 / mean), refMs: guardRefMs(opts.capFps ?? 0), cpuMs: opts.cpuMs ?? 7, gpuMs: opts.gpuMs ?? 0 }, scale, top, s);
     if (!d) continue;
     steps.push({ s, from: scale, to: d.to, why: d.why });
     scale = d.to;
   }
-  return { steps, scale, st, halfS };
+  return { steps, scale, st, halfS, lowS };
 }
 const whys = (r: { steps: Array<{ why: string }> }) => r.steps.map((x) => x.why);
 /** a GPU-bound scene whose GPU frame shrinks with the pixel count, presented in whole 60 Hz periods (the engine's
@@ -69,6 +70,8 @@ assert.equal(run(120, () => ({ med: H })).steps.length, 0, "full rate");
   assert.equal(r.steps[first].to, 1, "the scale goes back");
   const tries = r.steps.filter((x) => x.why === "no-gain").map((x) => x.s);
   assert.ok(tries.length <= 3 && tries[1] - tries[0] >= BLOCK_S, "blocked between tries: " + tries.join(", "));
+  assert.ok(r.steps.filter((x) => x.to < 1).length <= 6 * tries.length, "at most a walk to the floor per try");
+  assert.ok(r.lowS <= 25 * tries.length && r.lowS < 0.1 * 900, "under 25 s below 100 % per try, under 10 % in all: " + r.lowS + " s");
 }
 // a GPU frame that needs three steps to cross the vsync boundary, with the mean quantized like the median: no step is
 // abandoned before the boundary
