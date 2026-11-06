@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { MeshoptSimplifier } from "meshoptimizer";
 import { POIS } from "../../shared/world/map";
-import { FAR_DIR, FAR_INDEX, poiSourceHash, type FarIndex } from "./far-hash.mts";
+import { FAR_DIR, FAR_INDEX, binHash, poiSourceHash, type FarIndex } from "./far-hash.mts";
 
 const USAGE = "npx tsx tools/world/bake-far.mts [--url http://127.0.0.1:3120] [--only id,id] [--tris 12000]";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -206,7 +206,7 @@ for (const id of ids) {
     if (!soup.tris) throw new Error("no geometry extracted " + JSON.stringify(soup.skipped));
     const bin = encode(soup);
     fs.writeFileSync(path.join(root, FAR_DIR, id + ".bin"), bin);
-    index.pois[id] = { hash: poiSourceHash(root, id), tris: soup.tris, bytes: bin.length };
+    index.pois[id] = { hash: poiSourceHash(root, id), bin: binHash(bin), tris: soup.tris, bytes: bin.length };
     fs.writeFileSync(indexPath, JSON.stringify(index, null, 2) + "\n");
     console.log(`${id}: ${soup.srcTris} → ${soup.tris} tris (error ${soup.error.toFixed(4)}), ${(bin.length / 1024).toFixed(0)} KB, ${Math.round((Date.now() - t0) / 1000)} s, skipped ${JSON.stringify(soup.skipped)}${errors.length ? " page errors: " + errors.join(" | ") : ""}`);
   } catch (e) {
