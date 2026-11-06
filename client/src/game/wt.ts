@@ -35,8 +35,10 @@ const b64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 /** `onMessage` gets every frame from the start: the server switches its frames over before we read "wt-ok", and a
  *  reliable frame (an event) in that window would otherwise be lost */
 export async function dialWt(offer: WtOffer, token: string, onMessage: Transport["onMessage"]): Promise<WtLink | FallbackReason> {
-  // the server's UDP socket is IPv4, and for "localhost" a browser dials QUIC on ::1 alone (TCP falls back to 127.0.0.1)
-  const url = offer.url ?? `https://${location.hostname === "localhost" ? "127.0.0.1" : location.hostname}:${offer.port}/wt`;
+  // the server's UDP socket is IPv4, and for "localhost" a browser dials QUIC on ::1 alone (TCP falls back to 127.0.0.1).
+  // Only with a certificate checked by hash: a real one is checked against the name, and may name localhost alone
+  const host = location.hostname === "localhost" && offer.hashes ? "127.0.0.1" : location.hostname;
+  const url = offer.url ?? `https://${host}:${offer.port}/wt`;
   let t: WebTransport;
   try {
     t = new WebTransport(url, {
@@ -101,6 +103,12 @@ export async function dialWt(offer: WtOffer, token: string, onMessage: Transport
   if (ok !== true) { close(); return fail(ok === "timeout" ? "timeout" : "auth"); }
   clearTimeout(timer);
   const pingW = new Writer(new ArrayBuffer(16));
-  keepalive = setInterval(() => { if (performance.now() - lastTx >= KEEPALIVE_MS) link.sendUnreliable(pingW.reset().u8(M.Ping).f64(performance.now()).view()); }, KEEPALIVE_MS / 2);
+  // straight to the datagram writer, past the stall checks: outside a match nothing answers it, and a keepalive counted
+  // as our sending would make the first gameplay frame after it look like a dead session
+  keepalive = setInterval(() => {
+    if (ended || performance.now() - lastTx < KEEPALIVE_MS) return;
+    const u8 = pingW.reset().u8(M.Ping).f64(performance.now()).view();
+    countSent(stats, Channel.Unreliable, u8.length); dw.write(u8.slice()).catch(() => {});
+  }, KEEPALIVE_MS);
   return link;
 }
