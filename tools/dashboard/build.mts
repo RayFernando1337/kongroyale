@@ -132,7 +132,7 @@ function main(): void {
   const released = new Set<number>();
   for (const r of releases) for (const m of r.body.matchAll(/^- #(\d+)/gm)) released.add(Number(m[1]));
   const sinceNewest = nextTag
-    ? gh(["api", "--paginate", "repos/" + data.repo + "/compare/" + nextTag + "...main", "--jq", ".commits[].commit.message | split(\"\\n\")[0]"]).split("\n").map((l) => Number(/\(#(\d+)\)\s*$/.exec(l)?.[1])).filter(Boolean)
+    ? gh(["api", "--paginate", "repos/" + data.repo + "/commits?sha=main&per_page=100&since=" + gh(["api", "repos/" + data.repo + "/commits/" + shaOf(nextTag), "--jq", ".commit.committer.date"]).trim(), "--jq", ".[].commit.message | split(\"\\n\")[0]"]).split("\n").map((l) => Number(/\(#(\d+)\)\s*$/.exec(l)?.[1])).filter(Boolean)
     : [...released];
   const unreleased = nextTag ? merged.filter((p) => sinceNewest.includes(p.number) && !released.has(p.number)) : merged.filter((p) => !released.has(p.number));
 
