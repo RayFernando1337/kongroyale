@@ -458,16 +458,19 @@ async function run() {
   };
   const notes: string[] = [];
   let overCap = "";
-  const stops = POIS.filter((p) => p.id !== "lobby-islet");
+  const only = opt("--stops", "").split(",").filter(Boolean);
+  const stops = only.length ? only.map((id) => POIS.find((p) => p.id === id) ?? (() => { throw Error(`--stops: no POI ${id}`); })()) : POIS.filter((p) => p.id !== "lobby-islet");
+  let evictions: unknown[] = [], coldDraws = 0;
   const tour = async (secs: number) => {
     const end = Date.now() + secs * 1000;
     for (let i = 0; Date.now() < end && !overCap; i++) {
       const p = stops[i % stops.length];
       const moved = await evalIn<boolean>(pageCdp, `(() => { const k = window.__kr, me = k.game && k.game.link && k.game.link.match && k.game.link.match.players.find((q) => q && !q.bot); if (!me) return false; Object.assign(me, { x: ${p.x}, z: ${p.z}, y: k.engine.terrain.height(${p.x}, ${p.z}) + 1.5, vx: 0, vy: 0, vz: 0, hp: ${MAX_HP}, shield: ${MAX_SHIELD} }); return true; })()`);
-      if (!moved) { errors.push("--tour needs a practice match (no local host to move the player in)"); return; }
+      if (!moved) { errors.push("--tour needs a practice match (no local host to move the player in)"); break; }
       console.log(`    tour: ${p.id}`);
       await hold(Math.min(tourS * 1000, Math.max(0, end - Date.now())));
     }
+    ({ evictions, coldDraws } = await evalIn<{ evictions: unknown[]; coldDraws: number }>(pageCdp, "({ evictions: window.__kr.evictions || [], coldDraws: window.__kr.coldDraws || 0 })"));
   };
   const watchdogBlind = new Map<number, number>();
   const watchdog = setInterval(() => {
@@ -556,10 +559,10 @@ async function run() {
   const result = {
     schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "memory", startedAt, durationMs: Math.round(performance.now() - t0),
     source: source(process.cwd()), environment: { ...env(), gpu: gpu || null },
-    config: { url: url.pathname + url.search, profile, viewport: `${vw}x${vh}`, dpr, seed, matchSecs, matches, warmup, heap: flag("--heap"), tourS },
-    cases, errors, notes, timeline, artifacts: [],
+    config: { url: url.pathname + url.search, profile, viewport: `${vw}x${vh}`, dpr, seed, matchSecs, matches, warmup, heap: flag("--heap"), tourS, stops: only.join(",") },
+    cases, errors, notes, timeline, artifacts: [], evictions, coldDraws,
     leaks: [delta("left1", "left2"), delta("match", "match2"), delta("warmup", "warmup2"), delta("title", "left1")].filter(Boolean),
-  } satisfies RunResult & { leaks: unknown[]; notes: string[]; timeline: unknown[] };
+  } satisfies RunResult & { leaks: unknown[]; notes: string[]; timeline: unknown[]; evictions: unknown[]; coldDraws: number };
   const file = path.join(out, "result.json");
   save(file, result);
   console.log(`wrote ${file}${errors.length ? `\nerrors:\n  ${errors.join("\n  ")}` : ""}`);
@@ -641,4 +644,4 @@ function table() {
 if (cmd === "run") { await run(); process.exit(process.exitCode ?? 0); }
 else if (cmd === "table") table();
 else if (cmd === "check") { const f = argv.slice(1).find((a) => !a.startsWith("--") && a !== opt("--budgets", "")) ?? ""; process.exitCode = checkBudgets(parseResult(JSON.parse(fs.readFileSync(f, "utf8")), f), opt("--budgets", "tools/memory-budgets.json")) ? 0 : 1; }
-else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--warmup] [--budgets FILE] [--max-mb N] [--heap] [--tour SECONDS] | table result.json... [--md] | check result.json [--budgets tools/memory-budgets.json]"); process.exitCode = cmd === "help" ? 0 : 2; }
+else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--warmup] [--budgets FILE] [--max-mb N] [--heap] [--tour SECONDS [--stops poi,poi,...]] | table result.json... [--md] | check result.json [--budgets tools/memory-budgets.json]"); process.exitCode = cmd === "help" ? 0 : 2; }
