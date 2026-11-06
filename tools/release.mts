@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const FORK = "rayfernando1337/kongroyale";
 const MERGED_AT_SLACK_MS = 10 * 60_000;
@@ -41,6 +42,16 @@ const gh = (...a: string[]): string => {
 };
 const ghJson = (...a: string[]) => JSON.parse(gh(...a) || "null");
 const say = (m: string) => console.log((dry ? "[dry-run] " : "") + m);
+
+const republishDashboard = () => {
+  if (prefix !== "kong") return say("--prefix " + prefix + " is a trial; the dashboard is not republished");
+  if (dry) return say("would republish the dashboard (tools/dashboard/publish.mts)");
+  try {
+    execFileSync(process.execPath, ["--import", "tsx", fileURLToPath(new URL("./dashboard/publish.mts", import.meta.url))], { stdio: "inherit" });
+  } catch {
+    die("the channel moved, but the dashboard republish FAILED, so the site still shows the old channels. From a checkout of main at its tip, run: npx tsx tools/dashboard/publish.mts");
+  }
+};
 
 const repo = (ghJson("repo", "view", "--json", "nameWithOwner") as { nameWithOwner: string }).nameWithOwner;
 if (repo.toLowerCase() !== FORK) die("refusing to run against " + repo + "; this tool only publishes to " + FORK);
@@ -200,6 +211,7 @@ if (cmd === "plan") {
   moveTag(channel("stable"), rel.sha);
   if (!dry) gh("release", "edit", tag, "--prerelease=false", "--latest=" + (prefix === "kong"));
   say(tag + " is stable");
+  republishDashboard();
 } else if (cmd === "rollback") {
   const all = releases().filter((r) => releaseExists(r.tag));
   const stableSha = refSha(channel("stable")) ?? die("no " + channel("stable") + " tag; nothing to roll back");
@@ -210,4 +222,5 @@ if (cmd === "plan") {
   moveTag(channel("stable"), to.sha);
   if (!dry) { gh("release", "edit", cur.tag, "--prerelease=true", "--latest=false"); gh("release", "edit", to.tag, "--prerelease=false", "--latest=" + (prefix === "kong")); }
   say("fix forward: merge the fix, then cut the next patch");
+  republishDashboard();
 } else die("usage: release.mts plan | cut [--hotfix-from <tag>] | promote <tag> | rollback [--to <tag>]   (--dry-run, --prefix <p>, --accept-missing, --allow-unlabelled)");
