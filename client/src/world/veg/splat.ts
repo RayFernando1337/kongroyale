@@ -40,6 +40,9 @@ export const SPLAT_LEVELS_SMALL = [1024, 512, 256, 128, 64, 32, 16];
 /** splat density: a level of N splats is used while N <= density · P² < 2N (P = the plant's projected radius, px) —
  *  boundary between level l and l+1 at P = √(N_l / density) (live: __kr.veg.splats.setDensity) */
 const DENSITY0 = flag("spldens");
+/** cap (px) on the viewport height that picks levels (0 = none): the projected radius grows with the drawing buffer, so
+ *  a DPR-2 view drew about 4x the splats of DPR 1 for the same screen (RAY-186). Applied as a density factor */
+const LEVEL_PX = flag("splpx");
 /** the band (fraction of a boundary) over which two levels dissolve into each other (boundaries are √2 apart) */
 const BAND_LO = 0.9, BAND_HI = 1.1;
 /** the level the far-map / canopy shadow copy uses */
@@ -623,7 +626,9 @@ export class SplatSet {
   }
   get density() { return this.dens; }
   /** the quality tier's factor on the default density (VegSystem.setQuality) */
-  setDensityK(k: number) { this.setDensity(DENSITY0 * k); }
+  setDensityK(k: number) { this.tierK = k; this.setDensity(DENSITY0 * k * this.capK); }
+  private tierK = 1;
+  private capK = 1;
 
   private material(level: number, shadow: boolean): THREE.MeshBasicMaterial {
     const off = this.LV.slice(0, level).reduce((a, b) => a + b, 0);
@@ -794,6 +799,10 @@ ${F_FADE}
   update(cam: THREE.PerspectiveCamera, now: number, sceneHeight: number, force = false) {
     if (!this.built) return;
     this.vpH = sceneHeight;
+    if (LEVEL_PX > 0) {
+      const k = Math.min(1, LEVEL_PX / Math.max(1, sceneHeight)) ** 2;
+      if (Math.abs(k - this.capK) > 1e-3) { this.capK = k; this.setDensity(DENSITY0 * this.tierK * k); }
+    }
     if (this.underFar > 0) {
       // (the impostor understory's band: its reach grows 8 m per m of eye height above 30 m — a descent sweeps it in)
       const far = Math.min(8000, this.underFar + Math.max(0, cam.position.y - 30) * 8);

@@ -152,6 +152,7 @@ const FLAGS = {
   splocc: { kind: num(1), owner: "veg", purpose: "splat ambient occlusion gain" },
   splocfar: { kind: num(0.5), owner: "veg", purpose: "splat ambient occlusion gain far away" },
   splop: { kind: num(1.35), owner: "veg", purpose: "splat opacity gain" },
+  splpx: { kind: num(0), owner: "veg", purpose: "cap (px) on the viewport height that picks splat levels: a taller (Retina) view keeps the levels it has at this height; 0 = no cap" },
   splres: { kind: num(256), owner: "veg", purpose: "splat capture resolution (px)" },
   splsat: { kind: num(1.1), owner: "veg", purpose: "near-splat saturation" },
   splshadow: { kind: num(1), owner: "veg", purpose: "splat shadow gain" },
