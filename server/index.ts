@@ -18,7 +18,7 @@ import { buildStaticWorld } from "../shared/sim/static-world";
 import { lootSpots } from "../shared/sim/loot-spots";
 import { alive } from "../shared/sim/player";
 import { M, NET_VERSION } from "../shared/net/proto";
-import { sendFrame, type Path } from "../shared/net/transport";
+import { FALLBACK_REASONS, sendFrame, type FallbackReason, type Path } from "../shared/net/transport";
 import { WsTransport } from "./transport-ws";
 import type { WtTransport } from "./transport-wt";
 import { startWt, type WtEndpoint } from "./wt";
@@ -84,11 +84,17 @@ const addIp = (ip: string) => perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
 const dropIp = (ip: string) => { const n = (perIp.get(ip) ?? 1) - 1; if (n > 0) perIp.set(ip, n); else perIp.delete(ip); };
 /** the WebTransport endpoint (null: KR_WT unset, or its module could not load) */
 let wt: WtEndpoint | null = null;
-/** /health: clients by transport, and the WebTransport endpoint's sessions (or why it is off) */
+/** links that settled on WebTransport, and links that stayed on (or went back to) the WebSockets by reason, since the
+ *  server started: what the clients said ({ t: "net" }), so fallbacks are counted across real players */
+const settled = { wt: 0, ws: Object.fromEntries(FALLBACK_REASONS.map((r) => [r, 0])) as Record<FallbackReason, number> };
+/** a client's last report and how many it sent: a link reports once per change, so a few is plenty */
+const netSaid = new WeakMap<Client, { last: string; n: number }>();
+const NET_REPORTS_MAX = 8;
+/** /health: clients by transport, how links settled, and the WebTransport endpoint's sessions (or why it is off) */
 function transportHealth() {
   const by: Record<string, number> = {};
   for (const c of byToken.values()) by[c.bin.kind] = (by[c.bin.kind] ?? 0) + 1;
-  return { clients: by, webtransport: wt ? { port: wt.welcome().port, ...wt.counts } : { off: wtOff } };
+  return { clients: by, settled, webtransport: wt ? { port: wt.welcome().port, ...wt.counts } : { off: wtOff } };
 }
 function allow(s: Sock): boolean { if (take(s)) return true; strike(s, "rate"); return false; }
 /** `weight`: a frame no honest client ever sends (a host-only or malformed event message) costs more than a rate blip */
@@ -340,6 +346,17 @@ function onJSON(c: Client, msg: { t?: unknown; [k: string]: unknown }) {
     case "mode": if (c.lobby?.event) { strike(c.sock, "not the host", 10); break; } if (c.lobby && c.lobby.owner === c && !c.lobby.match) { c.lobby.mode = msg.mode === "trios" ? "trios" : "solo"; c.lobby.assignSquads(); c.lobby.broadcastJSON(c.lobby.state()); } break;
     case "start": if (c.lobby?.event) { strike(c.sock, "not the host", HEAVY); break; } if (c.lobby && c.lobby.owner === c) { if (!c.lobby.match) c.lobby.start(); else c.lobby.match.startNow(); } break;
     case "leave": leaveLobby(c); break;
+    // which transport the link settled on and why (client/src/game/net.ts). Only counted when it matches what the
+    // server sees (a "wt" claim needs an attached session), on a change, and a few times per client
+    case "net": {
+      const why = msg.why as FallbackReason, onWt = msg.transport === "wt";
+      if (onWt ? !c.wt : !FALLBACK_REASONS.includes(why)) break;
+      const key = onWt ? "wt" : why, said = netSaid.get(c) ?? { last: "", n: 0 };
+      if (said.last === key || said.n >= NET_REPORTS_MAX) break;
+      netSaid.set(c, { last: key, n: said.n + 1 });
+      if (onWt) settled.wt++; else settled.ws[why]++;
+      break;
+    }
     // the client's island stream (the warm-up waits for it, ≤ 40 s: MatchHost.holdForStream)
     case "stream": c.peer.streamed = msg.done === true; break;
     // my map marker / ping → my squadmates only (solo: nobody). ≤ 6 per second per player; coordinates

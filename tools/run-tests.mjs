@@ -42,6 +42,7 @@ const checks = [
   { id: "nettail", name: "network tails (against tools/performance/net-budgets.json)", slow: true, cmd: "npx", args: ["tsx", "tools/performance/net-tail.mts", "--check", "--out", tmp("net-tail.json")] },
   { id: "redteam", name: "admin lobby red team", slow: true, cmd: "node", args: ["tools/admin-lobby/redteam.mjs", "--md", tmp("redteam.md")] },
   { id: "wt", name: "WebTransport endpoint (loopback, Node client)", slow: true, cmd: "npx", args: ["tsx", "tools/net/wt-endpoint.test.mts"] },
+  { id: "wtbrowser", name: "WebTransport in a browser (loopback, headless Chromium; SKIP without one)", slow: true, cmd: "npx", args: ["tsx", "tools/net/wt-browser.test.mts"] },
 ];
 
 const usage = (why) => {

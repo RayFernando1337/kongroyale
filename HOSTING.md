@@ -104,8 +104,8 @@ KONGBOT is the in-game bug reporter (`/kongbot <message>` in the chat bar). With
 ## WebTransport
 
 With `KR_WT=1` the server also listens for WebTransport (HTTP/3 over QUIC, so UDP) on `KR_WT_PORT`. Players who
-connect with `?wt=1` send inputs and get snapshots as datagrams there, so one lost packet no longer stalls the ones
-behind it. The WebSocket stays open as the control channel and is the fallback: a player whose network blocks UDP, or
+open the page with `?wt=1` get snapshots and pings as datagrams there, so one lost packet no longer stalls the ones
+behind it; inputs and the other frames ride the session's reliable stream. The WebSocket stays open as the control channel and is the fallback: a player whose network blocks UDP, or
 whose browser has no WebTransport, plays over WebSockets as before.
 
 - **UDP**: open `KR_WT_PORT` for UDP in the firewall. Nothing may sit in front of it: CDNs and the usual reverse proxies
@@ -116,7 +116,9 @@ whose browser has no WebTransport, plays over WebSockets as before.
 - **The QUIC module** (`@fails-components/webtransport-transport-http3-quiche`) is a native optional dependency with
   ready builds for Linux and macOS (x64 and ARM) and Windows x64. Where it doesn't install, the server logs why, says so
   in `/health` (`transports.webtransport.off`) and runs WebSocket-only.
-- `/health` counts clients per transport (`transports.clients`) and sessions opened and refused, by reason.
+- `/health` counts clients per transport (`transports.clients`), sessions opened and refused, by reason, and how links
+  settled (`transports.settled`: on `wt`, or on `ws` with why: `flag-off`, `server-off`, `unsupported`,
+  `connect-failed`, `timeout`, `auth`, `closed`), as each player's browser reports it.
 
 ## Behind a reverse proxy
 
