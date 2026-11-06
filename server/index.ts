@@ -90,11 +90,13 @@ const settled = { wt: 0, ws: Object.fromEntries(FALLBACK_REASONS.map((r) => [r, 
 /** a client's last report and how many it sent: a link reports once per change, so a few is plenty */
 const netSaid = new WeakMap<Client, { last: string; n: number }>();
 const NET_REPORTS_MAX = 8;
-/** /health: clients by transport, how links settled, and the WebTransport endpoint's sessions (or why it is off) */
+/** /health: clients by transport, how links settled, the WebTransport endpoint's sessions (or why it is off), and the
+ *  running matches' human inputs: lost (a seq never queued), recovered by an input window, dropped from a full queue */
 function transportHealth() {
-  const by: Record<string, number> = {};
+  const by: Record<string, number> = {}, inputs = { lost: 0, recovered: 0, dropped: 0 };
   for (const c of byToken.values()) by[c.bin.kind] = (by[c.bin.kind] ?? 0) + 1;
-  return { clients: by, settled, webtransport: wt ? { port: wt.welcome().port, ...wt.counts } : { off: wtOff } };
+  for (const l of lobbies.values()) { const n = l.match?.netStats; if (n) { inputs.lost += n.inputsLost; inputs.recovered += n.inputsRecovered; inputs.dropped += n.inputsDropped; } }
+  return { clients: by, settled, inputs, webtransport: wt ? { port: wt.welcome().port, ...wt.counts } : { off: wtOff } };
 }
 function allow(s: Sock): boolean { if (take(s)) return true; strike(s, "rate"); return false; }
 /** `weight`: a frame no honest client ever sends (a host-only or malformed event message) costs more than a rate blip */
@@ -255,8 +257,9 @@ function logClose(c: Client, s: Sock, code: number, reason: Buffer, aux: boolean
 /** one binary frame from a client, on any of its transport's paths */
 function onBinary(c: Client, u8: Uint8Array, from: Path) {
   const host = c.lobby?.host;
-  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
-  if (u8[0] === M.Input) c.lastInputAt = Date.now();
+  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Inputs && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
+  // a single input (WebSockets) or an input window (WebTransport): the player is here (lobby.ts housekeeping)
+  if (u8[0] === M.Input || u8[0] === M.Inputs) c.lastInputAt = Date.now();
   if (!host.receive(c.peer, u8, from.reply)) from.strike("bad frame");
 }
 const helloAt = new WeakMap<Client, number>(), helloLater = new WeakMap<Client, NodeJS.Timeout>();

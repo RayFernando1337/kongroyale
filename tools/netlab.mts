@@ -8,6 +8,11 @@
 //   --loss:   percent of messages lost per socket and direction. Each socket is TCP: a lost message is resent RESEND_MS(rtt)
 //             later and every later message on that socket waits behind it (head-of-line blocking), as tools/performance/
 //             netpath.py measured on Linux TCP
+//   --transport wt: the WebTransport link instead (client/src/game/wt.ts): the client sends its input window (M.Inputs),
+//             unreliable frames (channelOf: the input window, pings, pongs, snapshots) are datagrams, each lost on its own
+//             with no resend and free to overtake one another (a snapshot goes as SNAPSHOT_DATAGRAM_COPIES of them, like the
+//             server's), and the other frames share one reliable stream that
+//             resends a lost one like TCP. --aux is ignored. Default ws
 //   --aux:    two sockets per client, like the game (client/src/game/net.ts opens a redundant aux socket; the server sends
 //             every frame on both and the client sends every input on both; the first copy wins). Off by default, so
 //             the numbers below and older results keep their meaning. tools/performance/net-tail.mts always sets it.
@@ -61,6 +66,7 @@ import { B, PS, SK } from "../shared/sim/player";
 import { makeShotResult } from "../shared/sim/hitscan";
 import { POIS, WEAPONS, type WeaponId } from "../shared/world/map";
 import { M, Reader, SURF_PLAYER, readSnapHeader, type SnapHeader } from "../shared/net/proto";
+import { Channel, SNAPSHOT_DATAGRAM_COPIES, channelOf, makeTransportStats, type Transport } from "../shared/net/transport";
 import { stats } from "./performance/common.mts";
 import { ClientMatch, type EventSink } from "../client/src/game/client";
 import type { Link } from "../client/src/game/net";
@@ -71,7 +77,8 @@ const argv = process.argv.slice(2);
 const opt = (k: string, d: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const rtts = (argv[0] && !argv[0].startsWith("--") ? argv[0] : "20,80,160,250,320").split(",").map(Number);
 const jitter = Number(opt("--jitter", "0")), secs = Number(opt("--secs", "20")), weapon = opt("--weapon", "ar") as WeaponId, killable = argv.includes("--kill"), check = argv.includes("--check");
-const loss = Number(opt("--loss", "0")) / 100, aux = argv.includes("--aux"), servePort = Number(opt("--serve", "0")), connectUrl = opt("--connect", ""), token = opt("--token", "");
+const transport = opt("--transport", "ws") === "wt" ? "wt" : "ws";
+const loss = Number(opt("--loss", "0")) / 100, aux = transport === "ws" && argv.includes("--aux"), servePort = Number(opt("--serve", "0")), connectUrl = opt("--connect", ""), token = opt("--token", "");
 /** how much later a lost TCP message arrives: the sender resends it once a later segment's SACK shows the gap (RACK-TLP).
  *  netpath.py, 1% loss, 20 ms jitter, Linux cubic + SACK + RACK: stall peaks 68-100 ms at 50 ms RTT, 167-201 ms at 150 ms,
  *  305-336 ms at 250 ms */
@@ -88,20 +95,37 @@ const td = (() => { try { const b = fsTd.readFileSync(new URL("../public/assets/
 const terrain = new Terrain(td.heights, td.biome);
 const { world } = await buildStaticWorld(terrain, td);
 
-/** one TCP socket's direction: its own random stream, delivery in order */
-interface Sock { q: Array<{ at: number; u8: Uint8Array; json?: unknown }>; rnd: () => number }
+/** one TCP socket's direction: its own random stream, delivery in order. `dgram`: a WebTransport session's datagrams
+ *  instead (a lost one is gone, and they may overtake each other) */
+interface Sock { q: Array<{ at: number; u8: Uint8Array; json?: unknown }>; rnd: () => number; dgram?: true }
 interface Pipe { socks: Sock[]; oneWay: number }
 const lcg = (seed: number) => { let s = seed; return () => ((s = (Math.imul(s, 1664525) + 1013904223) | 0), ((s >>> 8) & 0xffff) / 65536); };
-function pipe(oneWay: number, seed: number): Pipe { return { oneWay, socks: (aux ? [0, 1] : [0]).map((k) => ({ q: [], rnd: lcg(seed + k * 1000) })) }; }
+/** ws: the main socket (+ the aux one); wt: the session's stream, then its datagrams */
+function pipe(oneWay: number, seed: number): Pipe {
+  if (transport === "wt") return { oneWay, socks: [{ q: [], rnd: lcg(seed) }, { q: [], rnd: lcg(seed + 1000), dgram: true }] };
+  return { oneWay, socks: (aux ? [0, 1] : [0]).map((k) => ({ q: [], rnd: lcg(seed + k * 1000) })) };
+}
 let lostMsgs = 0;
 const sendOn = (p: Pipe, s: Sock, u8: Uint8Array | null, json?: unknown) => {
   let d = p.oneWay + (jitter ? (s.rnd() - 0.5) * 2 * jitter / 2 : 0);
-  if (loss && s.rnd() < loss) { d += RESEND_MS(p.oneWay * 2); lostMsgs++; }
-  const at = Math.max(s.q.length ? s.q[s.q.length - 1].at : 0, now + d);   // FIFO (TCP never reorders)
-  s.q.push({ at, u8: u8 ? u8.slice() : new Uint8Array(0), json });
+  const lost = loss > 0 && s.rnd() < loss;
+  if (lost) lostMsgs++;
+  const msg = { at: now + d, u8: u8 ? u8.slice() : new Uint8Array(0), json };
+  if (s.dgram) { if (lost) return; let i = s.q.length; while (i > 0 && s.q[i - 1].at > msg.at) i--; s.q.splice(i, 0, msg); return; }
+  if (lost) msg.at += RESEND_MS(p.oneWay * 2);
+  msg.at = Math.max(s.q.length ? s.q[s.q.length - 1].at : 0, msg.at);   // FIFO (TCP never reorders)
+  s.q.push(msg);
 };
-/** a frame goes out on every socket (the match info only on the main one, like the server's JSON) */
-const send = (p: Pipe, u8: Uint8Array | null, json?: unknown) => { for (const s of json ? p.socks.slice(0, 1) : p.socks) sendOn(p, s, u8, json); };
+/** ws: a frame goes out on every socket (the match info only on the main one, like the server's JSON); wt: on the
+ *  datagrams or the stream, as channelOf says */
+const send = (p: Pipe, u8: Uint8Array | null, json?: unknown) => {
+  if (transport === "wt") {
+    const dgram = !!u8 && !json && channelOf(u8[0]) === Channel.Unreliable;
+    for (let k = dgram && u8![0] === M.Snapshot ? SNAPSHOT_DATAGRAM_COPIES : 1; k > 0; k--) sendOn(p, p.socks[dgram ? 1 : 0], u8, json);
+    return;
+  }
+  for (const s of json ? p.socks.slice(0, 1) : p.socks) sendOn(p, s, u8, json);
+};
 
 type Inp = { yaw: number; pitch: number; fire: boolean; mx: number; mz: number; buttons: number; dx: number; dy: number; poll: (o: { mx: number; mz: number; buttons: number; slot: number }, allowFire: boolean) => void };
 
@@ -136,8 +160,15 @@ function makeClients(sendUp: (pid: number, u8: Uint8Array) => void) {
   const T = secs * 1000, rateMs = WEAPON_DEFS[weapon].auto ? 0 : 60000 / WEAPON_DEFS[weapon].rpm + 20;
   const clients = [0, 1].map((pid) => {
     const tl = tails[pid];
-    const sendBinary = (u8: Uint8Array) => { if (u8[0] === M.Input) tl.sentAt[new DataView(u8.buffer, u8.byteOffset).getUint32(1, true) % 4096] = now; sendUp(pid, u8); };
-    const link: Link = { offline: false, onJSON: () => {}, onBinary: () => {}, onClose: () => {}, sendJSON: () => {}, sendBinary, close: () => {} };
+    // an input is sent at the first frame that carries it: M.Input, or the newest entry of an input window
+    const sendBinary = (u8: Uint8Array) => {
+      const dv = new DataView(u8.buffer, u8.byteOffset);
+      if (u8[0] === M.Input) tl.sentAt[dv.getUint32(1, true) % 4096] = now;
+      else if (u8[0] === M.Inputs) tl.sentAt[(dv.getUint32(2, true) + u8[1] - 1) % 4096] = now;
+      sendUp(pid, u8);
+    };
+    const bin: Transport = { kind: transport, stats: makeTransportStats(transport), sendReliable: sendBinary, sendUnreliable: sendBinary, onMessage: () => {}, close: () => {} };
+    const link: Link = { offline: false, transport: bin, onJSON: () => {}, onBinary: () => {}, onClose: () => {}, sendJSON: () => {}, sendBinary, close: () => {} };
     const inp: Inp = { yaw: 0, pitch: 0, fire: false, mx: 0, mz: 0, buttons: 0, dx: 0, dy: 0, poll(o, allowFire) { o.mx = this.mx; o.mz = this.mz; o.buttons = this.buttons | (this.fire && allowFire ? B.FIRE : 0); o.slot = 0; } };
     return { cm: new ClientMatch(world, link), inp };
   });
@@ -260,7 +291,7 @@ async function run(rtt: number) {
     if (now >= nextFrame) { C.frame(1 / 144); nextFrame += 1000 / 144; }
   }
   const cm = C.clients[0].cm;
-  return { rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, withheld: C.withheld(), ...C.deferrals(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, serverInputs: H.gaps.report(), ...C.tails() };
+  return { transport, rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, withheld: C.withheld(), ...C.deferrals(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, serverInputs: H.gaps.report(), ...C.tails() };
 }
 
 /** --serve: the host side of one duel over real WebSockets. Every socket must say hello with the duel's token before
