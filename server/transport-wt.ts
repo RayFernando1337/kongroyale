@@ -2,7 +2,7 @@
 // (server/wt.ts): unreliable frames as QUIC datagrams, reliable frames on the session's one bidirectional stream
 // (shared/net/frames.ts). A frame too big for one datagram rides the stream instead. Backpressure: unreliable frames are
 // skipped while too many datagrams wait to be written, and a session whose stream backlog passes 4 MB is closed, like a
-// WebSocket that far behind.
+// WebSocket that far behind, as is one whose stream fails a write.
 import { Channel, countSent, makeTransportStats, type Path, type Transport } from "../shared/net/transport";
 import { frame } from "../shared/net/frames";
 
@@ -26,7 +26,9 @@ export class WtTransport implements Transport {
   oversize = 0;
   private pendingDatagrams = 0; private backlog = 0; private closed = false;
   readonly datagramPath: Path; readonly streamPath: Path;
-  constructor(private readonly session: WtSessionLike, private readonly dgram: Writer, private readonly stream: Writer, strike: (why: string) => void) {
+  /** `ended`: the endpoint's cleanup (server/wt.ts), run once whoever closes the session, so the client goes back to
+   *  its WebSockets and the session's slot is freed */
+  constructor(private readonly session: WtSessionLike, private readonly dgram: Writer, private readonly stream: Writer, strike: (why: string) => void, private readonly ended: () => void) {
     this.datagramPath = { reply: (u8) => this.sendUnreliable(u8), strike };
     this.streamPath = { reply: (u8) => this.sendReliable(u8), strike };
   }
@@ -47,7 +49,8 @@ export class WtTransport implements Transport {
     const f = frame(u8), n = f.length;
     if (this.backlog + n > KILL_BACKLOG_BYTES) { this.close("send backlog > 4 MB"); return; }
     this.backlog += n;
-    this.stream.write(f).then(() => { this.backlog -= n; }, () => { this.backlog -= n; });
+    // a stream that fails a write (the peer stopped reading it) loses every reliable frame after it: end the session
+    this.stream.write(f).then(() => { this.backlog -= n; }, () => { this.backlog -= n; this.close("stream write failed"); });
   }
   /** an inbound frame on the datagram or stream path */
   receive(u8: Uint8Array, from: Path) {
@@ -58,5 +61,6 @@ export class WtTransport implements Transport {
     if (this.closed) return;
     this.closed = true;
     try { this.session.close({ closeCode: 0, reason }); } catch { /* gone */ }
+    this.ended();
   }
 }
