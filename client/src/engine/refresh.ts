@@ -1,6 +1,6 @@
 // The display's refresh rate, estimated from requestAnimationFrame timestamps. The engine uses it as the default frame
 // cap and the dynamic-resolution target; the video menu and KONGBOT reports show it. A sample is steady or uneven: a
-// steady one (the frames kept pace) reads its median, an uneven one (a game missing vsync) its fast tail, and
+// steady one (the frames kept pace) reads its mean, an uneven one (a game missing vsync) its fast tail, and
 // RefreshEstimate holds an uneven reading under the highest steady one on the screen, since Safari's timestamps under
 // an uneven load carry a fast tail that is no period at all.
 
@@ -9,14 +9,16 @@
  *  average. The 20th percentile used before read a GPU-bound 21 fps match on a 60 Hz screen as 30 Hz (RAY-186). At 5 %,
  *  at least 5 of every 90 frames must make vsync; fewer read as a fraction of the refresh, as no frame making it does. */
 export const REFRESH_TAIL_PCT = 5;
-/** a sample whose median interval is within this factor of its fast tail, and whose spread is about as wide above the
- *  median as below it, is steady, and its median is the period. Safari's rAF timestamp is when the rendering update
- *  started, not the vsync: idle they spread about ±3 ms (a 13-15 ms fast tail on a 60 Hz screen, which read 67-77 Hz),
- *  and under an uneven load an update that starts late is followed by one a few ms after the next vsync, so the fast
- *  tail read 100-144 Hz on a 60 Hz screen (RAY-186, the guard's A/B). Jitter spreads both ways; frames that miss
- *  vsync only come late, so a sample whose intervals sit on or above the tail with nothing above the median is
- *  uneven, however close the two are */
+/** a sample whose median interval is within this factor of its fast tail, with no vsync skipped in its slowest 5 %
+ *  (SKIP_RATIO), is steady: it reads its mean interval between the 5th and 95th percentiles. Safari's rAF timestamp is
+ *  when the rendering update started, not the vsync: idle they spread about ±3 ms (a 13-15 ms fast tail on a 60 Hz
+ *  screen, which read 67-77 Hz), and under an uneven load an update that starts late is followed by one a few ms after
+ *  the next vsync, so the fast tail read 100-144 Hz on a 60 Hz screen (RAY-186, the guard's A/B). Each callback takes
+ *  its own vsync, so the mean interval is the period when none is skipped and longer when some are: a steady reading
+ *  errs low, never high, whatever shape the jitter has */
 export const STEADY_RATIO = 1.4;
+/** a sample whose 95th-percentile interval is past this factor of its median skipped vsyncs, so it is uneven */
+export const SKIP_RATIO = 1.5;
 /** a steady reading under this could be a game held at half rate rather than the display, so it sets no ceiling */
 export const CEILING_MIN_HZ = 50;
 const SNAP_HZ = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 170, 175, 180, 200, 240, 280, 300, 360, 480, 500];
@@ -25,9 +27,11 @@ const SNAP_HZ = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 170, 175, 180, 
  *  least 3 Hz, of one) and whether it was steady */
 export function refreshSample(intervalsMs: readonly number[]): { hz: number; steady: boolean } {
   const s = [...intervalsMs].sort((a, b) => a - b);
-  const tail = s[Math.floor((s.length * REFRESH_TAIL_PCT) / 100)], med = s[s.length >> 1], top = s[Math.floor(s.length * 0.95)];
-  const steady = med <= tail * STEADY_RATIO && top - med >= (med - tail) / 4;
-  const hz = Math.round(1000 / (steady ? med : tail));
+  const lo = Math.floor((s.length * REFRESH_TAIL_PCT) / 100), hi = Math.floor(s.length * 0.95);
+  const tail = s[lo], med = s[s.length >> 1], steady = med <= tail * STEADY_RATIO && s[hi] <= med * SKIP_RATIO;
+  let mean = 0;
+  for (let i = lo; i < hi; i++) mean += s[i] / (hi - lo);
+  const hz = Math.round(1000 / (steady ? mean : tail));
   const snap = SNAP_HZ.reduce((a, b) => Math.abs(b - hz) < Math.abs(a - hz) ? b : a);
   return { hz: Math.abs(snap - hz) <= Math.max(3, hz * 0.04) ? snap : hz, steady };
 }

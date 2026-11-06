@@ -19,7 +19,7 @@ assert.equal(refreshFromIntervals(repeat(ray, 90)), 60, "Ray's frames");
 // an unusual rate passes through unsnapped
 assert.equal(refreshFromIntervals(repeat([1000 / 85], 90)), 85, "85 Hz");
 // Safari 27 on a 60 Hz screen (the Mac mini, RAY-186 guard A/B): rAF timestamps are when each update started, so they
-// spread about ±3 ms. The engine suspended (the harness's rAF probe): steady samples, read by their median, not their
+// spread about ±3 ms. The engine suspended (the harness's rAF probe): steady samples, read by their mean, not their
 // 13-14 ms fast tail (71-77 Hz)
 const safariIdle = [16, 17, 17, 17, 19, 14, 17, 19, 15, 17, 16, 16, 18, 16, 15, 18, 17, 19, 14, 17, 15, 18, 19, 14, 17, 18, 15, 17, 15, 18, 19, 15, 16, 17, 17, 18, 15, 17, 18, 16, 20, 12, 17, 17, 16, 17, 17, 16, 19, 15, 17, 15, 18, 17, 15, 16, 19, 14, 17, 17, 18, 18, 15, 17, 17, 16, 19, 15, 17, 16, 17, 17, 16, 17, 18, 16, 19, 12, 18, 17, 15, 18, 17, 16, 18, 16, 15, 18, 17, 17];
 assert.deepEqual(refreshSample(safariIdle), { hz: 60, steady: true }, "Safari idle");
@@ -33,9 +33,13 @@ assert.ok(!uneven.steady && uneven.hz > 100, "Safari uneven: " + JSON.stringify(
 // the same match at half rate (main, no guard): uneven, and its tail is the period
 const safariHalf = [21, 31, 33, 19, 31, 34, 33, 16, 32, 37, 16, 32, 36, 17, 31, 33, 31, 19, 33, 32, 19, 33, 33, 20, 33, 30, 33, 19, 32, 33, 20, 30, 32, 36, 16, 33, 31, 22, 30, 33, 33, 17, 34, 33, 18, 32, 33, 20, 30, 34, 33, 17, 33, 33, 18, 32, 33, 21, 30, 34, 33, 17, 33, 34, 17, 33, 33, 19, 31, 34, 23, 26, 34, 33, 18, 32, 31, 22, 30, 34, 34, 17, 30, 35, 21, 30, 31, 37, 16, 32];
 assert.deepEqual(refreshSample(safariHalf), { hz: 60, steady: false }, "Safari half rate");
-// frames that miss vsync by a little (a 16.7 ms tail, a 20 ms median): they only come late, so the sample is uneven and
-// reads its tail
-assert.deepEqual(refreshSample([...repeat([1000 / 60], 6), ...repeat([20], 84)]), { hz: 60, steady: false }, "mild misses");
+// 50 fps on a 60 Hz screen, one vsync skipped in five: uneven, and its tail is the period
+assert.deepEqual(refreshSample(vsync(60, repeat([1, 1, 1, 1, 2], 90))), { hz: 60, steady: false }, "50 fps on 60 Hz");
+// jitter skewed to one side (a few early timestamps, the rest a little late) still reads its mean, the period
+assert.deepEqual(refreshSample([...repeat([14], 6), ...repeat([16.9], 84)]), { hz: 60, steady: true }, "skewed jitter");
+assert.deepEqual(refreshSample([...repeat([14], 5), ...repeat([17], 85)]), { hz: 60, steady: true }, "whole-ms jitter");
+// a steady sample errs low, never high: intervals that cannot all be one period read their mean, not their tail
+assert.ok(refreshSample([...repeat([1000 / 60], 6), ...repeat([20], 84)]).hz <= 60, "late frames never read high");
 
 // the engine's running estimate, on one screen ("width,height,availLeft,availTop")
 const SCREEN = "1920,1080,0,0";
