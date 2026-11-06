@@ -3,11 +3,16 @@
 // server/index.ts owns the sockets and the messages, and calls initLobbies once with the world it built; the
 // verify-room-lifecycle model (tools/formal) and tools/lobby/membership.test.mts check the rules this file keeps.
 import { WebSocket } from "ws";
+import type { WsTransport } from "./transport-ws";
+import type { WtTransport } from "./transport-wt";
+import type { Transport } from "../shared/net/transport";
+import type { Bucket } from "./limits";
 import type { StaticWorld } from "../shared/sim/world";
 import { Match, Phase } from "../shared/sim/match";
 import { alive } from "../shared/sim/player";
 import { DT, MAX_PLAYERS, SQUAD_SIZE } from "../shared/sim/const";
 import { MatchHost, matchInfo, type HostPeer } from "../shared/net/host";
+import { trackInputGaps, type InputGapReport } from "../shared/net/input-gaps";
 // (voice) squad comms + caster listen-in: the WebRTC handshake relay (the audio is peer to peer)
 import { voiceReset, voiceRosters, voiceSeatLeft } from "./voice";
 import { assignEventSquads, eventRoom, eventSeatOf, eventSeated, eventsDirty, type EventMember, type EventState } from "./admin/events";
@@ -22,7 +27,7 @@ export interface LobbyHost { world: StaticWorld; log: (...a: unknown[]) => void;
 let server: LobbyHost;
 export function initLobbies(h: LobbyHost) { server = h; }
 
-export interface Sock { ws: WebSocket; ip: string; tokens: number; refill: number; strikes: number; lastMsg: number;
+export interface Sock extends Bucket { ws: WebSocket; ip: string;
   /** (admin lobby) round trip of the server's own ws pings, ms (0 = none yet) */
   rtt: number;
   /** liveness + the disconnect log: when it opened, its last pong (Date.now ms), and who closed it when the
@@ -30,7 +35,10 @@ export interface Sock { ws: WebSocket; ip: string; tokens: number; refill: numbe
   openedAt: number; lastPong: number; closedBy: string }
 export const sendJSON = (ws: WebSocket, o: unknown) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o)); };
 
-export interface Client { uid: number; token: string; name: string; lobby: Lobby | null; pid: number; squad: number; sock: Sock; aux: Sock[]; lastInputAt: number; peer: HostPeer; /** last relayed map marker (ms) */ markAt: number;
+export interface Client { uid: number; token: string; name: string; lobby: Lobby | null; pid: number; squad: number; sock: Sock; aux: Sock[];
+  /** the binary transports: the WebSocket pair (always), the WebTransport session (KR_WT=1, when the client opened one)
+   *  and the one that carries the hot path now (the session while it lives, else the pair) */
+  ws: WsTransport; wt: WtTransport | null; bin: Transport; lastInputAt: number; peer: HostPeer; /** last relayed map marker (ms) */ markAt: number;
   /** (caster) a commentator seat in its lobby (−1 = a player); the last relayed camera sync (ms) */
   seat: number; camAt: number;
   /** (caster) a PROGRAM output window (OBS): a seat that only mirrors the seat on air */
@@ -42,7 +50,9 @@ export class Lobby {
   /** (admin lobby) an event lobby the admin runs (server/admin/events.ts): no player is ever its host, it stays open
    *  without players, its teams are explicit. null = a normal lobby */
   event: EventState | null = null;
-  clients: Client[] = []; match: Match | null = null; host: MatchHost | null = null; timer: NodeJS.Timeout | null = null; acc = 0; last = 0; errors = 0;
+  clients: Client[] = []; match: Match | null = null; host: MatchHost | null = null;
+  /** the running match's input-pacing counters (/health) */
+  inputGaps: { report(): InputGapReport } | null = null; timer: NodeJS.Timeout | null = null; acc = 0; last = 0; errors = 0;
   /** (caster) commentator seats: no player slot, any time (even mid-match), up to MAX_SEATS */
   casters: Client[] = [];
   /** (caster) an exhibition: made by a caster to watch bots (humans may still join it); `auto` = START again 12 s after
@@ -107,6 +117,7 @@ export class Lobby {
     const m = this.match = new Match({ seed: this.seed, mode: this.mode, world: server.world, humans, botDifficulty: "easy" });   // bots on EASY online
     m.endAfterResults = true;
     if (Number(process.env.KR_WARMUP_S) > 0) m.warmupS = Number(process.env.KR_WARMUP_S);   // (test servers only)
+    this.inputGaps = trackInputGaps(m);
     const h = this.host = new MatchHost(m); h.holdForStream();
     seated.forEach((c, i) => { c.pid = i; c.peer.pid = i; c.peer.opSeq = -1; c.lastInputAt = Date.now(); h.peers.push(c.peer); });
     if (this.event) { this.event.seats.clear(); for (const c of seated) eventSeated(this, c); }   // a dropped player's seat

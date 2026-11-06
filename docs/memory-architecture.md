@@ -290,13 +290,17 @@ from `engine/res/restore-run.ts`, loaded on the first loss:
 1. **On `webglcontextlost`** the frame loop pauses and a 10 s timer starts that reloads the page if no restore comes.
 2. **On `webglcontextrestored`** `restoreAll()` runs three phases, then `__kr.restores` goes up and frames resume:
    - `source`: every released texture refills its pixels from the rebuild it gave `releaseAfterUpload(t, rebuild)`
-     (a cached file through the cache, a procedural texture through its painter).
+     (a cached file through the cache, a procedural texture through its painter). A geometry released with
+     `releaseGeometryAfterUpload(g, rebuild)` (`engine/geometry-release.ts`, the terrain's shadow proxy) refills its
+     arrays the same way.
    - modules: a module that owns resources with no restore path (`unrestorable()`: a released texture without a
-     rebuild, a `geofree` batch) is rebuilt by the callback main.ts registers with `restoreModulesWith`.
+     rebuild, a `geofree` batch) is rebuilt through `restoreModulesWith`. With `geofree` on, `low-mem.ts` registers it
+     for streamed modules (`low-mem-restore.ts`): the module is evicted during the restore and built again from source
+     through the stream's build queue once the context is live.
    - `bake`: every bake registered with `bake(fn)`, or `onRestore("bake", fn)`, draws again.
 3. **Reload** stays the fallback. If any resource with no restore path belongs to no module, or to a module that cannot
    be rebuilt, `restoreAll()` throws before it touches anything and the page reloads, which is correct for every
-   resource. Until module rebuilds are wired, a `geofree` batch reloads the page this way.
+   resource. A `geofree` batch in a title module (built at boot, not streamed) still reloads the page this way.
 
 A deletion of an object made before the loss is skipped (`ignoreStaleDeletes`), so three.js's leftover listeners are
 harmless. A bake must not sample its own target: the terrain's far albedo clears `tFar` while it redraws.
@@ -353,8 +357,8 @@ ships dark behind a registry flag where it changes behaviour.
 9. **Residency**: `far` regions free their sources' GPU buffers (with RAY-106), then `cold` for the lobby islet.
 10. **Capped internal pixels** for every screen-sized target (`world/atmos/post.ts`, `engine/engine.ts`), so the
     `target` budget no longer depends on the display.
-11. **Context loss**: restore in place (`engine/res/restore.ts`) with reload as the fallback. `geofree` batches restore
-    once module rebuilds from step 9 are wired to `restoreModulesWith`.
+11. **Context loss**: restore in place (`engine/res/restore.ts`) with reload as the fallback. `geofree` batches in
+    streamed modules restore by rebuilding the module; title modules still reload.
 
 Steps 2, 4 and 5 belong to the architecture lane. Steps 3 and 6 to 11 change other lanes' code and go through them.
 Step 10 needs none of the others and addresses the Safari kill, so it can land first.
