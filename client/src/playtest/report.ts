@@ -9,10 +9,11 @@
 // The consent wording is a DRAFT until Ray approves it (RAY-162).
 import { deadChecked, snapshot } from "./diag";
 
-/** Ray may decide players can't attach their callsign at all: false removes the checkbox and the name */
+/** Ray chose to offer the callsign, unticked, for credit in the fix and to find a player's logs (RAY-162); false removes
+ *  the checkbox and the name */
 const OFFER_CALLSIGN = true;
 /** DRAFT (RAY-162): Ray approves this wording before diagnostics go live on a stream */
-const CONSENT_TEXT = "This helps us find stutters, crashes and lag. We send: your device type, graphics card, browser and game settings; how the game ran (frame rate, memory, ping) for the last 15 minutes; when it stuttered and why; a picture of the game view (not your screen, and without the HUD); and a recording of your inputs in this bot match so we can play it again. We don't send your name, your account, or anything outside the game. A random ID for this browser lets us count repeat reports once.";
+const CONSENT_TEXT = "This helps us find stutters, crashes and lag. We send: your device type, graphics card, browser and game settings; how the game ran (frame rate, memory, ping) for the last 15 minutes; when it stuttered and why; a picture of the game view (not your screen, and without the HUD); and your inputs in this bot match so we can replay it. We don't send your account, anything outside the game, or your callsign unless you tick it. A random ID for this browser lets us count repeat reports once.";
 const CONSENT_KEY = "kr.diag.consent", CONSENT_V = "1";
 const CHIPS = ["Stutter", "Low FPS", "Lag", "Crashed", "Loading", "Looks wrong", "Other"];
 /** the routing flags of client/src/flags.ts (lobby codes, event links, socket URLs): never sent */
@@ -214,7 +215,7 @@ function createSheet() {
   note.maxLength = NOTE_MAX; note.placeholder = "What happened? (optional)"; note.spellcheck = true;
   const opts = el("div", "kd-opts");
   const check = (label: string, on: boolean) => { const l = el("label", ""), i = el("input", ""); i.type = "checkbox"; i.checked = on; l.append(i, " " + label); opts.appendChild(l); return i; };
-  const withShot = check("Include the picture", true), withName = OFFER_CALLSIGN ? check("Include my callsign (so we can thank you on stream)", false) : null;
+  const withShot = check("Include the picture", true), withName = OFFER_CALLSIGN ? check("Include my callsign (to credit you in the fix and find your logs)", false) : null;
   const details = el("details", ""), summary = el("summary", "", "What's sent"), list = el("ul", "");
   details.append(summary, list);
   const btns = el("div", "kd-btns"), cancel = el("button", "close", "CANCEL"), sendBtn = el("button", "kd-send", "SEND");
