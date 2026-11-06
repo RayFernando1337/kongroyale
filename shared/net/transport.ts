@@ -13,7 +13,8 @@ import { M } from "./proto";
 
 export const enum Channel { Reliable = 0, Unreliable = 1 }
 /** how a frame travels. Unreliable frames are newest-wins (a later one replaces a lost one); every other frame must
- *  arrive, in order */
+ *  arrive, in order. Caster snapshots stay reliable: they carry every player (often more than one datagram holds) and a
+ *  commentator seat favours a complete picture over the lowest latency */
 export function channelOf(type: number): Channel {
   return type === M.Input || type === M.Ping || type === M.Pong || type === M.Snapshot ? Channel.Unreliable : Channel.Reliable;
 }
