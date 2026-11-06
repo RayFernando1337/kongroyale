@@ -23,7 +23,7 @@ async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
 }
 
 const DECODER_IDLE_MS = 10000;
-const KTX2 = flag("ktx2");
+const KTX2 = flag("ktx2") === "1" || flag("ktx2") === "etc1s";
 
 export class Assets {
   private gltf = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
