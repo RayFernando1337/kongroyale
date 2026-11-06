@@ -83,7 +83,7 @@ const FLAGS = {
   kongproxy: { kind: maybeNum, owner: "actors", purpose: "kong shadow proxy shrink (cm); 0 = no kong shadows" },
   kongtier: { kind: text, owner: "actors", purpose: "force every kong into LOD tier 0, 1 or 2" },
   kongv: { kind: one, owner: "actors", purpose: "the procedural kong instead of the asset" },
-  ktx2: { kind: one, owner: "engine", purpose: "=1 loads POI textures from their .ktx2 copies" },
+  ktx2: { kind: text, owner: "engine", purpose: "=1 loads POI textures from .ktx2 copies, =etc1s with ETC1S normal maps" },
   kysat: { kind: num(1.12), owner: "actors", purpose: "v2 kong ripe-yellow chroma" },
   kyval: { kind: num(0.97), owner: "actors", purpose: "v2 kong ripe-yellow value" },
   labhide: { kind: list, owner: "pois", purpose: "CNVS Lab perf A/B: hide shell, near, interior, glass, rocks, vines, falls, gravel, rooms" },
