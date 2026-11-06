@@ -10,7 +10,6 @@
 // past the rate limit closes the session and the client's frames go back to its WebSockets. A session counts against the
 // per-address cap like a WebSocket, and closing the primary WebSocket closes the session and frees both slots.
 import { spawn, type ChildProcess } from "node:child_process";
-import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,15 +64,11 @@ type Lib = { WebTransport: new (url: string, o: unknown) => any; quicheLoaded: P
 // it (CI runs that rebuild)
 const prebuilt = process.platform === "linux" || process.platform === "darwin" || (process.platform === "win32" && process.arch === "x64");
 const BINDING = "@fails-components/webtransport-transport-http3-quiche";
-const binary = [`build_${process.platform}_${process.arch}`, "build"].some((d) => fs.existsSync(path.join(root, "node_modules", BINDING, d, "Release/webtransport.node")));
-if (prebuilt && !binary) {
-  console.log(`FAIL  KR_WT=1 checks: the QUIC binding's native module isn't installed (npm ci --ignore-scripts skips its install script); fetch it with npm rebuild ${BINDING}`);
-  process.exit(1);
-}
 let lib: Lib;
 try { await import(BINDING as string); lib = await import("@fails-components/webtransport" as string) as Lib; await lib.quicheLoaded; }
 catch (e) {
-  if (prebuilt) throw e;
+  // the binding's own import throws when its native module is missing (QUIC_MODULE would only log it)
+  if (prebuilt) { console.log("FAIL  KR_WT=1 checks: the QUIC binding did not load; after npm ci --ignore-scripts fetch it with npm rebuild " + BINDING); throw e; }
   console.log(`SKIP  KR_WT=1 checks: no QUIC module build for ${process.platform}-${process.arch} (${String(e).slice(0, 100)})`);
   process.exit(failed ? 1 : 0);
 }
