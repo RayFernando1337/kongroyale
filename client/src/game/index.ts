@@ -226,7 +226,10 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   preferences.subscribe((p) => { audio.setMaster(p.master); audio.setDynamicRange?.(p.dynamicRange); audio.setMix?.({ combat: p.combat, ui: p.ui, ambience: p.ambience }); audio.radio?.setVolume(p.radio); });
   const currentFov = () => (engine.shared.get("display:fov") as number | undefined) ?? 72;
 
-  function setBusy(b: boolean, err: string | null = null) { lobbyState.busy = b; lobbyState.error = err; lobby.update(lobbyState); }
+  /** why the server took us out of our match while keeping us in the room (AFK): the room shows it until the next match
+   *  or until the player moves on, so a later room frame does not wipe it */
+  let roomReason: string | null = null;
+  function setBusy(b: boolean, err: string | null = null) { roomReason = null; lobbyState.busy = b; lobbyState.error = err; lobby.update(lobbyState); }
   /** connect for this session; false when it failed or a newer session superseded it while connecting */
   async function online(generation: number) {
     if (link && !link.offline) return true;
@@ -312,14 +315,14 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     }
     else if (m.t === "lobby") {
       const players = m.players as Array<{ id: number; name: string; squad: number; pid: number; host: boolean }>;
-      lobbyState.code = m.code as string; lobbyState.mode = m.mode as Mode; lobbyState.isHost = (m.host as number) === myUid;
+      lobbyState.code = m.code as string; lobbyState.mode = m.mode as Mode; lobbyState.isHost = (m.host as number) === myUid; lobbyState.hostAway = m.hostAway === true;
       lobbyState.inviteUrl = link?.offline ? null : `${location.origin}${location.pathname}?join=${lobbyState.code}`;
       lobbyState.players = players.map((p) => ({ id: p.id, name: p.name, bot: false, host: p.host, squad: p.squad, ready: true }));
       lobbyState.matchRunning = m.inMatch === true && !inMatch;
       lobbyState.casters = Array.isArray(m.casters) ? m.casters.length : 0;
       lobbyState.event = m.ev && typeof m.ev === "object" && Array.isArray((m.ev as EventRoom).players) ? m.ev as EventRoom : null;
       if (staleMatch && m.inMatch === false && link) { staleMatch = false; render?.dispose(); wire(link); }
-      lobbyState.busy = false; lobbyState.error = null; lobbyState.invite = null; lobby.update(lobbyState);
+      lobbyState.busy = false; lobbyState.error = roomReason; lobbyState.invite = null; lobby.update(lobbyState);
       if (cm && render) for (const p of players) if (p.pid >= 0) { cm.names[p.pid] = p.name; render.names[p.pid] = p.name; }
       // the match is over (results done / crash): everyone goes back to the room
       // (practice: the results card stays up for PLAY AGAIN / BACK TO LOBBY)
@@ -329,7 +332,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
       // a refused re-join (the lobby is gone / locked / full) gets no room frame after it: stop trying
       if (reconnect) { const r = reconnect, msg = String(m.msg); clearTimeout(r.timer); r.timer = window.setTimeout(() => { if (reconnect === r) reconnectGiveUp(msg); }, 1500); }
       // (AFK) the server gave our seat to a bot for inactivity and kept us in the room: show the room
-      else if (m.afk === true && inMatch && link && !link.offline && lobbyState.code) backToRoom();
+      else if (m.afk === true && inMatch && link && !link.offline && lobbyState.code) { roomReason = String(m.msg); backToRoom(); }
     }
     // (admin lobby) out of the event lobby for good: the server closes the socket next (no "connection lost" after this)
     else if (m.t === "evend") {
@@ -338,6 +341,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
       leaveAll();
     }
     else if (m.t === "match") {
+      roomReason = null;
       if (staleMatch && link) { staleMatch = false; render?.dispose(); wire(link); }
       if (!cm || !render) return;
       resultOutcome = null; resultDismissed = false; recapSession = {};
