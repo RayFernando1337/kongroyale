@@ -1,81 +1,83 @@
 ------------------------------ MODULE DiagSend ------------------------------
-(* KONG-71's planned player-side diagnostics flow, one tab (Captain drive plans/player-diagnostics.md, section 1): the
-   Send diagnostics and Report a problem buttons, the consent sheet on the first send, the automatic variant, the
-   crash prompt on the title, and what the player sees after a send. Not built yet: this models the design as
-   written. The server's answer to an upload is accepted or refused (rate limit 20 per address per 10 min, 300 per hour,
-   a full spool or bundle folder: section 2). *)
+(* KONG-71's player-side send flow, one tab, as built (client/src/playtest/report.ts, #215 and #233): SEND DIAGNOSTICS on
+   the results card, REPORT A PROBLEM in the match menu, the crash card on the title, the send sheet (consent text,
+   symptom chips, note, "Include my callsign"), and what the player sees after a send. The server accepts an upload
+   or refuses it (POST /api/kongbot: rate limit, busy, too large); a send the server never answers is aborted after
+   TIMEOUT_MS and shown as refused.
+
+   RefusedShown = TRUE is the code; FALSE is the design as first written (a refused send went back without a word),
+   kept for DiagSend.findings.cfg. Not modelled: the automatic summary, which is not built (slice 2; when it is, add
+   Auto, Settings and AutoOnlyWhenOn back as the plan had them, git show e1e3509:tools/formal/DiagSend.tla). *)
 EXTENDS Naturals
 
-CONSTANTS RefusedShown   \* the design as written says nothing about a refused send: FALSE; the proposed fix: TRUE
+CONSTANTS RefusedShown
 
 VARIABLES
-  screen,     \* "title" | "crash" (title asking about the last session) | "match" | "menu" (match menu or results card)
-              \* | "sheet" (consent sheet) | "note" (Report a problem: chip and note) | "sending" | "sent" | "refused"
-  consented,  \* the player confirmed the consent sheet once (remembered)
-  tick,       \* "Include my callsign" is ticked (remembered with the sheet)
-  autoOn,     \* "Send anonymous performance stats automatically" (remembered, in Settings)
+  screen,     \* "title" | "crash" (the crash card on the title) | "match" | "menu" (match menu or results card)
+              \* | "sheet" (the send sheet) | "sending" | "sent" | "refused"
+  consented,  \* a send from the sheet went through once (kr.diag.consent in localStorage)
   sent,       \* what went to the server: a set of records
-  back        \* where the toast returns to
-vars == <<screen, consented, tick, autoOn, sent, back>>
+  via,        \* the send in flight came from the sheet ("sheet") or the results card's one tap ("quick")
+  back        \* where the sheet and the toast return to
+vars == <<screen, consented, sent, via, back>>
 
-Rec(kind, cs) == [kind |-> kind, callsign |-> cs, ticked |-> tick, consented |-> consented, auto |-> autoOn]
-\* a send by hand: at once with the remembered ticks after the first time, else the sheet first
-SendNow ==
-  IF consented
-    THEN screen' = "sending" /\ sent' = sent \cup {Rec("manual", tick)}
-    ELSE screen' = "sheet" /\ sent' = sent
+Init == screen \in {"title", "crash"} /\ consented = FALSE /\ sent = {} /\ via = "sheet" /\ back = "title"
 
-Init == screen \in {"title", "crash"} /\ consented = FALSE /\ tick = FALSE /\ autoOn = FALSE /\ sent = {} /\ back = "title"
+Play == screen = "title" /\ screen' = "match" /\ UNCHANGED <<consented, sent, via, back>>
+OpenMenu == screen = "match" /\ screen' = "menu" /\ UNCHANGED <<consented, sent, via, back>>
+CloseMenu == screen = "menu" /\ screen' = "match" /\ UNCHANGED <<consented, sent, via, back>>
+EndMatch == screen \in {"match", "menu"} /\ screen' = "title" /\ UNCHANGED <<consented, sent, via, back>>
 
-Play == screen = "title" /\ screen' = "match" /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
-OpenMenu == screen = "match" /\ screen' = "menu" /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
-CloseMenu == screen = "menu" /\ screen' = "match" /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
-EndMatch == screen \in {"match", "menu"} /\ screen' = "title" /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
-
-(* Send diagnostics (menu, results) or the crash prompt's button: the first send opens the sheet; later sends go at
-   once with the remembered ticks *)
-Send ==
+(* SEND DIAGNOSTICS on the results card (report.ts quickSend): once the player has agreed it sends at once, without the
+   callsign; the first time it opens the sheet *)
+QuickSend ==
+  /\ screen = "menu" /\ back' = "menu"
+  /\ IF consented
+       THEN screen' = "sending" /\ via' = "quick" /\ sent' = sent \cup {[callsign |-> FALSE, ticked |-> FALSE, consented |-> consented]}
+       ELSE screen' = "sheet" /\ UNCHANGED <<via, sent>>
+  /\ UNCHANGED consented
+(* REPORT A PROBLEM (installReport takes over __kr.kongbot.open) and the crash card's SEND (crashCard) always open the
+   sheet *)
+OpenSheet ==
   /\ screen \in {"menu", "crash"}
-  /\ back' = IF screen = "crash" THEN "title" ELSE "menu"
-  /\ SendNow
-  /\ UNCHANGED <<consented, tick, autoOn>>
-\* Report a problem: a chip and a note first, then the same send
-Report == screen = "menu" /\ screen' = "note" /\ back' = "menu" /\ UNCHANGED <<consented, tick, autoOn, sent>>
-NoteDone ==
-  /\ screen = "note"
-  /\ SendNow
-  /\ UNCHANGED <<consented, tick, autoOn, back>>
-\* the sheet: Send (choosing the callsign tick) or Cancel
+  /\ screen' = "sheet" /\ back' = IF screen = "crash" THEN "title" ELSE "menu"
+  /\ UNCHANGED <<consented, sent, via>>
+(* the sheet's SEND (createSheet): the player has read the consent text on it; the callsign goes when ticked
+   (report.ts body: reporter.name, ctx.game.callsign and the replay's names) *)
 SheetSend == screen = "sheet" /\ \E t \in BOOLEAN :
-  /\ consented' = TRUE /\ tick' = t
-  /\ screen' = "sending" /\ sent' = sent \cup {[kind |-> "manual", callsign |-> t, ticked |-> t, consented |-> TRUE, auto |-> autoOn]}
-  /\ UNCHANGED <<autoOn, back>>
-SheetCancel == screen = "sheet" /\ screen' = back /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
-DismissCrash == screen = "crash" /\ screen' = "title" /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
+  /\ screen' = "sending" /\ via' = "sheet"
+  /\ sent' = sent \cup {[callsign |-> t, ticked |-> t, consented |-> TRUE]}
+  /\ UNCHANGED <<consented, back>>
+SheetCancel == screen = "sheet" /\ screen' = back /\ UNCHANGED <<consented, sent, via, back>>
+DismissCrash == screen = "crash" /\ screen' = "title" /\ UNCHANGED <<consented, sent, via, back>>
 
-\* the server answers: "Sent, thanks. Report KB-123." only on an accepted upload. Refused also stands for an upload that gets
-\* no answer: the plan needs a request timeout so that every send ends in one of the two
-Accepted == screen = "sending" /\ screen' = "sent" /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
-Refused == screen = "sending" /\ screen' = (IF RefusedShown THEN "refused" ELSE back) /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
-ToastGone == screen \in {"sent", "refused"} /\ screen' = back /\ UNCHANGED <<consented, tick, autoOn, sent, back>>
+(* the server answers (report.ts send). Accepted: "SENT, THANKS · <id>", and a send from the sheet stores the consent.
+   Refused (a non-OK answer, no connection, or the TIMEOUT_MS abort): the sheet stays open with "Not sent: <why>", and
+   a one-tap send shows a "NOT SENT" toast *)
+Accepted ==
+  /\ screen = "sending" /\ screen' = "sent"
+  /\ consented' = (consented \/ via = "sheet")
+  /\ UNCHANGED <<sent, via, back>>
+Refused ==
+  /\ screen = "sending"
+  /\ screen' = IF RefusedShown THEN "refused" ELSE IF via = "sheet" THEN "sheet" ELSE back
+  /\ UNCHANGED <<consented, sent, via, back>>
+\* the toast goes away; a refused sheet send leaves the sheet open, where the player can send again or cancel
+ToastGone ==
+  /\ screen \in {"sent", "refused"}
+  /\ screen' = IF screen = "refused" /\ via = "sheet" THEN "sheet" ELSE back
+  /\ UNCHANGED <<consented, sent, via, back>>
 
-\* the automatic variant: a long frame or a match end sends a summary, only with the setting on; never a callsign
-Auto == screen = "match" /\ autoOn /\ sent' = sent \cup {[kind |-> "auto", callsign |-> FALSE, ticked |-> tick, consented |-> consented, auto |-> autoOn]}
-  /\ UNCHANGED <<screen, consented, tick, autoOn, back>>
-Settings == screen \in {"title", "menu"} /\ autoOn' = ~autoOn /\ UNCHANGED <<screen, consented, tick, sent, back>>
-
-Next == Play \/ OpenMenu \/ CloseMenu \/ EndMatch \/ Send \/ Report \/ NoteDone \/ SheetSend \/ SheetCancel \/ DismissCrash
-  \/ Accepted \/ Refused \/ ToastGone \/ Auto \/ Settings
-\* every upload is answered in the end: the server replies, or the client's timeout fires
+Next == Play \/ OpenMenu \/ CloseMenu \/ EndMatch \/ QuickSend \/ OpenSheet \/ SheetSend \/ SheetCancel \/ DismissCrash
+  \/ Accepted \/ Refused \/ ToastGone
+\* every upload is answered in the end: the server replies, or report.ts send aborts it after TIMEOUT_MS
 Spec == Init /\ [][Next]_vars /\ WF_vars(Accepted \/ Refused)
 
 (* --- the rules --- *)
-\* Nothing a player sends by hand leaves the browser before they confirmed the consent sheet once.
-NoManualSendWithoutConsent == \A r \in sent : r.kind = "manual" => r.consented
-\* The callsign goes only in a send where "Include my callsign" was ticked; an automatic summary never has it.
-CallsignOnlyWhenTicked == \A r \in sent : r.callsign => r.kind = "manual" /\ r.ticked
-\* Automatic summaries go only while the setting is on.
-AutoOnlyWhenOn == \A r \in sent : r.kind = "auto" => r.auto
+\* Nothing a player sends by hand leaves the browser before they have seen the consent text on the sheet.
+NoManualSendWithoutConsent == \A r \in sent : r.consented
+\* The callsign goes only in a send where "Include my callsign" was ticked.
+CallsignOnlyWhenTicked == \A r \in sent : r.callsign => r.ticked
 \* Every send ends with something on screen: the thank-you with the report id, or a message that it did not go.
 EverySendAnswered == [][screen = "sending" => screen' \in {"sent", "refused"}]_vars
 \* ... and a send never hangs: the player always sees one of the two in the end.

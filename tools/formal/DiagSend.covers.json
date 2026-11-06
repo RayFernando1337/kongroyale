@@ -1,0 +1,38 @@
+{
+  "skill": ".agents/skills/verify-diagnostics/SKILL.md",
+  "note": "SEND_GAP_MS (a send within 10 s of the last one is turned away on screen) is left out of the model: it never sends, and it always says so.",
+  "regions": [
+    "client/src/playtest/report.ts#consented",
+    "client/src/playtest/report.ts#minimise",
+    "client/src/playtest/report.ts#body",
+    "client/src/playtest/report.ts#send",
+    "client/src/playtest/report.ts#notSent",
+    "client/src/playtest/report.ts#quickSend",
+    "client/src/playtest/report.ts#createSheet",
+    "client/src/playtest/report.ts#crashCard",
+    "client/src/playtest/report.ts#installReport"
+  ],
+  "writes": [
+    {
+      "what": "the player's agreement to the consent text (kr.diag.consent)",
+      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s*CONSENT_KEY",
+      "files": [
+        "client/src/"
+      ]
+    }
+  ],
+  "verified": {
+    "model": "805ee2fe9b49368e",
+    "regions": {
+      "client/src/playtest/report.ts#consented": "32843bfaa24c26f0",
+      "client/src/playtest/report.ts#minimise": "5fe30ceb40b0f56d",
+      "client/src/playtest/report.ts#body": "933e71e195dbc1be",
+      "client/src/playtest/report.ts#send": "2284df0ec6b8727f",
+      "client/src/playtest/report.ts#notSent": "a1c9ed1f367a2b8e",
+      "client/src/playtest/report.ts#quickSend": "ce02c344dd8a9aae",
+      "client/src/playtest/report.ts#createSheet": "b17b7f407773df55",
+      "client/src/playtest/report.ts#crashCard": "b8b6bae683d0bdb4",
+      "client/src/playtest/report.ts#installReport": "063887050037aa8b"
+    }
+  }
+}

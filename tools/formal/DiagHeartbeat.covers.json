@@ -1,0 +1,34 @@
+{
+  "skill": ".agents/skills/verify-diagnostics/SKILL.md",
+  "note": "The playtest chunk (client/src/playtest/index.ts installPlaytest) lazy-loads diag.ts and report.ts after boot when diag is on; the model's GoLive happens only then, which is why a tab killed while it boots leaves no record. index.ts is not a region: read it against GoLive when it changes. Browsers without Web Locks keep no heartbeat (writeBeat returns early), which the model leaves out.",
+  "regions": [
+    "client/src/playtest/diag.ts#writeBeat",
+    "client/src/playtest/diag.ts#readBeats",
+    "client/src/playtest/diag.ts#goLive",
+    "client/src/playtest/diag.ts#findDeadSession",
+    "client/src/playtest/diag.ts#installDiag",
+    "client/src/playtest/report.ts#crashCard",
+    "client/src/playtest/report.ts#installReport"
+  ],
+  "writes": [
+    {
+      "what": "the per-session heartbeat records (kr.diag.hb.<sid>)",
+      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s*BEAT_KEY",
+      "files": [
+        "client/src/"
+      ]
+    }
+  ],
+  "verified": {
+    "model": "a97f467c4e5e1966",
+    "regions": {
+      "client/src/playtest/diag.ts#writeBeat": "733bfd3ec4eea770",
+      "client/src/playtest/diag.ts#readBeats": "24deab261c980dfe",
+      "client/src/playtest/diag.ts#goLive": "47b8b22dedd37153",
+      "client/src/playtest/diag.ts#findDeadSession": "bad175e32c33f372",
+      "client/src/playtest/diag.ts#installDiag": "7fafe986dd48bccb",
+      "client/src/playtest/report.ts#crashCard": "b8b6bae683d0bdb4",
+      "client/src/playtest/report.ts#installReport": "063887050037aa8b"
+    }
+  }
+}
