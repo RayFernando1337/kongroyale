@@ -4,8 +4,10 @@ import { flag } from "../flags";
 const GEO_SHARE = flag("geoshare");
 const pools = new Map<string, Map<string, THREE.BufferAttribute[]>>();
 
-function sameArray(a: THREE.TypedArray, b: THREE.TypedArray): boolean {
+function sameArray(a: THREE.TypedArray | null, b: THREE.TypedArray): boolean {
   if (a === b) return true;
+  // ?geofree drops an uploaded attribute's array, so a pooled one may have none left to compare
+  if (!a) return false;
   if (a.length !== b.length || a.constructor !== b.constructor) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
