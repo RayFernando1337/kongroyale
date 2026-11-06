@@ -114,7 +114,9 @@ whose browser has no WebTransport, plays over WebSockets as before.
   same one the HTTPS proxy uses works), or leave them unset. The server then makes its own certificate, valid 13 days
   and renewed in place, and tells each player its SHA-256 so the browser can check it (`serverCertificateHashes`).
 - **The QUIC module** (`@fails-components/webtransport-transport-http3-quiche`) is a native optional dependency with
-  ready builds for Linux and macOS (x64 and ARM) and Windows x64. Where it doesn't install, the server logs why, says so
+  ready builds for Linux and macOS (x64 and ARM) and Windows x64. Its install script downloads the build, so an install that
+  skips scripts (`npm ci --ignore-scripts`, or Bun, which runs no dependency scripts unless told to) leaves it out:
+  run `npm rebuild @fails-components/webtransport-transport-http3-quiche` afterwards. Where it doesn't install, the server logs why, says so
   in `/health` (`transports.webtransport.off`) and runs WebSocket-only.
 - `/health` counts clients per transport (`transports.clients`), sessions opened and refused, by reason, and how links
   settled (`transports.settled`: on `wt`, or on `ws` with why: `flag-off`, `server-off`, `unsupported`,
