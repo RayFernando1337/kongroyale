@@ -71,7 +71,7 @@ try{
   // the server's input pacing (shared/net/input-gaps.ts, one match): the change between the two /health reads, which spans
   // the window plus the reads themselves (spanMs), so the metrics are shares of the live ticks in that span
   const in0=(health0 as any).inputs?.[0],in1=(health as any).inputs?.[0],inputs=in0&&in1?{liveTicks:in1.liveTicks-in0.liveTicks,inputGapTicks:in1.inputGapTicks-in0.inputGapTicks,catchupBursts:in1.catchupBursts-in0.catchupBursts,catchupBurstMaxMatch:in1.catchupBurstMax,spanMs:Math.round(healthAt-health0At)}:null;
-  const noInputs:Metric={status:'unsupported',unit:'count',reason:'server /health has no inputs report'};
+  const noInputs:Metric={status:'unsupported',unit:'%',reason:'server /health has no inputs report'};
   const s=elapsed/1000,ms=(v:number[]):Metric=>({status:'ok',unit:'ms',better:'lower',summary:stats(v)});
   let loopGapMax=0;for(const g of loopGaps)if(g>loopGapMax)loopGapMax=g;
   const minSnapshots=Math.min(...peers.map(p=>p.snaps)),serverTicksPerSecond=(lastTick-firstTick)/s,inputsPerPlayerSecond=inputsSent/count/s;
@@ -86,7 +86,7 @@ try{
         rttMs:ms(rtt),snapshotGapMs:ms(gaps),inputToAcknowledgmentMs:ms(ack),generatorLoopGapMs:ms(loopGaps),
         bytesPerPlayerSecond:{status:'ok',unit:'bytes/s',better:'lower',value:bytes/s/count},
         serverCpuMsPerSecond:perf0&&perf1?{status:'ok',unit:'ms',better:'lower',value:(perf1.cpuMs-perf0.cpuMs)/s}:{status:'unsupported',unit:'ms',reason:'server runs without KR_PERF_METRICS=1'},
-        serverInputGapPct:inputs?.liveTicks?{status:'ok',unit:'count',better:'lower',value:100*inputs.inputGapTicks/inputs.liveTicks}:noInputs,serverCatchupBurstPct:inputs?.liveTicks?{status:'ok',unit:'count',better:'lower',value:100*inputs.catchupBursts/inputs.liveTicks}:noInputs,
+        serverInputGapPct:inputs?.liveTicks?{status:'ok',unit:'%',better:'lower',value:100*inputs.inputGapTicks/inputs.liveTicks}:noInputs,serverCatchupBurstPct:inputs?.liveTicks?{status:'ok',unit:'%',better:'lower',value:100*inputs.catchupBursts/inputs.liveTicks}:noInputs,
         serverTickMsLifetime:lifetime(perf1?.tickMs),eventLoopDelayMsLifetime:lifetime(perf1?.eventLoopDelayMs),
       },
       gates:[
