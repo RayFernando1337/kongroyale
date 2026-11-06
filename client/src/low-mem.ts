@@ -283,7 +283,8 @@ type Disposable = { dispose(): void };
 /** Sources an eviction left without pixels on either side: their CPU copy was dropped after upload (releaseAfterUpload)
  *  and their GPU copy was disposed. Module-level caches (Assets, pbr sets, coast sets) still hand these textures to the
  *  next build, so the source holds a 1x1 placeholder that three allocates without uploading until warmTextures fetches
- *  the pixels back before that build integrates. */
+ *  the pixels back before that build integrates. A cold texture drawn before that has 1x1 GPU storage, which three
+ *  never resizes in place, so warm() disposes each texture before the full-size upload. */
 const cold = new Map<Rebuildable, Set<THREE.Texture>>(), warming = new Map<Rebuildable, Promise<void>>();
 
 function warm(s: Rebuildable): Promise<void> {
@@ -294,7 +295,7 @@ function warm(s: Rebuildable): Promise<void> {
     if (!ts) return;
     cold.delete(s);
     s.data = data; s.dataReady = true;
-    for (const t of ts) { s.arm!(t, s.rebuild); t.needsUpdate = true; }
+    for (const t of ts) { t.dispose(); s.arm!(t, s.rebuild); t.needsUpdate = true; }
   })().catch(() => {}).finally(() => warming.delete(s))));
   return p;
 }
