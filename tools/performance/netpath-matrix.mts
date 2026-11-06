@@ -64,6 +64,8 @@ const summary = (file: string): Pick<Run, "ok" | "failed" | "metrics"> => {
 
 async function run(rep: number, transport: string, rtt: number, loss: number) {
   const file = path.resolve(runsDir, "rep" + rep + "-" + transport + "-rtt" + rtt + "-loss" + loss + ".json"), log = fs.openSync(file.replace(/\.json$/, ".log"), "w");
+  // an earlier matrix's result under the same name must never stand in for a run that died before writing its own
+  fs.rmSync(file, { force: true });
   const server = inNs("kr-srv", { KR_HOST: SRV, KR_PORT: String(PORT), KR_EVENT_MODE: "0", KR_WARMUP_S: "5", KR_WT: "1", KR_PERF_METRICS: "1", KR_PLAYTEST_BUNDLES: "0" }, [tsx, "server/index.ts"], log);
   try {
     for (const end = Date.now() + 60_000; ; await sleep(500)) {
