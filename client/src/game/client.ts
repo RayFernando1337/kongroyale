@@ -949,11 +949,12 @@ export class ClientMatch {
    * my view only while that view is at most MAX_REWIND_TICKS old at the tick it simulates this input; an older shot is judged against the pose at the cap
    * instead (Match.viewBlend), so re-trace it there. The server simulates one input per tick, so this input runs at
    * about the last snapshot's tick plus the inputs it hasn't acknowledged yet. The pose at the cap is blended from the
-   * snapshots around it, which the client already holds at any latency where the cap applies.
+   * snapshots around it; when the cap is newer than the newest snapshot (a stall, or an RTT past the window) there is
+   * no sample to judge it by, so the drawn verdict stands.
    */
   private lateVerdict(ox: number, oy: number, oz: number, dir: Float64Array, out: ShotResult) {
     const lo = this.authTick + (this.inputSeq - this.authSeq) - MAX_REWIND_TICKS;
-    if (out.victim < 0 || this.authSeq <= 0 || !(this.viewA + this.viewSpan * this.viewF < lo)) return;
+    if (out.victim < 0 || this.authSeq <= 0 || lo > this.lastSnapTick || !(this.viewA + this.viewSpan * this.viewF < lo)) return;
     const T = this.viewTargets, L = LATE_TARGETS, bl = this.blend;
     for (const rm of this.remotes) {
       const o = rm.id * TARGET_STRIDE;
