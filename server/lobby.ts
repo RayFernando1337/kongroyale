@@ -4,6 +4,9 @@
 // verify-room-lifecycle model (tools/formal) and tools/lobby/membership.test.mts check the rules this file keeps.
 import { WebSocket } from "ws";
 import type { WsTransport } from "./transport-ws";
+import type { WtTransport } from "./transport-wt";
+import type { Transport } from "../shared/net/transport";
+import type { Bucket } from "./limits";
 import type { StaticWorld } from "../shared/sim/world";
 import { Match, Phase } from "../shared/sim/match";
 import { alive } from "../shared/sim/player";
@@ -23,7 +26,7 @@ export interface LobbyHost { world: StaticWorld; log: (...a: unknown[]) => void;
 let server: LobbyHost;
 export function initLobbies(h: LobbyHost) { server = h; }
 
-export interface Sock { ws: WebSocket; ip: string; tokens: number; refill: number; strikes: number; lastMsg: number;
+export interface Sock extends Bucket { ws: WebSocket; ip: string;
   /** (admin lobby) round trip of the server's own ws pings, ms (0 = none yet) */
   rtt: number;
   /** liveness + the disconnect log: when it opened, its last pong (Date.now ms), and who closed it when the
@@ -32,8 +35,9 @@ export interface Sock { ws: WebSocket; ip: string; tokens: number; refill: numbe
 export const sendJSON = (ws: WebSocket, o: unknown) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o)); };
 
 export interface Client { uid: number; token: string; name: string; lobby: Lobby | null; pid: number; squad: number; sock: Sock; aux: Sock[];
-  /** the binary transport: the hot path to and from this client (server/transport-ws.ts) */
-  bin: WsTransport; lastInputAt: number; peer: HostPeer; /** last relayed map marker (ms) */ markAt: number;
+  /** the binary transports: the WebSocket pair (always), the WebTransport session (KR_WT=1, when the client opened one)
+   *  and the one that carries the hot path now (the session while it lives, else the pair) */
+  ws: WsTransport; wt: WtTransport | null; bin: Transport; lastInputAt: number; peer: HostPeer; /** last relayed map marker (ms) */ markAt: number;
   /** (caster) a commentator seat in its lobby (−1 = a player); the last relayed camera sync (ms) */
   seat: number; camAt: number;
   /** (caster) a PROGRAM output window (OBS): a seat that only mirrors the seat on air */
