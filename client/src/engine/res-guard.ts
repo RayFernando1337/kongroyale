@@ -43,8 +43,8 @@ export const BIG_PERIODS = 3;
 export const MIN_GAIN = 0.03;
 export const BLOCK_S = 120;
 export const BLOCK_MAX_S = 600;
-/** without a GPU timer, a frame whose main thread takes at least this share of it is CPU-bound (the engine's own dynamic
- *  resolution uses the same share; the step includes the render submit, which a GPU that is behind can block) */
+/** without a GPU timer, a frame whose main thread takes at least this share of it is CPU-bound (the engine's own
+ *  dynamic resolution uses the same share; the step includes the render submit, which a GPU that is behind can block) */
 export const CPU_BOUND_SHARE = 0.72;
 /** a second with fewer drawn frames than this (a stall, a hidden page) decides nothing */
 export const MIN_FRAMES = 4;

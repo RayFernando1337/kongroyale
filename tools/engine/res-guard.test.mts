@@ -60,8 +60,8 @@ assert.equal(run(120, () => ({ med: H })).steps.length, 0, "full rate");
   assert.equal(r.scale, 1, "back at 100 %");
   assert.equal(r.steps.at(-1)?.why, "headroom");
 }
-// a display or a browser that presents at 30 Hz (a 30 Hz screen, Low Power Mode): fewer pixels change nothing, so at the
-// floor it puts the scale back and waits BLOCK_S, then twice that
+// a display or a browser that presents at 30 Hz (a 30 Hz screen, Low Power Mode): fewer pixels change nothing, so at
+// the floor it puts the scale back and waits BLOCK_S, then twice that
 {
   const r = run(900, () => ({ med: 1000 / 30 }));
   const first = whys(r).indexOf("no-gain");
