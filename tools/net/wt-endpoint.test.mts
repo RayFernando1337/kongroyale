@@ -7,7 +7,7 @@
 // session carries inputs (the snapshots' lastSeq follows them), pings (a pong comes back as a datagram), snapshots as
 // datagrams and the reliable frames (inventory) on the stream; /health counts the client on "wt"; a flood of frames
 // past the rate limit closes the session and the client's frames go back to its WebSockets. A session counts against the
-// per-address cap like a WebSocket.
+// per-address cap like a WebSocket, and closing the primary WebSocket closes the session and frees both slots.
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -26,7 +26,7 @@ const freePort = () => new Promise<number>((r) => { const s = net.createServer()
 
 async function startServer(env: Record<string, string>): Promise<{ port: number; proc: ChildProcess; log: () => string }> {
   const port = await freePort(); let out = "";
-  const proc = spawn(path.join(root, "node_modules/.bin/tsx"), ["server/index.ts"], { cwd: root, env: { ...process.env, KR_HOST: "127.0.0.1", KR_PORT: String(port), KR_EVENT_MODE: "0", KR_PLAYTEST_BUNDLES: "0", ...env }, stdio: ["ignore", "pipe", "pipe"] });
+  const proc = spawn(process.execPath, [path.join(root, "node_modules/tsx/dist/cli.mjs"), "server/index.ts"], { cwd: root, env: { ...process.env, KR_HOST: "127.0.0.1", KR_PORT: String(port), KR_EVENT_MODE: "0", KR_PLAYTEST_BUNDLES: "0", ...env }, stdio: ["ignore", "pipe", "pipe"] });
   proc.stdout!.on("data", (d) => { out += d; }); proc.stderr!.on("data", (d) => { out += d; });
   const ok = await waitFor(() => /KONG ROYALE server on/.test(out), 60_000);
   if (!ok) throw new Error("server did not start:\n" + out);
@@ -123,6 +123,17 @@ try {
   const hh = await health(s.port);
   check(hh.transports.clients.ws === 1 && !hh.transports.clients.wt && hh.transports.webtransport.open === 0, `/health: back on ws, no session open (${JSON.stringify(hh.transports)})`);
   c.ws.close();
+
+  // the player leaves: closing the primary WebSocket closes the session too, and frees both of its slots
+  await sleep(200);
+  for (let round = 1; round <= 2; round++) {
+    const c2 = await wsClient(s.port), w2 = await open(c2.welcome.aux);
+    check(await waitFor(() => w2.frames.some((f) => new TextDecoder().decode(f) === '{"t":"wt-ok"}'), 3000), `round ${round}: a new client gets its session (the address has room for both connections)`);
+    c2.ws.close();
+    check(await waitFor(w2.closed, 5000), `round ${round}: closing the primary WebSocket closes the session`);
+    await sleep(200);
+    check((await health(s.port)).transports.webtransport.open === 0, `round ${round}: /health has no session open`);
+  }
 } finally { s.proc.kill("SIGTERM"); }
 if (failed) { console.error(`${failed} check(s) failed`); process.exit(1); }
 console.log("webtransport endpoint: all checks passed");

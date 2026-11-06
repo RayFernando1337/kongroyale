@@ -72,7 +72,7 @@ The server reads these environment variables. Leave a variable unset to get its 
 | `KR_WARMUP_S` | `25` | Length of the pre-match warm-up in seconds. For test servers. |
 | `KR_WT` | off | Set `1` to open the WebTransport endpoint (QUIC datagrams for inputs and snapshots). See "WebTransport" below. |
 | `KR_WT_PORT` | `KR_PORT` | UDP port of the WebTransport endpoint. |
-| `KR_WT_HOST` | `KR_HOST` | Address the WebTransport endpoint listens on. |
+| `KR_WT_HOST` | `KR_HOST`, or `0.0.0.0` with `KR_TRUST_PROXY=1` | Address the WebTransport endpoint listens on. Behind a proxy it listens on every address, because UDP comes straight from players. |
 | `KR_WT_CERT`, `KR_WT_KEY` | unset (self-signed) | PEM certificate and key for the WebTransport endpoint, valid for the page's host name. |
 | `KR_WT_URL` | `https://<page host>:<KR_WT_PORT>/wt` | The address players dial, if it differs. |
 | `KR_ANNOTATE` | off | Set `1` to accept developer notes from other machines. A local dev tool; leave it off on a public server. |
@@ -125,3 +125,6 @@ whose browser has no WebTransport, plays over WebSockets as before.
 Most public servers put a proxy in front for HTTPS. The proxy must forward WebSocket upgrades on `/ws` and
 `/admin/ws`. Then set `KR_TRUST_PROXY=1`, `KR_HOST=127.0.0.1` so only the proxy can reach the port, and `KR_ORIGINS`
 to your site's address.
+
+WebTransport (`KR_WT=1`) can't go through the proxy. It listens for UDP on `KR_WT_PORT` on every address
+(`KR_WT_HOST` defaults to `0.0.0.0` with `KR_TRUST_PROXY=1`), so open that port to players in the firewall.
