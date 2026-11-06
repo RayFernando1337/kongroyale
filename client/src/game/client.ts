@@ -11,6 +11,7 @@
 //   the server rewinds to those same numbers with the same function (shared/sim/hitscan.ts). A shot that will reach the
 //   server after its view fell out of the rewind window (MAX_REWIND_TICKS) is judged there against the pose at the cap,
 //   so its predicted hit is re-traced against that pose and reported as a miss when it misses there (lateVerdict).
+//   While the link is slow or stalled (linkSlow) no hit is predicted at all: the server's EV.Hit draws the marker.
 import { CHEST_OPEN_DIST, DT, MAX_PLAYERS, MAX_REWIND_TICKS, PLANE_SPEED, SNAP_EVERY, WARMUP_S, WEAPON_DEFS } from "../../../shared/sim/const";
 import { IK, lootReachable, type Chest, type Item } from "../../../shared/sim/loot";
 import { B, PS, currentSpread, eyeY, invDrop, invMove, makeInput, makePlayer, pelletDamage, poseFlags, stepPlayer, weaponDef, copyInput, type Input, type Player } from "../../../shared/sim/player";
@@ -116,6 +117,9 @@ export interface EventSink {
 
 // prediction ring: movement state AFTER each input seq + the hands flags that fed movement BEFORE it
 const PRING = 256;
+/** linkSlow: above this smoothed RTT (ms) hits are not predicted; no snapshot for this many snapshot intervals, or the
+ *  oldest unacked input older than the RTT plus DEFER_ACK_SLACK_MS (ms), is a stall */
+const DEFER_RTT_MS = 220, DEFER_SNAP_GAPS = 2, DEFER_ACK_SLACK_MS = 50;
 const PS_STRIDE = 22;
 const enum PF { X = 0, Y, Z, VX, VY, VZ, COYOTE, JUMPBUF, AIRT, FALLV, ST, BITS, PREVB, SHOTSEQ, PRE, MVT, MVY, VEH, SEAT, BUFF, BREATH, SWGUN }
 /** my tuk-tuk's predicted state after each input seq (while I drive): the fields of proto.ts VehSelf the step owns */
@@ -168,6 +172,8 @@ export class ClientMatch {
   // ---- inputs / prediction
   private inputSeq = 0; private ackedSeq = 0;
   private readonly inRing: Input[] = Array.from({ length: PRING }, makeInput);
+  /** when each input seq was sent (performance.now), by seq % PRING: how long the oldest unacked one has waited */
+  private readonly sentAt = new Float64Array(PRING);
   private readonly pRing = new Float64Array(PRING * PS_STRIDE); private readonly pSeq = new Int32Array(PRING).fill(-1);
   private readonly inputW = new Writer(new ArrayBuffer(64)); private readonly pingW = new Writer(new ArrayBuffer(16));
   private readonly scratch: Player;
@@ -176,6 +182,8 @@ export class ClientMatch {
   private arrOff = 0; private haveArr = false; private readonly late = new Float64Array(LATE_WIN); private readonly lateSort = new Float64Array(LATE_WIN); private lateN = 0; private lateI = 0;
   private rtOff = 0; private rtInit = false; private lastClockT = 0; private rt = 0; private viewValid = false;
   private readonly snapTicks = new Int32Array(TICKS_RING); private snapN = 0; private lastSnapTick = -1;
+  /** when the newest snapshot arrived (performance.now) */
+  private lastSnapAt = 0;
   // ---- the blend of the last drawn frame (sent with every input) + the hitboxes drawn in it
   viewA = 0; viewSpan = 0; viewF = 0;
   readonly viewTargets = new Float64Array(MAX_PLAYERS * TARGET_STRIDE);
@@ -397,7 +405,7 @@ export class ClientMatch {
     if (!this.started || this.me < 0) return;
     if (h.tick <= this.lastSnapTick) { if (h.tick === this.lastSnapTick) this.netStats.dupFrames++; else this.netStats.staleFrames++; return; }
     const gGap = this.lastSnapTick >= 0 ? h.tick - this.lastSnapTick : SNAP_EVERY;
-    this.lastSnapTick = h.tick; this.netStats.snapshots++;
+    this.lastSnapTick = h.tick; this.lastSnapAt = at; this.netStats.snapshots++;
     const nowT = at / 1000 / DT;
     this.clockSample(h.tick, nowT, performance.now());
     // the snapshot tick is also a floor for the ping-based server clock
@@ -748,6 +756,7 @@ export class ClientMatch {
       if (p.fired > 0) this.sink?.localFire();
       if (p.thrown > 0) this.sink?.localThrow?.(p.thrown);
       this.onTick?.(inp);
+      this.sentAt[inp.seq % PRING] = performance.now();
       writeInput(this.inputW.reset(), inp); this.link.sendBinary(this.inputW.view());
     }
     if (this.acc > DT * 6) this.acc = 0;
@@ -910,7 +919,7 @@ export class ClientMatch {
    */
   predictShot(k: number, out: ShotResult, dir: Float64Array = DIR): ShotResult {
     const p = this.pred, w = weaponDef(p);
-    this.predDmg = 0; this.predLeft = Infinity; this.predLate = false;
+    this.predDmg = 0; this.predLeft = Infinity; this.predLate = false; this.predDefer = 0;
     this.predVeh = -1;
     // a round of TOP BANANA (I man a helicopter's door gun): along its barrels at the pose I sat at for this input (my
     // seat was put on the helicopter as drawn — the server rewinds to the same blend)
@@ -944,15 +953,30 @@ export class ClientMatch {
   predDmg = 0; predLeft = Infinity;
   /** the last predictShot drew a hit the server will not grant, so it reported a miss: the server's EV.Hit decides */
   predLate = false;
+  /** why the last predictShot left the hit it drew to the server and reported a miss (linkSlow's bits), 0 = it did not */
+  predDefer = 0;
+  /**
+   * Is the link too slow or stalled to trust a predicted hit? Then the hit marker waits for the server (Overwatch stops
+   * predicting hits at about 220 ms RTT, KONG-78 §4 2b). The bits say which signal fired: 1 = the smoothed RTT is over
+   * DEFER_RTT_MS; 2 = no snapshot for DEFER_SNAP_GAPS intervals; 4 = the oldest unacked input has waited longer than the
+   * RTT plus DEFER_ACK_SLACK_MS (a stall on the way up). 0 = predict as usual.
+   */
+  linkSlow(now: number): number {
+    const s = this.authSeq + 1;
+    return (this.ping > DEFER_RTT_MS ? 1 : 0)
+      | (this.lastSnapAt > 0 && now - this.lastSnapAt > DEFER_SNAP_GAPS * SNAP_EVERY * DT * 1000 ? 2 : 0)
+      | (s < this.inputSeq && (this.inputSeq - s >= PRING || now - this.sentAt[s % PRING] > this.ping + DEFER_ACK_SLACK_MS) ? 4 : 0);
+  }
   /**
    * Will the server take back the hit this shot drew (out.victim)? Then report a miss and set predLate. It rewinds to
    * my view only while that view is at most MAX_REWIND_TICKS old at the tick it simulates this input; an older shot is judged against the pose at the cap
    * instead (Match.viewBlend), so re-trace it there. The server simulates one input per tick, so this input runs at
    * about the last snapshot's tick plus the inputs it hasn't acknowledged yet. The pose at the cap is blended from the
    * snapshots around it; when the cap is newer than the newest snapshot (a stall, or an RTT past the window) there is
-   * no sample to judge it by, so the drawn verdict stands.
+   * no sample to judge it by, so the drawn verdict stands. On a slow or stalled link (linkSlow) no hit is predicted.
    */
   private lateVerdict(ox: number, oy: number, oz: number, dir: Float64Array, out: ShotResult) {
+    if (out.victim >= 0 && this.authSeq > 0) { this.predDefer = this.linkSlow(performance.now()); if (this.predDefer) { out.victim = -1; return; } }
     const lo = this.authTick + (this.inputSeq - this.authSeq) - MAX_REWIND_TICKS;
     if (out.victim < 0 || this.authSeq <= 0 || lo > this.lastSnapTick || !(this.viewA + this.viewSpan * this.viewF < lo)) return;
     const T = this.viewTargets, L = LATE_TARGETS, bl = this.blend;
