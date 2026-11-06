@@ -1,6 +1,6 @@
 // The display refresh estimate (client/src/engine/refresh.ts): a slow, GPU-bound game must not read as a slow display.
 import assert from "node:assert/strict";
-import { heldRefresh, refreshFromIntervals, refreshSample } from "../../client/src/engine/refresh";
+import { RefreshEstimate, refreshFromIntervals, refreshSample } from "../../client/src/engine/refresh";
 
 const vsync = (hz: number, periods: number[]) => periods.map((k, i) => (k * 1000) / hz + (i % 3 === 0 ? 0.05 : i % 3 === 1 ? -0.05 : 0));
 const repeat = (pattern: number[], n: number) => Array.from({ length: n }, (_, i) => pattern[i % pattern.length]);
@@ -19,23 +19,40 @@ assert.equal(refreshFromIntervals(repeat(ray, 90)), 60, "Ray's frames");
 // an unusual rate passes through unsnapped
 assert.equal(refreshFromIntervals(repeat([1000 / 85], 90)), 85, "85 Hz");
 // Safari 27 on a 60 Hz screen (the Mac mini, RAY-186 guard A/B): rAF timestamps are when each update started, so they
-// spread about ±3 ms. The engine suspended (the harness's rAF probe): a steady sample, read by its median, not its 14 ms
-// fast tail (71 Hz)
+// spread about ±3 ms. The engine suspended (the harness's rAF probe): steady samples, read by their median, not their
+// 13-14 ms fast tail (71-77 Hz)
 const safariIdle = [16, 17, 17, 17, 19, 14, 17, 19, 15, 17, 16, 16, 18, 16, 15, 18, 17, 19, 14, 17, 15, 18, 19, 14, 17, 18, 15, 17, 15, 18, 19, 15, 16, 17, 17, 18, 15, 17, 18, 16, 20, 12, 17, 17, 16, 17, 17, 16, 19, 15, 17, 15, 18, 17, 15, 16, 19, 14, 17, 17, 18, 18, 15, 17, 17, 16, 19, 15, 17, 16, 17, 17, 16, 17, 18, 16, 19, 12, 18, 17, 15, 18, 17, 16, 18, 16, 15, 18, 17, 17];
 assert.deepEqual(refreshSample(safariIdle), { hz: 60, steady: true }, "Safari idle");
+const safariIdle2 = [17, 19, 13, 18, 17, 16, 19, 13, 18, 17, 16, 16, 18, 17, 18, 15, 17, 15, 18, 17, 16, 17, 17, 16, 19, 15, 17, 16, 17, 18, 13, 19, 18, 15, 16, 17, 16, 20, 14, 18, 16, 15, 19, 16, 17, 18, 16, 17, 15, 16, 19, 15, 17, 15, 16, 19, 16, 17, 17, 16, 19, 15, 17, 16, 16, 20, 14, 17, 17, 15, 18, 16, 17, 19, 13, 18, 17, 16, 20, 14, 17, 18, 14, 21, 13, 16, 20, 13, 16, 19];
+assert.deepEqual(refreshSample(safariIdle2), { hz: 60, steady: true }, "Safari idle, a 13 ms tail");
 // a match at about 47 fps under the half-rate guard: a late update is followed by one a few ms after the next vsync,
-// so a third of the intervals are 7-12 ms and the fast tail reads over 100 Hz. Uneven, so it reads at most the steady
-// reading, and with none yet it reads its tail as before
+// so a third of the intervals are 7-12 ms and the fast tail reads over 100 Hz
 const safariUneven = [15, 30, 8, 31, 14, 29, 9, 29, 16, 28, 12, 27, 17, 27, 9, 30, 17, 28, 8, 31, 17, 26, 7, 35, 15, 29, 9, 31, 14, 30, 7, 30, 16, 29, 9, 29, 17, 29, 9, 29, 16, 29, 7, 31, 16, 27, 11, 29, 17, 28, 8, 31, 16, 27, 13, 27, 16, 28, 8, 33, 15, 28, 7, 31, 17, 28, 8, 31, 17, 16, 19, 15, 19, 31, 16, 17, 17, 28, 7, 31, 17, 29, 12, 26, 16, 29, 8, 30, 16, 29];
 const uneven = refreshSample(safariUneven);
 assert.ok(!uneven.steady && uneven.hz > 100, "Safari uneven: " + JSON.stringify(uneven));
-assert.equal(heldRefresh(uneven, 60), 60, "held under the steady 60");
-assert.equal(heldRefresh(uneven, 0), uneven.hz, "no steady reading yet");
 // the same match at half rate (main, no guard): uneven, and its tail is the period
 const safariHalf = [21, 31, 33, 19, 31, 34, 33, 16, 32, 37, 16, 32, 36, 17, 31, 33, 31, 19, 33, 32, 19, 33, 33, 20, 33, 30, 33, 19, 32, 33, 20, 30, 32, 36, 16, 33, 31, 22, 30, 33, 33, 17, 34, 33, 18, 32, 33, 20, 30, 34, 33, 17, 33, 33, 18, 32, 33, 21, 30, 34, 33, 17, 33, 34, 17, 33, 33, 19, 31, 34, 23, 26, 34, 33, 18, 32, 31, 22, 30, 34, 34, 17, 30, 35, 21, 30, 31, 37, 16, 32];
 assert.deepEqual(refreshSample(safariHalf), { hz: 60, steady: false }, "Safari half rate");
-// a steady reading always counts as it is: a window moved to a slower screen, or a display that paces at 30 Hz
-assert.equal(heldRefresh({ hz: 30, steady: true }, 60), 30);
-// an uneven sample that reads lower than the steady one still lowers it (the #235 tail, a slow game reading its period)
-assert.equal(heldRefresh({ hz: 48, steady: false }, 60), 48);
+// frames that miss vsync by a little (a 16.7 ms tail, a 20 ms median): they only come late, so the sample is uneven and
+// reads its tail
+assert.deepEqual(refreshSample([...repeat([1000 / 60], 6), ...repeat([20], 84)]), { hz: 60, steady: false }, "mild misses");
+
+// the engine's running estimate, on one screen ("width,height,availLeft,availTop")
+const SCREEN = "1920,1080,0,0";
+{
+  const e = new RefreshEstimate();
+  assert.equal(e.add(safariUneven, SCREEN), uneven.hz, "no steady reading yet: the tail, as before");
+  assert.equal(e.add(safariIdle, SCREEN), 60);
+  assert.equal(e.add(safariUneven, SCREEN), 60, "held under the steady 60");
+  assert.equal(e.add(safariHalf, SCREEN), 60);
+  assert.equal(e.add(vsync(30, repeat([1], 90)), SCREEN), 30, "a steady 30 reads 30");
+  assert.equal(e.add(vsync(60, repeat([1, 2, 3, 3, 2, 3, 4, 3, 2, 3], 90)), SCREEN), 60, "and a slow game after it, its tail");
+  assert.equal(e.add(vsync(144, repeat([1, 2, 3, 2], 90)), "1920,1080,1920,0"), 144, "a same-sized screen beside it starts over");
+}
+// a match held at half rate from the first sample: a steady 30 sets no ceiling, so the later tail still reads 60
+{
+  const e = new RefreshEstimate();
+  assert.equal(e.add(vsync(60, repeat([2], 90)), SCREEN), 30);
+  assert.equal(e.add(vsync(60, repeat([1, 2, 3, 3, 2, 3, 4, 3, 2, 3], 90)), SCREEN), 60, "recovers from a half-rate start");
+}
 console.log("refresh: ok");
