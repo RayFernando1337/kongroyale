@@ -25,7 +25,7 @@ interface KrGame {
     storm: Record<string, unknown>; world: StaticWorld;
     pred: { x: number; y: number; z: number; vx: number; vy: number; vz: number; st: number; hp: number; shield: number; grounded: boolean; crouch: boolean; sprint: boolean; swim: boolean; under: boolean; breath: number; swGun: number; surf: number; slope: boolean; active: number; kills: number; damage: number; slots: Array<{ kind: number; id: number; rarity: number; count: number; mag: number }>; ammo: ArrayLike<number> };
   };
-  link: null | { offline: boolean; transport?: { kind: string; stats: object }; fallback?: string | null };
+  link: null | { report?(): object };
   render: null | { actors?: Map<unknown, unknown>; lootViews?: Map<unknown, unknown>; chestViews?: Map<unknown, unknown>; rejected?: number };
   input: { yaw: number; pitch: number; locked: boolean };
   hud: { mapOpen?: boolean };
@@ -128,7 +128,7 @@ export function gatherContext(engine: Engine) {
     camera: cam,
     game: g ? {
       inMatch: g.inMatch, lobby, callsign: g.lobby?.name ?? null, mapOpen: g.hud?.mapOpen ?? null,
-      net: g.link && !g.link.offline ? { transport: g.link.transport?.kind ?? null, fallback: g.link.fallback ?? null, stats: g.link.transport ? structuredClone(g.link.transport.stats) : null } : null,
+      net: g.link?.report?.() ?? null,
       match: cm ? { phase: PHASE[cm.phase] ?? cm.phase, time: r2(cm.time), mode: cm.mode, range: cm.range, alive: cm.alive, squads: cm.squads, flags: cm.flags, ping: Math.round(cm.ping), jitter: r2(cm.jitter), interpTicks: r2(cm.interpTicks), storm: { ...cm.storm } } : null,
       player: p ? {
         pos: [r2(p.x), r2(p.y), r2(p.z)], vel: [r2(p.vx), r2(p.vy), r2(p.vz)], speed: r2(Math.hypot(p.vx, p.vz)), yawDeg: r2(THREE.MathUtils.radToDeg(g.input.yaw)), pitchDeg: r2(THREE.MathUtils.radToDeg(g.input.pitch)),
