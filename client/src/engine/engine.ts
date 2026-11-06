@@ -12,6 +12,7 @@ import { onStructure, ownVisible, activeGates, type Gate } from "./scene-hooks";
 import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
 import { afterPaint } from "./frame";
+import { refreshFromIntervals } from "./refresh";
 import { flag } from "../flags";
 import { contextEpoch, watchContext } from "./res/restore";
 
@@ -590,12 +591,12 @@ export class Engine implements WorldCtx {
     if (this.started) return;
     this.started = true;
     let prevRaf = 0;
-    const loop = () => {
+    const loop = (frameT: number) => {
       const now = performance.now();
-      // display refresh: the median rAF interval over the first 90 callbacks after start (then every 20 s again — a
-      // window moved to another monitor), used as the default frame cap / dynamic-resolution target
-      if (prevRaf) this.sampleRefresh(now - prevRaf);
-      prevRaf = now;
+      // display refresh: from the rAF timestamps (vsync-aligned, unlike the time this callback got to run) of 90 frames
+      // after start, then every 20 s again (a window moved to another monitor); see refresh.ts
+      if (prevRaf) this.sampleRefresh(frameT - prevRaf);
+      prevRaf = frameT;
       if (this.suspended || this.contextLost) { this.last = now; requestAnimationFrame(loop); return; }
       requestAnimationFrame(loop);
       // frame limiter (display settings): draw only when the cap's interval has elapsed (a 0.6 ms slack absorbs vsync
@@ -652,13 +653,9 @@ export class Engine implements WorldCtx {
     if (now < this.rafNext || d <= 0 || d > 100) return;
     this.rafSamples.push(d);
     if (this.rafSamples.length < 90) return;
-    const s = this.rafSamples.sort((a, b) => a - b);
-    // the fastest quartile's median: long frames (loading, hitches) only ever make an interval longer
-    const hz = Math.round(1000 / s[Math.floor(s.length * 0.2)]);
+    const v = refreshFromIntervals(this.rafSamples);
     this.rafSamples = [];
     this.rafNext = now + 20000;
-    const snap = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 170, 175, 180, 200, 240, 280, 300, 360, 480, 500].reduce((a, b) => Math.abs(b - hz) < Math.abs(a - hz) ? b : a);
-    const v = Math.abs(snap - hz) <= Math.max(3, hz * 0.04) ? snap : hz;
     if (v !== this.refreshHz) {
       this.refreshHz = v;
       if (this.capWanted) this.setFrameCap(this.capWanted);
