@@ -31,6 +31,9 @@ npm run build
 npm test
 ```
 
+`bun install --frozen-lockfile` can replace `npm ci` (same versions, read from `package-lock.json`). Change dependencies
+with npm, and run the build, tests and game on Node, not Bun.
+
 All checks must pass; the same ones run on your pull request. Then play your change: **Play** (a bot match in your
 browser) or the **Firing Range** for most things, and `KR_EVENT_MODE=0 npm run server` plus an online room if you
 touched multiplayer.

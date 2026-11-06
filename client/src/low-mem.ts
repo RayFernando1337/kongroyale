@@ -4,7 +4,7 @@ import { Phase } from "../../shared/sim/match";
 import type { Engine } from "./engine/engine";
 import type { StaticCache } from "./engine/static-cache";
 import type { WorldModule } from "./world/module";
-import type { Scope } from "./engine/res/scope";
+import { resources, type Scope } from "./engine/res/scope";
 import { flag } from "./flags";
 import { isLowMemory } from "./low-mem-device";
 import { restoreModulesWith } from "./engine/res/restore";
@@ -88,7 +88,7 @@ const hooksOf = new Map<string, Hook[]>(), ctxOf = new Map<string, Engine>(), ev
 export function moduleCtx(engine: Engine, w: World, id: string): Engine {
   const kr = (globalThis as unknown as { __kr: { rebuildModule?: (id: string) => Promise<void> } }).__kr;
   if (!kr.rebuildModule) {
-    kr.rebuildModule = async (x) => { await evictStreamed(engine, w, x); await (await w.build(x)).integrated; };
+    kr.rebuildModule = async (x) => { if (w.modOf.has(x)) await evictStreamed(engine, w, x); const queued = pendingRef.indexOf(x); if (queued >= 0) pendingRef.splice(queued, 1); delete streamMsRef[x]; refreshImpostors(w.modOf); const t0 = performance.now(); await (await w.build(x)).integrated; if (!w.modOf.has(x)) { if (queued >= 0) pendingRef.push(x); return; } streamMsRef[x] = Math.round(performance.now() - t0); refreshImpostors(w.modOf); setTimeout(() => refreshImpostors(w.modOf), IMPOSTOR_HOLD_MS); };
     restoreModulesWith({
       can: (x) => ctxOf.has(x) && w.modOf.has(x),
       rebuild: async (ids) => {
@@ -135,7 +135,8 @@ export async function evictStreamed(engine: Engine, w: World, id: string) {
   for (let i = u.length - 1; i >= 0; i--) if (hooks.has(u[i])) { u.splice(i, 1); engine.updLabels.splice(i, 1); }
   engine.occlusion.unregister(id);
   const far = engine.far.pois.find((q) => q.id === id);
-  if (far?.state === "built") Object.assign(far, { roots: [], sources: [], near: -Infinity, moved: () => true, late: () => false });
+  if (far && impostors?.has(id)) engine.far.drop(far);
+  else if (far?.state === "built") Object.assign(far, { roots: [], sources: [], near: -Infinity, moved: () => true, late: () => false });
   else if (far) engine.far.drop(far);
   const statics = engine.statics;
   for (const r of roots) {
@@ -185,6 +186,63 @@ function evictionsFor(list: readonly Resident[]): Resident[] {
   return out;
 }
 
+const IMPOSTOR_MAGIC = "KRFI", IMPOSTOR_HEADER_B = 40, INTEGRATED_POLL_MS = 100, INTEGRATED_POLL_MAX_MS = 300_000, IMPOSTOR_HOLD_MS = 1000;
+let impostors: Map<string, THREE.Mesh> | null = null, streamMsRef: Record<string, number> = {}, pendingRef: string[] = [];
+const integratedAt = new Map<string, number>();
+
+function decodeImpostor(buf: ArrayBuffer): THREE.BufferGeometry {
+  const dv = new DataView(buf);
+  if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== IMPOSTOR_MAGIC) throw new Error("not a far impostor");
+  const n = dv.getUint32(8, true), ni = dv.getUint32(12, true);
+  const lo = [0, 1, 2].map((c) => dv.getFloat32(16 + c * 4, true)), size = [0, 1, 2].map((c) => dv.getFloat32(28 + c * 4, true));
+  const q = new Uint16Array(buf, IMPOSTOR_HEADER_B, n * 3), pos = new Float32Array(n * 3);
+  for (let i = 0; i < n * 3; i++) pos[i] = lo[i % 3] + (q[i] / 65535) * size[i % 3];
+  const colOff = IMPOSTOR_HEADER_B + Math.ceil((n * 6) / 4) * 4, rgba = new Uint8Array(buf, colOff, n * 4), col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) col[i * 3 + c] = Math.pow(rgba[i * 4 + c] / 255, 2.2);
+  const idxOff = colOff + n * 4;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  g.setIndex(new THREE.BufferAttribute(n > 65535 ? new Uint32Array(buf, idxOff, ni) : new Uint16Array(buf.slice(idxOff, idxOff + ni * 2)), 1));
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+
+async function loadImpostors(engine: Engine, w: World, out: Map<string, THREE.Mesh>) {
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "") + "/assets/far/";
+  const scope = resources.root.child("far-impostors");
+  const mat = scope.material(new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const group = new THREE.Group();
+  group.name = "far-merge-impostors";
+  engine.scene.add(group);
+  const index = (await (await fetch(base + "index.json")).json()) as { pois: Record<string, unknown> };
+  await Promise.all(Object.keys(index.pois).map(async (id) => {
+    try {
+      const g = scope.geometry("geo.world", decodeImpostor(await (await fetch(base + id + ".bin")).arrayBuffer()));
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.name = "far-impostor:" + id;
+      mesh.matrixAutoUpdate = false;
+      group.add(mesh);
+      out.set("poi:" + id, mesh);
+      refreshImpostors(w.modOf);
+      const far = engine.far.pois.find((q) => q.id === "poi:" + id);
+      if (far && !w.modOf.has("poi:" + id)) engine.far.drop(far);
+    } catch (e) { w.report("far-impostor:" + id, e); }
+  }));
+}
+
+function refreshImpostors(modOf: ReadonlyMap<string, unknown>) {
+  if (!impostors) return;
+  const now = performance.now();
+  for (const [id, mesh] of impostors) {
+    if (!modOf.has(id)) integratedAt.delete(id);
+    else if (streamMsRef[id] !== undefined && !integratedAt.has(id)) integratedAt.set(id, now);
+    const at = integratedAt.get(id);
+    mesh.visible = at === undefined || now - at < IMPOSTOR_HOLD_MS;
+  }
+}
+
 let trimming = Promise.resolve();
 
 export function trimStreamed(engine: Engine, w: World, incoming: string | null, pending: string[], streamMs: Record<string, number>, pois: readonly Poi[]) {
@@ -202,17 +260,31 @@ export function trimStreamed(engine: Engine, w: World, incoming: string | null, 
     }
     return list;
   };
+  if (!impostors && flag("farimp")) { impostors = new Map(); void loadImpostors(engine, w, impostors).catch((e) => w.report("far-impostors", e)); }
+  streamMsRef = streamMs;
+  pendingRef = pending;
   return (trimming = trimming.then(async () => {
+    refreshImpostors(w.modOf);
     for (;;) {
       const list = residents!();
       if (incoming) list.push({ id: incoming, d: -Infinity, mb: costOf.get(incoming) ?? UNKNOWN_POI_MB });
       const victim = evictionsFor(list)[0];
       if (!victim) break;
       await evictStreamed(engine, w, victim.id);
+      refreshImpostors(w.modOf);
       pending.push(victim.id);
       delete streamMs[victim.id];
     }
     if (incoming) { building.add(incoming); motion.builtAt = performance.now(); }
+    if (incoming && impostors) {
+      const until = performance.now() + INTEGRATED_POLL_MAX_MS;
+      const t = setInterval(() => {
+        refreshImpostors(w.modOf);
+        const at = integratedAt.get(incoming), failed = streamMs[incoming] !== undefined && !w.modOf.has(incoming);
+        if (!failed && (at === undefined || performance.now() - at < IMPOSTOR_HOLD_MS) && performance.now() < until) return;
+        clearInterval(t);
+      }, INTEGRATED_POLL_MS);
+    }
   }).catch((e) => w.report("lowmem-trim", e)));
 }
 

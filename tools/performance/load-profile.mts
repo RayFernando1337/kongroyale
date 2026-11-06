@@ -118,6 +118,10 @@ const PROBE = `(function () {
   } catch (e) {}
 })();`;
 const STATUS = `JSON.stringify({ ready: !!(window.__kr && window.__kr.ready), stage: window.__kr ? String(window.__kr.stage) : "none", inMatch: !!(window.__kr && window.__kr.game && window.__kr.game.inMatch), phase: window.__kr && window.__kr.game && window.__kr.game.cm ? window.__kr.game.cm.phase : -1, probe: !!window.__krProbe })`;
+const BOOT_FAILURE = `(function () {
+  var k = window.__kr || {}, f = document.querySelector("#kr-loading .failure");
+  return JSON.stringify({ card: f && !f.hidden ? String(f.innerText || f.textContent).replace(/\\s+/g, " ").trim() : null, bootError: k.bootError ? String(k.bootError).slice(0, 400) : null, errors: (k.errors || []).slice(0, 3).map(function (s) { return String(s).slice(0, 300); }) });
+})()`;
 const HEAP = `JSON.stringify({ at: performance.now(), mb: performance.memory ? performance.memory.usedJSHeapSize / 1e6 : null })`;
 const snapExpr = (point: SnapPoint) => `(function (point) {
   var k = window.__kr || {}, s = { point: point, at: performance.now(), jsHeapMB: null, uaWhy: null, info: null };
@@ -326,6 +330,17 @@ async function poll(d: Driver, until: (s: Status) => boolean, ms: number): Promi
   }
 }
 
+async function clickPlay(d: Driver): Promise<string | undefined> {
+  const page = async () => JSON.parse(await d.run(BOOT_FAILURE)) as { card: string | null; bootError: string | null; errors: string[] };
+  const text = (b: { card: string | null; bootError: string | null; errors: string[] }) => [b.card && "card: " + b.card, b.bootError && "bootError: " + b.bootError, ...b.errors.map((e) => "error: " + e)].filter(Boolean).join(" | ");
+  const before = await page();
+  if (before.card || before.bootError) return "Play not clicked, the page shows a boot failure: " + text(before);
+  try { await d.click("button.tn-play-cta"); return undefined; } catch (e) {
+    const why = text(await page());
+    return "the Play click failed (" + String((e as Error).message ?? e).split("\n")[0].slice(0, 200) + ")" + (why ? ": " + why : "");
+  }
+}
+
 async function loadOnce(d: Driver, start: Start, url: string, out: string, proxy: Proxy, matchSecs: number): Promise<Load> {
   const artifacts: string[] = [];
   await d.open("about:blank");
@@ -346,14 +361,14 @@ async function loadOnce(d: Driver, start: Start, url: string, out: string, proxy
     points.push(s);
   };
   if (s.ready) await snap("title");
-  artifacts.push(await d.shot(path.join(out, "title-" + start)));
+  try { artifacts.push(await d.shot(path.join(out, "title-" + start))); } catch (e) { console.error("title screenshot skipped: " + String(e).split(String.fromCharCode(10))[0]); }
   const boot: Snap = JSON.parse(await d.run(COLLECT));
   if (!s.ready) failure = "the title never became ready (stage " + s.stage + ")";
   if (s.ready && matchSecs > 0) {
-    await d.click("button.tn-play-cta");
-    const m = await poll(d, (x) => x.inMatch, MATCH_TIMEOUT_MS);
-    if (!m.inMatch) failure = "the practice match did not start within " + MATCH_TIMEOUT_MS / 1000 + " s";
-    else {
+    failure = await clickPlay(d);
+    const m = failure ? null : await poll(d, (x) => x.inMatch, MATCH_TIMEOUT_MS);
+    if (m && !m.inMatch) failure = "the practice match did not start within " + MATCH_TIMEOUT_MS / 1000 + " s";
+    else if (m) {
       const t0 = Date.now();
       while (Date.now() - t0 < matchSecs * 1000 + 300) {
         const x: Status = JSON.parse(await d.run(STATUS));

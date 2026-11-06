@@ -4,7 +4,8 @@ import { isLowMemory } from "../low-mem-device";
 type Source = HTMLImageElement | HTMLCanvasElement | ImageBitmap;
 
 const DEFAULT_CAP_PX = 1024, LOW_MEMORY_CAP_PX = 512;
-const CAP_PX = flag("poicap") ?? (isLowMemory(flag("lowmem"), flag("prepare") === "full") ? LOW_MEMORY_CAP_PX : DEFAULT_CAP_PX);
+/** longest texture edge in px for poicap; 0 = no cap */
+export const CAP_PX = flag("poicap") ?? (isLowMemory(flag("lowmem"), flag("prepare") === "full") ? LOW_MEMORY_CAP_PX : DEFAULT_CAP_PX);
 const done = new WeakMap<Source, HTMLCanvasElement>();
 
 export function capped<T extends Source>(img: T): T | HTMLCanvasElement {
@@ -21,10 +22,3 @@ export function capped<T extends Source>(img: T): T | HTMLCanvasElement {
   return c;
 }
 
-export async function cappedBitmap(bm: ImageBitmap): Promise<ImageBitmap> {
-  const c = capped(bm);
-  if (c === bm) return bm;
-  const out = await createImageBitmap(c, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
-  bm.close();
-  return out;
-}

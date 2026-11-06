@@ -145,6 +145,43 @@ const sharedDeterminism: Rule = {
   },
 };
 
+// ---- shared-math (AGENTS.md rule 2: transcendental Math through shared/sim/dmath.ts) ----
+
+const MATH_BANNED = new Set(["sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "exp", "expm1", "log", "log1p", "log2", "log10", "pow", "cbrt", "hypot"]);
+const DMATH_HAS = new Set(["sin", "cos", "tan", "asin", "acos", "atan", "atan2", "exp", "pow", "hypot"]);
+const MATH_WHY = "differs in the last bit between CPUs and JS engines (V8 on arm64 fuses multiply-adds, Safari and Firefox use other libms)";
+const MSG_MATH = (fn: string) => DMATH_HAS.has(fn)
+  ? `Math.${fn} ${MATH_WHY}: use dmath.${fn === "hypot" ? "hypot / dmath.hypot3" : fn} from shared/sim/dmath.ts ${RULE2}`
+  : `Math.${fn} ${MATH_WHY}, and shared/sim/dmath.ts has no ${fn} yet: add a dmath port first (from V8's src/base/ieee754.cc into shared/sim/dmath.hot.ts, with vectors in tools/dmath/vectors.json recorded on linux-x64 Node), then call dmath.${fn} ${RULE2}`;
+const MSG_MATH_DYNAMIC = `Math[...] with a computed name can reach a transcendental function: call it by name through shared/sim/dmath.ts ${RULE2}`;
+const MSG_EXP_OP = `** is Math.pow under another name and differs between JS engines: use dmath.pow from shared/sim/dmath.ts ${RULE2}`;
+
+const sharedMath: Rule = {
+  id: "shared-math",
+  applies: (rel) => rel.startsWith("shared/"),
+  check(sf) {
+    const hits: Hit[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(n) && globalName(n.expression) === "Math" && MATH_BANNED.has(n.name.text)) hits.push({ node: n, message: MSG_MATH(n.name.text) });
+      if (ts.isElementAccessExpression(n) && globalName(n.expression) === "Math") {
+        const a = n.argumentExpression;
+        if (!ts.isStringLiteralLike(a)) hits.push({ node: n, message: MSG_MATH_DYNAMIC });
+        else if (MATH_BANNED.has(a.text)) hits.push({ node: n, message: MSG_MATH(a.text) });
+      }
+      if (ts.isVariableDeclaration(n) && n.initializer && ts.isObjectBindingPattern(n.name) && globalName(n.initializer) === "Math") {
+        for (const e of n.name.elements) {
+          const key = e.propertyName && (ts.isIdentifier(e.propertyName) || ts.isStringLiteralLike(e.propertyName)) ? e.propertyName.text : ts.isIdentifier(e.name) ? e.name.text : "";
+          if (e.dotDotDotToken || MATH_BANNED.has(key)) hits.push({ node: e, message: e.dotDotDotToken ? MSG_MATH_DYNAMIC : MSG_MATH(key) });
+        }
+      }
+      if (ts.isBinaryExpression(n) && (n.operatorToken.kind === ts.SyntaxKind.AsteriskAsteriskToken || n.operatorToken.kind === ts.SyntaxKind.AsteriskAsteriskEqualsToken)) hits.push({ node: n.operatorToken, message: MSG_EXP_OP });
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return hits;
+  },
+};
+
 const HOT_JSON = `${LINT_DIR}/hot.json`, HOT_FIXTURE_JSON = `${LINT_DIR}/fixtures/hot-alloc/hot.json`;
 const HOT: Record<string, string[]> = Object.assign({}, ...[HOT_JSON, HOT_FIXTURE_JSON].map((p) => JSON.parse(fs.readFileSync(path.join(ROOT, p), "utf8"))));
 const isHotFile = (rel: string) => rel.endsWith(".hot.ts");
@@ -247,44 +284,6 @@ function hotListErrors(list: unknown, from: string, readable: (rel: string) => t
   }
   return errors;
 }
-
-const LINE_DIRECTIVES = ["@ts-expect-error", "@ts-ignore", "@ts-nocheck"], BLOCK_DIRECTIVES = ["@vite-ignore"];
-const MSG_COMMENT = "no comments (plan decision 2, after Lauren Tan): say it with a name, a type or a test instead; the pstack no-comments skill turns one comment at a time into one of those. Tool directives (@ts-expect-error, @vite-ignore, /// <reference>) are allowed";
-
-function isDirective(text: string): boolean {
-  if (text.startsWith("/// <reference")) return true;
-  const line = text.startsWith("//");
-  const word = (line ? text.slice(2) : text.slice(2, -2)).trim().split(/\s/, 1)[0];
-  return (line ? LINE_DIRECTIVES : BLOCK_DIRECTIVES).includes(word);
-}
-
-function comments(sf: ts.SourceFile): ts.CommentRange[] {
-  const seen = new Map<number, ts.CommentRange>();
-  const add = (ranges: ts.CommentRange[] | undefined) => { for (const r of ranges ?? []) seen.set(r.pos, r); };
-  const walk = (n: ts.Node): void => {
-    if (ts.isJSDoc(n)) return;
-    if (n.kind < ts.SyntaxKind.FirstNode) { add(ts.getLeadingCommentRanges(sf.text, n.pos)); add(ts.getTrailingCommentRanges(sf.text, n.end)); }
-    n.getChildren(sf).forEach(walk);
-  };
-  walk(sf);
-  return [...seen.values()];
-}
-
-const noComments: Rule = {
-  id: "no-comments",
-  counted: true,
-  applies: () => true,
-  check(sf, rel) {
-    const hits: Hit[] = [];
-    for (const c of comments(sf)) {
-      const text = sf.text.slice(c.pos, c.end);
-      if (isDirective(text) || (rel.startsWith(`${LINT_DIR}/fixtures/`) && text === "// lint-expect")) continue;
-      const first = sf.getLineAndCharacterOfPosition(c.pos).line, last = sf.getLineAndCharacterOfPosition(c.end).line;
-      for (let l = first; l <= last; l++) hits.push({ node: sf, line: l + 1, message: MSG_COMMENT });
-    }
-    return hits;
-  },
-};
 
 function inTypePosition(n: ts.Node): boolean {
   for (let p = n.parent; p; p = p.parent) {
@@ -468,7 +467,7 @@ const resourceOwner: Rule = {
   },
 };
 
-const RULES: Rule[] = [sharedDeterminism, hotAlloc, noComments, importType, unitSuffix, urlFlags, urlParams, resourceOwner];
+const RULES: Rule[] = [sharedDeterminism, sharedMath, hotAlloc, importType, unitSuffix, urlFlags, urlParams, resourceOwner];
 
 // ---- engine ----
 

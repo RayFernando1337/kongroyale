@@ -1,5 +1,5 @@
 {
-  "about": "memory.mts --budgets: what the game holds at the playable title on SwiftShader (the CI no-GPU boot smoke job runs it after boot). A number over its budget fails; a number more than underPct under fails until the budget is lowered (the failure names the new value, measured plus headroomPct), so budgets only go down. Set 2026-11-05 from main 4a59c38: three runs on 8 vCPUs gave WebGL 1542.9-1560.2 MB and 244-247 textures. Lowered when the first-visit boot started building at the classified GPU tier (SwiftShader classifies as low): WebGL 1418.1 MB, textures 1261.1 MB in 246. Lowered when konghalf went on by default (six near-tier kong maps at 1024²): WebGL 1322.1 MB, textures 1165.1 MB, texture CPU copies 355.6 MB. Lowered when Assets.texture() images and the kong maps started dropping their decoded copies after upload: texture CPU copies 268.6 MB.",
+  "about": "memory.mts --budgets: what the game holds at the playable title on SwiftShader (the CI no-GPU boot smoke job runs it after boot). A number over its budget fails; a number more than underPct under fails until the budget is lowered (the failure names the new value, measured plus headroomPct), so budgets only go down. Set 2026-11-05 from main 4a59c38: three runs on 8 vCPUs gave WebGL 1542.9-1560.2 MB and 244-247 textures. Lowered when the first-visit boot started building at the classified GPU tier (SwiftShader classifies as low): WebGL 1418.1 MB, textures 1261.1 MB in 246. Lowered when konghalf went on by default (six near-tier kong maps at 1024²): WebGL 1322.1 MB, textures 1165.1 MB, texture CPU copies 355.6 MB. Lowered when Assets.texture() images and the kong maps started dropping their decoded copies after upload: texture CPU copies 268.6 MB. Texture count lowered to 244 when main settled at 238-241 textures at the title (two CI boot smokes and one local run on 2f042e7).",
   "config": {
     "url": "/?seed=42&vegsplat=0",
     "profile": "nogpu",
@@ -14,7 +14,7 @@
       "webglMB": 1349,
       "textureMB": 1189,
       "bufferMB": 140,
-      "textureCount": 252,
+      "textureCount": 244,
       "geometryCpuMB": 175,
       "textureCpuMB": 274
     }

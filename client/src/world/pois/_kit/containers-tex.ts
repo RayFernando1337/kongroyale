@@ -11,8 +11,8 @@
 import * as THREE from "three";
 import type { ContainerColor } from "../../../../../shared/pois/harbor-kit";
 import { workerPool } from "../../../engine/worker-pool";
-import { capped, cappedBitmap } from "../../../engine/tex-cap";
-import { canvas, drawBanana, drawBananaBunch, drawFruitBanana, edgeShade, noiseTile, normalFromHeight, paintNoise, rng, scratches, splotches, stencilText, tex } from "./harbor-paint";
+import { capped } from "../../../engine/tex-cap";
+import { canvas, drawBanana, drawBananaBunch, drawFruitBanana, edgeShade, noiseTile, normalFromHeight, paintNoise, rng, scratches, splotches, stencilText, tex, cappedBitmap } from "./harbor-paint";
 
 export interface Region { x: number; y: number; w: number; h: number }
 

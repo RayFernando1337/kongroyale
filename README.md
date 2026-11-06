@@ -29,6 +29,11 @@ npm ci
 npm run dev
 ```
 
+Prefer [Bun](https://bun.sh)? `bun install --frozen-lockfile` works in place of `npm ci`: it reads `package-lock.json` and
+installs the same versions, and refuses to run if the lockfile is out of date. npm stays the source of truth, so add or
+update dependencies with npm. Run everything on Node: Bun isn't supported as the runtime, because the simulation gives
+different results under it.
+
 Open <http://localhost:5317/> and press **Play**. That starts a match against 49 bots that runs entirely in your
 browser, so you don't need the server. Pick **Easy**, **Standard** or **Hard** bots on the title screen.
 

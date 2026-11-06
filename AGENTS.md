@@ -29,12 +29,12 @@ pieces fit; read it before changing networking, the simulation or world loading.
 
 | Command | What it does |
 |---|---|
-| `npm ci` | Install exact dependency versions. Node 22.12 or newer. |
+| `npm ci` | Install exact dependency versions. Node 22.12 or newer. `bun install --frozen-lockfile` also works (same versions, from `package-lock.json`); run everything on Node, not Bun. |
 | `npm run dev` | Dev client on <http://localhost:5317/>. It listens on your network too (`--host`). Hot reload is off: reload the page after a change. |
 | `npm run server` | Game server on port 3020, restarted when a file changes. Add `KR_EVENT_MODE=0` to allow creating rooms. |
 | `npm run build` | Production build into `dist/` and `dist-admin/`, then precompression. About 15 s. |
-| `npm test` | Every check that needs no GPU, network or database. Run `npm run build` first. About 4 min. |
-| `npm test -- --fast` | Skips the five slow checks (solver, glass, parity, sim, redteam). About 30 s. `--list` shows each check's id and `--only lint,sim` runs some of them. |
+| `npm test` | Every check that needs no GPU, network or database. Run `npm run build` first. About 6 min (8 on 2 vCPU). |
+| `npm test -- --fast` | Skips the seven slow checks (solver, glass, parity, sim, nettail, redteam, planeview). About 30 s. `--list` shows each check's id and `--only lint,sim` runs some of them. |
 | `npm run typecheck` | The TypeScript check alone (the first step of `npm test`). |
 | `npm run sim` | A headless 50-bot match (trios, seed 42). Fast feedback for simulation changes. |
 | `npm run netlab` | Hit registration under simulated latency, using the real client and server code. Add `-- --check` to fail on a regression. |
@@ -51,7 +51,9 @@ pieces fit; read it before changing networking, the simulation or world loading.
    who wins. Never trust a value the client sends without checking it on the server.
 2. **`shared/` runs on both sides, so it must stay deterministic.** Same inputs, same result, on Node and in every
    browser. No DOM APIs, no Node APIs (`node:*`, `process`), no `Math.random()` (use `Rng` from `shared/sim/rng.ts`
-   with the match seed), and no wall-clock time in game logic. Keep hot paths (`stepPlayer`, collision, hit tests)
+   with the match seed), no wall-clock time in game logic, and no built-in `Math.sin`, `cos`, `tan`, `atan2`, `exp`,
+   `pow`, `hypot`, `**` or other libm functions: they differ in the last bit between CPUs and JS engines, so call them
+   through `shared/sim/dmath.ts`. Keep hot paths (`stepPlayer`, collision, hit tests)
    free of per-tick allocations.
 3. **Never commit secrets.** No `.env` files, keys, tokens or `.admin-key`. CI scans every pull request for them.
 4. **Every asset needs a source and a licence.** Art, models, sounds and fonts must be your own or clearly free to use
@@ -91,11 +93,9 @@ There is no formatter. `tools/lint/check.mts` runs in `npm test` and enforces th
 rest, match the code around you:
 
 - TypeScript in strict mode, ES modules, two-space indentation, double quotes, semicolons, LF line endings.
-- Lines can be long.
-- No comments. Say it with a name, a type or a test instead. Tool directives (`// @ts-expect-error`,
-  `/* @vite-ignore */`, `/// <reference>`) are the only exception. Existing comments are counted per file in
-  `tools/lint/baseline.json`, and the count only goes down: the `no-comments` skill from [pstack](https://github.com/cursor/plugins) removes them a file at a
-  time.
+- Lines can be long. Wrap comments at about 120 characters.
+- Every file starts with a comment saying what it owns and how it fits in. Keep it accurate when you change the file.
+- Comments explain why, not what. A `/** ... */` comment on an exported field or function says what it means.
 - Per-tick and per-frame code lives in `*.hot.ts` files and doesn't allocate: no object or array literals, `new`,
   closures, array callbacks, spreads or rest bindings inside any function written there, callbacks included. Build
   scratch objects once at module scope with a plain loop, or import them from a module that isn't hot. Hot
@@ -118,13 +118,13 @@ catching it; turn it into a check when the same mistake shows up twice.
 |---|---|
 | 1. The server is authoritative | Review only. The `redteam` step of `npm test` attacks the admin lobby. |
 | 2. `shared/` is deterministic: no `Math.random`, wall-clock time, Node or DOM APIs | Lint rule `shared-determinism`; the `sim` step of `npm test` fails when the headless match's state hash changes |
+| 2. `shared/` math gives the same bits everywhere: transcendental functions, `hypot` and `**` go through `shared/sim/dmath.ts` | Lint rule `shared-math` (empty baseline); the `dmath` step of `npm test` checks every dmath function bit for bit against recorded vectors |
 | 2. Hot paths don't allocate | Lint rule `hot-alloc` over `*.hot.ts` and `tools/lint/hot.json` |
 | 3. Never commit secrets | CI job "no secrets" (key and env file check, gitleaks) |
 | 4. Every asset needs a source and a licence | `npm test` (`assets` step): no new unattributed asset beyond `tools/verify-assets.baseline.json`, which only shrinks |
 | 5. One change per pull request | Review only |
 | 6. Build and test before the pull request | CI job "build and test" runs `npm run build` and `npm test` |
 | 7. Only test against servers you run | Review only |
-| No comments | Lint rule `no-comments` |
 | Constants carry their unit | Lint rule `unit-suffix`, report only: `npm test` prints the count and never fails on it |
 | Tunable numbers live in `shared/sim/const.ts` | Review only |
 | `import type` for type-only imports | Lint rule `import-type` (also flags unused imports) |
