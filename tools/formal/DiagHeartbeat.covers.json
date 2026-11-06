@@ -1,0 +1,49 @@
+{
+  "skill": ".agents/skills/verify-diagnostics/SKILL.md",
+  "note": "The playtest chunk (client/src/playtest/index.ts installPlaytest) lazy-loads diag.ts and report.ts after boot when diag is on; the model's GoLive happens only then, which is why a tab killed while it boots leaves no record. index.ts is not a region: read it against GoLive when it changes. Browsers without Web Locks keep no heartbeat (writeBeat returns early), which the model leaves out.",
+  "regions": [
+    "client/src/playtest/diag.ts#sid",
+    "client/src/playtest/diag.ts#BEAT_KEY",
+    "client/src/playtest/diag.ts#CLAIM_KEY",
+    "client/src/playtest/diag.ts#locks",
+    "client/src/playtest/diag.ts#writeBeat",
+    "client/src/playtest/diag.ts#readBeats",
+    "client/src/playtest/diag.ts#goLive",
+    "client/src/playtest/diag.ts#findDeadSession",
+    "client/src/playtest/diag.ts#installDiag",
+    "client/src/playtest/report.ts#crashCard",
+    "client/src/playtest/report.ts#installReport"
+  ],
+  "writes": [
+    {
+      "what": "the per-session heartbeat records (kr.diag.hb.<sid>), through BEAT_KEY",
+      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s*BEAT_KEY",
+      "files": [
+        "client/src/"
+      ]
+    },
+    {
+      "what": "any localStorage write with a literal key in the playtest code: the scan blanks string literals, so a literal kr.diag.hb.<sid> elsewhere can't be told from the game's other keys",
+      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s+,",
+      "files": [
+        "client/src/playtest/"
+      ]
+    }
+  ],
+  "verified": {
+    "model": "e6d430e5272dc7fe",
+    "regions": {
+      "client/src/playtest/diag.ts#sid": "17917ebf4d9949ae",
+      "client/src/playtest/diag.ts#BEAT_KEY": "b4126ea16d1676c0",
+      "client/src/playtest/diag.ts#CLAIM_KEY": "aa656f45bd2acd64",
+      "client/src/playtest/diag.ts#locks": "1c97b49cccbbbafa",
+      "client/src/playtest/diag.ts#writeBeat": "733bfd3ec4eea770",
+      "client/src/playtest/diag.ts#readBeats": "24deab261c980dfe",
+      "client/src/playtest/diag.ts#goLive": "47b8b22dedd37153",
+      "client/src/playtest/diag.ts#findDeadSession": "bad175e32c33f372",
+      "client/src/playtest/diag.ts#installDiag": "7fafe986dd48bccb",
+      "client/src/playtest/report.ts#crashCard": "b8b6bae683d0bdb4",
+      "client/src/playtest/report.ts#installReport": "063887050037aa8b"
+    }
+  }
+}
