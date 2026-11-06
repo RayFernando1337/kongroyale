@@ -176,9 +176,7 @@
       "metric": "readyMs, cold, median. v0.2.0: 3 loads [31.6-33.1] (RAY-94). kong-v0.6.1: 5 loads [17.7-22.3], interleaved with v0.6.0, tools/performance/load-profile.mts. Different days and tool versions, so indicative",
       "machine": "Windows PC, Chrome, D3D11",
       "date": "2026-11-06T03:15:00Z",
-      "prs": [
-        88
-      ],
+      "prs": [],
       "source": "v0.2.0: RAY-94 precise re-run (f000fd1). kong-v0.6.1: project drive handoffs/release-kong-v0.6.1-d3d11/load-table.md (cold readyMs 19233, ee43574)"
     },
     {
@@ -572,7 +570,7 @@
         "target": 25,
         "targetNote": "the game's own title-screen budget",
         "status": "done",
-        "detail": "Cold first visit, readyMs median of 5 loads, kong-v0.6.1 (ee43574), interleaved with v0.6.0 (18.7 s), range 17.7 to 22.3 s. Earlier readings on main 290a32b were 26 to 27 s.",
+        "detail": "Cold first visit, readyMs median of 5 loads, kong-v0.6.1 (ee43574), interleaved with v0.6.0 (18.7 s), range 17.7 to 22.3 s. Earlier readings on main 290a32b were 26 to 27 s. Source: project drive handoffs/release-kong-v0.6.1-d3d11/load-table.md.",
         "source": "project drive handoffs/release-kong-v0.6.1-d3d11/load-table.md"
       },
       {
@@ -582,7 +580,7 @@
         "unit": "s",
         "target": null,
         "status": "measured",
-        "detail": "Second load in the same browser profile, readyMs median of 5, kong-v0.6.1: 22.8 to 24.6 s (v0.6.0: 25.3 s). Not directly comparable with the 13.6 s measured on Nov 4 (a different build and tool run); in all 10 warm runs on v0.6.0 and v0.6.1 the game builds a location before the title (RAY-176).",
+        "detail": "Second load in the same browser profile, readyMs median of 5, kong-v0.6.1: 22.8 to 24.6 s (v0.6.0: 25.3 s). Not directly comparable with the 13.6 s measured on Nov 4 (a different build and tool run); in all 10 warm runs on v0.6.0 and v0.6.1 the game builds a location before the title (RAY-176). Source: project drive handoffs/release-kong-v0.6.1-d3d11/load-table.md.",
         "source": "project drive handoffs/release-kong-v0.6.1-d3d11/load-table.md"
       },
       {
@@ -666,7 +664,7 @@
         "unit": "MB",
         "target": null,
         "status": "measured",
-        "detail": "Whole browser, median of 3 runs, main 8f42339, memory.mts v3. kong-v0.2.0 was 8409 MB (it boots at ultra quality, main at high).",
+        "detail": "Whole browser, median of 3 runs, main 8f42339, memory.mts v3. kong-v0.2.0 was 8409 MB (it boots at ultra quality, main at high). Source: project drive handoffs/memory-v020-vs-main-d3d11/README.md (RAY-138).",
         "source": "project drive handoffs/memory-v020-vs-main-d3d11/README.md (RAY-138)"
       },
       {
@@ -749,7 +747,7 @@
         "unit": "MB",
         "target": null,
         "status": "improved",
-        "detail": "Whole browser 30 s into a match, median of 3 runs, main 8f42339, memory.mts v3. kong-v0.4.1 was 12719 MB. Not yet re-run on kong-v0.6.1.",
+        "detail": "Whole browser 30 s into a match, median of 3 runs, main 8f42339, memory.mts v3. kong-v0.4.1 was 12719 MB, but it booted at ultra quality and main at high, so the two are not the same quality. Not yet re-run on kong-v0.6.1. Source: project drive handoffs/memory-v020-vs-main-d3d11/README.md (RAY-138).",
         "source": "project drive handoffs/memory-v020-vs-main-d3d11/README.md (RAY-138)"
       },
       {
@@ -759,7 +757,7 @@
         "unit": "GB",
         "target": null,
         "status": "baseline",
-        "detail": "Whole browser 60 s into a match, median of 6 runs on a Mac mini M4 16 GB, main 7890f3b, memory.mts v3 (reads the page over CDP). The 12.4 GB reading on Nov 4 came from the older polling harness. About 2.5 GB of swap was already in use before each run and memory pressure read \"warn\".",
+        "detail": "Whole browser 60 s into a match, median of 6 runs on a Mac mini M4 16 GB, main 7890f3b, memory.mts v3 (reads the page over CDP). The 12.4 GB reading on Nov 4 came from the older polling harness. About 2.5 GB of swap was already in use before each run and memory pressure read \"warn\". Source: project drive handoffs/memory-baseline-metal-v3/README.md.",
         "source": "project drive handoffs/memory-baseline-metal-v3/README.md"
       },
       {
