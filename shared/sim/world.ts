@@ -823,7 +823,8 @@ export class StaticWorld {
   unstickReset(p: object) { US.delete(p); }
 
   // ---- raycast against boxes + terrain. Writes into `out`. dir need not be normalised (t in units of dir).
-  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, out: Hit, bullets = true): Hit {
+  // `firstHit` stops at the first hit found, which need not be the nearest: only for yes/no tests like clear().
+  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, out: Hit, bullets = true, firstHit = false): Hit {
     out.hit = false; out.t = maxT; out.box = -1; out.cover = -1;
     // terrain: march with adaptive steps, refine with bisection
     const len = dmath.hypot3(dx, dy, dz);
@@ -851,6 +852,8 @@ export class StaticWorld {
         }
       }
     }
+    // firstHit (a line-of-sight test): any hit decides the answer, so stop at the first one instead of finding the nearest
+    if (firstHit && out.hit) return out;
     // boxes: walk grid cells along the ray (2D DDA over x/z)
     const ex = ox + dx * out.t, ez = oz + dz * out.t;
     const rx0 = Math.min(ox, ex), rx1 = Math.max(ox, ex), rz0 = Math.min(oz, ez), rz1 = Math.max(oz, ez);
@@ -862,7 +865,7 @@ export class StaticWorld {
       // Skipping changes which cell first offers a box, so rayBox settles an exact tie as the full walk would have.
       const ix = 1 / dx, iz = 1 / dz;
       if (span > 2) { this.tieX0 = cx0; this.tieZ0 = cz0; }
-      for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
+      cells: for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
         if (span > 2) {
           const x0 = this.gridMin + cx * GRID_CELL - 1, z0 = this.gridMin + cz * GRID_CELL - 1, x1 = x0 + GRID_CELL + 2, z1 = z0 + GRID_CELL + 2;
           let t0 = 0, t1 = out.t;
@@ -873,6 +876,7 @@ export class StaticWorld {
           if (t0 > t1) continue;
         }
         this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
+        if (firstHit && out.hit) break cells;
       }
       this.tieX0 = this.tieZ0 = -1;
     } else {
@@ -887,12 +891,12 @@ export class StaticWorld {
       for (let guard = 0; guard < 400; guard++) {
         // visit this cell and its neighbours across (boxes may straddle)
         this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
-        if (cx === tcx && cz === tcz) break;
+        if ((firstHit && out.hit) || (cx === tcx && cz === tcz)) break;
         if (tmx < tmz) { if (tmx > out.t) break; cx += sx; tmx += tdx; } else { if (tmz > out.t) break; cz += sz; tmz += tdz; }
         if (cx < 0 || cz < 0 || cx >= this.gridN || cz >= this.gridN) break;
       }
     }
-    if (this.cover !== null && this.cover.n > 0) this.cover.ray(ox, oy, oz, dx, dy, dz, out);
+    if (!(firstHit && out.hit) && this.cover !== null && this.cover.n > 0) this.cover.ray(ox, oy, oz, dx, dy, dz, out);
     return out;
   }
   private lastCellVisited = -1;
@@ -950,7 +954,7 @@ export class StaticWorld {
 
   /** quick line-of-sight test (no hit details) */
   clear(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
-    this.raycast(ax, ay, az, bx - ax, by - ay, bz - az, 1, LOS, true);
+    this.raycast(ax, ay, az, bx - ax, by - ay, bz - az, 1, LOS, true, true);
     return !LOS.hit;
   }
 }
