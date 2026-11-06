@@ -27,6 +27,9 @@ export interface Link {
   readonly transport?: Transport;
   /** why an online link is not on WebTransport (null: it is, or it hasn't decided yet) */
   readonly fallback?: FallbackReason | null;
+  /** an online link's transport now, its fallback and a copy of its counters, for KONGBOT reports. It lives here, in
+   *  the lazy game chunk, so the entry (where the KONGBOT context is gathered) doesn't carry it */
+  report?(): { transport: Transport["kind"]; fallback: FallbackReason | null; stats: Transport["stats"] };
   onJSON: (m: Record<string, unknown>) => void;
   /** `at` = arrival time (MessageEvent.timeStamp on the performance.now() clock), when the transport knows it */
   onBinary: (u8: Uint8Array, at?: number) => void;
@@ -68,6 +71,7 @@ export function connectWs(url: string, timeoutMs = 4000): Promise<Link> {
     const link: Link = {
       offline: false, onJSON: () => {}, onBinary: () => {}, onClose: () => {},
       get transport() { return active; }, get fallback() { return fallback; },
+      report: () => ({ transport: active.kind, fallback, stats: structuredClone(active.stats) }),
       sendJSON: (o) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o)); },
       sendBinary: (u8) => sendFrame(active, u8),
       close: () => { closed = true; active.close(); bin.close(); ws.close(); },

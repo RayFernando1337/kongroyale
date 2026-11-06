@@ -53,7 +53,7 @@ import { makeInput } from "./shared/sim/player";
   out.inMatch = inMatch;
   const w = new Writer(new ArrayBuffer(16));
   for (let i = 0; i < 30 && !out.pong; i++) { link.sendBinary(w.reset().u8(M.Ping).f64(performance.now()).view()); await new Promise((r) => setTimeout(r, 100)); }
-  out.stats = structuredClone(link.transport?.stats); out.chunks = performance.getEntriesByType("resource").map((e) => e.name.split("/").pop());
+  out.stats = structuredClone(link.transport?.stats); out.report = link.report?.() ?? null; out.chunks = performance.getEntriesByType("resource").map((e) => e.name.split("/").pop());
   if (out.kind !== "wt" || !flood) return out;
   // a flood past the server's rate limit gets the session closed: the link must go back to the WebSockets and work.
   // Inputs, because they ride the stream: every one arrives, so the count past the bucket is exact (datagrams may drop)
@@ -84,7 +84,7 @@ try { browser = await chromium.launch({ executablePath: CHROME, headless: true }
   console.log(`SKIP  no browser to launch (${String(e).split("\n")[0].slice(0, 120)}); pass --chrome or run npx playwright install chromium`);
   page.close(); process.exit(0);
 }
-type Run = { kind?: string; fallback: string | null; pong: boolean; stats: { sent?: [number, number]; recv?: number }; chunks: string[]; after?: { kind?: string; fallback: string | null; pong: boolean } };
+type Run = { kind?: string; fallback: string | null; pong: boolean; stats: { sent?: [number, number]; recv?: number }; report: { transport: string; fallback: string | null; stats: { recv: number } } | null; chunks: string[]; after?: { kind?: string; fallback: string | null; pong: boolean } };
 async function run(query: string, port: number, flood = false): Promise<Run> {
   const p = await browser.newPage();
   try {
@@ -106,6 +106,7 @@ try {
       check(on.kind === "wt" && on.fallback === null, `?wt=1: the link settles on WebTransport (${on.kind}, ${on.fallback})`);
       check(on.pong, "a ping through the WebTransport link is answered");
       check((on.stats.recv ?? 0) > 0 && (on.stats.sent?.[1] ?? 0) > 0, `the wt transport counts what it sends and receives (sent ${on.stats.sent}, recv ${on.stats.recv})`);
+      check(on.report?.transport === "wt" && on.report.fallback === null && on.report.stats.recv > 0, `the KONGBOT report names the link's transport, fallback and counters (${JSON.stringify(on.report && { ...on.report, stats: on.report.stats.recv })})`);
       check(on.chunks.some((c) => c !== "entry.js" && /\.js$/.test(c)), `the WebTransport code arrives as its own lazy chunk (${on.chunks.join(", ")})`);
       const h1 = await health(s.port);
       check(h1.transports.settled.wt === 1, `/health counts one link settled on wt (${h1.transports.settled.wt})`);
