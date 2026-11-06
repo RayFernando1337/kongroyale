@@ -65,7 +65,8 @@ export async function dialWt(offer: WtOffer, token: string, onMessage: Transport
       if (ended) return;
       const now = performance.now();
       if (now - lastRx > STALL_MS && now - lastTx < STALL_MS) { close(); return; }
-      if (!dgWait) dgWait = now;
+      // a gap in our own sending (a long task, a background tab) restarts the wait: nothing was owed back then
+      if (!dgWait || now - lastTx > STALL_MS) dgWait = now;
       else if (now - dgWait > STALL_MS) { gaveUp = true; close(); return; }
       countSent(stats, Channel.Unreliable, u8.length); lastTx = now;
       if (u8.length > dg.maxDatagramSize) { writeStream(u8); return; }
