@@ -286,8 +286,11 @@ type Disposable = { dispose(): void };
  *  the pixels back before that build integrates. A cold texture drawn before that has 1x1 GPU storage, which three
  *  never resizes in place, so warm() disposes each texture before the full-size upload. */
 const cold = new Map<Rebuildable, Set<THREE.Texture>>(), warming = new Map<Rebuildable, Promise<void>>();
+/** A failed fetch (after the asset loader's own retries) tries again this many times, 1, 2, 4 and 8 s apart, while the
+ *  source is still cold, so a texture drawn cold through a network blip does not stay black for the rest of the visit. */
+const WARM_RETRIES = 4, WARM_RETRY_MS = 1000;
 
-function warm(s: Rebuildable): Promise<void> {
+function warm(s: Rebuildable, tries = 0): Promise<void> {
   let p = warming.get(s);
   if (!p) warming.set(s, (p = (async () => {
     const data = await s.rebuild!();
@@ -296,7 +299,7 @@ function warm(s: Rebuildable): Promise<void> {
     cold.delete(s);
     s.data = data; s.dataReady = true;
     for (const t of ts) { t.dispose(); s.arm!(t, s.rebuild); t.needsUpdate = true; }
-  })().catch(() => {}).finally(() => warming.delete(s))));
+  })().catch(() => { if (tries < WARM_RETRIES) setTimeout(() => { if (cold.has(s)) void warm(s, tries + 1); }, WARM_RETRY_MS * 2 ** tries); }).finally(() => warming.delete(s))));
   return p;
 }
 
@@ -314,8 +317,10 @@ type Geo = THREE.BufferGeometry;
 
 function texturesOf(m: THREE.Material, out: Set<THREE.Texture>) {
   for (const v of Object.values(m)) if ((v as THREE.Texture | null)?.isTexture) out.add(v as THREE.Texture);
-  const u = (m as THREE.ShaderMaterial).uniforms;
-  if (u) for (const k in u) { const v = u[k]?.value as THREE.Texture | null; if (v?.isTexture) out.add(v); }
+  // uniforms of a ShaderMaterial, and those an onBeforeCompile patch keeps in userData (jungle-mat's jungleUniforms)
+  for (const u of [(m as THREE.ShaderMaterial).uniforms, ...Object.values(m.userData)] as Array<Record<string, { value?: THREE.Texture | null } | null> | null>) {
+    if (u && typeof u === "object") for (const k in u) { const v = u[k]?.value; if (v?.isTexture) out.add(v); }
+  }
 }
 
 function buffersOf(g: Geo): Array<object> {
