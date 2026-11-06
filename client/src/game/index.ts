@@ -505,8 +505,16 @@ export async function startGame(engine: Engine, boot: GameBoot) {
 
   // ---- keys: map, pause
   let resultsOpen = false;
+  // padLayer and gameplayAllowed run every frame: live class lists instead of document.querySelector, whose
+  // ":not([hidden])" selector walked the whole DOM each frame (~0.17 ms a frame on the RTX tour profile)
+  const videoMenus = document.getElementsByClassName("kr-video"), guides = document.getElementsByClassName("kr-guide");
+  const diagSheets = document.getElementsByClassName("kd-sheet"), crashCards = document.getElementsByClassName("kd-card");
+  function openVideoMenu(): HTMLElement | null {
+    for (let i = 0; i < videoMenus.length; i++) if (videoMenus[i].classList.contains("on")) return videoMenus[i] as HTMLElement;
+    return null;
+  }
   /** only live gameplay moves, aims or fires: never behind the map, the inventory, pause, results or the video menu */
-  const videoMenuOpen = () => !!document.querySelector(".kr-video.on");
+  const videoMenuOpen = () => !!openVideoMenu();
   input.gameplayAllowed = () => inMatch && !paused && !resultsOpen && !hud.mapOpen && !inv.open && !shop.open && !videoMenuOpen() && !spectating();
   // ---- spectating: out for good and watching someone. The cursor is free (the bar's ◀ ▶ and the
   // player list are clicked; a drag on the game looks around, the wheel zooms); ← / → (and the strafe keys) cycle,
@@ -656,11 +664,16 @@ export async function startGame(engine: Engine, boot: GameBoot) {
       first: () => video.querySelector<HTMLElement>(".preference-tabs button[aria-pressed=true]"),
     };
   }
+  function openDialog(): HTMLElement | null {
+    for (let i = 0; i < guides.length; i++) if (!(guides[i] as HTMLElement).hidden) return guides[i] as HTMLElement;
+    for (let i = 0; i < diagSheets.length; i++) if (!(diagSheets[i] as HTMLElement).hidden) return diagSheets[i] as HTMLElement;
+    return (crashCards[0] as HTMLElement | undefined) ?? null;   // the crash card is removed, never hidden, when dismissed
+  }
   function padLayer(): PadLayer | null {
-    const video = document.querySelector<HTMLElement>(".kr-video.on");
+    const video = openVideoMenu();
     if (video) return settingsLayer(video);
     // the onboarding guide, or the ?diag send sheet and crash prompt (playtest/report.ts): a dialog whose .close button is B
-    const guide = document.querySelector<HTMLElement>(".kr-guide:not([hidden]), .kd-sheet:not([hidden]), .kd-card");
+    const guide = openDialog();
     if (guide) return { root: guide, back: () => guide.querySelector<HTMLButtonElement>(".close")?.click() };
     if (inMatch) {
       if (resultsOpen) return { root: results.el, back: () => {}, noBack: true };
