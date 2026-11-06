@@ -2,10 +2,13 @@
 
 KONG-71 plans a way for players to send what the game knows when something goes wrong: a Send diagnostics button in the
 match menu and on the results card, Report a problem with a short note, a consent sheet the first time, an opt-in
-automatic summary, and a crash prompt on the title after a session that died. Nothing of it is built yet. Two TLA+
-models check the design as written, before any code exists, so the bugs they find cost a sentence in the plan instead of
-a release. The `verify-diagnostics` skill (`.agents/skills/verify-diagnostics/`) says how to run them and how to
-keep them in step once the code lands.
+automatic summary, and a crash prompt on the title after a session that died. When this page was written nothing of it was built. Two TLA+
+models checked the design as written, before any code existed, so the bugs they found cost a sentence in the plan instead of
+a release. The `verify-diagnostics` skill (`.agents/skills/verify-diagnostics/`) says how to run them.
+
+**Since built.** The code on main (#198, #215, #233) follows the fixes below. Both models now describe that code
+(`Design = "locks"`, `RefusedShown = TRUE`), with its regions recorded in `tools/formal/*.covers.json`. The automatic
+summary is not built, so the models leave it out. The charts on this page show the design as first written.
 
 ## The crash heartbeat (tools/formal/DiagHeartbeat.tla)
 

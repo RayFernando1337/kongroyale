@@ -26,5 +26,12 @@
     "find": "  /\\ Online /\\ view = \"title\"\n  /\\ prefabs\n",
     "replace": "  /\\ Online /\\ view = \"title\"\n  /\\ boot = \"loading\" \\/ prefabs\n",
     "expect": "Invariant ScopeHasOwner is violated"
+  },
+  {
+    "name": "an AFK removal leaves the match on screen",
+    "why": "server/lobby.ts housekeeping drops the player from the lobby again (no afk flag, no room frame), or index.ts no longer runs backToRoom on afk: the client stays on a match the server no longer plays for it",
+    "find": "/\\ seated' = FALSE /\\ err' = TRUE /\\ why' = TRUE /\\ view' = \"room\"\n  /\\ scope' = WireScopeAfter /\\ render' = WireOk\n  /\\ UNCHANGED <<boot, prefabs, phase, link, silent, ctx, restores>>",
+    "replace": "/\\ seated' = FALSE /\\ err' = TRUE /\\ why' = TRUE\n  /\\ UNCHANGED <<boot, prefabs, view, phase, link, scope, render, silent, ctx, restores>>",
+    "expect": "Invariant NoFrozenMatch is violated"
   }
 ]

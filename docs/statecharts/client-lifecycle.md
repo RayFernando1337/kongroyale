@@ -19,9 +19,9 @@ title: "The game client, from page load to the next match"
 stateDiagram-v2
   direction LR
   state "Legend" as legend {
-    lg0: Breaks NoFrozenMatch or OneRestore or ReasonStays
-    lg1: Breaks NoFrozenMatch or OneRestore or ReasonStays in some cases
-    lg2: Path to the NoFrozenMatch or OneRestore or ReasonStays bug
+    lg0: Breaks OneRestore or ReasonStays
+    lg1: Breaks OneRestore or ReasonStays in some cases
+    lg2: Path to the OneRestore or ReasonStays bug
   }
   class lg0 breaks
   class lg1 mayBreak
@@ -102,11 +102,11 @@ broken rule.
 | LeaveFreesTheSeat | Once you are back on the title, the server no longer holds a seat in a match for you. | Yes |
 | ScopeHasOwner | The match's resource scope is open only while a match view owns it, so the next PLAY can open its own. | Yes |
 | ButtonsAnswer | Pressing PLAY, CREATE or JOIN always does something you can see. | Yes |
-| NoFrozenMatch | A match on screen is one the server still plays for you. | No: removed for inactivity |
+| NoFrozenMatch | A match on screen is one the server still plays for you. | Yes (fixed: removed for inactivity) |
 | ReasonStays | When the server ends your match with a reason, the reason stays on screen until you move on. | No: a crashed match |
 | OneRestore | One context restore at a time. | No: lose, restore, lose, restore |
 
-`tools/formal/ClientLifecycle.cfg` checks the four rules that hold, so `node tools/formal/tlc.mjs ClientLifecycle` passes
+`tools/formal/ClientLifecycle.cfg` checks the five rules that hold, so `node tools/formal/tlc.mjs ClientLifecycle` passes
 and catches a regression in them. `tools/formal/ClientLifecycle.findings.cfg` checks all seven; it is what this chart
 and the paths below come from.
 
@@ -119,9 +119,12 @@ and the paths below come from.
    `prepareIsland` waits for `dataset.ready`, so a PLAY, CREATE or JOIN asked for during the load (Enter, a controller, a
    focused button) starts once the title is ready; the model's PLAY and CREATE/JOIN need the prefabs, and ScopeHasOwner holds; the mutant "PLAY runs before ready" puts the
    old guard back and breaks it.
-2. **Removed for inactivity** (NoFrozenMatch), 5 steps: title, CREATE, START, then 180 s with no input. The server
-   sends `REMOVED FOR INACTIVITY` without `afk: true` and no room frame. The client shows the text over a match that
-   no longer updates.
+2. **Removed for inactivity** (NoFrozenMatch), fixed. Title, CREATE, START, then 180 s with no input: the server sent
+   `REMOVED FOR INACTIVITY` without `afk: true`, took the player out of the lobby and sent no room frame, so the client
+   showed the text over a match that no longer updated. Now every lobby keeps the player in the room (a bot plays the
+   seat, a normal lobby's host role passes on) and sends `afk: true`, so the client goes back to the room and keeps the
+   reason on screen until the next match. `tools/verify-afk.mts` replays it against the real server; the mutant "an
+   AFK removal leaves the match on screen" puts the old step back and breaks the rule.
 3. **A crashed match** (ReasonStays), 5 steps. The server sends `MATCH CRASHED` and then the room frame, whose handler
    clears `lobbyState.error` as it returns to the room, so the reason can vanish before you read it.
 4. **CREATE after the socket closed at the title** (ButtonsAnswer), fixed. A failed JOIN left a socket open at the
@@ -136,8 +139,8 @@ skill), and the pull request that adds this chart says which.
 ## What Ray should check
 
 - On a slow load, press Enter before the title appears, then press PLAY once it does. Does a practice match start?
-- Start an online match in a private room and leave it without touching anything for 3 minutes. What does the screen
-  show afterwards, and is there a way back to the room other than Leave?
+- Start an online match in a private room and leave it without touching anything for 3 minutes. The screen should go
+  back to the room with REMOVED FOR INACTIVITY, and the next START should seat you again.
 - Type a wrong code into JOIN, wait 10 minutes on the title, then press CREATE. Does anything happen?
 - Is the chart's order of screens how you think of the game? A screen you know but cannot find here is a gap in the
   model.

@@ -70,6 +70,33 @@
       "why": "netlab --check already holds this on a steady link up to 250 ms"
     },
     {
+      "id": "ghostHits250",
+      "metric": "ghost",
+      "max": 0,
+      "rtt": [
+        151,
+        250
+      ],
+      "profiles": [
+        "jitter20",
+        "loss1"
+      ],
+      "why": "no hit marker the server rejects on slow links either: while the link stalls, or above about 220 ms of RTT on a rough link, the client shows no predicted hit and the server's verdict draws the marker (ClientMatch.linkSlow, KONG-78 2b)"
+    },
+    {
+      "id": "instantMarkers",
+      "metric": "deferredMarkerPct",
+      "max": 1,
+      "rtt": [
+        0,
+        250
+      ],
+      "profiles": [
+        "jitter20"
+      ],
+      "why": "a steady link keeps its instant hit markers up to 250 ms: at most 1% of hits wait for the server (KONG-78 §4 2b's gate); the wait is for stalled, rough or past-the-rewind-cap links only"
+    },
+    {
       "id": "snapshotGap",
       "metric": "snapGapP99Ms",
       "max": 67,

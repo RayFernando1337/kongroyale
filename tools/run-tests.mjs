@@ -37,10 +37,14 @@ const checks = [
   { id: "planeview", name: "low-memory plane queues the POIs in view", slow: true, cmd: "npx", args: ["tsx", "tools/world/plane-view.test.mts"] },
   { id: "raycast", name: "raycast ties", cmd: "npx", args: ["tsx", "tools/world/raycast-test.mts"] },
   { id: "res", name: "resource scopes", cmd: "npx", args: ["tsx", "tools/res/test.mts"] },
+  { id: "refresh", name: "display refresh estimate", cmd: "npx", args: ["tsx", "tools/engine/refresh.test.mts"] },
   { id: "parity", name: "wire / matrix / geometry / http / splat parity", slow: true, cmd: "npm", args: ["run", "bench:verify"] },
   { id: "sim", name: "headless match (seed 42)", slow: true, cmd: "npx", args: ["tsx", "tools/sim-smoke.mts", "trios", "42", "--check"] },
   { id: "nettail", name: "network tails (against tools/performance/net-budgets.json)", slow: true, cmd: "npx", args: ["tsx", "tools/performance/net-tail.mts", "--check", "--out", tmp("net-tail.json")] },
+  { id: "afk", name: "AFK removal returns the player to the room (real server)", slow: true, cmd: "npx", args: ["tsx", "tools/verify-afk.mts"] },
   { id: "redteam", name: "admin lobby red team", slow: true, cmd: "node", args: ["tools/admin-lobby/redteam.mjs", "--md", tmp("redteam.md")] },
+  { id: "wt", name: "WebTransport endpoint (loopback, Node client)", slow: true, cmd: "npx", args: ["tsx", "tools/net/wt-endpoint.test.mts"] },
+  { id: "wtbrowser", name: "WebTransport in a browser (loopback, headless Chromium; SKIP without one)", slow: true, cmd: "npx", args: ["tsx", "tools/net/wt-browser.test.mts"] },
 ];
 
 const usage = (why) => {

@@ -104,13 +104,15 @@ Leave ==
   /\ scope' = (IF render THEN 0 ELSE scope) /\ render' = FALSE
   /\ UNCHANGED <<boot, prefabs, phase, ctx, restores>>
 
-(* the server removes this client from a running match:
-   AFK in a normal lobby (lobby.ts:157): error "REMOVED FOR INACTIVITY" without afk:true, no lobby frame;
-   the client only shows the text (index.ts:322-328) *)
+(* the server takes this client out of a running match for inactivity (lobby.ts housekeeping, any lobby): unseat (a bot
+   plays the seat, the room frame still lists us), then error "REMOVED FOR INACTIVITY" with afk:true. The client shows
+   the text, keeps it as the room's reason (roomReason) and runs backToRoom: exitToRoom (dispose, wire: a new idle
+   GameRender) and the room until the next match (index.ts onJSON "error") *)
 RemovedAfk ==
   /\ Online /\ view \in {"match", "results"} /\ link = "online" /\ seated
-  /\ seated' = FALSE /\ err' = TRUE /\ why' = TRUE
-  /\ UNCHANGED <<boot, prefabs, view, phase, link, scope, render, silent, ctx, restores>>
+  /\ seated' = FALSE /\ err' = TRUE /\ why' = TRUE /\ view' = "room"
+  /\ scope' = WireScopeAfter /\ render' = WireOk
+  /\ UNCHANGED <<boot, prefabs, phase, link, silent, ctx, restores>>
 (* the match crashes on the server (lobby.ts:140-143): error "MATCH CRASHED", then the room frame, whose handler
    clears lobbyState.error (index.ts:317) and runs exitToRoom *)
 Crashed ==

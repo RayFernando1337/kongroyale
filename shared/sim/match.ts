@@ -136,8 +136,14 @@ export class Match {
   /** rewound hitboxes for the shot being resolved: [x, y, z, h] per player id (h = 0: not a target) */
   readonly targets = new Float64Array(MAX_PLAYERS * TARGET_STRIDE);
   shotProbe: ShotProbe | null = null;
+  /** input-pacing telemetry: called once per human per tick with the queued inputs it ran (n), the ticks its queue has
+   *  now been empty (starve) and the seq of the last input it queued (0 = none since the seat was taken);
+   *  shared/net/input-gaps.ts installs it on the server and in netlab */
+  declare inputProbe: ((id: number, n: number, starve: number, queued: number) => void) | undefined;
   /** counters (tests / telemetry) */
-  readonly netStats = { inputsDropped: 0, starveSteps: 0, clampedShots: 0, driftCredits: 0 };
+  /** inputsLost: seqs skipped when a later input was queued (never arrived, or arrived too late to use);
+   *  inputsRecovered: inputs queued from an input window entry other than its newest (shared/net/host.ts) */
+  readonly netStats = { inputsDropped: 0, starveSteps: 0, clampedShots: 0, driftCredits: 0, inputsLost: 0, inputsRecovered: 0 };
   readonly brains: Array<BotBrain | null> = [];
   /** match time each player last touched down from a drop / redeploy (-1e9 = never): bots give a fresh lander a moment */
   readonly dropLandT = new Float64Array(MAX_PLAYERS).fill(-1e9);
@@ -311,14 +317,18 @@ export class Match {
 
   // ---------------------------------------------------------------- inputs
   /** queue one decoded input for human `id`. Duplicates (redundant sockets) and stale inputs are ignored. */
-  pushInput(id: number, i: Input) {
+  /** queue a human's input once per seq, in seq order; true when it was queued */
+  pushInput(id: number, i: Input): boolean {
     this.rec?.input(this.tick, id, i);
-    const p = this.players[id]; if (!p || p.bot) return;
-    if (!(i.seq > this.lastQueued[id])) return;
+    const p = this.players[id]; if (!p || p.bot) return false;
+    const last = this.lastQueued[id];
+    if (!(i.seq > last)) return false;
+    if (last > 0 && i.seq > last + 1) this.netStats.inputsLost += i.seq - last - 1;
     this.lastQueued[id] = i.seq;
     let len = this.qLen[id];
     if (len >= INPUT_QUEUE_MAX) { this.qHead[id] = (this.qHead[id] + 1) % INPUT_QUEUE_MAX; len--; this.netStats.inputsDropped++; }
     copyInput(this.qBuf[id][(this.qHead[id] + len) % INPUT_QUEUE_MAX], i); this.qLen[id] = len + 1;
+    return true;
   }
   /** inputs waiting for player `id` (telemetry) */
   queued(id: number) { return this.qLen[id]; }
@@ -339,6 +349,7 @@ export class Match {
       const nI = this.neutral; copyInput(nI, last); nI.mx = 0; nI.mz = 0; nI.buttons &= B.CROUCH | B.SCOPE;
       this.simulate(p, nI); this.netStats.starveSteps++;
     }
+    this.inputProbe?.(id, n, this.starve[id], this.lastQueued[id]);
     // clock drift: a queue that never drains below 2 for 0.5 s earns one extra step (≤ 3 % speed, far below any exploit)
     const len = this.qLen[id]; if (len < this.qMin[id]) this.qMin[id] = len;
     if (++this.qWin[id] >= 30) { if (this.qMin[id] >= 2) { this.credit[id] += 1; this.netStats.driftCredits++; } this.qMin[id] = 1 << 30; this.qWin[id] = 0; }
