@@ -23,6 +23,7 @@ import { CHEST_CRATE } from "../../../shared/sim/crate";
 import { flag } from "../flags";
 import { shareAttributes } from "../engine/geo-share";
 import { releaseGeometryAfterUpload } from "../engine/geometry-release";
+import { onRestore } from "../engine/res/restore";
 
 export interface ChestOpts { studio?: boolean; dressed?: boolean; tall?: boolean; style?: CrateStyle; /** keep the burst lit (staging) */ hold?: boolean; /** studio: ground aura + outer halo (loot-03); off for loot-01 (plain white sheet) */ aura?: boolean }
 
@@ -60,13 +61,14 @@ function arraysOf(g: THREE.BufferGeometry): Record<string, THREE.TypedArray> {
   if (g.index) out.index = g.index.array;
   return out;
 }
-/** a context restore refills every released crate part in one pass, so the parts of one crate share one rebuild */
+/** a context restore refills every released crate part in its source phase, so the parts of one crate share one rebuild;
+ * the restore runner awaits each hook, so the cache lives until the bake phase rather than a microtask */
 const rebuilds = new Map<string, CrateGeo>();
+onRestore("bake", () => rebuilds.clear());
 function rebuilt(rarity: Rarity, style: CrateStyle, tall: boolean): CrateGeo {
   const key = `${style}:${rarity}:${tall ? "T" : "C"}`;
   let g = rebuilds.get(key);
   if (!g) {
-    if (!rebuilds.size) queueMicrotask(() => rebuilds.clear());
     rebuilds.set(key, (g = buildFresh(rarity, style, tall)));
   }
   return g;
