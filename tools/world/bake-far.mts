@@ -25,7 +25,7 @@ function extract(a: { id: string }): Extracted {
   type M = { isMesh?: boolean; isInstancedMesh?: boolean; isBatchedMesh?: boolean; isSkinnedMesh?: boolean; visible: boolean; parent: M | null; children: M[]; layers: { mask: number }; matrixWorld: { elements: number[] }; geometry?: G; material?: Mat | Mat[]; count?: number; instanceMatrix?: { array: Float32Array }; instanceColor?: { array: Float32Array } | null; getGeometryIdAt?(i: number): number; getGeometryRangeAt?(g: number): { vertexStart: number; vertexCount: number; indexStart: number; indexCount: number }; getVisibleAt?(i: number): boolean; _instanceInfo?: Array<{ active: boolean }>; _matricesTexture?: { image: { data: Float32Array } }; _colorsTexture?: { image: { data: Float32Array } } | null; updateMatrixWorld(force: boolean): void };
   type A = { count: number; itemSize: number; getX(i: number): number; getY(i: number): number; getZ(i: number): number; array: ArrayLike<number> | null };
   type G = { attributes: Record<string, A>; index: A | null; drawRange: { start: number; count: number } };
-  type Mat = { visible: boolean; transparent: boolean; opacity: number; depthWrite: boolean; color?: { r: number; g: number; b: number }; map?: { uuid: string; image?: unknown } | null; vertexColors?: boolean; isShaderMaterial?: boolean; type: string; userData: { jungleUniforms?: { uMoss: { value: number }; uMossCover: { value: number }; uMossColor: { value: { r: number; g: number; b: number } }; uMossMap: { value: { uuid: string; image?: unknown } | null } } } };
+  type Mat = { visible: boolean; transparent: boolean; opacity: number; depthWrite: boolean; color?: { r: number; g: number; b: number }; map?: { uuid: string; image?: unknown } | null; vertexColors?: boolean; isShaderMaterial?: boolean; type: string; userData: { jungleUniforms?: { uMoss: { value: number }; uMossCover: { value: number }; uMossColor: { value: { r: number; g: number; b: number } | number }; uMossMap: { value: { uuid: string; image?: unknown } | null }; uJNoise?: { value?: { image?: { data?: ArrayLike<number> } } } } } };
   const skipped: Record<string, number> = {};
   const skip = (why: string) => { skipped[why] = (skipped[why] ?? 0) + 1; };
   const texMean = new Map<string, number[]>();
@@ -54,26 +54,37 @@ function extract(a: { id: string }): Extracted {
   const pos: number[] = [], col: number[] = [], idx: number[] = [];
   const mul = (a: ArrayLike<number>, b: ArrayLike<number>, o: number[]) => { for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3]; return o; };
   const shown = (o: M, rootObj: M) => { for (let p: M | null = o; p && p !== rootObj; p = p.parent) if (!p.visible) return false; return (o.layers.mask & 1) !== 0; };
-  const MOSS_NOISE_MEAN = 0.5, MOSS_GAIN = 1.7;
+  const MOSS_GAIN = 1.7, WHITE = [1, 1, 1];
   const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-  let moss: { w: number; c: number[] } | null = null;
-  const add = (g: G, m: number[], rgb: number[], vColor: boolean, vStart: number, vCount: number, iStart: number, iCount: number) => {
+  let moss: { top: number; side: number; c: number[] } | null = null;
+  const steps = new Map<string, number>();
+  const meanStep = (noise: ArrayLike<number>, a: number, b: number) => {
+    const key = a + "," + b, known = steps.get(key); if (known !== undefined) return known;
+    let s = 0; for (let i = 0; i < noise.length; i += 4) s += smooth(a, b, noise[i] / 255);
+    steps.set(key, s / (noise.length / 4)); return s / (noise.length / 4);
+  };
+  const add = (g: G, m: number[], rgb: number[], tint: ArrayLike<number>, vColor: boolean, vStart: number, vCount: number, iStart: number, iCount: number) => {
     const P = g.attributes.position, C = vColor ? g.attributes.color : undefined, N = moss ? g.attributes.normal : undefined, base = pos.length / 3;
     if (!P || !P.array) { skip("no-position"); return; }
     for (let i = vStart; i < vStart + vCount; i++) {
       const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
       pos.push(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]);
-      const c = C ? [rgb[0] * C.getX(i), rgb[1] * C.getY(i), rgb[2] * C.getZ(i)] : [rgb[0], rgb[1], rgb[2]];
+      const c = [rgb[0], rgb[1], rgb[2]];
       if (moss && N) {
         const nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i), wx = m[0] * nx + m[4] * ny + m[8] * nz, wy = m[1] * nx + m[5] * ny + m[9] * nz, wz = m[2] * nx + m[6] * ny + m[10] * nz;
-        const w = smooth(0.25, 0.85, wy / (Math.hypot(wx, wy, wz) || 1)) * moss.w;
+        const up = wy / (Math.hypot(wx, wy, wz) || 1);
+        const w = Math.min(1, Math.max(smooth(0.25, 0.85, up) * moss.top, moss.side * (1 - smooth(0.2, 0.6, Math.abs(up)))));
         for (let k = 0; k < 3; k++) c[k] += (moss.c[k] - c[k]) * w;
       }
-      col.push(c[0], c[1], c[2]);
+      if (C) { c[0] *= C.getX(i); c[1] *= C.getY(i); c[2] *= C.getZ(i); }
+      col.push(c[0] * tint[0], c[1] * tint[1], c[2] * tint[2]);
     }
     if (g.index) for (let i = iStart; i < iStart + iCount; i++) idx.push(base + g.index.getX(i) - vStart);
     else for (let i = 0; i < vCount; i++) idx.push(base + i);
   };
+  let jungleNoise: ArrayLike<number> | undefined;
+  const findNoise = (o: M) => { for (const x of [o.material ?? []].flat()) jungleNoise ??= x.userData.jungleUniforms?.uJNoise?.value?.image?.data; o.children.forEach(findNoise); };
+  for (const r of kr.moduleRoots("poi:" + a.id) as M[]) findNoise(r);
   const tmp: number[] = new Array(16).fill(0), im16 = { elements: new Array(16).fill(0) };
   for (const r of kr.moduleRoots("poi:" + a.id) as M[]) {
     r.updateMatrixWorld(true);
@@ -91,8 +102,11 @@ function extract(a: { id: string }): Extracted {
       if (mat.map) { const t = meanOf(mat.map); for (let c = 0; c < 3; c++) rgb[c] *= t[c]; }
       const ju = mat.userData.jungleUniforms;
       if (ju && ju.uMoss.value > 0) {
-        const cover = ju.uMossCover.value, mc = ju.uMossColor.value, mm = ju.uMossMap.value ? meanOf(ju.uMossMap.value) : [1, 1, 1];
-        moss = { w: ju.uMoss.value * smooth(0.62 - cover * 0.6, 0.92 - cover * 0.6, MOSS_NOISE_MEAN), c: [mc.r * mm[0] * MOSS_GAIN, mc.g * mm[1] * MOSS_GAIN, mc.b * mm[2] * MOSS_GAIN] };
+        const cover = ju.uMossCover.value, mv = ju.uMossColor.value, lin = (v: number) => Math.pow(v / 255, 2.2);
+        const mc = typeof mv === "number" ? { r: lin((mv >> 16) & 255), g: lin((mv >> 8) & 255), b: lin(mv & 255) } : mv, mm = ju.uMossMap.value ? meanOf(ju.uMossMap.value) : [1, 1, 1];
+        const noise = ju.uJNoise?.value?.image?.data ?? jungleNoise;
+        if (!noise) { skip("moss-without-noise"); moss = null; } else
+        moss = { top: ju.uMoss.value * meanStep(noise, 0.62 - cover * 0.6, 0.92 - cover * 0.6), side: ju.uMoss.value * 0.35 * meanStep(noise, 0.55, 0.8), c: [mc.r * mm[0] * MOSS_GAIN, mc.g * mm[1] * MOSS_GAIN, mc.b * mm[2] * MOSS_GAIN] };
       } else moss = null;
       const g = o.geometry, P = g.attributes.position;
       if (!P) { skip("no-position"); return; }
@@ -106,22 +120,19 @@ function extract(a: { id: string }): Extracted {
           const gr = o.getGeometryRangeAt!(o.getGeometryIdAt!(i));
           const md = o._matricesTexture!.image.data;
           for (let k = 0; k < 16; k++) im16.elements[k] = md[i * 16 + k];
-          const irgb = rgb.slice();
           const cd = o._colorsTexture?.image.data;
-          if (cd) { irgb[0] *= cd[i * 4]; irgb[1] *= cd[i * 4 + 1]; irgb[2] *= cd[i * 4 + 2]; }
-          add(g, mul(mw, im16.elements, tmp.slice()), irgb, vColor, gr.vertexStart, gr.vertexCount, gr.indexStart, gr.indexCount);
+          add(g, mul(mw, im16.elements, tmp.slice()), rgb, cd ? [cd[i * 4], cd[i * 4 + 1], cd[i * 4 + 2]] : WHITE, vColor, gr.vertexStart, gr.vertexCount, gr.indexStart, gr.indexCount);
         }
         return;
       }
       if (o.isInstancedMesh) {
         const n = o.count ?? 0, arr = o.instanceMatrix!.array, ic = o.instanceColor?.array;
         for (let i = 0; i < n; i++) {
-          const irgb = ic ? [rgb[0] * ic[i * 3], rgb[1] * ic[i * 3 + 1], rgb[2] * ic[i * 3 + 2]] : rgb;
-          add(g, mul(mw, Array.prototype.slice.call(arr, i * 16, i * 16 + 16), tmp.slice()), irgb, vColor, 0, vAll, 0, iAll);
+          add(g, mul(mw, Array.prototype.slice.call(arr, i * 16, i * 16 + 16), tmp.slice()), rgb, ic ? [ic[i * 3], ic[i * 3 + 1], ic[i * 3 + 2]] : WHITE, vColor, 0, vAll, 0, iAll);
         }
         return;
       }
-      add(g, mw, rgb, vColor, 0, vAll, 0, iAll);
+      add(g, mw, rgb, WHITE, vColor, 0, vAll, 0, iAll);
     };
     walk(r);
   }
