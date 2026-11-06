@@ -227,7 +227,7 @@ wss.on("connection", (ws, req) => {
 
   const aux: Sock[] = [];
   const wsT = new WsTransport(s, aux, strike);
-  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux, ws: wsT, wt: null, bin: wsT, lastInputAt: Date.now(), peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
+  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux, ws: wsT, wt: null, bin: wsT, lastInputAt: Date.now(), away: false, peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
   wsT.onMessage = (u8, _at, from) => onBinary(c, u8, from);
   c.peer = { pid: -1, invSeq: 0, send: (u8) => sendFrame(c.bin, u8), sendResult: (state) => sendJSON(c.sock.ws, { t: "result", state }) };
   byToken.set(c.token, c);
@@ -347,7 +347,7 @@ function onJSON(c: Client, msg: { t?: unknown; [k: string]: unknown }) {
     }
     // (admin lobby) in an event lobby only the admin changes the mode or starts: a player asking is refused (and struck)
     case "mode": if (c.lobby?.event) { strike(c.sock, "not the host", 10); break; } if (c.lobby && c.lobby.owner === c && !c.lobby.match) { c.lobby.mode = msg.mode === "trios" ? "trios" : "solo"; c.lobby.assignSquads(); c.lobby.broadcastJSON(c.lobby.state()); } break;
-    case "start": if (c.lobby?.event) { strike(c.sock, "not the host", HEAVY); break; } if (c.lobby && c.lobby.owner === c) { if (!c.lobby.match) c.lobby.start(); else c.lobby.match.startNow(); } break;
+    case "start": if (c.lobby?.event) { strike(c.sock, "not the host", HEAVY); break; } c.lobby?.claimHost(c); if (c.lobby && c.lobby.owner === c) { if (!c.lobby.match) c.lobby.start(); else c.lobby.match.startNow(); } break;
     case "leave": leaveLobby(c); break;
     // which transport the link settled on and why (client/src/game/net.ts). Only counted when it matches what the
     // server sees (a "wt" claim needs an attached session), on a change, and a few times per client
