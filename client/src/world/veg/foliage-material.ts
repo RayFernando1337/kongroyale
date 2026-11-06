@@ -850,6 +850,7 @@ export function liteMaterial(fm: FoliageMaterials): THREE.MeshStandardMaterial {
     m = src.clone();
     m.onBeforeCompile = (sh, r) => { src.onBeforeCompile(sh, r); sh.uniforms.uVegLite = VEG_LITE; };
     m.customProgramCacheKey = src.customProgramCacheKey;
+    m.normalMap = null;
     m.userData = src.userData;
     (m as unknown as { defaultAttributeValues: Record<string, number[]> }).defaultAttributeValues = { aLodFade: [0, 0], aAtlas: [0], aVar: [0] };
     m.name = src.name + "-lite";
