@@ -61,7 +61,8 @@ try{
     if(assets&&!assetRequest&&now-start>4000){assetRequest=(async()=>{const html=await(await fetch(base)).text(),urls=[...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+\.(?:js|css))"/g)].map(m=>m[1]);for(const url of urls.slice(0,12)){const t=performance.now();const r=await fetch(base+url,{headers:{'accept-encoding':'br'}});await r.arrayBuffer();httpResults.push({url,ms:performance.now()-t,status:r.status,encoding:r.headers.get('content-encoding')});}})();}
     await sleep(2);
   }
-  const elapsed=performance.now()-start;active=false;
+  // the window's last stretch: a pause after the final drive() would otherwise never enter loopGaps
+  const end=performance.now();loopGaps.push(end-lastLoop);const elapsed=end-start;active=false;
   const health=await(await fetch(base+'/health')).json();await assetRequest;
   const perf0=(health0 as any).performance,perf1=(health as any).performance;
   const s=elapsed/1000,ms=(v:number[]):Metric=>({status:'ok',unit:'ms',better:'lower',summary:stats(v)});
@@ -71,7 +72,7 @@ try{
   const result:RunResult={schema:RESULT_SCHEMA,version:RESULT_VERSION,tool:'bench:server',startedAt,durationMs:performance.now()-run0,source:source(process.cwd()),environment,
     config:{players:count,seconds,aux,assets,mode:'trios',warmupS},
     cases:[{
-      scenario:{id:'server/trios-play',version:2,seed:-1,workload:'socket-load'},
+      scenario:{id:'server/trios-play',version:3,seed:-1,workload:'socket-load'},
       windows:{untimedSetupMs:Math.round(setupMs),measuredMs:Math.round(elapsed),measuredFrom:'first PLAY snapshot',serverLifetimeMetrics:'server start to end of window (includes lobby, warm-up and plane)',bytes:'every frame received on every socket (main and aux) in the window',seed:'chosen at random by the server per match; see detail.matchSeed',transport:'real WebSocket; loopback when URL is local; no WAN inference'},
       load:{players:count,sockets:count*(aux?2:1),inputsPerPlayerSecond,skippedInputSteps:skippedSteps,serverTicksPerSecond,minSnapshotsPerClient:minSnapshots,aliveAtStart,aliveDropsInWindow:aliveDrops,aliveAtEnd:alive,...Object.fromEntries(Object.entries(phaseSeen).map(([k,v])=>['snapshotsInPhase'+k,v]))},
       metrics:{
