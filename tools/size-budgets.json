@@ -1,9 +1,9 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-06 at 5e78c96 plus #211 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 2565597, lazy 3048380); workers and lazy dropped by the shared POI data chunk (#211). Raised for #223 (the title draws its kong through a half-float target and reuses the match's compiled programs: 27 fewer compiles before the first key-art frame, Safari Level B ready to first key-art 2447 to 587 ms) to its measure plus 10 B: boot 1166523 to 1166533, lazy 3048559 to 3048569.",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-06 at 5e78c96 plus #211 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 2565597, lazy 3048380); workers and lazy dropped by the shared POI data chunk (#211). 2026-11-06, #207 (?ktx2=etc1s, measured at its merge with 2465464): boot 1166520 to 1166546 (measured 1166536: the ktx2 flag becomes a text flag and assets.ts gates the lazy import on its two values), workers 2565622 to 2565676 (measured 2565666: the workers bundle client/src/flags.ts, whose ktx2 entry grows), lazy 3048405 to 3048451 (measured 3048441: the etc1s branch in the ktx2-tex chunk). Each is the measure plus 10 B. Raised for #223 (the title draws its kong through a half-float target and one screen quad, so it reuses the match programs: 27 fewer compiles before the first key-art frame, Safari Level B ready to first key-art 2447 to 587 ms) to its measure at its merge with e74cea1 plus 10 B: lazy 3048451 to 3048631 (measured 3048621); boot fits (measured 1166540).",
   "gzBytes": {
     "entry": 33170,
-    "boot": 1166533,
-    "workers": 2565622,
-    "lazy": 3048569
+    "boot": 1166546,
+    "workers": 2565676,
+    "lazy": 3048631
   }
 }
