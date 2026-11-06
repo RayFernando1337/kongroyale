@@ -174,18 +174,19 @@ path to each broken rule in plain words, and for MatchEnds or PlayEnds a loop th
 | match.ts `checkEnd`, `enterResults` | End |
 | match.ts `step`: the Results branch (`RESULTS_S`, `endAfterResults`, `over`); server/lobby.ts `Lobby.pump`, `endMatch` | ResultsTick |
 
-Coverage record: the model describes these as of commit `76ebf89` (re-checked 2026-11-05 from `369734c`: #44 moved `Lobby` to
-server/lobby.ts unchanged, and #45 made `Match.step` read the hold through `warmupHeld`, which records it for replays and
-returns the same value; #46, #47 and #82 touch nothing in the table). To see whether it may be
-out of date:
+Coverage record: tools/formal/MatchPhases.covers.json names the code this model describes (one region per function,
+method or switch case in the table above) and the writes it guards, and records a token hash of each region as of the
+last run that passed. npm test's `formal` check (tools/formal/drift.mjs, no Java) fails when a region changed, moved or
+vanished, when the model's own files changed, or when code outside the regions writes the guarded state. Then read each
+change against the table: if the code changed shape, change the model and cite the line; if a function moved or a new
+one writes the state, update the regions or the `allow` list (a function, each write it may make there, listed once per occurrence, and why). Re-verify and record in one step:
 
 ```sh
-git log --oneline 76ebf89..HEAD -- shared/sim/match.ts shared/sim/storm.ts shared/net/host.ts server/index.ts server/lobby.ts
+node tools/formal/tlc.mjs MatchPhases --mutants --record
 ```
 
-For each commit listed, check whether it touched a row of the table. Move the commit forward only after you have
-confirmed that the model describes the code at the new commit (the pstack `/maintain-formal-verification-skill` skill
-walks through this).
+It writes the hashes only when the model and every mutant pass, so a model can't be marked verified without TLC.
+The pstack `/maintain-formal-verification-skill` skill walks through a larger catch-up.
 
 ## What it does not cover
 

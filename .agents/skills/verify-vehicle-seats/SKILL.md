@@ -68,16 +68,19 @@ same pull request and run the check:
 | match.ts `spawnTuks` with `resetForMatch` in `enterWarmup` / `enterPlane` | Phase |
 | match.ts `stepRespawns`, warm-up respawn, buy-back | Respawn |
 
-Coverage record: the model describes the files above as of commit `76ebf89` (re-checked 2026-11-05 from `369734c`: #78 moved
-`stepRide` unchanged to shared/sim/player.hot.ts; #44, #45, #46, #47 and #82 touch nothing in the table). To see whether it may be out of date:
+Coverage record: tools/formal/VehicleSeats.covers.json names the code this model describes (one region per function,
+method or switch case in the table above) and the writes it guards, and records a token hash of each region as of the
+last run that passed. npm test's `formal` check (tools/formal/drift.mjs, no Java) fails when a region changed, moved or
+vanished, when the model's own files changed, or when code outside the regions writes the guarded state. Then read each
+change against the table: if the code changed shape, change the model and cite the line; if a function moved or a new
+one writes the state, update the regions or the `allow` list (a function, each write it may make there, listed once per occurrence, and why). Re-verify and record in one step:
 
 ```sh
-git log --oneline 76ebf89..HEAD -- shared/sim/vehicle.ts shared/sim/match.ts shared/sim/player.ts shared/sim/player.hot.ts
+node tools/formal/tlc.mjs VehicleSeats --mutants --record
 ```
 
-For each commit listed, check whether it touched a function in the table. Move the commit in this paragraph forward only
-after you have confirmed that the model describes the code at the new commit. The pstack
-`/maintain-formal-verification-skill` skill walks through this.
+It writes the hashes only when the model and every mutant pass, so a model can't be marked verified without TLC.
+The pstack `/maintain-formal-verification-skill` skill walks through a larger catch-up.
 
 ## What it does not cover
 

@@ -21,6 +21,7 @@ import { createKong, kongManager } from "../actors/kong";
 import type { KongActor, KongPose } from "../actors/api";
 import { createPlane } from "../actors/plane";
 import { createGlider } from "../actors/glider";
+import { loadHeli, loadsLazily } from "../actors/heli-tripo";
 import { createStormVisual } from "./storm/index";
 import { createHud } from "../ui/hud";
 import { createInventory } from "../ui/inventory";
@@ -244,9 +245,12 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   }
   // (perf) a match never starts on a half-built island: while the world still streams in after the title, the first
   // PRACTICE / CREATE / JOIN finishes it at full speed behind a "preparing" card (main.ts __kr.prepare)
-  function prepareIsland(): Promise<void> {
+  // a session asked for before main.ts marks the title ready (Enter, a controller's A or a focused button behind the
+  // loading screen) waits for it: wiring a GameRender before the prefabs exist throws and strands the match scope
+  async function prepareIsland(): Promise<void> {
+    while (document.documentElement.dataset.ready !== "1") await new Promise((done) => setTimeout(done, 100));
     const p = (window as unknown as { __kr: { prepare?: () => Promise<void> } }).__kr.prepare;
-    return p ? p() : Promise.resolve();
+    if (p) await p();
   }
   async function offline(mode: Mode, range = false, difficulty: BotDifficulty = botDifficulty) {
     const generation = nextSessionGeneration();
@@ -280,7 +284,8 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     { const r = render; render.onVictory = () => { victoryTimer = window.setTimeout(() => { if (render === r && inMatch) showResults(true); }, 4000); }; }
     // a replaced link's late messages / close never reach the current session
     l.onJSON = (m) => { if (link === l) onJSON(m); };
-    l.onClose = (reason) => { if (link === l && (inMatch || lobbyState.code)) linkLost(l, reason); };
+    // at the title nothing is lost, but the dead link must go, or the next CREATE / JOIN reuses it and sends nothing
+    l.onClose = (reason) => { if (link !== l) return; if (inMatch || lobbyState.code) linkLost(l, reason); else link = null; };
   }
   function onJSON(m: Record<string, unknown>) {
     if (reconnect && (m.t === "lobby" || m.t === "match")) stopReconnect();   // back in: the room or our seat answered
@@ -650,7 +655,8 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   function padLayer(): PadLayer | null {
     const video = document.querySelector<HTMLElement>(".kr-video.on");
     if (video) return settingsLayer(video);
-    const guide = document.querySelector<HTMLElement>(".kr-guide:not([hidden])");
+    // the onboarding guide, or the ?diag send sheet and crash prompt (playtest/report.ts): a dialog whose .close button is B
+    const guide = document.querySelector<HTMLElement>(".kr-guide:not([hidden]), .kd-sheet:not([hidden]), .kd-card");
     if (guide) return { root: guide, back: () => guide.querySelector<HTMLButtonElement>(".close")?.click() };
     if (inMatch) {
       if (resultsOpen) return { root: results.el, back: () => {}, noBack: true };
@@ -814,6 +820,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   // (perf) the prefabs every match spawns: made + warmed in the title's idle time, never behind the loading screen
   if (DEFER_PREFABS) { const kr = (window as unknown as { __kr: Record<string, unknown> }).__kr; kr.prefabWarmP = (async () => {
     while (!kr.ready) await new Promise((r) => setTimeout(r, 100));
+    if (!loadsLazily()) void loadHeli().catch((e) => console.error("[heli] model failed", e));
     if (!kits.viewModel) { const t = performance.now(); const vm = await weapons.createViewModel(); vm.object.visible = false; engine.camera.add(vm.object); kits.viewModel = vm; kr.viewModelMs = Math.round(performance.now() - t); }
     const lootRoot = await weapons.prepareLoot(() => new Promise<void>((r) => (kr.prepareUrgent ? setTimeout(r, 0) : requestAnimationFrame(() => setTimeout(r, 0)))));
     await prewarmPrefabs(engine, kits, () => inMatch, lootRoot); await prewarmMatch(engine, kits, title, () => inMatch); kr.warmDone = true; })(); }
@@ -891,7 +898,7 @@ async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean,
   for (const c of CONSUMABLES) makers.push(() => kits.weapons.createLoot(c, "rare").then((v) => put(v.object)));
   makers.push(() => kits.weapons.createLoot("ammo", "common").then((v) => put(v.object)));
   makers.push(() => kits.createGlider(engine).then((gl) => put(gl.object)));
-  makers.push(async () => { for (const o of renderPrefabs()) put(o); });
+  makers.push(async () => { if (!loadsLazily()) await loadHeli().catch((e) => console.error("[heli] model failed", e)); for (const o of renderPrefabs()) put(o); });
   for (const mk of makers) {
     if (isBusy()) { kr.prefabWarm = "stopped (match)"; return; }
     try { await mk(); } catch (e) { console.warn("[prewarm] prefab", e); }
@@ -1050,6 +1057,7 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
   for (const c of CONSUMABLES) jobs.push(kits.weapons.createLoot(c, "rare").then((v) => put(v.object, n++)));
   jobs.push(kits.weapons.createLoot("ammo", "common").then((v) => put(v.object, n++)));
   jobs.push(kits.createGlider(engine).then((gl) => put(gl.object, n++)));
+  if (!loadsLazily()) await loadHeli().catch((e) => console.error("[heli] model failed", e));
   for (const o of renderPrefabs()) put(o, n++);
   }
   // one kong of every variant (team tints / outlines included), posed in a row

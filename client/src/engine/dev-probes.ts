@@ -1,4 +1,5 @@
 import type { Engine } from "./engine";
+export { enableFly } from "./fly";
 
 export function installTexProf(e: Engine) {
   const gl = e.renderer.getContext() as unknown as Record<string, (...a: unknown[]) => unknown>;
