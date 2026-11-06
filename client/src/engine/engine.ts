@@ -130,6 +130,11 @@ export class Engine implements WorldCtx {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     watchContext(this.canvas, this);
+    // initTexture runs outside the frame loop (stream integration, the GPU warmer, the title art) and three never stops it
+    // on a lost context: a first compressed upload there caches the BPTC/ASTC extensions as missing. It uploads on its
+    // first draw after the restore instead.
+    const initTexture = this.renderer.initTexture.bind(this.renderer);
+    this.renderer.initTexture = (t) => { if (!this.contextLost) initTexture(t); };
     // ?dpr=N overrides the device pixel ratio (A/B of the fill-rate share). The canvas backing store is the
     // screen's NATIVE pixels (devicePixelRatio, e.g. 1.5 on a 150 %-scaled 4K monitor, 2 on a Retina MacBook; capped at
     // 2 for phones); the "3D resolution" setting scales the scene inside the post chain (TAAU), never the canvas
@@ -354,7 +359,7 @@ export class Engine implements WorldCtx {
    * this draw compiles synchronously. Objects behind a visibility gate (far-POI merge) keep their state.
    */
   warmDraw(roots: THREE.Object3D[], depthOnly = false) {
-    if (!roots.length) return;
+    if (!roots.length || this.contextLost) return;
     if (!this.depthVariantsWarm && this.warmShadowOn) this.warmDepthVariants();
     const LAYER = 30, DEPTH_LAYER = 28, ROOT_LAYER = depthOnly ? DEPTH_LAYER : LAYER;
     const r = this.renderer;
@@ -584,7 +589,14 @@ export class Engine implements WorldCtx {
    * the island stream) so the main thread goes to the stream, not to frames nobody sees.
    */
   suspended = false;
-  contextLost = false;
+  private lost = false;
+  /**
+   * true from the moment the GL context is lost until the restore has rebuilt everything (set by watchContext). The
+   * browser queues `webglcontextlost` as a later task, and three stops drawing only at that event: frames in between
+   * upload into a dead context, and three caches the extensions it first asks for there as missing (the BPTC warnings).
+   */
+  get contextLost() { return this.lost || this.renderer.getContext().isContextLost(); }
+  set contextLost(v: boolean) { this.lost = v; }
   restores = 0;
   start() {
     if (this.started) return;
