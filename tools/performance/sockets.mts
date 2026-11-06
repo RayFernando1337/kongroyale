@@ -52,7 +52,7 @@ try{
   const setup0=performance.now();
   while(phase!==PLAY){if(performance.now()-setup0>maxSetupS*1000)throw Error(`no PLAY phase within ${maxSetupS} s (last phase ${phase}); is KR_WARMUP_S huge?`);drive(performance.now());await sleep(2);}
   // keep driving while /health answers: awaiting it here sent no inputs for 2-4 RTTs and read as a server stall (KONG-79)
-  const setupMs=performance.now()-setup0;let health0:any=null;fetch(base+'/health').then(r=>r.json()).then(j=>{health0=j;},e=>errors.push(String(e)));
+  const setupMs=performance.now()-setup0;let health0:any=null,health0At=0;fetch(base+'/health').then(r=>r.json()).then(j=>{health0=j;health0At=performance.now();},e=>errors.push(String(e)));
   while(health0===null){if(errors.length)throw Error(errors[0]);drive(performance.now());await sleep(2);}
   active=true;const start=performance.now(),aliveAtStart=alive;
   while(performance.now()-start<seconds*1000){
@@ -63,8 +63,15 @@ try{
   }
   // the window's last stretch: a pause after the final drive() would otherwise never enter loopGaps
   const end=performance.now();loopGaps.push(end-lastLoop);const elapsed=end-start;active=false;
-  const health=await(await fetch(base+'/health')).json();await assetRequest;
+  // …and while the last /health answers: the server would count that pause as input gaps
+  let health:any=null,healthAt=0;fetch(base+'/health').then(r=>r.json()).then(j=>{health=j;healthAt=performance.now();},e=>errors.push(String(e)));
+  while(health===null){if(errors.length)throw Error(errors[0]);drive(performance.now());await sleep(2);}
+  await assetRequest;
   const perf0=(health0 as any).performance,perf1=(health as any).performance;
+  // the server's input pacing (shared/net/input-gaps.ts, one match): the change between the two /health reads, which spans
+  // the window plus the reads themselves (spanMs), so the metrics are shares of the live ticks in that span
+  const in0=(health0 as any).inputs?.[0],in1=(health as any).inputs?.[0],inputs=in0&&in1?{liveTicks:in1.liveTicks-in0.liveTicks,inputGapTicks:in1.inputGapTicks-in0.inputGapTicks,catchupBursts:in1.catchupBursts-in0.catchupBursts,catchupBurstMaxMatch:in1.catchupBurstMax,spanMs:Math.round(healthAt-health0At)}:null;
+  const noInputs:Metric={status:'unsupported',unit:'%',reason:'server /health has no inputs report'};
   const s=elapsed/1000,ms=(v:number[]):Metric=>({status:'ok',unit:'ms',better:'lower',summary:stats(v)});
   let loopGapMax=0;for(const g of loopGaps)if(g>loopGapMax)loopGapMax=g;
   const minSnapshots=Math.min(...peers.map(p=>p.snaps)),serverTicksPerSecond=(lastTick-firstTick)/s,inputsPerPlayerSecond=inputsSent/count/s;
@@ -79,6 +86,7 @@ try{
         rttMs:ms(rtt),snapshotGapMs:ms(gaps),inputToAcknowledgmentMs:ms(ack),generatorLoopGapMs:ms(loopGaps),
         bytesPerPlayerSecond:{status:'ok',unit:'bytes/s',better:'lower',value:bytes/s/count},
         serverCpuMsPerSecond:perf0&&perf1?{status:'ok',unit:'ms',better:'lower',value:(perf1.cpuMs-perf0.cpuMs)/s}:{status:'unsupported',unit:'ms',reason:'server runs without KR_PERF_METRICS=1'},
+        serverInputGapPct:inputs?.liveTicks?{status:'ok',unit:'%',better:'lower',value:100*inputs.inputGapTicks/inputs.liveTicks}:noInputs,serverCatchupBurstPct:inputs?.liveTicks?{status:'ok',unit:'%',better:'lower',value:100*inputs.catchupBursts/inputs.liveTicks}:noInputs,
         serverTickMsLifetime:lifetime(perf1?.tickMs),eventLoopDelayMsLifetime:lifetime(perf1?.eventLoopDelayMs),
       },
       gates:[
@@ -91,7 +99,7 @@ try{
         {id:'snapshotsDelivered',pass:minSnapshots>=s*28,detail:`fewest snapshots for one client: ${minSnapshots} in ${s.toFixed(1)} s`},
         {id:'serverTickP99Within60Hz',pass:!(perf1?.tickMs?.p99>1000/TICK_HZ),detail:`lifetime server tick p99 ${perf1?.tickMs?.p99?.toFixed(2) ?? 'n/a'} ms`},
       ],
-      detail:{matchSeed,bytes,packets,httpResults,health,errors:errors.slice(0,20)},
+      detail:{matchSeed,bytes,packets,inputs,httpResults,health,errors:errors.slice(0,20)},
     }],
     errors,artifacts:[]};
   save(out,result);

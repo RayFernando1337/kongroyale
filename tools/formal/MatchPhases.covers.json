@@ -118,7 +118,7 @@
       "shared/net/host.ts#MatchHost.holdForStream": "a48e271bba913cc6",
       "server/index.ts#onJSON/case \"start\"": "3cb259f2160ec2a4",
       "server/index.ts#onJSON/case \"stream\"": "2d53e376bbcf7c50",
-      "server/lobby.ts#Lobby.start": "85af5dc311125c13",
+      "server/lobby.ts#Lobby.start": "f05a6607e99e5a4f",
       "server/lobby.ts#Lobby.pump": "c2c3268e6d1dd55b",
       "server/lobby.ts#Lobby.endMatch": "d65ba7025ff9eed3"
     }
