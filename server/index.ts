@@ -257,8 +257,9 @@ function logClose(c: Client, s: Sock, code: number, reason: Buffer, aux: boolean
 /** one binary frame from a client, on any of its transport's paths */
 function onBinary(c: Client, u8: Uint8Array, from: Path) {
   const host = c.lobby?.host;
-  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
-  if (u8[0] === M.Input) c.lastInputAt = Date.now();
+  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Inputs && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
+  // a single input (WebSockets) or an input window (WebTransport): the player is here (lobby.ts housekeeping)
+  if (u8[0] === M.Input || u8[0] === M.Inputs) c.lastInputAt = Date.now();
   if (!host.receive(c.peer, u8, from.reply)) from.strike("bad frame");
 }
 const helloAt = new WeakMap<Client, number>(), helloLater = new WeakMap<Client, NodeJS.Timeout>();

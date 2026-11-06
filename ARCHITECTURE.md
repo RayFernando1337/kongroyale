@@ -81,8 +81,9 @@ Every binary frame decodes on its own: there is no delta compression against ear
 can pick up from any frame.
 
 The binary frames go through one `Transport` (`shared/net/transport.ts`), the same shape on the client and the server.
-`channelOf` puts each frame type on a channel: pings, pongs and snapshots are unreliable (a newer one replaces a lost
-one), everything else is reliable. A single input is reliable because each one is needed once and nothing resends it. JSON always rides the primary WebSocket. The receivers keep the ordering rules
+`channelOf` puts each frame type on a channel: the input window (`M.Inputs`), pings, pongs and snapshots are
+unreliable (a newer one replaces or repairs a lost one), everything else is reliable, including a single input
+(`M.Input`, what a WebSocket client sends: each one is needed once and is sent once). JSON always rides the primary WebSocket. The receivers keep the ordering rules
 (newest snapshot tick, each input seq once), so a transport may deliver a frame twice, late or never.
 
 Today's transport is **two WebSockets** per player. Binary frames travel on both, and each end keeps the first copy it
