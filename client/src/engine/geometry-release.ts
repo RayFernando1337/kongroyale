@@ -9,7 +9,9 @@ import { onRestore, unrestorable } from "./res/restore";
 const ENABLED = flag("geofree");
 
 function dropArray(this: THREE.BufferAttribute): void {
-  (this as unknown as { array: null }).array = null;
+  const a = this as unknown as { array: THREE.TypedArray | null; releasedBytes?: number };
+  a.releasedBytes = a.array!.byteLength;
+  a.array = null;
 }
 
 export function releaseBatchAfterUpload(bm: THREE.BatchedMesh): void {
