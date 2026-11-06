@@ -470,7 +470,13 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     const ob = (mod as unknown as { _obstacles?: ObstacleBake })._obstacles;
     const T: Record<string, number> = {}, tt = () => performance.now();
     let t = tt();
-    if (ob && ob.bakes === 0) await ob.warm(() => ctx.afterPaint());
+    // (KHR_parallel_shader_compile: a synchronous draw that first uses a program waits for every compile queued ahead of
+    // it — on Safari's cold Metal cache, seconds. The override bake waits, polling, until the queue has drained.)
+    // (polled once a frame — afterPaint keeps ticking in an occluded Safari window; a lost context's programs never finish)
+    const r = ctx.renderer;
+    const idle = async () => { while (!r.getContext().isContextLost() && !((r.info.programs ?? []) as unknown as Array<{ isReady(): boolean }>).every((p) => p.isReady())) await ctx.afterPaint(); };
+    if (ob) await idle();
+    if (ob && ob.bakes === 0) await ob.warm(async () => { await ctx.afterPaint(); await idle(); });
     T.warm = tt() - t; t = tt();
     ob?.maybeBake(true);
     T.bake = tt() - t;

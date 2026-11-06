@@ -1,0 +1,16 @@
+[
+  {
+    "name": "a match shows without its renderer",
+    "why": "index.ts offline(): the match view no longer waits for wire() to build a GameRender",
+    "find": "/\\ view' = (IF WireOk THEN \"match\" ELSE \"title\") /\\ phase' = \"warmup\"",
+    "replace": "/\\ view' = \"match\" /\\ phase' = \"warmup\"",
+    "expect": "Invariant NoMatchWithoutRenderer is violated"
+  },
+  {
+    "name": "leaving keeps the seat",
+    "why": "index.ts leaveAll(): the leave message is no longer sent, so the server keeps the seat",
+    "find": "/\\ view' = \"title\" /\\ link' = \"none\" /\\ seated' = FALSE",
+    "replace": "/\\ view' = \"title\" /\\ link' = \"none\" /\\ seated' = seated",
+    "expect": "Invariant LeaveFreesTheSeat is violated"
+  }
+]
