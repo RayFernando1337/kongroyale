@@ -37,11 +37,11 @@ interface Size { raw: number; gz: number; br: number }
 // Vite names a chunk by a hash of its content and every importer embeds that name, so changing one chunk changes a few
 // bytes of every chunk that imports it, and a gzip of the changed file moves by 1-3 B. JS is therefore measured with every
 // 8-character chunk hash replaced by one fixed string (the same length, so raw is unchanged), and compressed here with the
-// settings tools/performance/precompress.mjs uses (gzip 9, brotli quality 9) instead of read from its sidecar.
+// settings tools/performance/precompress.mjs uses (gzip 9, brotli quality 9) instead of read from its sidecar; a file under 1 KB has no sidecar and is served raw, so it keeps the sidecar rule below.
 const HASHED_REF = /-[A-Za-z0-9_-]{8}(?=\.(?:js|css)\b)/g;
 const sizeOf = (file: string): Size => {
   const original = fs.statSync(file), raw = original.size;
-  if (file.endsWith(".js")) {
+  if (file.endsWith(".js") && raw >= 1024) {
     const data = Buffer.from(fs.readFileSync(file, "utf8").replace(HASHED_REF, "-HHHHHHHH"));
     const brotli = zlib.brotliCompressSync(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9 } });
     return { raw, gz: Math.min(zlib.gzipSync(data, { level: 9 }).length, raw), br: Math.min(brotli.length, raw) };
