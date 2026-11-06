@@ -410,8 +410,11 @@ export class ClientMatch {
     if (h.tick <= this.lastSnapTick) { if (h.tick === this.lastSnapTick) this.netStats.dupFrames++; else this.netStats.staleFrames++; return; }
     const gGap = this.lastSnapTick >= 0 ? h.tick - this.lastSnapTick : SNAP_EVERY;
     // a stall (linkSlow's memory, so a stall between shots counts too): this snapshot came DEFER_SNAP_GAPS intervals
-    // after the last, or acknowledges an input sent longer than the RTT plus DEFER_ACK_SLACK_MS ago (once the RTT is known)
-    if (this.pingN >= 5 && ((this.lastSnapAt > 0 && at - this.lastSnapAt > DEFER_SNAP_GAPS * SNAP_EVERY * DT * 1000) || (h.lastSeq > this.authSeq && at - this.sentAt[h.lastSeq % PRING] > this.ping + DEFER_ACK_SLACK_MS))) this.lastStallAt = at;
+    // after the last, or the oldest input it newly acknowledges was sent longer than the RTT plus DEFER_ACK_SLACK_MS ago
+    // (once the RTT is known). The oldest, because after a stall on the way up the server catches up on several queued
+    // inputs at once, and the newest of them may have waited no longer than usual
+    const oldest = this.authSeq + 1;
+    if (this.pingN >= 5 && ((this.lastSnapAt > 0 && at - this.lastSnapAt > DEFER_SNAP_GAPS * SNAP_EVERY * DT * 1000) || (h.lastSeq >= oldest && (this.inputSeq - oldest >= PRING || at - this.sentAt[oldest % PRING] > this.ping + DEFER_ACK_SLACK_MS)))) this.lastStallAt = at;
     this.lastSnapTick = h.tick; this.lastSnapAt = at; this.netStats.snapshots++;
     const nowT = at / 1000 / DT;
     this.clockSample(h.tick, nowT, performance.now());
