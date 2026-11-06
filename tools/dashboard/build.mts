@@ -93,8 +93,10 @@ function change(p: PerfItem): string {
 
 function main(): void {
   const out = arg("--out");
-  if (!out) throw new Error("usage: npx tsx tools/dashboard/build.mts --out <dir> [--data <file>] [--now <iso>]");
+  if (!out) throw new Error("usage: npx tsx tools/dashboard/build.mts --out <dir> [--data <file>] [--now <iso>] [--sha <commit>]");
   const data = JSON.parse(fs.readFileSync(arg("--data") ?? path.join(HERE, "data.json"), "utf8")) as Data;
+  const sha = (arg("--sha") ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: HERE, encoding: "utf8" }).trim()).slice(0, 7);
+  if (!/^[0-9a-f]{7}$/.test(sha)) throw new Error("--sha is not a commit id");
   const now = new Date(arg("--now") ?? new Date().toISOString());
   if (Number.isNaN(now.getTime())) throw new Error("--now is not a date");
   const dayAgo = now.getTime() - DAY_MS;
@@ -315,7 +317,7 @@ function main(): void {
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>try{var t=localStorage.getItem("kr-theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="light"}</script><title>' + esc(data.title) + "</title><style>" + css + "</style></head><body>" +
     '<header><div class="brand">' + esc(data.title.split(":")[0]) + '</div><nav>' + pages.map((p) => '<a href="#' + p[0] + '" data-page="' + p[0] + '">' + p[1] + "</a>").join("") + '</nav><button type="button" class="theme"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><span class="theme-label"></span></button></header><main>' +
     pages.map((p) => '<section id="' + p[0] + '" class="page">' + p[2] + "</section>").join("") +
-    '</main><footer>Updated ' + stamp(now.toISOString()) + ". Counts are live from GitHub. Measurements come from tools/dashboard/data.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
+    '</main><footer>Built from commit <a href="https://github.com/' + data.repo + "/commit/" + sha + '">' + sha + "</a> at " + stamp(now.toISOString()) + ". Counts are live from GitHub as of then. Measurements come from tools/dashboard/data.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
     "<script>function show(){var id=(location.hash||'#start').slice(1);if(!document.getElementById(id))id='start';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){var on=a.dataset.page===id;a.classList.toggle('on',on);if(on){a.setAttribute('aria-current','page');var n=a.parentNode;n.scrollLeft=a.offsetLeft-(n.clientWidth-a.offsetWidth)/2}else a.removeAttribute('aria-current')});scrollTo(0,0)}addEventListener('hashchange',show);show();var tb=document.querySelector('.theme'),tl=tb.querySelector('.theme-label'),root=document.documentElement;function label(){var d=root.dataset.theme==='dark';tl.textContent=d?'Dark':'Light';tb.setAttribute('aria-label','Colour theme: '+(d?'dark':'light')+'. Switch to '+(d?'light':'dark'))}label();tb.addEventListener('click',function(){var n=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('kr-theme',n)}catch(e){}label()});matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){var s;try{s=localStorage.getItem('kr-theme')}catch(x){}if(s!=='light'&&s!=='dark'){root.dataset.theme=e.matches?'dark':'light';label()}});</script></body></html>";
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, "index.html"), html);
