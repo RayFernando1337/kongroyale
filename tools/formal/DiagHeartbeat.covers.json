@@ -16,15 +16,22 @@
   ],
   "writes": [
     {
-      "what": "the per-session heartbeat records (kr.diag.hb.<sid>)",
-      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s*(BEAT_KEY|[\"'`]kr\\.diag\\.hb\\.)",
+      "what": "the per-session heartbeat records (kr.diag.hb.<sid>), through BEAT_KEY",
+      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s*BEAT_KEY",
       "files": [
         "client/src/"
+      ]
+    },
+    {
+      "what": "any localStorage write with a literal key in the playtest code: the scan blanks string literals, so a literal kr.diag.hb.<sid> elsewhere can't be told from the game's other keys",
+      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s+,",
+      "files": [
+        "client/src/playtest/"
       ]
     }
   ],
   "verified": {
-    "model": "01d147b319cf4f15",
+    "model": "e6d430e5272dc7fe",
     "regions": {
       "client/src/playtest/diag.ts#sid": "17917ebf4d9949ae",
       "client/src/playtest/diag.ts#BEAT_KEY": "b4126ea16d1676c0",

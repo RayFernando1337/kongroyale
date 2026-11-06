@@ -16,15 +16,22 @@
   ],
   "writes": [
     {
-      "what": "the player's agreement to the consent text (kr.diag.consent)",
-      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s*(CONSENT_KEY|[\"'`]kr\\.diag\\.consent)",
+      "what": "the player's agreement to the consent text (kr.diag.consent), through CONSENT_KEY",
+      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s*CONSENT_KEY",
       "files": [
         "client/src/"
+      ]
+    },
+    {
+      "what": "any localStorage write with a literal key in the playtest code: the scan blanks string literals, so a literal kr.diag.consent elsewhere can't be told from the game's other keys",
+      "pattern": "localStorage\\.(setItem|removeItem)\\(\\s+,",
+      "files": [
+        "client/src/playtest/"
       ]
     }
   ],
   "verified": {
-    "model": "e97f12ac20dd6e82",
+    "model": "85e87ca00d17ec11",
     "regions": {
       "client/src/playtest/report.ts#CONSENT_KEY": "b9b9ab7fc86d2ce8",
       "client/src/playtest/report.ts#CONSENT_V": "ad446d36a602eb80",
