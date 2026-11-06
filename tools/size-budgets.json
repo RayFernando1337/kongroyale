@@ -1,9 +1,9 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Set 2026-11-04 from the fork's main at about 1% over the measured size. 2026-11-05: lazy raised from 3055000 to 3055261 (measured 3055251 at 2f33440): #208 added 229 B of lazy JS (call sites for the deferred heli load; boot and entry did not change) and later PRs the rest. Then raised again, a deliberate exception: the player-diagnostics send sheet (client/src/playtest/report.ts, about 5.1 KB gz, RAY-162) is a lazy chunk that loads only with diag on (?diag or a VITE_KR_DIAG=1 build), so no other page downloads it. Set about 250 bytes over the measured total. 2026-11-06: lazy raised from 3060850 to 3061039 (measured 3061029 after merging main at 3828e81 into #218): #218 moves the ?fly camera from boot into the lazy dev-probes chunk, where it compresses worse than inside boot (lazy about +420 B, entry and boot -115 B, partly absorbed by the headroom above); no behaviour-neutral dev-only trim of that size was found. 2026-11-06: lazy raised from 3061039 to 3061062 (measured 3061052 with #212, 3061026 without, at 3d24764): a PLAY, CREATE or JOIN pressed during the load now waits in prepareIsland for the ready title instead of throwing in GameRender and stranding the match scope (#212).",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-05 at 3d24764 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 4725691, lazy 3051867). 2026-11-06: lazy raised from 3051892 to 3051903 (measured 3051893 with #212, 3051867 without, at 476d91a): a PLAY, CREATE or JOIN pressed during the load now waits in prepareIsland for the ready title instead of throwing in GameRender and stranding the match scope (#212).",
   "gzBytes": {
-    "entry": 34200,
-    "boot": 1168020,
-    "workers": 4726100,
-    "lazy": 3061062
+    "entry": 33170,
+    "boot": 1166520,
+    "workers": 4725716,
+    "lazy": 3051903
   }
 }
