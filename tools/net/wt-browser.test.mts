@@ -2,7 +2,9 @@
 // Chromium against a real server on loopback. Needs a Chromium or Chrome with WebTransport; no GPU, no root, ~30 s.
 //   npx tsx tools/net/wt-browser.test.mts [--chrome PATH]     (also KR_CHROME; default: Playwright's own Chromium)
 // Checks: with ?wt=1 and a server that offers WebTransport, the link settles on "wt", a ping sent through the link comes
-// back as a pong, /health counts the client on wt and one link settled on wt; when the server closes the session (a
+// back as a pong, /health counts the client on wt and one link settled on wt; the session outlives a lobby that sends
+// nothing for longer than the server's heartbeat timeout (the link's keepalive pings); a page on "localhost" reaches
+// the IPv4 endpoint too; when the server closes the session (a
 // flood past its rate limit) the link goes back to the WebSockets ("closed") and keeps working; without ?wt=1 it stays on the
 // WebSockets with "flag-off"; with ?wt=1 against a server without KR_WT it stays there with "server-off", and /health
 // counts each reason. With no browser to launch, or no QUIC module build for this platform, it prints SKIP and passes.
@@ -38,7 +40,7 @@ const health = async (port: number) => (await (await fetch(`http://127.0.0.1:${p
 const ENTRY = `import { connectWs } from "./client/src/game/net";
 import { M, Writer, writeInput } from "./shared/net/proto";
 import { makeInput } from "./shared/sim/player";
-(window as any).run = async (url: string, flood: boolean) => {
+(window as any).run = async (url: string, flood: boolean, idleMs: number) => {
   const link = await connectWs(url), out: Record<string, unknown> = { pong: false };
   link.onBinary = (u8) => { if (u8[0] === M.Pong) out.pong = true; };
   const t0 = performance.now();
@@ -48,8 +50,22 @@ import { makeInput } from "./shared/sim/player";
   let inLobby = false, inMatch = false; link.onJSON = (m) => { if (m.t === "lobby") inLobby = true; if (m.t === "match") inMatch = true; };
   link.sendJSON({ t: "hello", name: "WT" }); link.sendJSON({ t: "create", mode: "solo" });
   while (performance.now() - t0 < 12000 && !inLobby) await new Promise((r) => setTimeout(r, 20));
+  // a lobby where nobody plays yet: only the link's own keepalive rides the session
+  // then a frame half a second after a keepalive went out, with nothing heard since the lobby began (as when a match
+  // starts): the unanswered keepalive must not make the session look stalled
+  if (idleMs) {
+    await new Promise((r) => setTimeout(r, idleMs));
+    const sentU = () => link.transport?.stats.sent[1] ?? 0, n0 = sentU(), t3 = performance.now();
+    while (performance.now() - t3 < 11000 && sentU() === n0) await new Promise((r) => setTimeout(r, 20));
+    out.keepalives = sentU() - n0;
+    await new Promise((r) => setTimeout(r, 500));
+    link.sendBinary(new Writer(new ArrayBuffer(16)).u8(M.Ping).f64(performance.now()).view());
+    await new Promise((r) => setTimeout(r, 300));
+    out.idle = { kind: link.transport?.kind, fallback: link.fallback ?? null };
+  }
   link.sendJSON({ t: "start" });
-  while (performance.now() - t0 < 30000 && !inMatch) await new Promise((r) => setTimeout(r, 20));
+  const t2 = performance.now();
+  while (performance.now() - t2 < 18000 && !inMatch) await new Promise((r) => setTimeout(r, 20));
   out.inMatch = inMatch;
   const w = new Writer(new ArrayBuffer(16));
   for (let i = 0; i < 30 && !out.pong; i++) { link.sendBinary(w.reset().u8(M.Ping).f64(performance.now()).view()); await new Promise((r) => setTimeout(r, 100)); }
@@ -84,26 +100,28 @@ try { browser = await chromium.launch({ executablePath: CHROME, headless: true }
   console.log(`SKIP  no browser to launch (${String(e).split("\n")[0].slice(0, 120)}); pass --chrome or run npx playwright install chromium`);
   page.close(); process.exit(0);
 }
-type Run = { kind?: string; fallback: string | null; pong: boolean; stats: { sent?: [number, number]; recv?: number }; report: { transport: string; fallback: string | null; stats: { recv: number } } | null; chunks: string[]; after?: { kind?: string; fallback: string | null; pong: boolean } };
-async function run(query: string, port: number, flood = false): Promise<Run> {
+type Run = { kind?: string; fallback: string | null; pong: boolean; stats: { sent?: [number, number]; recv?: number }; report: { transport: string; fallback: string | null; stats: { recv: number } } | null; chunks: string[]; keepalives?: number; idle?: { kind?: string; fallback: string | null }; after?: { kind?: string; fallback: string | null; pong: boolean } };
+async function run(query: string, port: number, flood = false, idleMs = 0, host = "127.0.0.1"): Promise<Run> {
   const p = await browser.newPage();
   try {
-    await p.goto(`http://127.0.0.1:${pagePort}/${query}`);
+    await p.goto(`http://${host}:${pagePort}/${query}`);
     await p.waitForFunction(() => typeof (window as unknown as { run?: unknown }).run === "function");
-    return await p.evaluate(([u, f]) => (window as unknown as { run: (u: string, f: boolean) => Promise<Run> }).run(u, f), [`ws://127.0.0.1:${port}/ws`, flood] as const);
+    return await p.evaluate(([u, f, i]) => (window as unknown as { run: (u: string, f: boolean, i: number) => Promise<Run> }).run(u, f, i), [`ws://127.0.0.1:${port}/ws`, flood, idleMs] as const);
   } finally { await p.close(); }
 }
 
 try {
   // ---- 1. the server offers WebTransport
   const wtPort = await freePort();
-  const s = await startServer({ KR_WT: "1", KR_WT_PORT: String(wtPort), KR_WARMUP_S: "60" });
+  // a short heartbeat timeout, so a session nobody keeps alive would be ended inside the idle lobby below
+  const s = await startServer({ KR_WT: "1", KR_WT_PORT: String(wtPort), KR_WARMUP_S: "60", KR_HEARTBEAT_TIMEOUT_S: "15" });
   try {
     const h0 = await health(s.port);
     if (h0.transports.webtransport.off) console.log(`SKIP  KR_WT=1 checks: the endpoint is off (${h0.transports.webtransport.off})`);
     else {
-      const on = await run("?wt=1", s.port, true);
+      const on = await run("?wt=1", s.port, true, 25_000);
       check(on.kind === "wt" && on.fallback === null, `?wt=1: the link settles on WebTransport (${on.kind}, ${on.fallback})`);
+      check(on.idle?.kind === "wt" && on.idle.fallback === null && (on.keepalives ?? 0) > 0, `25 s in a lobby with nothing to send (heartbeat timeout 15 s), then a frame just after a keepalive: still on WebTransport (${on.idle?.kind}, ${on.idle?.fallback}, ${on.keepalives} keepalive)`);
       check(on.pong, "a ping through the WebTransport link is answered");
       check((on.stats.recv ?? 0) > 0 && (on.stats.sent?.[1] ?? 0) > 0, `the wt transport counts what it sends and receives (sent ${on.stats.sent}, recv ${on.stats.recv})`);
       check(on.report?.transport === "wt" && on.report.fallback === null && on.report.stats.recv > 0, `the KONGBOT report names the link's transport, fallback and counters (${JSON.stringify(on.report && { ...on.report, stats: on.report.stats.recv })})`);
@@ -116,6 +134,8 @@ try {
       check(off.kind === "ws" && off.fallback === "flag-off" && off.pong, `no ?wt: the link stays on the WebSockets, "flag-off", and pings work (${off.kind}, ${off.fallback})`);
       await sleep(100);
       check((await health(s.port)).transports.settled.ws["flag-off"] === 1, "/health counts one flag-off fallback");
+      const lh = await run("?wt=1", s.port, false, 0, "localhost");
+      check(lh.kind === "wt" && lh.fallback === null && lh.pong, `a page on localhost reaches the IPv4 endpoint: the link settles on WebTransport (${lh.kind}, ${lh.fallback})`);
     }
   } finally { s.proc.kill("SIGTERM"); }
 
