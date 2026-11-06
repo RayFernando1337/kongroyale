@@ -22,7 +22,7 @@
 // What is measured. A wrapper around Engine.step records, per frame: the rAF interval, the main-thread step time, and
 // renderer.info's draw calls, triangles, points and program count. Safari has no GPU timer query, so GPU time is not
 // measured; attribute it with arms that remove one cost (?dpr=1 for pixels, ?vegsplat=0 for the far-tree splats).
-// After the hold the engine is suspended for 3 s and bare rAF intervals are recorded: the display's refresh as the
+// After the hold the engine is suspended for 180 frames (3 s at 60 Hz) and bare rAF intervals are recorded: the display's refresh as the
 // browser paces it right now (a capture running or not), next to what engine.refreshHz measured.
 import fs from "node:fs";
 import os from "node:os";
@@ -158,7 +158,7 @@ async function safari(): Promise<Driver> {
 }
 async function chromium(kind: "chrome" | "chromium"): Promise<Driver> {
   const pw = await import("playwright");
-  const angle = process.platform === "darwin" ? "metal" : process.platform === "win32" ? "d3d11" : "swiftshader";
+  const angle = SOFTWARE ? "swiftshader" : process.platform === "darwin" ? "metal" : process.platform === "win32" ? "d3d11" : "vulkan";
   const b = await pw.chromium.launch({ channel: kind === "chrome" ? "chrome" : undefined, headless: !process.argv.includes("--headed"), args: ["--use-angle=" + angle, "--enable-gpu", "--ignore-gpu-blocklist", ...(SOFTWARE ? ["--enable-unsafe-swiftshader"] : []), "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"] });
   const ctx = await b.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: Number(arg("--dpr", "2")) });
   const page = await ctx.newPage();
@@ -211,8 +211,10 @@ try {
   while (Date.now() - hold0 < HOLD_S * 1000) { await d.run(KEEP(yaw, pitch)); await sleep(500); }
   await d.run(COLLECT(false));
   const shotFile = out.replace(/\.json$/, "") + ".png";
+  fs.mkdirSync(path.dirname(shotFile), { recursive: true });
   await d.shot(shotFile).then(() => artifacts.push(shotFile), () => { /* best effort */ });
-  await d.run(RAF_PROBE); await sleep(4500);
+  await d.run(RAF_PROBE);
+  for (const probe0 = Date.now(); (await d.run("String(!!window.__kr.rafProbe)")) !== "true" && Date.now() - probe0 < 15_000;) await sleep(500);
   page = JSON.parse(await d.run(READ));
 } catch (e) {
   errors.push("harness: " + (e instanceof Error ? e.message.split("\n")[0] : String(e)));
@@ -257,10 +259,10 @@ if (page && page.n > 1) {
 const result: RunResult = {
   schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "tools/performance/pose-hold.mts", startedAt: new Date(t0).toISOString(), durationMs: Date.now() - t0,
   source: source(root), environment: { ...env(), gpu: page ? String(page.renderer) : null },
-  config: { browser: BROWSER + " " + (d?.version ?? "?"), viewport: VW + "x" + VH, preset: PRESET, query: QUERY, pose: [PX, PZ, YAW_DEG, PITCH_DEG].join(","), settleS: SETTLE_S, holdS: HOLD_S, mode: MODE, capture: CAPTURE ? "on" : "off" },
+  config: { browser: BROWSER + " " + (d?.version ?? "?"), viewport: VW + "x" + VH, preset: PRESET, query: QUERY, pose: [PX, PZ, YAW_DEG, PITCH_DEG].join(","), settleS: SETTLE_S, holdS: HOLD_S, mode: MODE, capture: CAPTURE ? "on" : "off", atPhase: AT_PHASE, dpr: page ? Number(page.dpr) : -1, headed: BROWSER === "safari" || process.argv.includes("--headed") },
   cases, errors, artifacts,
 };
 (result as unknown as Record<string, unknown>).detail = { marks, host: os.hostname(), page: page ? { ...page, T: undefined, frames: { t: page.T.map((x: number) => +(x - page.T[0]).toFixed(2)), cpu: page.CPU, calls: page.CALLS, tris: page.TRIS, points: page.PTS, programs: page.PROG } } : null };
 save(out, result);
 log("wrote " + out + (errors.length ? " with errors: " + errors.join("; ") : ""));
-process.exit(errors.length || !cases.length ? 1 : 0);
+process.exit(errors.length || !cases.length || cases.some((c) => c.gates.some((g) => !g.pass)) ? 1 : 0);
