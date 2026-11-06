@@ -1,15 +1,16 @@
-// The half-rate guard (RAY-186): with dynamic resolution off (every preset's default, and what an explicit High pins),
-// a GPU-bound match that misses vsync is presented at half the display rate or worse, and nothing used to bring it back.
-// Once a second in a match this reads the engine's frame intervals. When the median frame stays past the half-rate line
-// of a 60 Hz display (or of the player's slower frame cap) it steps the 3D render scale down (TAAU in the post chain; the
-// canvas and the HUD stay native), never below Auto's floor, and steps it back up after a run of full-rate seconds,
-// waiting twice as long after each up-step that fell back. It judges by evidence, not by the measured refresh (a match
-// locked at half rate measures as a 30 Hz display): when two steps down bring no gain in the mean frame (a 30 Hz screen,
-// Low Power Mode, a CPU-bound frame) it puts the scale back and leaves it for a while; a GPU timer that shows the main
-// thread as the longer side, or a main thread that takes most of the frame, skips the steps. The preset's other
-// settings stay as they are. Every step goes into a bounded log (resLog, __kr.resLog) that KONGBOT and diagnostics
-// reports carry in their context. ?resguard=1 / =0 force it on / off; it is off under automation (navigator.webdriver)
-// unless forced, and ?dynres=0 or a pinned ?scale also keep it off (engine.guardScale).
+// The half-rate guard (RAY-186): with dynamic resolution off (every preset's default, and what an explicit High
+// pins), a GPU-bound match that misses vsync is presented at half the display rate or worse, and nothing used to bring
+// it back. Once a second in a match this reads the engine's frame intervals. When the median frame stays past the
+// half-rate line of a 60 Hz display (or of the player's slower frame cap) it steps the 3D render scale down (TAAU in
+// the post chain; the canvas and the HUD stay native), never below Auto's floor, and steps it back up after a run of
+// full-rate seconds, waiting twice as long after each up-step that fell back. It judges by evidence, not by the
+// measured refresh (a match locked at half rate measures as a 30 Hz display): when the steps down reach the floor with
+// no gain in the mean frame (a 30 Hz screen, Low Power Mode, a CPU-bound frame) it puts the scale back and leaves it
+// for a while; a GPU timer that shows the main thread as the longer side, or a main thread that takes most of the
+// frame, skips the steps. The preset's other settings stay as they are. Every step goes into a bounded log (resLog,
+// __kr.resLog) that KONGBOT and diagnostics reports carry in their context. ?resguard=1 / =0 force it on / off; it is
+// off under automation (navigator.webdriver) unless forced, and ?dynres=0 or a pinned ?scale also keep it off
+// (engine.guardScale).
 import type { Engine } from "./engine";
 import { flag } from "../flags";
 import { AUTO_RES_FLOOR } from "./display";
@@ -35,10 +36,10 @@ export const HOLD_S = 2;
 export const STEP = 0.92;
 export const BIG_STEP = 0.85;
 export const BIG_PERIODS = 3;
-/** after NO_GAIN_STEPS steps down in a row, a mean frame that is not MIN_GAIN shorter than before the first means
- *  pixels are not what holds the frame: the scale goes back and no step down is taken for BLOCK_S (doubled each time,
- *  up to BLOCK_MAX_S) */
-export const NO_GAIN_STEPS = 2;
+/** at the floor after a run of steps down, a mean frame that is not MIN_GAIN shorter than before the first means pixels
+ *  are not what holds the frame: the scale goes back and no step down is taken for BLOCK_S (doubled each time, up to
+ *  BLOCK_MAX_S). Only at the floor: vsync quantizes the presented frames, so a GPU frame cut from 30 to 21 ms still
+ *  presents every 33 ms, and only the next step shows the gain */
 export const MIN_GAIN = 0.03;
 export const BLOCK_S = 120;
 export const BLOCK_MAX_S = 600;
@@ -78,11 +79,11 @@ export function decide(st: GuardState, s: GuardSecond, scale: number, top: numbe
       return { to: scale, why: "cpu" };
     }
     if (st.blockS > 0) return null;
-    if (st.downs >= NO_GAIN_STEPS && s.meanMs > st.meanBefore * (1 - MIN_GAIN)) {
-      st.downs = 0; st.holdS = HOLD_S; st.blockS = st.blockWaitS; st.blockWaitS = Math.min(BLOCK_MAX_S, st.blockWaitS * 2); st.atFloor = false;
-      return { to: top, why: "no-gain" };
-    }
     if (scale <= floor + 1e-3) {
+      if (st.downs > 0 && s.meanMs > st.meanBefore * (1 - MIN_GAIN)) {
+        st.downs = 0; st.holdS = HOLD_S; st.blockS = st.blockWaitS; st.blockWaitS = Math.min(BLOCK_MAX_S, st.blockWaitS * 2); st.atFloor = false;
+        return { to: top, why: "no-gain" };
+      }
       if (st.atFloor) return null;
       st.atFloor = true;
       return { to: scale, why: "floor" };

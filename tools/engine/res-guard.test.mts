@@ -21,8 +21,9 @@ function run(seconds: number, frameAt: (scale: number, s: number) => Frame, opts
   return { steps, scale, st, halfS };
 }
 const whys = (r: { steps: Array<{ why: string }> }) => r.steps.map((x) => x.why);
-/** a GPU-bound scene: the mean frame shrinks with the pixel count; the median snaps to whole 60 Hz periods */
-const gpuBound = (ms100: number) => (scale: number): Frame => { const mean = ms100 * scale * scale; return { med: Math.ceil(mean / H - 0.15) * H, mean }; };
+/** a GPU-bound scene whose GPU frame shrinks with the pixel count, presented in whole 60 Hz periods (the engine's
+ *  intervals are presented frames, so the mean is quantized as much as the median) */
+const gpuBound = (ms100: number) => (scale: number): Frame => { const p = Math.ceil((ms100 * scale * scale) / H - 0.15) * H; return { med: p, mean: p }; };
 
 // full rate at 60 Hz: nothing happens
 assert.equal(run(120, () => ({ med: H })).steps.length, 0, "full rate");
@@ -59,15 +60,22 @@ assert.equal(run(120, () => ({ med: H })).steps.length, 0, "full rate");
   assert.equal(r.scale, 1, "back at 100 %");
   assert.equal(r.steps.at(-1)?.why, "headroom");
 }
-// a display or a browser that presents at 30 Hz (a 30 Hz screen, Low Power Mode): fewer pixels change nothing, so after
-// two steps it puts the scale back and waits BLOCK_S, then twice that
+// a display or a browser that presents at 30 Hz (a 30 Hz screen, Low Power Mode): fewer pixels change nothing, so at the
+// floor it puts the scale back and waits BLOCK_S, then twice that
 {
-  const r = run(600, () => ({ med: 1000 / 30 }));
-  assert.deepEqual(whys(r).slice(0, 3), ["halfrate", "halfrate", "no-gain"]);
-  assert.equal(r.steps[2].to, 1, "the scale goes back");
+  const r = run(900, () => ({ med: 1000 / 30 }));
+  const first = whys(r).indexOf("no-gain");
+  assert.ok(first > 0 && whys(r).slice(0, first).every((w) => w === "halfrate"), "steps to the floor, then no-gain: " + whys(r).join(","));
+  assert.equal(r.steps[first].to, 1, "the scale goes back");
   const tries = r.steps.filter((x) => x.why === "no-gain").map((x) => x.s);
   assert.ok(tries.length <= 3 && tries[1] - tries[0] >= BLOCK_S, "blocked between tries: " + tries.join(", "));
-  assert.ok(r.steps.filter((x) => x.to < 1).length <= 6, "at most a few seconds below 100 % per try");
+}
+// a GPU frame that needs three steps to cross the vsync boundary, with the mean quantized like the median: no step is
+// abandoned before the boundary
+{
+  const r = run(60, gpuBound(30));
+  assert.ok(!whys(r).includes("no-gain"));
+  assert.ok(r.scale <= 0.8, "crossed the boundary: " + r.scale);
 }
 // a 120 Hz screen at a steady 60 fps is not past the line; 30 fps on it is
 assert.equal(run(60, () => ({ med: H })).steps.length, 0, "60 fps on 120 Hz");
