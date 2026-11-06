@@ -1,100 +1,97 @@
 // The half-rate guard's decisions (client/src/engine/res-guard.ts): it steps the 3D resolution down only when a match
-// sits past the half-rate line, never below Auto's floor, steps back up after a run of full-rate seconds, and backs off
-// instead of oscillating when an up-step falls back (RAY-186).
+// sits past the half-rate line and fewer pixels help, never below Auto's floor, steps back up after a run of full-rate
+// seconds, and backs off instead of oscillating when an up-step falls back (RAY-186).
 import assert from "node:assert/strict";
-import { AUTO_RES_FLOOR, UP_AFTER_MAX_S, UP_AFTER_S, decide, guardBudgetMs, guardRefreshHz, newGuardState } from "../../client/src/engine/res-guard";
+import { AUTO_RES_FLOOR, BLOCK_S, REF_MS, UP_AFTER_MAX_S, UP_AFTER_S, decide, guardRefMs, newGuardState } from "../../client/src/engine/res-guard";
 
-const HZ60 = 1000 / 60;
-/** run the guard for "seconds" with a frame model (median ms of a second at a scale); the steps it took */
-function run(seconds: number, frameAt: (scale: number, s: number) => number, opts: { budgetMs?: number; top?: number; start?: number; cpuMs?: number; gpuMs?: number } = {}) {
+const H = 1000 / 60;
+type Frame = { med: number; mean?: number };
+/** run the guard for "seconds" with a frame model (a second's median and mean ms at a scale); the steps it took */
+function run(seconds: number, frameAt: (scale: number, s: number) => Frame, opts: { capFps?: number; top?: number; cpuMs?: number; gpuMs?: number } = {}) {
   const st = newGuardState(), top = opts.top ?? 1, steps: Array<{ s: number; from: number; to: number; why: string }> = [];
-  let scale = opts.start ?? top;
+  let scale = top, halfS = 0;
   for (let s = 0; s < seconds; s++) {
-    const med = frameAt(scale, s);
-    const d = decide(st, med, med, Math.round(1000 / med), opts.budgetMs ?? HZ60, opts.cpuMs ?? 7, opts.gpuMs ?? 0, scale, top, s);
+    const f = frameAt(scale, s), mean = f.mean ?? f.med;
+    if (f.med > 25) halfS++;
+    const d = decide(st, { medMs: f.med, p95Ms: f.med, meanMs: mean, frames: Math.round(1000 / mean), refMs: guardRefMs(opts.capFps ?? 0), cpuMs: opts.cpuMs ?? 7, gpuMs: opts.gpuMs ?? 0 }, scale, top, s);
     if (!d) continue;
     steps.push({ s, from: scale, to: d.to, why: d.why });
     scale = d.to;
   }
-  return { steps, scale, st };
+  return { steps, scale, st, halfS };
 }
+const whys = (r: { steps: Array<{ why: string }> }) => r.steps.map((x) => x.why);
+/** a GPU-bound scene: the mean frame shrinks with the pixel count; the median snaps to whole 60 Hz periods */
+const gpuBound = (ms100: number) => (scale: number): Frame => { const mean = ms100 * scale * scale; return { med: Math.ceil(mean / H - 0.15) * H, mean }; };
 
 // full rate at 60 Hz: nothing happens
-assert.equal(run(120, () => HZ60).steps.length, 0, "full rate");
-// Ray's case: High at DPR 2 on Safari snaps to 30 fps; the guard steps down to the floor, then says so once
+assert.equal(run(120, () => ({ med: H })).steps.length, 0, "full rate");
+// Ray's case: High at DPR 2 in Safari, a 30 ms GPU frame presented at 30 fps; fewer pixels bring it back under the line
 {
-  const r = run(60, () => 2 * HZ60);
-  assert.equal(r.steps[0].why, "halfrate");
+  const r = run(600, gpuBound(30));
+  assert.deepEqual(whys(r).slice(0, 3), ["halfrate", "halfrate", "halfrate"]);
   assert.equal(r.steps[0].s, 1, "two seconds past the line before the first step");
-  assert.ok(r.steps.every((x, i) => i === 0 || x.s - r.steps[i - 1].s >= 3), "a hold between steps");
+  assert.ok(r.scale < 0.9 && r.scale >= AUTO_RES_FLOOR, "settles under 0.9: " + r.scale);
+  assert.ok(!whys(r).includes("no-gain"), "fewer pixels do help here");
+  assert.ok(r.halfS < 45, "under 8 % of ten minutes at half rate: " + r.halfS + " s");
+  assert.ok(r.steps.length < 20, "bounded steps: " + r.steps.length);
+}
+// a frame too heavy for the floor: it steps down to the floor and says so once
+{
+  const r = run(60, gpuBound(60));
   assert.equal(r.scale, AUTO_RES_FLOOR, "stops at Auto's floor");
-  assert.equal(r.steps.filter((x) => x.why === "floor").length, 1, "the floor is logged once");
+  assert.equal(whys(r).filter((w) => w === "floor").length, 1, "the floor is logged once");
   assert.ok(r.steps.length <= 7, "bounded steps: " + r.steps.length);
 }
-// a frame back under the line at 0.85: it steps down to there, then tries one step up after UP_AFTER_S full-rate
-// seconds, falls back and waits twice as long, never more than UP_AFTER_MAX_S, and spends most of the match at full rate
+// back under the line only at 0.85 and below: up-steps fall back, the wait doubles up to UP_AFTER_MAX_S, no oscillation
 {
-  const r = run(1800, (scale) => (scale > 0.85 ? 2 * HZ60 : HZ60));
-  const downs = r.steps.filter((x) => x.why === "halfrate"), ups = r.steps.filter((x) => x.why === "headroom"), falls = r.steps.filter((x) => x.why === "fallback");
-  assert.equal(downs.length, 2, "1 → 0.92 → 0.846");
-  assert.equal(ups[0].s - downs[1].s, 3 + UP_AFTER_S - 1, "first up-step after the hold and UP_AFTER_S good seconds");
-  assert.ok(falls.length >= 3, "up-steps that fell back");
+  const r = run(1800, (scale) => (scale > 0.85 ? { med: 2 * H, mean: 2 * H * scale } : { med: H }));
+  const ups = r.steps.filter((x) => x.why === "headroom");
+  assert.ok(r.steps.filter((x) => x.why === "fallback").length >= 3, "up-steps that fell back");
   for (let i = 1; i < ups.length; i++) assert.ok(ups[i].s - ups[i - 1].s >= Math.min(UP_AFTER_MAX_S, UP_AFTER_S * 2 ** i), "backoff " + i);
   assert.equal(r.st.upWaitS, UP_AFTER_MAX_S, "the wait is capped");
   assert.ok(r.steps.length < 40, "no oscillation: " + r.steps.length + " steps in 30 min");
+  assert.ok(r.halfS < 120, "under 7 % of the match at half rate: " + r.halfS + " s");
 }
 // headroom comes back for good (the player left the heavy view): it climbs back to the player's 3D resolution
 {
-  const r = run(200, (scale, s) => (s < 20 ? 2 * HZ60 : HZ60));
+  const r = run(200, (scale, s) => (s < 20 ? gpuBound(40)(scale) : { med: H }));
   assert.equal(r.scale, 1, "back at 100 %");
-  assert.ok(r.steps.at(-1)?.why === "headroom");
+  assert.equal(r.steps.at(-1)?.why, "headroom");
 }
-// a 120 Hz screen at a steady 60 fps is not past the line (the reference is never shorter than a 60 Hz frame)
-assert.equal(run(60, () => HZ60, { budgetMs: 1000 / 120 }).steps.length, 0, "60 fps on 120 Hz");
-// ...but 30 fps on it is
-assert.equal(run(10, () => 2 * HZ60, { budgetMs: 1000 / 120 }).steps[0]?.why, "halfrate", "30 fps on 120 Hz");
-// a player's 30 fps cap is the budget: 30 fps is full rate there
-assert.equal(run(60, () => 1000 / 30, { budgetMs: 1000 / 30 }).steps.length, 0, "30 fps cap");
+// a display or a browser that presents at 30 Hz (a 30 Hz screen, Low Power Mode): fewer pixels change nothing, so after
+// two steps it puts the scale back and waits BLOCK_S, then twice that
+{
+  const r = run(600, () => ({ med: 1000 / 30 }));
+  assert.deepEqual(whys(r).slice(0, 3), ["halfrate", "halfrate", "no-gain"]);
+  assert.equal(r.steps[2].to, 1, "the scale goes back");
+  const tries = r.steps.filter((x) => x.why === "no-gain").map((x) => x.s);
+  assert.ok(tries.length <= 3 && tries[1] - tries[0] >= BLOCK_S, "blocked between tries: " + tries.join(", "));
+  assert.ok(r.steps.filter((x) => x.to < 1).length <= 6, "at most a few seconds below 100 % per try");
+}
+// a 120 Hz screen at a steady 60 fps is not past the line; 30 fps on it is
+assert.equal(run(60, () => ({ med: H })).steps.length, 0, "60 fps on 120 Hz");
+assert.equal(run(10, gpuBound(22)).steps[0]?.why, "halfrate", "30 fps on 120 Hz");
+// a player's 30 fps cap is the reference: 30 fps is full rate there, and a cap above 60 never shortens it
+assert.equal(run(60, () => ({ med: 1000 / 30 }), { capFps: 30 }).steps.length, 0, "30 fps cap");
+assert.equal(guardRefMs(144), REF_MS, "a 144 fps cap");
 // the player's own 3D resolution under the floor: nothing to step, the floor is logged once
 {
-  const r = run(30, () => 2 * HZ60, { top: 0.5 });
+  const r = run(30, () => ({ med: 2 * H }), { top: 0.5 });
   assert.equal(r.scale, 0.5);
-  assert.deepEqual(r.steps.map((x) => x.why), ["floor"]);
+  assert.deepEqual(whys(r), ["floor"]);
 }
 // a far-too-slow frame takes the bigger step
-assert.equal(run(3, () => 4 * HZ60).steps[0].to, 0.85, "big step at 15 fps");
+assert.equal(run(3, () => ({ med: 4 * H })).steps[0].to, 0.85, "big step at 15 fps");
+// CPU-bound (the main thread takes most of the frame, or the GPU timer shows the GPU as the shorter side): the scale
+// stays and the log says so once; a submit that a busy GPU blocks for half the frame is still GPU-bound
+assert.deepEqual(whys(run(30, () => ({ med: 2 * H }), { cpuMs: 28 })), ["cpu"], "CPU-bound, no timer");
+assert.deepEqual(whys(run(30, () => ({ med: 2 * H }), { cpuMs: 12, gpuMs: 9 })), ["cpu"], "CPU-bound by the GPU timer");
+assert.equal(run(10, gpuBound(22), { cpuMs: 7, gpuMs: 22 }).steps[0].why, "halfrate", "GPU-bound by the GPU timer");
+assert.equal(run(10, gpuBound(22), { cpuMs: 16 }).steps[0].why, "halfrate", "submit backpressure");
 // a stalled second (a few frames) decides nothing
 {
   const st = newGuardState();
-  for (let s = 0; s < 10; s++) assert.equal(decide(st, 500, 500, 2, HZ60, 7, 0, 1, 1, s), null);
-}
-// the budget: the player's cap wins; otherwise the highest refresh measured, so a match locked at half rate whose
-// refresh re-estimate reads 30 Hz is still judged against 60 Hz and keeps stepping down
-assert.equal(guardBudgetMs(30, 60), 1000 / 30, "cap");
-assert.equal(guardBudgetMs(0, 0), HZ60, "refresh unknown");
-// a window moved from a 60 Hz to a 30 Hz display between matches is judged by the 30 Hz one, so its full-rate 30 fps
-// is left alone; in a match the 60 Hz reference holds
-assert.equal(guardRefreshHz(60, 30, false), 30, "monitor change at the title");
-assert.equal(guardRefreshHz(60, 30, true), 60, "half-rate re-estimate in a match");
-assert.equal(run(60, () => 1000 / 30, { budgetMs: guardBudgetMs(0, guardRefreshHz(60, 30, false)) }).steps.length, 0, "30 Hz display, full rate");
-{
-  let refHz = 0;
-  const st = newGuardState();
-  let scale = 1, downs = 0;
-  for (let s = 0; s < 30; s++) {
-    refHz = guardRefreshHz(refHz, s < 20 ? 60 : 30, true);
-    const d = decide(st, 2 * HZ60, 2 * HZ60, 30, guardBudgetMs(0, refHz), 7, 0, scale, 1, s);
-    if (d && d.why === "halfrate") { downs++; scale = d.to; }
-  }
-  assert.equal(scale, AUTO_RES_FLOOR, "keeps stepping after the refresh re-estimate reads 30 Hz (" + downs + " steps)");
-}
-// a CPU-bound half rate (the main thread alone takes a period, or the GPU timer says the GPU is the shorter side):
-// fewer pixels would not help, so the scale stays and the log says so once
-{
-  const r = run(30, () => 2 * HZ60, { cpuMs: 20 });
-  assert.deepEqual(r.steps.map((x) => x.why), ["cpu"], "CPU-bound, no timer");
-  assert.equal(r.scale, 1);
-  assert.deepEqual(run(30, () => 2 * HZ60, { cpuMs: 12, gpuMs: 9 }).steps.map((x) => x.why), ["cpu"], "CPU-bound by the GPU timer");
-  assert.equal(run(10, () => 2 * HZ60, { cpuMs: 7, gpuMs: 25 }).steps[0].why, "halfrate", "GPU-bound by the GPU timer");
+  for (let s = 0; s < 10; s++) assert.equal(decide(st, { medMs: 500, p95Ms: 500, meanMs: 500, frames: 2, refMs: H, cpuMs: 7, gpuMs: 0 }, 1, 1, s), null);
 }
 console.log("res-guard: ok");
