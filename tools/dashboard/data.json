@@ -167,51 +167,47 @@
     {
       "id": "title-since-v020",
       "area": "loading",
-      "name": "Title screen ready, v0.2.0 vs today (Windows Chrome)",
-      "plain": "Compared with the version we started from, the title screen shows up about 4 seconds sooner on a first visit.",
+      "name": "Title screen ready, v0.2.0 vs kong-v0.6.1 (Windows Chrome)",
+      "plain": "Compared with the version we started from, the title screen shows up about 12 seconds sooner on a first visit.",
       "unit": "s",
       "before": 31.682,
-      "after": 27.329,
+      "after": 19.233,
       "digits": 1,
-      "metric": "readyMs, cold, median of 3 interleaved loads a side, [31.6-33.1] to [26.6-29.0]",
+      "metric": "readyMs, cold, median. v0.2.0: 3 loads [31.6-33.1] (RAY-94). kong-v0.6.1: 5 loads [17.7-22.3], interleaved with v0.6.0, tools/performance/load-profile.mts. Different days and tool versions, so indicative",
       "machine": "Windows PC, Chrome, D3D11",
-      "date": "2026-11-04T19:10:00Z",
+      "date": "2026-11-06T03:15:00Z",
       "prs": [
         88
       ],
-      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative"
+      "source": "v0.2.0: RAY-94 precise re-run (f000fd1). kong-v0.6.1: project drive handoffs/release-kong-v0.6.1-d3d11/load-table.md (cold readyMs 19233, ee43574)"
     },
     {
-      "id": "heap-title",
+      "id": "mem-title-v020",
       "area": "loading",
-      "name": "Memory used at the title screen",
-      "plain": "An early reading showed about 180 MB more memory at the title than v0.2.0. It was taken without clearing out garbage first, so it's being measured again before we count it either way.",
+      "name": "Whole-browser memory at the title screen, v0.2.0 vs main (Windows)",
+      "plain": "The browser holds about 1.9 GB less at the title screen than it did on v0.2.0. Part of that is the lower default quality setting.",
       "unit": "MB",
-      "before": 1025,
-      "after": 1205,
-      "issue": "RAY-104",
-      "metric": "performance.memory.usedJSHeapSize with precise memory info at __kr.ready, median of 3, [949-1106] to [1145-1341]. 30 s into the match: 2410 to 2381 MB, level",
+      "before": 8409,
+      "after": 6504,
+      "metric": "whole browser (browser, renderer and GPU processes), median of 3 runs a side, memory.mts v3, kong-v0.2.0 boots at ultra quality and main at high, so not a same-quality test",
       "machine": "Windows PC, Chrome, D3D11",
-      "date": "2026-11-04T19:10:00Z",
+      "date": "2026-11-04T23:00:00Z",
       "prs": [],
-      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative",
-      "remeasuring": true
+      "source": "project drive handoffs/memory-v020-vs-main-d3d11/README.md (RAY-138, main 8f42339)"
     },
     {
-      "id": "heap-plane",
-      "area": "graphics",
-      "name": "Memory used on the plane",
-      "plain": "An early reading showed about 220 MB more on the drop plane. Same problem: no garbage clean-up first, so it's being measured again.",
+      "id": "mem-match-v020",
+      "area": "loading",
+      "name": "Whole-browser memory 30 s into a match, v0.2.0 vs main (Windows)",
+      "plain": "The browser holds about 2.1 GB less in a match than it did on v0.2.0. Part of that is the lower default quality setting.",
       "unit": "MB",
-      "before": 2337,
-      "after": 2557,
-      "issue": "RAY-104",
-      "metric": "usedJSHeapSize with precise memory info at the first poll in the Plane phase, median of 3, [2157-2670] to [2440-3236] (wide range)",
+      "before": 14426,
+      "after": 12304,
+      "metric": "whole browser (browser, renderer and GPU processes), median of 3 runs a side, memory.mts v3, kong-v0.2.0 boots at ultra quality and main at high, so not a same-quality test",
       "machine": "Windows PC, Chrome, D3D11",
-      "date": "2026-11-04T19:10:00Z",
+      "date": "2026-11-04T23:00:00Z",
       "prs": [],
-      "source": "RAY-94 precise re-run (--enable-precise-memory-info, #90): v0.2.0 f000fd1 vs main 290a32b, 3 cold runs a side, indicative",
-      "remeasuring": true
+      "source": "project drive handoffs/memory-v020-vs-main-d3d11/README.md (RAY-138, main 8f42339)"
     },
     {
       "id": "geo-title",
@@ -235,8 +231,8 @@
       "name": "Title screen ready, Windows Chrome (first visit)",
       "plain": "The title screen now shows up 4 seconds sooner on a first visit, because the game stops preparing graphics it throws away.",
       "unit": "s",
-      "before": 30.0,
-      "after": 26.0,
+      "before": 30,
+      "after": 26,
       "digits": 1,
       "metric": "__kr.readyAt, cold, median of 5 interleaved per side, [28.4-31.6] to [24.3-27.5]; settle warm-up 3908 ms to 501 ms; first match frame unchanged within noise. Metal is unmeasured",
       "machine": "Windows PC, Chrome, D3D11",
@@ -571,23 +567,23 @@
       {
         "category": "load",
         "name": "First visit to title screen, Windows PC (Chrome)",
-        "value": 26.0,
+        "value": 19.2,
         "unit": "s",
         "target": 25,
         "targetNote": "the game's own title-screen budget",
-        "status": "improving",
-        "detail": "26.0 s is the median of 5 first-visit loads in the #88 comparison (30.0 s just before it, and 32.3 s before the overnight fixes). A separate 3-run batch on the same build, compared against v0.2.0, measured 27.3 s. About 10 s of a first visit is the graphics driver preparing shaders, and two more cuts worth an estimated 3 to 5.5 s are in progress.",
-        "source": "fork PR #88 body; RAY-89; RAY-53; RAY-86; RAY-94 precise re-run (27.3 s batch)"
+        "status": "done",
+        "detail": "Cold first visit, readyMs median of 5 loads, kong-v0.6.1 (ee43574), interleaved with v0.6.0 (18.7 s), range 17.7 to 22.3 s. Earlier readings on main 290a32b were 26 to 27 s.",
+        "source": "project drive handoffs/release-kong-v0.6.1-d3d11/load-table.md"
       },
       {
         "category": "load",
         "name": "Return visit to title screen, Windows PC (Chrome)",
-        "value": 13.6,
+        "value": 23.4,
         "unit": "s",
         "target": null,
         "status": "measured",
-        "detail": "Median with the browser's shader cache already filled, main f808b28.",
-        "source": "RAY-86"
+        "detail": "Second load in the same browser profile, readyMs median of 5, kong-v0.6.1: 22.8 to 24.6 s (v0.6.0: 25.3 s). Not directly comparable with the 13.6 s measured on Nov 4 (a different build and tool run); in all 10 warm runs on v0.6.0 and v0.6.1 the game builds a location before the title (RAY-176).",
+        "source": "project drive handoffs/release-kong-v0.6.1-d3d11/load-table.md"
       },
       {
         "category": "load",
@@ -603,7 +599,7 @@
       {
         "category": "load",
         "name": "First visit to title screen, Mac mini (Chrome)",
-        "value": 21.0,
+        "value": 21,
         "unit": "s",
         "target": null,
         "status": "measured",
@@ -627,7 +623,7 @@
         "unit": "s",
         "target": null,
         "status": "fixing",
-        "detail": "On the 16 GB Mac mini, Safari closes the game for using too much memory: today's build at the title, v0.2.0 30 s into a match. Fixes are in progress (RAY-104 to RAY-106).",
+        "detail": "On the 16 GB Mac mini, Safari used to close the game for using too much memory (main f417032 and kong-v0.5.0, moving player, killed at 8.4 to 8.8 GB). On main 3248912 (#160), 2 of 2 scripted full matches reached Results, with a peak of 6.9 to 7.3 GB. The margin is thin and has not been re-run on kong-v0.6.1 (RAY-104 to RAY-106).",
         "source": "Captain, from RAY-112 Safari half; RAY-104 to RAY-106"
       },
       {
@@ -665,13 +661,13 @@
       },
       {
         "category": "load",
-        "name": "Memory used at the title screen",
-        "value": null,
+        "name": "Whole-browser memory at the title screen, Windows PC",
+        "value": 6504,
         "unit": "MB",
         "target": null,
-        "status": "remeasuring",
-        "detail": "An earlier reading of 1205 MB (180 MB over v0.2.0) was taken without clearing out garbage first, so it's being measured again. With garbage cleared, the JS heap at the title measured about 210 MB on both v0.4.0 and v0.4.1.",
-        "source": "RAY-94; handoffs/heap-v041/README.md"
+        "status": "measured",
+        "detail": "Whole browser, median of 3 runs, main 8f42339, memory.mts v3. kong-v0.2.0 was 8409 MB (it boots at ultra quality, main at high).",
+        "source": "project drive handoffs/memory-v020-vs-main-d3d11/README.md (RAY-138)"
       },
       {
         "category": "enter",
@@ -748,33 +744,23 @@
       },
       {
         "category": "match",
-        "name": "Memory used 30 s into a match",
-        "value": null,
-        "unit": "MB",
-        "target": null,
-        "status": "remeasuring",
-        "detail": "The earlier 2381 MB reading didn't clear out garbage first, so it's being measured again. The whole browser 30 s into a match is in the next row.",
-        "source": "RAY-94; handoffs/heap-v041/README.md"
-      },
-      {
-        "category": "match",
         "name": "Whole-browser memory 30 s into a match, Windows PC",
-        "value": 12719,
+        "value": 12304,
         "unit": "MB",
         "target": null,
         "status": "improved",
-        "detail": "v0.4.1, median of 3. It was 13188 MB on v0.4.0.",
-        "source": "project drive handoffs/release-kong-v0.4.1-d3d11/README.md (3 runs a side, whole browser) and handoffs/heap-v041/README.md"
+        "detail": "Whole browser 30 s into a match, median of 3 runs, main 8f42339, memory.mts v3. kong-v0.4.1 was 12719 MB. Not yet re-run on kong-v0.6.1.",
+        "source": "project drive handoffs/memory-v020-vs-main-d3d11/README.md (RAY-138)"
       },
       {
         "category": "match",
         "name": "Whole-browser memory, Mac mini 16 GB (Chrome)",
-        "value": 12.4,
+        "value": 9.9,
         "unit": "GB",
         "target": null,
         "status": "baseline",
-        "detail": "About 12.4 GB once a match settles (graphics process about 6.6 GB, page about 5.5 GB); about 10 GB at the title. The Mac starts swapping. This is the baseline we're burning down so 16 GB machines play without swapping.",
-        "source": "captain-kong-cloud-release NOTES.md (Mac mini 16 GB Chrome footprint); reports/KONG-46.md"
+        "detail": "Whole browser 60 s into a match, median of 6 runs on a Mac mini M4 16 GB, main 7890f3b, memory.mts v3 (reads the page over CDP). The 12.4 GB reading on Nov 4 came from the older polling harness. About 2.5 GB of swap was already in use before each run and memory pressure read \"warn\".",
+        "source": "project drive handoffs/memory-baseline-metal-v3/README.md"
       },
       {
         "category": "server",
@@ -800,7 +786,7 @@
     ]
   },
   "roadmap": {
-    "snapshotAt": "2026-11-04T18:50:00Z",
+    "snapshotAt": "2026-11-06T06:10:33Z",
     "phases": [
       {
         "name": "Safety checks for every change",
@@ -955,7 +941,7 @@
           ],
           [
             "Safari slow load",
-            "In review"
+            "Done"
           ],
           [
             "Locations build in small steps",
@@ -975,6 +961,10 @@
           ],
           [
             "Better load-time planning",
+            "Done"
+          ],
+          [
+            "Performance plan document brought up to date",
             "Done"
           ]
         ]
@@ -1006,15 +996,15 @@
           ],
           [
             "Prepare the storm effect early",
-            "Todo"
+            "Done"
           ],
           [
             "Defer far loot detail until after the title",
-            "Todo"
+            "Done"
           ],
           [
             "Memory and download measurements",
-            "Todo"
+            "Done"
           ]
         ]
       },
@@ -1025,7 +1015,7 @@
         "issues": [
           [
             "Release tool, labels and the first release",
-            "Todo"
+            "Done"
           ],
           [
             "Feature switches",
@@ -1038,12 +1028,6 @@
   "asks": [
     {
       "who": "Ray",
-      "what": "Decide whether the faster-title setting goes on by default: an earlier title screen with a less finished island behind it.",
-      "since": "2026-11-04",
-      "source": "NOTES.md (#85 readyest flag)"
-    },
-    {
-      "who": "Ray",
       "what": "Pick where the stable release is hosted.",
       "since": "2026-11-04",
       "source": "NOTES.md (hosting open)"
@@ -1052,18 +1036,13 @@
   "inProgress": [
     {
       "name": "Cut memory so 16 GB Macs play without swapping",
-      "estimate": "Chrome uses about 12.4 GB today, and Safari runs out of memory (tracked as RAY-104 to RAY-106)",
-      "source": "RAY-104; RAY-105; RAY-106; NOTES.md"
+      "estimate": "Chrome uses about 9.9 GB for the whole browser. Safari survived a full match in the latest test with a peak of 6.9 to 7.3 GB, but it was killed at 8.4 to 8.8 GB in earlier runs, so the margin is thin (tracked as RAY-104 to RAY-106)",
+      "source": "handoffs/memory-baseline-metal-v3/README.md; handoffs/safari-growth/pr160/README.md; story.json"
     },
     {
-      "name": "Prepare the storm effect during loading",
-      "estimate": "an estimated 1.7 to 3.4 s off a first visit",
-      "source": "RAY-90"
-    },
-    {
-      "name": "Build far-away loot detail after the title",
-      "estimate": "an estimated 1.5 to 2.2 s off every visit",
-      "source": "RAY-91"
+      "name": "Steadier online play with WebTransport",
+      "estimate": "in progress; nothing measured yet",
+      "source": "NOTES.md 2026-11-06; RAY-184"
     }
   ],
   "releaseTrain": {
@@ -1079,6 +1058,6 @@
       "slow-boots",
       "warmup-worst"
     ],
-    "plain": "In its first day, the project shipped its first release and made the game faster to load, smoother to start and cheaper to run, with every change measured before and after."
+    "plain": "Since v0.2.0, the project has made the game faster to load, smoother to start and cheaper to run, with every change measured before and after."
   }
 }
