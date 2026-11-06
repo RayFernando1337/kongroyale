@@ -69,7 +69,10 @@ export async function dialWt(offer: WtOffer, token: string, onMessage: Transport
   const stats = makeTransportStats("wt");
   // dgWait: when we started sending unreliable frames (pings) with no datagram back since; 0 = one came back since.
   // A path that carries the stream but drops datagrams would freeze snapshots while the stream keeps lastRx fresh
-  let lastRx = performance.now(), lastTx = lastRx, dgWait = 0, ended = false, gaveUp = false, accepted: (ok: boolean) => void = () => {};
+  // since: when our sending last resumed after a pause longer than STALL_MS. Nothing was owed back while we were quiet
+  // (a lobby: only unanswered keepalives), so a match's first frames wait STALL_MS for an answer from then, not from
+  // the last frame the server sent before the lobby
+  let lastRx = performance.now(), lastTx = lastRx, since = lastRx, dgWait = 0, ended = false, gaveUp = false, accepted: (ok: boolean) => void = () => {};
   let keepalive: ReturnType<typeof setInterval> | undefined;
   const okAnswer = new Promise<boolean>((r) => { accepted = r; });
   const deliver = (u8: Uint8Array) => { lastRx = performance.now(); stats.recv++; stats.recvBytes += u8.length; link.onMessage(u8, lastRx, SERVER_PATH); };
@@ -78,11 +81,17 @@ export async function dialWt(offer: WtOffer, token: string, onMessage: Transport
   const link: WtLink = {
     kind: "wt", stats, onMessage, close,
     closed: t.closed.then(() => {}, () => {}).then(() => { ended = true; clearInterval(keepalive); accepted(false); return gaveUp ? "no-datagrams" : "closed"; }),
-    sendReliable: (u8) => { if (ended) return; countSent(stats, Channel.Reliable, u8.length); lastTx = performance.now(); writeStream(u8); },
+    sendReliable: (u8) => {
+      if (ended) return;
+      const now = performance.now();
+      if (now - lastTx > STALL_MS) since = now;
+      countSent(stats, Channel.Reliable, u8.length); lastTx = now; writeStream(u8);
+    },
     sendUnreliable: (u8) => {
       if (ended) return;
       const now = performance.now();
-      if (now - lastRx > STALL_MS && now - lastTx < STALL_MS) { close(); return; }
+      if (now - lastTx > STALL_MS) since = now;
+      else if (now - Math.max(lastRx, since) > STALL_MS) { close(); return; }
       // a gap in our own sending (a long task, a background tab) restarts the wait: nothing was owed back then
       if (!dgWait || now - lastTx > STALL_MS) dgWait = now;
       else if (now - dgWait > STALL_MS) { gaveUp = true; close(); return; }
