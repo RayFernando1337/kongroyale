@@ -104,7 +104,7 @@ try{
   const minSnapshots=Math.min(...peers.map(p=>p.snaps)),serverTicksPerSecond=(lastTick-firstTick)/s,inputsPerPlayerSecond=inputsSent/count/s;
   const lifetime=(m:any):Metric=>perf1?{status:'ok',unit:'ms',better:'lower',summary:m}:{status:'unsupported',unit:'ms',reason:'server runs without KR_PERF_METRICS=1'};
   const result:RunResult={schema:RESULT_SCHEMA,version:RESULT_VERSION,tool:'bench:server',startedAt,durationMs:performance.now()-run0,source:source(process.cwd()),environment,
-    config:{players:count,seconds,transport,aux,assets,mode:'trios',warmupS},
+    config:{players:count,seconds,transport,aux,assets,mode:'trios',warmupS,...(localAddress?{localAddress}:{})},
     cases:[{
       scenario:{id:'server/trios-play',version:3,seed:-1,workload:'socket-load'},
       windows:{untimedSetupMs:Math.round(setupMs),measuredMs:Math.round(elapsed),measuredFrom:'first PLAY snapshot',serverLifetimeMetrics:'server start to end of window (includes lobby, warm-up and plane)',bytes:wt?'every frame received on the WebSocket and the session (stream frames and datagrams) in the window':'every frame received on every socket (main and aux) in the window',seed:'chosen at random by the server per match; see detail.matchSeed',transport:(wt?'real WebSocket for JSON plus a WebTransport session (QUIC, Node client) for the binary frames':'real WebSocket')+'; loopback when URL is local; no WAN inference'},
