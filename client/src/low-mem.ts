@@ -7,6 +7,7 @@ import type { WorldModule } from "./world/module";
 import { resources, type Scope } from "./engine/res/scope";
 import { flag } from "./flags";
 import { isLowMemory } from "./low-mem-device";
+import type { Rebuildable } from "./engine/texture-release";
 import { rebuildOnRestore } from "./low-mem-restore";
 
 export function lowMemoryDevice(forced: string | null, fullPrepare: boolean): boolean {
@@ -143,7 +144,7 @@ export async function evictStreamed(engine: Engine, w: World, id: string) {
   evicted.add(id);
   const kr = (globalThis as unknown as { __kr: { modules: string[]; evictions?: unknown[] } }).__kr;
   kr.modules = w.loaded.map((x) => x.id);
-  (kr.evictions ??= []).push({ id, at: Math.round(performance.now()), ...freed });
+  (kr.evictions ??= []).push({ id, at: Math.round(performance.now()), ...freed, cold: cold.size });
 }
 
 type Resident = { id: string; d: number; mb: number };
@@ -278,12 +279,48 @@ export function trimStreamed(engine: Engine, w: World, incoming: string | null, 
 }
 
 type Disposable = { dispose(): void };
+
+/** Sources an eviction left without pixels on either side: their CPU copy was dropped after upload (releaseAfterUpload)
+ *  and their GPU copy was disposed. Module-level caches (Assets, pbr sets, coast sets) still hand these textures to the
+ *  next build, so the source holds a 1x1 placeholder that three allocates without uploading until warmTextures fetches
+ *  the pixels back before that build integrates. A cold texture drawn before that has 1x1 GPU storage, which three
+ *  never resizes in place, so warm() disposes each texture before the full-size upload. */
+const cold = new Map<Rebuildable, Set<THREE.Texture>>(), warming = new Map<Rebuildable, Promise<void>>();
+/** A failed fetch (after the asset loader's own retries) tries again this many times, 1, 2, 4 and 8 s apart, while the
+ *  source is still cold, so a texture drawn cold through a network blip does not stay black for the rest of the visit. */
+const WARM_RETRIES = 4, WARM_RETRY_MS = 1000;
+
+function warm(s: Rebuildable, tries = 0): Promise<void> {
+  let p = warming.get(s);
+  if (!p) warming.set(s, (p = (async () => {
+    const data = await s.rebuild!();
+    const ts = cold.get(s);
+    if (!ts) return;
+    cold.delete(s);
+    s.data = data; s.dataReady = true;
+    for (const t of ts) { t.dispose(); s.arm!(t, s.rebuild); t.needsUpdate = true; }
+  })().catch(() => { if (tries < WARM_RETRIES) setTimeout(() => { if (cold.has(s)) void warm(s, tries + 1); }, WARM_RETRY_MS * 2 ** tries); }).finally(() => warming.delete(s))));
+  return p;
+}
+
+/** Fetch back the pixels of every cold texture under these roots before they are drawn (a rebuilt POI reuses cached
+ *  textures). Never throws: a texture whose fetch failed stays cold and fetches again when it is drawn. */
+export async function warmTextures(roots: readonly THREE.Object3D[]): Promise<void> {
+  if (!cold.size) return;
+  const tex = new Set<THREE.Texture>(), wait: Promise<void>[] = [];
+  for (const r of roots) r.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) for (const x of Array.isArray(m) ? m : [m]) texturesOf(x, tex); });
+  for (const t of tex) if (cold.has(t.source)) wait.push(warm(t.source));
+  await Promise.all(wait);
+}
+
 type Geo = THREE.BufferGeometry;
 
 function texturesOf(m: THREE.Material, out: Set<THREE.Texture>) {
   for (const v of Object.values(m)) if ((v as THREE.Texture | null)?.isTexture) out.add(v as THREE.Texture);
-  const u = (m as THREE.ShaderMaterial).uniforms;
-  if (u) for (const k in u) { const v = u[k]?.value as THREE.Texture | null; if (v?.isTexture) out.add(v); }
+  // uniforms of a ShaderMaterial, and those an onBeforeCompile patch keeps in userData (jungle-mat's jungleUniforms)
+  for (const u of [(m as THREE.ShaderMaterial).uniforms, ...Object.values(m.userData)] as Array<Record<string, { value?: THREE.Texture | null } | null> | null>) {
+    if (u && typeof u === "object") for (const k in u) { const v = u[k]?.value; if (v?.isTexture) out.add(v); }
+  }
 }
 
 function buffersOf(g: Geo): Array<object> {
@@ -301,18 +338,29 @@ export function disposeUnused(roots: readonly THREE.Object3D[], scene: THREE.Obj
     if (m.geometry && !(o as unknown as { isBatchedMesh?: boolean }).isBatchedMesh) geos.add(m.geometry);
     if (m.material) for (const x of Array.isArray(m.material) ? m.material : [m.material]) mats.add(x);
   });
-  const keepBuf = new Set<object>(), keepMat = new Set<THREE.Material>(), keepTex = new Set<THREE.Texture>();
+  const keepBuf = new Set<object>(), keepMat = new Set<THREE.Material>(), keepTex = new Set<THREE.Texture>(), keepSrc = new Set<THREE.Texture["source"]>();
   scene.traverse((o) => {
     const m = o as THREE.Mesh;
     if (m.geometry) for (const b of buffersOf(m.geometry)) keepBuf.add(b);
     if (m.material) for (const x of Array.isArray(m.material) ? m.material : [m.material]) keepMat.add(x);
   });
   for (const m of keepMat) texturesOf(m, keepTex);
+  for (const t of keepTex) keepSrc.add(t.source);
   for (const o of owners) o.dispose();
   let geometries = owners.length, materials = 0, textures = 0;
   for (const g of geos) if (!buffersOf(g).some((b) => keepBuf.has(b))) { g.dispose(); geometries++; }
   const tex = new Set<THREE.Texture>();
   for (const m of mats) if (!keepMat.has(m)) { texturesOf(m, tex); m.dispose(); materials++; }
-  for (const t of tex) if (!keepTex.has(t) && t.source.data !== null && (t.source.data as { data?: unknown }).data !== null) { t.dispose(); textures++; }
+  for (const t of tex) {
+    if (keepTex.has(t)) continue;
+    const s = t.source as Rebuildable, px = s.data as { data?: unknown } | null;
+    if (px !== null && px.data !== null) { t.dispose(); textures++; continue; }
+    if (!s.arm || keepSrc.has(s) || (t as THREE.CompressedTexture).isCompressedTexture) continue;
+    let ts = cold.get(s);
+    if (!ts) { cold.set(s, (ts = new Set())); s.data = { width: 1, height: 1, depth: 1, data: null }; s.dataReady = false; }
+    ts.add(t);
+    t.onUpdate = () => { const kr = (globalThis as unknown as { __kr: { coldDraws?: number } }).__kr; kr.coldDraws = (kr.coldDraws ?? 0) + 1; void warm(s); };
+    t.dispose(); textures++;
+  }
   return { geometries, materials, textures };
 }
