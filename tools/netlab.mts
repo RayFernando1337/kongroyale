@@ -42,6 +42,8 @@
 //   deferred = pellets whose drawn hit the client left to the server because the link was slow or stalled
 //             (ClientMatch.predDefer, by signal: rtt / snap / ack), also counted as predicted misses;
 //             deferredMarkerPct = the server's hits whose marker waited for it; markerDelayMs = how long (fire → verdict)
+//   serverInputs = the server's input pacing over the whole duel (shared/net/input-gaps.ts): live ticks, ticks a player's
+//             queue was empty (inputGapTicksPct, worst player too) and catch-up bursts of more than one input per tick
 // and the transport tails of the window the shooter fires in, as the clients see them (first copy of each frame):
 //   rttMs      = ping → pong, both clients;  inputAckMs = each input sent → the first snapshot that acknowledges it (lastSeq),
 //   snapGapMs  = time between snapshots (30 Hz: 33 ms when nothing is late);  corrPct = prediction corrections per 100
@@ -53,6 +55,7 @@ import { buildStaticWorld } from "../shared/sim/static-world";
 import fsTd from "node:fs";
 import { Match } from "../shared/sim/match";
 import { MatchHost, matchInfo, type HostPeer } from "../shared/net/host";
+import { trackInputGaps } from "../shared/net/input-gaps";
 import { DT, MAX_REWIND_TICKS, WEAPON_DEFS } from "../shared/sim/const";
 import { B, PS, SK } from "../shared/sim/player";
 import { makeShotResult } from "../shared/sim/hitscan";
@@ -114,7 +117,7 @@ function makeHost() {
   const w = WEAPONS.indexOf(weapon), s = A.slots[0]; s.kind = SK.Weapon; s.id = w; s.rarity = 0; s.mag = 999; s.count = 1; A.active = 0; A.ammo.fill(999);
   Bp.hp = killable ? 100 : 1e9; Bp.shield = killable ? 50 : 0;
   // kill races: B respawns ON its spot (inside the tick, before history is recorded — exactly like a real respawn)
-  const out = { m, host, deaths: 0, serv: [] as number[], clamped: 0, tick() {
+  const out = { m, host, gaps: trackInputGaps(m), deaths: 0, serv: [] as number[], clamped: 0, tick() {
     host.tick(); A.hp = 100; if (!killable) Bp.hp = 1e9; if (m.phase !== 0) m.phase = 0;
     // keep the warm-up going forever (respawn timers are on phaseT: shift them with it)
     if (!killable) m.phaseT = 0; else if (m.phaseT > 60) { m.phaseT -= 30; for (const q of m.players) if (q.respawnAt > 0) q.respawnAt -= 30; }
@@ -257,7 +260,7 @@ async function run(rtt: number) {
     if (now >= nextFrame) { C.frame(1 / 144); nextFrame += 1000 / 144; }
   }
   const cm = C.clients[0].cm;
-  return { rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, withheld: C.withheld(), ...C.deferrals(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, ...C.tails() };
+  return { rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, withheld: C.withheld(), ...C.deferrals(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, serverInputs: H.gaps.report(), ...C.tails() };
 }
 
 /** --serve: the host side of one duel over real WebSockets. Every socket must say hello with the duel's token before
@@ -285,7 +288,7 @@ async function serve(port: number, token: string) {
             // the first socket of a player is its main socket: it gets the match info, like the server's JSON
             if (socks[pid].length === 1) ws.send(JSON.stringify({ ...matchInfo(H.m, 7, { [pid + 1]: pid }), myUid: pid + 1 }));
             if (socks[0].length && socks[1].length) resolve();
-          } else if (j.t === "done") ws.send(JSON.stringify({ t: "verdicts", serv: H.serv, clamped: H.clamped, deaths: H.deaths }), () => { finished = true; });
+          } else if (j.t === "done") ws.send(JSON.stringify({ t: "verdicts", serv: H.serv, clamped: H.clamped, deaths: H.deaths, inputs: H.gaps.report() }), () => { finished = true; });
         });
         // an oversized or broken frame is an error on that socket only (ws closes it); never an uncaught exception
         ws.on("error", () => ws.terminate());
@@ -309,7 +312,7 @@ async function serve(port: number, token: string) {
 async function connect(url: string, token: string) {
   const sockets: WebSocket[][] = [[], []];
   const C = makeClients((pid, u8) => { for (const ws of sockets[pid]) if (ws.readyState === WebSocket.OPEN) ws.send(u8); });
-  let verdict: { serv: number[]; clamped: number; deaths: number } | null = null;
+  let verdict: { serv: number[]; clamped: number; deaths: number; inputs: unknown } | null = null;
   // one clock origin for the whole duel, set before the first socket opens: frames that arrive during the handshake
   // (the main sockets get the match info and snapshots while the aux sockets are still connecting) never see time go back
   wall0 = wall(); realTime();
@@ -337,8 +340,8 @@ async function connect(url: string, token: string) {
   sockets[0][0].send(JSON.stringify({ t: "done" }));
   for (let waited = 0; !verdict; waited += 10) { if (waited > 10000) throw Error("no verdicts from the server"); await new Promise((r) => setTimeout(r, 10)); }
   for (const s of sockets.flat()) s.close();
-  const v = verdict as { serv: number[]; clamped: number; deaths: number }, t = C.tails(), cm = C.clients[0].cm;
-  return { transport: "ws", url, rtt: t.rttMs.p50, jitter: "real", weapon, ...(killable ? { kills: v.deaths } : {}), ...verdicts(C.pred, v.serv), clamped: v.clamped, withheld: C.withheld(), ...C.deferrals(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, ...t };
+  const v = verdict as { serv: number[]; clamped: number; deaths: number; inputs: unknown }, t = C.tails(), cm = C.clients[0].cm;
+  return { transport: "ws", url, rtt: t.rttMs.p50, jitter: "real", weapon, ...(killable ? { kills: v.deaths } : {}), ...verdicts(C.pred, v.serv), clamped: v.clamped, withheld: C.withheld(), ...C.deferrals(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, serverInputs: v.inputs, ...t };
 }
 
 if (servePort) {
