@@ -36,7 +36,8 @@ const health = async (port: number) => (await (await fetch(`http://127.0.0.1:${p
 // the page: net.ts bundled the way the game ships it (the WebTransport code is a separate lazy chunk), plus a few lines
 // that open a link, wait for it to settle and send pings through it
 const ENTRY = `import { connectWs } from "./client/src/game/net";
-import { M, Writer } from "./shared/net/proto";
+import { M, Writer, writeInput } from "./shared/net/proto";
+import { makeInput } from "./shared/sim/player";
 (window as any).run = async (url: string, flood: boolean) => {
   const link = await connectWs(url), out: Record<string, unknown> = { pong: false };
   link.onBinary = (u8) => { if (u8[0] === M.Pong) out.pong = true; };
@@ -54,8 +55,10 @@ import { M, Writer } from "./shared/net/proto";
   for (let i = 0; i < 30 && !out.pong; i++) { link.sendBinary(w.reset().u8(M.Ping).f64(performance.now()).view()); await new Promise((r) => setTimeout(r, 100)); }
   out.stats = structuredClone(link.transport?.stats); out.chunks = performance.getEntriesByType("resource").map((e) => e.name.split("/").pop());
   if (out.kind !== "wt" || !flood) return out;
-  // a flood past the server's rate limit gets the session closed: the link must go back to the WebSockets and work
-  for (let i = 0; i < 1200; i++) link.sendBinary(w.reset().u8(M.Ping).f64(i).view());
+  // a flood past the server's rate limit gets the session closed: the link must go back to the WebSockets and work.
+  // Inputs, because they ride the stream: every one arrives, so the count past the bucket is exact (datagrams may drop)
+  const iw = new Writer(new ArrayBuffer(64)), inp = makeInput();
+  for (let i = 0; i < 1200; i++) { inp.seq = i + 1; writeInput(iw.reset(), inp); link.sendBinary(iw.view()); }
   const t1 = performance.now();
   while (performance.now() - t1 < 8000 && link.transport?.kind === "wt") await new Promise((r) => setTimeout(r, 20));
   await new Promise((r) => setTimeout(r, 500));

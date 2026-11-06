@@ -21,8 +21,8 @@ export function channelOf(type: number): Channel {
 
 export type TransportKind = "ws" | "wt";
 /** why a link that could have used WebTransport stayed on (or went back to) the WebSockets */
-export type FallbackReason = "flag-off" | "server-off" | "unsupported" | "connect-failed" | "timeout" | "auth" | "closed";
-export const FALLBACK_REASONS: readonly FallbackReason[] = ["flag-off", "server-off", "unsupported", "connect-failed", "timeout", "auth", "closed"];
+export type FallbackReason = "flag-off" | "server-off" | "unsupported" | "connect-failed" | "timeout" | "auth" | "closed" | "no-datagrams";
+export const FALLBACK_REASONS: readonly FallbackReason[] = ["flag-off", "server-off", "unsupported", "connect-failed", "timeout", "auth", "closed", "no-datagrams"];
 
 /** per-transport counters, the same fields for every kind, so sessions compare across transports */
 export interface TransportStats {

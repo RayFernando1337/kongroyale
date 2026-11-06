@@ -120,7 +120,7 @@ whose browser has no WebTransport, plays over WebSockets as before.
   in `/health` (`transports.webtransport.off`) and runs WebSocket-only.
 - `/health` counts clients per transport (`transports.clients`), sessions opened and refused, by reason, and how links
   settled (`transports.settled`: on `wt`, or on `ws` with why: `flag-off`, `server-off`, `unsupported`,
-  `connect-failed`, `timeout`, `auth`, `closed`), as each player's browser reports it.
+  `connect-failed`, `timeout`, `auth`, `closed`, `no-datagrams`), as each player's browser reports it.
 
 ## Behind a reverse proxy
 

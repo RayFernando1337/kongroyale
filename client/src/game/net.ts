@@ -80,12 +80,11 @@ export function connectWs(url: string, timeoutMs = 4000): Promise<Link> {
       if (!wtWanted()) return toWs(token, "flag-off");
       if (!offer) return toWs(token, "server-off");
       if (typeof WebTransport === "undefined") return toWs(token, "unsupported");
-      import("./wt").then((m) => m.dialWt(offer, token)).then((wt) => {
+      import("./wt").then((m) => m.dialWt(offer, token, (u8, at) => link.onBinary(u8, at))).then((wt) => {
         if (typeof wt === "string") return toWs(token, wt);
         if (closed) { wt.close(); return; }
-        wt.onMessage = (u8, at) => link.onBinary(u8, at);
         active = wt; settle(null);
-        void wt.closed.then(() => { if (active === wt) toWs(token, "closed"); });
+        void wt.closed.then((why) => { if (active === wt) toWs(token, why); });
       }, () => toWs(token, "connect-failed"));
     };
     const openAux = (token: string) => {

@@ -3,7 +3,8 @@
 // ones the session's one bidirectional stream (shared/net/frames.ts); a frame too big for a datagram rides the stream.
 // The session authenticates with the aux token as its first stream frame and is up once the server answers
 // { t: "wt-ok" }. Anything else (no session within WT_DIAL_MS, refused, closed) is a fallback reason, and net.ts keeps
-// the WebSocket pair. A session that stops answering while we send (STALL_MS, like the WebSocket's) counts as closed.
+// the WebSocket pair. A session that stops answering while we send (STALL_MS, like the WebSocket's) counts as closed,
+// and one whose datagrams stop coming back while we send them (pings) is given up as "no-datagrams".
 import { Channel, countSent, makeTransportStats, type FallbackReason, type Path, type Transport } from "../../../shared/net/transport";
 import { Deframer, frame } from "../../../shared/net/frames";
 
@@ -19,13 +20,16 @@ const SERVER_PATH: Path = { reply: () => {}, strike: () => {} };
 /** what "welcome" says about the server's endpoint (server/wt.ts WtWelcome) */
 export interface WtOffer { port: number; hashes?: string[]; url?: string }
 export interface WtLink extends Transport {
-  /** settles when the session ends, for any reason */
-  readonly closed: Promise<void>;
+  /** settles when the session ends: "no-datagrams" when this side gave up on datagrams that stopped arriving, else
+   *  "closed" */
+  readonly closed: Promise<FallbackReason>;
 }
 
 const b64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
-export async function dialWt(offer: WtOffer, token: string): Promise<WtLink | FallbackReason> {
+/** `onMessage` gets every frame from the start: the server switches its frames over before we read "wt-ok", and a
+ *  reliable frame (an event) in that window would otherwise be lost */
+export async function dialWt(offer: WtOffer, token: string, onMessage: Transport["onMessage"]): Promise<WtLink | FallbackReason> {
   const url = offer.url ?? `https://${location.hostname}:${offer.port}/wt`;
   let t: WebTransport;
   try {
@@ -46,19 +50,23 @@ export async function dialWt(offer: WtOffer, token: string): Promise<WtLink | Fa
   try { dg.outgoingMaxAge = OUTGOING_MAX_AGE_MS; } catch { /* not every browser lets us set it */ }
 
   const stats = makeTransportStats("wt");
-  let lastRx = performance.now(), lastTx = lastRx, ended = false, accepted: (ok: boolean) => void = () => {};
+  // dgWait: when we started sending unreliable frames (pings) with no datagram back since; 0 = one came back since.
+  // A path that carries the stream but drops datagrams would freeze snapshots while the stream keeps lastRx fresh
+  let lastRx = performance.now(), lastTx = lastRx, dgWait = 0, ended = false, gaveUp = false, accepted: (ok: boolean) => void = () => {};
   const okAnswer = new Promise<boolean>((r) => { accepted = r; });
   const deliver = (u8: Uint8Array) => { lastRx = performance.now(); stats.recv++; stats.recvBytes += u8.length; link.onMessage(u8, lastRx, SERVER_PATH); };
   const writeStream = (u8: Uint8Array) => { sw.write(frame(u8)).catch(() => {}); };
   const close = () => { if (ended) return; ended = true; try { t.close(); } catch { /* closing */ } };
   const link: WtLink = {
-    kind: "wt", stats, onMessage: () => {}, close,
-    closed: t.closed.then(() => {}, () => {}).finally(() => { ended = true; accepted(false); }),
+    kind: "wt", stats, onMessage, close,
+    closed: t.closed.then(() => {}, () => {}).then(() => { ended = true; accepted(false); return gaveUp ? "no-datagrams" : "closed"; }),
     sendReliable: (u8) => { if (ended) return; countSent(stats, Channel.Reliable, u8.length); lastTx = performance.now(); writeStream(u8); },
     sendUnreliable: (u8) => {
       if (ended) return;
       const now = performance.now();
       if (now - lastRx > STALL_MS && now - lastTx < STALL_MS) { close(); return; }
+      if (!dgWait) dgWait = now;
+      else if (now - dgWait > STALL_MS) { gaveUp = true; close(); return; }
       countSent(stats, Channel.Unreliable, u8.length); lastTx = now;
       if (u8.length > dg.maxDatagramSize) { writeStream(u8); return; }
       dw.write(u8.slice()).catch(() => {});
@@ -69,7 +77,7 @@ export async function dialWt(offer: WtOffer, token: string): Promise<WtLink | Fa
     deliver(u8);
   });
   void (async () => { const r = bidi.readable.getReader(); for (;;) { const { value, done } = await r.read(); if (done) break; def.push(value); if (def.bad) { close(); break; } } })().catch(close);
-  void (async () => { const r = dg.readable.getReader(); for (;;) { const { value, done } = await r.read(); if (done) break; deliver(value); } })().catch(() => {});
+  void (async () => { const r = dg.readable.getReader(); for (;;) { const { value, done } = await r.read(); if (done) break; dgWait = 0; deliver(value); } })().catch(() => {});
   writeStream(new TextEncoder().encode(JSON.stringify({ t: "wt", token })));
   const ok = await Promise.race([okAnswer, timeout]);
   if (ok !== true) { close(); return fail(ok === "timeout" ? "timeout" : "auth"); }
