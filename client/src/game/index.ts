@@ -21,6 +21,7 @@ import { createKong, kongManager } from "../actors/kong";
 import type { KongActor, KongPose } from "../actors/api";
 import { createPlane } from "../actors/plane";
 import { createGlider } from "../actors/glider";
+import { loadHeli, loadsLazily } from "../actors/heli-tripo";
 import { createStormVisual } from "./storm/index";
 import { createHud } from "../ui/hud";
 import { createInventory } from "../ui/inventory";
@@ -814,6 +815,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   // (perf) the prefabs every match spawns: made + warmed in the title's idle time, never behind the loading screen
   if (DEFER_PREFABS) { const kr = (window as unknown as { __kr: Record<string, unknown> }).__kr; kr.prefabWarmP = (async () => {
     while (!kr.ready) await new Promise((r) => setTimeout(r, 100));
+    if (!loadsLazily()) void loadHeli().catch((e) => console.error("[heli] model failed", e));
     if (!kits.viewModel) { const t = performance.now(); const vm = await weapons.createViewModel(); vm.object.visible = false; engine.camera.add(vm.object); kits.viewModel = vm; kr.viewModelMs = Math.round(performance.now() - t); }
     const lootRoot = await weapons.prepareLoot(() => new Promise<void>((r) => (kr.prepareUrgent ? setTimeout(r, 0) : requestAnimationFrame(() => setTimeout(r, 0)))));
     await prewarmPrefabs(engine, kits, () => inMatch, lootRoot); await prewarmMatch(engine, kits, title, () => inMatch); kr.warmDone = true; })(); }
@@ -891,7 +893,7 @@ async function prewarmPrefabs(engine: Engine, kits: Kits, isBusy: () => boolean,
   for (const c of CONSUMABLES) makers.push(() => kits.weapons.createLoot(c, "rare").then((v) => put(v.object)));
   makers.push(() => kits.weapons.createLoot("ammo", "common").then((v) => put(v.object)));
   makers.push(() => kits.createGlider(engine).then((gl) => put(gl.object)));
-  makers.push(async () => { for (const o of renderPrefabs()) put(o); });
+  makers.push(async () => { if (!loadsLazily()) await loadHeli().catch((e) => console.error("[heli] model failed", e)); for (const o of renderPrefabs()) put(o); });
   for (const mk of makers) {
     if (isBusy()) { kr.prefabWarm = "stopped (match)"; return; }
     try { await mk(); } catch (e) { console.warn("[prewarm] prefab", e); }
@@ -1050,6 +1052,7 @@ async function prewarm(engine: Engine, kits: Kits, title: TitleScene) {
   for (const c of CONSUMABLES) jobs.push(kits.weapons.createLoot(c, "rare").then((v) => put(v.object, n++)));
   jobs.push(kits.weapons.createLoot("ammo", "common").then((v) => put(v.object, n++)));
   jobs.push(kits.createGlider(engine).then((gl) => put(gl.object, n++)));
+  if (!loadsLazily()) await loadHeli().catch((e) => console.error("[heli] model failed", e));
   for (const o of renderPrefabs()) put(o, n++);
   }
   // one kong of every variant (team tints / outlines included), posed in a row
