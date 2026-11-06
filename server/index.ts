@@ -17,6 +17,8 @@ import { buildStaticWorld } from "../shared/sim/static-world";
 import { lootSpots } from "../shared/sim/loot-spots";
 import { alive } from "../shared/sim/player";
 import { M, NET_VERSION } from "../shared/net/proto";
+import { sendFrame, type Path } from "../shared/net/transport";
+import { WsTransport } from "./transport-ws";
 import { kongbotDb } from "./kongbot";
 import { annotationsApi } from "./annotations";
 import { serveStatic } from "./static";
@@ -89,19 +91,6 @@ const ADMIN_SHAPED = new Set(["act", "admin", "hub-admin", "hub-hello", "kick", 
 
 // ---- clients + lobbies
 const byToken = new Map<string, Client>();
-/** binary to every socket of a client (primary + aux). One copy per frame: `u8` may be a view over a reused buffer.
- * Backpressure: a socket with a large send backlog skips snapshots (each one is self-contained) instead of queueing. */
-function sendBin(c: Client, u8: Uint8Array) {
-  let buf: Buffer | null = null;
-  for (let i = -1; i < c.aux.length; i++) {
-    const s = i < 0 ? c.sock : c.aux[i], ws = s.ws;
-    if (ws.readyState !== WebSocket.OPEN) continue;
-    if (u8[0] === M.Snapshot && ws.bufferedAmount > 64 * 1024) continue;
-    if (ws.bufferedAmount > 4 * 1024 * 1024) { s.closedBy ||= "send backlog > 4 MB"; ws.terminate(); continue; }   // hopelessly behind
-    buf ??= Buffer.from(u8);
-    ws.send(buf, { binary: true });
-  }
-}
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newCode = (len = 4) => { let c = ""; do { c = ""; for (let i = 0; i < len; i++) c += CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]; } while (lobbies.has(c)); return c; };
@@ -204,7 +193,7 @@ wss.on("connection", (ws, req) => {
     let c: Client | null = null;
     ws.on("message", (data: RawData, isBinary: boolean) => {
       if (!allow(s)) return;
-      if (c) { if (isBinary) onBinary(c, s, data); return; }
+      if (c) { if (isBinary) c.bin.receive(s, data); return; }
       let m: { t?: unknown; token?: unknown } | null = null;
       try { m = isBinary ? null : JSON.parse(String(data)); } catch { /* below */ }
       const owner = m && m.t === "aux" && typeof m.token === "string" ? byToken.get(m.token) : undefined;
@@ -220,19 +209,21 @@ wss.on("connection", (ws, req) => {
     return;
   }
 
-  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux: [], lastInputAt: Date.now(), peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
-  c.peer = { pid: -1, invSeq: 0, send: (u8) => sendBin(c, u8), sendResult: (state) => sendJSON(c.sock.ws, { t: "result", state }) };
+  const aux: Sock[] = [];
+  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux, bin: new WsTransport(s, aux, strike), lastInputAt: Date.now(), peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
+  c.bin.onMessage = (u8, _at, from) => onBinary(c, u8, from);
+  c.peer = { pid: -1, invSeq: 0, send: (u8) => sendFrame(c.bin, u8), sendResult: (state) => sendJSON(c.sock.ws, { t: "result", state }) };
   byToken.set(c.token, c);
   sendJSON(ws, { t: "welcome", uid: c.uid, aux: c.token, terrain: td.hash, world: worldHashV, boxes: boxes.length, net: NET_VERSION });
   ws.on("message", (data: RawData, isBinary: boolean) => {
     if (!allow(s)) return;
-    if (isBinary) { onBinary(c, s, data); return; }
+    if (isBinary) { c.bin.receive(s, data); return; }
     let msg: { t?: unknown; [k: string]: unknown };
     try { msg = JSON.parse(String(data)); } catch { strike(s, "bad json"); return; }
     if (!msg || typeof msg !== "object") { strike(s, "bad json"); return; }
     try { onJSON(c, msg); } catch (e) { log("json handler error", e); strike(s, "handler"); }
   });
-  ws.on("close", (code: number, reason: Buffer) => { logClose(c, s, code, reason, false); byToken.delete(c.token); leaveLobby(c); for (const a of c.aux) { a.closedBy ||= "primary closed"; a.ws.close(); } });
+  ws.on("close", (code: number, reason: Buffer) => { logClose(c, s, code, reason, false); byToken.delete(c.token); leaveLobby(c); c.bin.close(); });
 });
 
 /** one line per player socket close: who, where (room / match phase, alive or not), the close code + reason,
@@ -246,13 +237,12 @@ function logClose(c: Client, s: Sock, code: number, reason: Buffer, aux: boolean
   log(`disconnect${aux ? " (aux)" : ""}: ${c.name} · ${where} · code ${code}${why ? ` "${why}"` : ""} · by ${by} · up ${sec(s.openedAt)} · last msg ${sec(s.lastMsg)} ago, last pong ${sec(s.lastPong)} ago${aux ? "" : ` · aux ${c.aux.length ? "open" : "none"}`}`);
 }
 
-function onBinary(c: Client, s: Sock, data: RawData) {
-  const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-  const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+/** one binary frame from a client, on any of its transport's paths */
+function onBinary(c: Client, u8: Uint8Array, from: Path) {
   const host = c.lobby?.host;
-  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Ping && u8[0] !== M.InvOp) strike(s, "bad frame"); return; }
+  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
   if (u8[0] === M.Input) c.lastInputAt = Date.now();
-  if (!host.receive(c.peer, u8, (r) => { if (s.ws.readyState === WebSocket.OPEN) s.ws.send(Buffer.from(r), { binary: true }); })) strike(s, "bad frame");
+  if (!host.receive(c.peer, u8, from.reply)) from.strike("bad frame");
 }
 const helloAt = new WeakMap<Client, number>(), helloLater = new WeakMap<Client, NodeJS.Timeout>();
 const ownedLobbies = (ip: string) => { let n = 0; for (const l of lobbies.values()) if (!l.event && l.owner && l.owner.sock?.ip === ip) n++; return n; };

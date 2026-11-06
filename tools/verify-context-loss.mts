@@ -11,7 +11,7 @@ if (!url.searchParams.has("vegsplat")) url.searchParams.set("vegsplat", "0");
 const WAIT_S = Number(opt("--wait-secs", "900")), AFTER_S = Number(opt("--after-secs", "20")), RESUME_S = Number(opt("--resume-secs", "240"));
 const GL_NOISE = /WebGL|GL_INVALID|THREE\.|context restore/;
 
-type Kr = { ready?: boolean; errors?: string[]; game?: { inMatch?: boolean; cm?: { phase?: number } }; engine: { restores: number; contextLost: boolean; time: number; renderer: { domElement: HTMLCanvasElement; info: { render: { frame: number } }; getContext(): WebGL2RenderingContext } } };
+type Kr = { ready?: boolean; errors?: string[]; game?: { inMatch?: boolean; cm?: { phase?: number } }; engine: { restores: number; contextLost: boolean; time: number; drawOverride: unknown; renderer: { domElement: HTMLCanvasElement; info: { render: { frame: number } }; getContext(): WebGL2RenderingContext } } };
 const kr = () => (window as unknown as { __kr: Kr }).__kr;
 
 const browser = await chromium.launch({ headless: true, args: ["--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"] });
@@ -34,6 +34,9 @@ try {
   console.log(`context loss: ${url}`);
   await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 120_000 });
   if (!await until("the title (__kr.ready)", () => !!kr()?.ready, WAIT_S)) throw Error("no title");
+  // (until its kong programs compile, the title draws the whole scene through the post chain, about twice as bright as
+  // the key art it switches to: a loss in that window would compare two different pictures)
+  if (!await until("the title's key-art draw (engine.drawOverride)", () => !!kr().engine.drawOverride, WAIT_S)) throw Error("no title draw");
   await page.evaluate(() => { (window as unknown as { __lossMarker: number }).__lossMarker = 1; });
   const brightness = async () => {
     const mean = await page.evaluate(() => new Promise<number>((resolve) => {
