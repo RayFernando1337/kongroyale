@@ -134,10 +134,13 @@ function main(): void {
   const subjectsSince = (tag: string): number[] => {
     const sha = shaOf(tag) as string;
     execFileSync("git", ["fetch", "-q", "origin", sha, "main"], { cwd: HERE });
-    try {
-      execFileSync("git", ["merge-base", "--is-ancestor", sha, "origin/main"], { cwd: HERE });
-    } catch {
-      throw new Error(tag + " is not reachable from origin/main in this clone, so the changes since it can't be listed; if the clone is shallow, run git fetch --unshallow origin");
+    const git = (...a: string[]) => execFileSync("git", a, { cwd: HERE, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
+    if (git("rev-parse", "--is-shallow-repository") === "true") {
+      try {
+        git("merge-base", "--is-ancestor", sha, "origin/main");
+      } catch {
+        throw new Error("this clone is shallow and does not connect " + tag + " to origin/main, so the changes since it can't be listed; run git fetch --unshallow origin");
+      }
     }
     return execFileSync("git", ["log", "--format=%s", sha + "..origin/main"], { cwd: HERE, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").map((l) => Number(/\(#(\d+)\)\s*$/.exec(l)?.[1])).filter(Boolean);
   };
