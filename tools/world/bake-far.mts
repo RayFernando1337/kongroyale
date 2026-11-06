@@ -25,7 +25,7 @@ function extract(a: { id: string }): Extracted {
   type M = { isMesh?: boolean; isInstancedMesh?: boolean; isBatchedMesh?: boolean; isSkinnedMesh?: boolean; visible: boolean; parent: M | null; children: M[]; layers: { mask: number }; matrixWorld: { elements: number[] }; geometry?: G; material?: Mat | Mat[]; count?: number; instanceMatrix?: { array: Float32Array }; instanceColor?: { array: Float32Array } | null; getGeometryIdAt?(i: number): number; getGeometryRangeAt?(g: number): { vertexStart: number; vertexCount: number; indexStart: number; indexCount: number }; getVisibleAt?(i: number): boolean; _instanceInfo?: Array<{ active: boolean }>; _matricesTexture?: { image: { data: Float32Array } }; _colorsTexture?: { image: { data: Float32Array } } | null; updateMatrixWorld(force: boolean): void };
   type A = { count: number; itemSize: number; getX(i: number): number; getY(i: number): number; getZ(i: number): number; array: ArrayLike<number> | null };
   type G = { attributes: Record<string, A>; index: A | null; drawRange: { start: number; count: number } };
-  type Mat = { visible: boolean; transparent: boolean; opacity: number; depthWrite: boolean; color?: { r: number; g: number; b: number }; map?: { uuid: string; image?: unknown } | null; vertexColors?: boolean; isShaderMaterial?: boolean; type: string };
+  type Mat = { visible: boolean; transparent: boolean; opacity: number; depthWrite: boolean; color?: { r: number; g: number; b: number }; map?: { uuid: string; image?: unknown } | null; vertexColors?: boolean; isShaderMaterial?: boolean; type: string; userData: { jungleUniforms?: { uMoss: { value: number }; uMossCover: { value: number }; uMossColor: { value: { r: number; g: number; b: number } }; uMossMap: { value: { uuid: string; image?: unknown } | null } } } };
   const skipped: Record<string, number> = {};
   const skip = (why: string) => { skipped[why] = (skipped[why] ?? 0) + 1; };
   const texMean = new Map<string, number[]>();
@@ -54,13 +54,22 @@ function extract(a: { id: string }): Extracted {
   const pos: number[] = [], col: number[] = [], idx: number[] = [];
   const mul = (a: ArrayLike<number>, b: ArrayLike<number>, o: number[]) => { for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3]; return o; };
   const shown = (o: M, rootObj: M) => { for (let p: M | null = o; p && p !== rootObj; p = p.parent) if (!p.visible) return false; return (o.layers.mask & 1) !== 0; };
+  const MOSS_NOISE_MEAN = 0.5, MOSS_GAIN = 1.7;
+  const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  let moss: { w: number; c: number[] } | null = null;
   const add = (g: G, m: number[], rgb: number[], vColor: boolean, vStart: number, vCount: number, iStart: number, iCount: number) => {
-    const P = g.attributes.position, C = vColor ? g.attributes.color : undefined, base = pos.length / 3;
+    const P = g.attributes.position, C = vColor ? g.attributes.color : undefined, N = moss ? g.attributes.normal : undefined, base = pos.length / 3;
     if (!P || !P.array) { skip("no-position"); return; }
     for (let i = vStart; i < vStart + vCount; i++) {
       const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
       pos.push(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]);
-      if (C) col.push(rgb[0] * C.getX(i), rgb[1] * C.getY(i), rgb[2] * C.getZ(i)); else col.push(rgb[0], rgb[1], rgb[2]);
+      const c = C ? [rgb[0] * C.getX(i), rgb[1] * C.getY(i), rgb[2] * C.getZ(i)] : [rgb[0], rgb[1], rgb[2]];
+      if (moss && N) {
+        const nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i), wx = m[0] * nx + m[4] * ny + m[8] * nz, wy = m[1] * nx + m[5] * ny + m[9] * nz, wz = m[2] * nx + m[6] * ny + m[10] * nz;
+        const w = smooth(0.25, 0.85, wy / (Math.hypot(wx, wy, wz) || 1)) * moss.w;
+        for (let k = 0; k < 3; k++) c[k] += (moss.c[k] - c[k]) * w;
+      }
+      col.push(c[0], c[1], c[2]);
     }
     if (g.index) for (let i = iStart; i < iStart + iCount; i++) idx.push(base + g.index.getX(i) - vStart);
     else for (let i = 0; i < vCount; i++) idx.push(base + i);
@@ -80,6 +89,11 @@ function extract(a: { id: string }): Extracted {
       if (mat.isShaderMaterial && !mat.color) { skip("shader"); return; }
       const rgb = [mat.color?.r ?? 0.6, mat.color?.g ?? 0.6, mat.color?.b ?? 0.6];
       if (mat.map) { const t = meanOf(mat.map); for (let c = 0; c < 3; c++) rgb[c] *= t[c]; }
+      const ju = mat.userData.jungleUniforms;
+      if (ju && ju.uMoss.value > 0) {
+        const cover = ju.uMossCover.value, mc = ju.uMossColor.value, mm = ju.uMossMap.value ? meanOf(ju.uMossMap.value) : [1, 1, 1];
+        moss = { w: ju.uMoss.value * smooth(0.62 - cover * 0.6, 0.92 - cover * 0.6, MOSS_NOISE_MEAN), c: [mc.r * mm[0] * MOSS_GAIN, mc.g * mm[1] * MOSS_GAIN, mc.b * mm[2] * MOSS_GAIN] };
+      } else moss = null;
       const g = o.geometry, P = g.attributes.position;
       if (!P) { skip("no-position"); return; }
       const vColor = !!mat.vertexColors && !!g.attributes.color;
