@@ -290,7 +290,9 @@ from `engine/res/restore-run.ts`, loaded on the first loss:
 1. **On `webglcontextlost`** the frame loop pauses and a 10 s timer starts that reloads the page if no restore comes.
 2. **On `webglcontextrestored`** `restoreAll()` runs three phases, then `__kr.restores` goes up and frames resume:
    - `source`: every released texture refills its pixels from the rebuild it gave `releaseAfterUpload(t, rebuild)`
-     (a cached file through the cache, a procedural texture through its painter).
+     (a cached file through the cache, a procedural texture through its painter). A geometry released with
+     `releaseGeometryAfterUpload(g, rebuild)` (`engine/geometry-release.ts`, the terrain's shadow proxy) refills its
+     arrays the same way.
    - modules: a module that owns resources with no restore path (`unrestorable()`: a released texture without a
      rebuild, a `geofree` batch) is rebuilt through `restoreModulesWith`. With `geofree` on, `low-mem.ts` registers it
      for streamed modules (`low-mem-restore.ts`): the module is evicted during the restore and built again from source
