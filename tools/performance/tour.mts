@@ -37,12 +37,12 @@ export interface Segment {
   cruise?: number;
 }
 
-export const TOUR_VERSION = 1;
+export const TOUR_VERSION = 2;
 
 export const TOUR: Segment[] = [
   { id: "walk-town", kind: "walk", what: "sprinting through Mango Market: up Banana Avenue, across Banana Square, round Back Street to the Market Plaza, down Market Street",
     at: [360, 129], yaw: -2.4, seconds: 75, settleS: 3,
-    path: [[390, 100], [402, 73], [414, 49], [416, 43], [418, 39], [418, 35], [420, 33], [422, -6], [439, -2], [443, 2], [447, 2], [467, -24], [469, -28], [478, -46], [470, -54], [466, -58], [466, -62], [460, -70], [460, -64], [458, -62], [452, -64], [450, -68], [442, -74], [422, -84], [392, -90], [388, -92], [368, -100]] },
+    path: [[390, 100], [402, 73], [414, 49], [416, 43], [418, 39], [418, 35], [420, 33], [422, -6], [439, -2], [443, 2], [447, 2], [467, -24], [469, -28], [478, -46], [470.4, -54], [470, -56.4], [466.5, -60], [466, -62], [460, -70], [460, -64], [458, -62], [452, -64], [450, -68], [442, -74], [422, -84], [392, -90], [388, -92], [368, -100]] },
   { id: "fight", kind: "fight", what: "a close fight in Banana Square: the six nearest enemy bots brought to 10-20 m, the player firing an AR at the nearest",
     at: [410, 30], yaw: 0, seconds: 25, settleS: 2, bots: 6, ring: [10, 20], path: [] },
   { id: "tuk-drive", kind: "drive", what: "a tuk-tuk from the Plantation's packing house east across the island, over the ridge and up Banana Avenue into Mango Market",
