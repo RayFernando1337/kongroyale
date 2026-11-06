@@ -16,8 +16,15 @@
   {
     "name": "the claim keeps the record",
     "why": "findDeadSession reads the dead records but no longer deletes them, so a second load asks about the same crash again",
-    "find": "ELSE IF x \\in LockSuspects THEN \"none\" ELSE hbs[x]",
-    "replace": "ELSE hbs[x]",
+    "find": "IF x \\in LockSuspects THEN \"none\" ELSE hbs[x]",
+    "replace": "hbs[x]",
     "expect": "Invariant OneReportPerCrash is violated"
+  },
+  {
+    "name": "the first beat is written outside the lock",
+    "why": "startBeat writes the record at boot but the page takes its Web Lock only later (as when the lock was taken in the lazy chunk), so another tab that loads while this one boots slowly asks about a crash that did not happen",
+    "find": "/\\ held' = held \\cup {cur[t]}",
+    "replace": "/\\ held' = held",
+    "expect": "Invariant NoFalseCrash is violated"
   }
 ]

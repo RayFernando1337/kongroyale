@@ -7,35 +7,32 @@
 //              evictions and rebuilds (residency from __kr.modules).
 //   path       the player's position and view once a second in a match (up to an hour): the route a camera-path bench
 //              replays on another GPU
-//   heartbeat  one record per session in localStorage, written at load and every 5 s, marked clean on pagehide and
-//              running again on a back/forward-cache pageshow. Each live page holds a Web Lock named after its session,
-//              so a later load knows a session with no clean exit and no lock died (tab killed, browser crashed); it
-//              claims that record under one lock and keeps it as `prev`, so one crash is reported once. Browsers without
-//              Web Locks keep no heartbeat.
+//   heartbeat  one record per session in localStorage, first written at boot (beat.ts, so a tab killed while the
+//              world loads is caught), then every 5 s from here, marked clean on pagehide and running again on a
+//              back/forward-cache pageshow. Each live page holds a Web Lock named after its session, so a later load
+//              knows a session with no clean exit and no lock died (tab killed, browser crashed); it claims that record
+//              under one lock and keeps it as `prev`, so one crash is reported once. Browsers without Web Locks keep no
+//              heartbeat.
 // snapshot() is __kr.diag.snapshot(); a report sends it as ctx.diag, which the server cleans and stores as it is.
 import type { Engine } from "../engine/engine";
-import { BUILD } from "../build";
 import { POIS } from "../../../shared/world/map";
+import { BEAT_KEY, beat, live, locks, sid, writeBeat, type Beat, type Locks } from "./beat";
 
 const MAX_EVENTS = 500, PATH_S = 3600, PATH_W = 7, LONG_MS = 100, GC_DROP_MB = 50, BEAT_S = 5, KEEP_MS = 7 * 86_400_000;
-const BEAT_KEY = "kr.diag.hb.", CLAIM_KEY = "kr.diag.claim", NEAR_POI_M = 150;
+const CLAIM_KEY = "kr.diag.claim", NEAR_POI_M = 150;
 const PATH_FIELDS = ["t", "x", "y", "z", "yawDeg", "pitchDeg", "phase"] as const;
 
 /** [page seconds, kind, number, text] */
 export type DiagEvent = [number, string, number, string];
-interface Beat { v: 1; sid: string; sha: string; at: number; upS: number; phase: number; x: number | null; z: number | null; poi: string | null; heapMB: number; textures: number; geometries: number; fps: number; hidden: boolean; clean: boolean }
 interface KrGame { inMatch?: boolean; cm?: { pred?: { x: number; y: number; z: number } } | null; input?: { yaw: number; pitch: number } }
 /** main.ts: streamMs = build ms of each module streamed in after the title, once integrated (a failed build too);
  *  modules = the modules resident now (a lowmem eviction removes one) */
 type Kr = Record<string, unknown> & { ready?: boolean; game?: KrGame; streamMs?: Record<string, number>; modules?: string[] };
 const kr = () => (window as unknown as { __kr: Kr }).__kr;
-interface Locks { request(name: string, task: () => Promise<unknown>): Promise<unknown>; query(): Promise<{ held?: Array<{ name?: string }> }> }
-const locks = (navigator as unknown as { locks?: Locks }).locks;
 
 const events: DiagEvent[] = [];
 const path = new Float32Array(PATH_S * PATH_W);
 const pathCursor = { rows: 0 };
-const sid = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, "0")).join("");
 let prev: Beat | null = null;
 let loafKind: string | null = null;
 /** settles once this load knows whether an earlier session died (report.ts waits on it for the crash card) */
@@ -71,10 +68,6 @@ function observeLongFrames(): void {
   }).observe({ type: loafKind, buffered: true });
 }
 
-function writeBeat(b: Beat): void {
-  if (!locks) return;
-  try { localStorage.setItem(BEAT_KEY + b.sid, JSON.stringify(b)); } catch { /* storage full or blocked: no crash evidence */ }
-}
 function readBeats(): Beat[] {
   const out: Beat[] = [];
   try {
@@ -86,12 +79,6 @@ function readBeats(): Beat[] {
     }
   } catch { /* blocked storage */ }
   return out;
-}
-
-/** hold this session's Web Lock for the page's whole life, then write its first beat: a session whose page holds no
- *  lock is not running */
-function goLive(locks: Locks, first: Beat): Promise<void> {
-  return new Promise((live) => { void locks.request(BEAT_KEY + sid, () => { writeBeat(first); live(); return new Promise(() => {}); }); });
 }
 
 /** a session that never marked clean and whose page holds no lock died. The claim runs under one lock and deletes what
@@ -133,10 +120,8 @@ export function installDiag(engine: Engine, ring: Float32Array): (at: number) =>
 
   const resident = new Set<string>(), failed = new Set<string>();
   const last = { phase: -2, programs: -1, scale: -1, heap: -1 };
-  let beat: Beat = { v: 1, sid, sha: BUILD.sha, at: Date.now(), upS: 0, phase: -1, x: null, z: null, poi: null, heapMB: -1, textures: 0, geometries: 0, fps: 0, hidden: false, clean: false };
-  if (locks) deadChecked.done = goLive(locks, beat).then(() => findDeadSession(locks));
-  addEventListener("pagehide", () => { beat.clean = true; beat.at = Date.now(); writeBeat(beat); });
-  addEventListener("pageshow", (e) => { if (e.persisted) { beat.clean = false; writeBeat(beat); } });
+  const held = locks;
+  if (held) deadChecked.done = live.done.then(() => findDeadSession(held));
   addEventListener("visibilitychange", () => {
     push("visibility", document.visibilityState === "visible" ? 1 : 0, document.visibilityState);
     beat.hidden = document.visibilityState === "hidden"; beat.at = Date.now(); writeBeat(beat);
@@ -166,7 +151,7 @@ export function installDiag(engine: Engine, ring: Float32Array): (at: number) =>
       pathCursor.rows++;
     }
     if (++seconds % BEAT_S === 0) {
-      beat = { ...beat, at: Date.now(), upS: Math.round(ring[at]), phase, x: p ? Math.round(p.x) : null, z: p ? Math.round(p.z) : null, poi: p ? poiAt(p.x, p.z) : null, heapMB: Math.round(heap), textures: ring[at + 11], geometries: ring[at + 12], fps: Math.round(ring[at + 1]), hidden: document.visibilityState === "hidden" };
+      Object.assign(beat, { at: Date.now(), upS: Math.round(ring[at]), phase, x: p ? Math.round(p.x) : null, z: p ? Math.round(p.z) : null, poi: p ? poiAt(p.x, p.z) : null, heapMB: Math.round(heap), textures: ring[at + 11], geometries: ring[at + 12], fps: Math.round(ring[at + 1]), hidden: document.visibilityState === "hidden" });
       writeBeat(beat);
     }
   };
