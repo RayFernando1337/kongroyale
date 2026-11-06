@@ -1,9 +1,9 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-05 at 3d24764 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 4725691, lazy 3051867).",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-05 at 476d91a to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 2565597, lazy 3048354); workers and lazy dropped by the shared POI data chunk (#211).",
   "gzBytes": {
     "entry": 33170,
     "boot": 1166520,
-    "workers": 4725716,
-    "lazy": 3051892
+    "workers": 2565622,
+    "lazy": 3048379
   }
 }
