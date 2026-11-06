@@ -1,9 +1,9 @@
 [
   {
-    "name": "a match shows without its renderer",
-    "why": "index.ts offline(): the match view no longer waits for wire() to build a GameRender",
-    "find": "/\\ view' = (IF WireOk THEN \"match\" ELSE \"title\") /\\ phase' = \"warmup\"",
-    "replace": "/\\ view' = \"match\" /\\ phase' = \"warmup\"",
+    "name": "a match starts without its renderer",
+    "why": "index.ts enterMatch: START no longer keeps the GameRender that wire() built for the room",
+    "find": "/\\ seated' = TRUE\n  /\\ UNCHANGED <<boot, prefabs, link, scope, render, err",
+    "replace": "/\\ seated' = TRUE /\\ render' = FALSE\n  /\\ UNCHANGED <<boot, prefabs, link, scope, err",
     "expect": "Invariant NoMatchWithoutRenderer is violated"
   },
   {
@@ -12,5 +12,19 @@
     "find": "/\\ view' = \"title\" /\\ link' = \"none\" /\\ seated' = FALSE",
     "replace": "/\\ view' = \"title\" /\\ link' = \"none\" /\\ seated' = seated",
     "expect": "Invariant LeaveFreesTheSeat is violated"
+  },
+  {
+    "name": "PLAY runs before ready",
+    "why": "index.ts prepareIsland: no longer waits for dataset.ready, so Enter, a controller's A or a focused button presses PLAY before the prefabs exist: GameRender throws and nothing visible happens",
+    "find": "  /\\ prefabs   \\* after ready, kr.prepare() waits for the prefabs (main.ts:502-531)",
+    "replace": "  /\\ boot = \"loading\" \\/ prefabs",
+    "expect": "Invariant ButtonsAnswer is violated"
+  },
+  {
+    "name": "CREATE or JOIN runs before ready",
+    "why": "index.ts prepareIsland: no longer waits for dataset.ready, so an early CREATE or JOIN (an invite link, the event lobby's Join) wires a GameRender before the prefabs exist and strands the match scope",
+    "find": "  /\\ Online /\\ view = \"title\"\n  /\\ prefabs\n",
+    "replace": "  /\\ Online /\\ view = \"title\"\n  /\\ boot = \"loading\" \\/ prefabs\n",
+    "expect": "Invariant ScopeHasOwner is violated"
   }
 ]

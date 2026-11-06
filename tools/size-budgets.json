@@ -1,9 +1,9 @@
 {
-  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-05 at 3d24764 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 4725691, lazy 3051867). 2026-11-06, #207 (?ktx2=etc1s, measured at its merge with 476d91a, hashes normalised): boot 1166520 to 1166546 (measured 1166536: the ktx2 flag becomes a text flag and assets.ts gates the lazy import on its two values), workers 4725716 to 4725771 (measured 4725761: the workers bundle client/src/flags.ts, which now carries the text ktx2 entry), lazy 3051892 to 3051939 (measured 3051929: the etc1s branch in the ktx2-tex chunk). Each is the measure plus 10 B.",
+  "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. Reset 2026-11-05 at 3d24764 to the hash-stable measure plus 25 B (entry 33145, boot 1166495, workers 4725691, lazy 3051867). 2026-11-06: lazy raised from 3051892 to 3051903 (measured 3051893 with #212, 3051867 without, at 476d91a): a PLAY, CREATE or JOIN pressed during the load now waits in prepareIsland for the ready title instead of throwing in GameRender and stranding the match scope (#212). 2026-11-06, #207 (?ktx2=etc1s, measured at its merge with 5e78c96): boot 1166520 to 1166546 (measured 1166536: the ktx2 flag becomes a text flag and assets.ts gates the lazy import on its two values), workers 4725716 to 4725771 (measured 4725761: four workers bundle client/src/flags.ts, whose ktx2 entry grows), lazy 3051903 to 3051965 (measured 3051955: the etc1s branch in the ktx2-tex chunk). Each is the measure plus 10 B.",
   "gzBytes": {
     "entry": 33170,
     "boot": 1166546,
     "workers": 4725771,
-    "lazy": 3051939
+    "lazy": 3051965
   }
 }
