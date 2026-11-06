@@ -18,8 +18,9 @@
 //             the numbers below and older results keep their meaning. tools/performance/net-tail.mts always sets it.
 //   --check: exit 1 when hit registration regresses. At every RTT up to CHECK_MAX_RTT_MS (250) the run must fire pellets and
 //            have predicted hits, confirm at least CHECK_MIN_CONFIRM_PCT (99) of them and show 0 ghost hits. Longer RTTs are only
-//            reported as KNOWN ISSUE lines, never failed: main shotgun at 320 ms RTT, 20 ms jitter confirms 89.7% with 3 ghost hits
-//            because every pellet is clamped by the 350 ms rewind cap. Whole grid:
+//            reported as KNOWN ISSUE lines, never failed: at 320 ms RTT with 20 ms jitter every pellet is clamped by the 350 ms
+//            rewind cap; the client re-traces each predicted hit against the pose at the cap (ClientMatch.lateVerdict), and
+//            shotgun still confirms 92.9% with 2 ghost hits (89.7% and 3 before it did). Whole grid:
 //              for w in pistol smg ar shotgun sniper; do npx tsx tools/netlab.mts --weapon $w --jitter 20 --check; done
 //   --serve PORT / --connect URL: the same duel over REAL WebSockets and a real clock, so a real or emulated network sets
 //           the RTT, jitter and loss (the RTT list, --jitter and --loss are ignored). --serve runs the host side (Match +
@@ -39,7 +40,8 @@
 //   agree   = pellets where client and server name the same victim
 //   confirm = predicted hits the server confirmed (what the player feels: "my hit marker was real")
 //   ghost   = predicted hits the server rejected;  surprise = server hits the client predicted as misses
-//   clamped = shots older than the rewind cap (MAX_REWIND_TICKS)
+//   clamped = shots older than the rewind cap (MAX_REWIND_TICKS);  withheld = pellets that hit what was drawn but that the
+//             client expects to miss at the cap, so it showed no hit (ClientMatch.predLate): they count as predicted misses
 // and the transport tails of the window the shooter fires in, as the clients see them (first copy of each frame):
 //   rttMs      = ping → pong, both clients;  inputAckMs = each input sent → the first snapshot that acknowledges it (lastSeq),
 //   snapGapMs  = time between snapshots (30 Hz: 33 ms when nothing is late);  corrPct = prediction corrections per 100
@@ -163,9 +165,13 @@ function makeClients(sendUp: (pid: number, u8: Uint8Array) => void) {
     return { cm: new ClientMatch(world, link), inp };
   });
   const pred: number[] = [], R = makeShotResult();
-  clients[0].cm.onTick = () => { const c = clients[0].cm; if (c.pred.fired > 0) for (let k = 0; k < c.pred.fired; k++) pred.push(c.predictShot(k, R).victim); };
+  // a pellet the client withholds (its hit would miss at the server's rewind cap: no marker shown) counts as a predicted miss
+  let withheld = 0;
+  clients[0].cm.onTick = () => { const c = clients[0].cm; if (c.pred.fired > 0) for (let k = 0; k < c.pred.fired; k++) { pred.push(c.predictShot(k, R).victim); if (c.predLate) withheld++; } };
   return {
     clients, pred,
+    /** pellets whose drawn hit the client did not show because it misses at the rewind cap */
+    withheld: () => withheld,
     /** a frame from the server reached client `pid` (on any of its sockets) */
     receive(pid: number, u8: Uint8Array | null, json?: unknown) {
       const c = clients[pid], tl = tails[pid];
@@ -260,7 +266,7 @@ async function run(rtt: number) {
     if (now >= nextFrame) { C.frame(1 / 144); nextFrame += 1000 / 144; }
   }
   const cm = C.clients[0].cm;
-  return { transport, rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, ...C.tails() };
+  return { transport, rtt, jitter, weapon, ...(killable ? { kills: H.deaths } : {}), ...verdicts(C.pred, H.serv), clamped: H.clamped, withheld: C.withheld(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, lossPct: loss * 100, lostMsgs, ...C.tails() };
 }
 
 /** --serve: the host side of one duel over real WebSockets. Every socket must say hello with the duel's token before
@@ -341,7 +347,7 @@ async function connect(url: string, token: string) {
   for (let waited = 0; !verdict; waited += 10) { if (waited > 10000) throw Error("no verdicts from the server"); await new Promise((r) => setTimeout(r, 10)); }
   for (const s of sockets.flat()) s.close();
   const v = verdict as { serv: number[]; clamped: number; deaths: number }, t = C.tails(), cm = C.clients[0].cm;
-  return { transport: "ws", url, rtt: t.rttMs.p50, jitter: "real", weapon, ...(killable ? { kills: v.deaths } : {}), ...verdicts(C.pred, v.serv), clamped: v.clamped, rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, ...t };
+  return { transport: "ws", url, rtt: t.rttMs.p50, jitter: "real", weapon, ...(killable ? { kills: v.deaths } : {}), ...verdicts(C.pred, v.serv), clamped: v.clamped, withheld: C.withheld(), rewindCapMs: Math.round(MAX_REWIND_TICKS * DT * 1000), corrections: cm.netStats.moveCorrections, corrMaxMm: Math.round(cm.netStats.corrMax * 1000), sockets: aux ? 2 : 1, ...t };
 }
 
 if (servePort) {
