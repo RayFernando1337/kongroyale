@@ -10,13 +10,13 @@ import { releaseAfterUpload } from "./texture-release";
 
 const ETC1S = flag("ktx2") === "etc1s";
 const SOURCE_EXT = /\.(webp|jpe?g|png)$/i;
-let listed: Promise<{ sources: string[]; etc1s?: string[] }> | null = null;
+let listed: Promise<{ sources?: string[]; etc1s?: string[] }> | null = null;
 
 /** the compressed texture for a source path, or null when ktx2.json doesn't list one; mips above poicap are skipped */
 export async function ktx2Texture(path: string, load: (ktx2Path: string) => Promise<THREE.CompressedTexture>): Promise<THREE.CompressedTexture | null> {
   listed ??= fetch(assetUrl("assets/ktx2.json")).then((r) => r.json()).catch(() => ({ sources: [] }));
   const key = path.replace(/^\//, ""), m = await listed;
-  if (!m.sources.includes(key)) return null;
+  if (!m.sources?.includes(key)) return null;
   const file = path.replace(SOURCE_EXT, ETC1S && m.etc1s?.includes(key) ? ".etc1s.ktx2" : ".ktx2");
   const capped = async () => {
     const t = await load(file);
