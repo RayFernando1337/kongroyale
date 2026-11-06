@@ -16,10 +16,13 @@ export const enum Channel { Reliable = 0, Unreliable = 1 }
  *  arrive, in order. Caster snapshots stay reliable: they carry every player (often more than one datagram holds) and a
  *  commentator seat favours a complete picture over the lowest latency */
 export function channelOf(type: number): Channel {
-  return type === M.Input || type === M.Ping || type === M.Pong || type === M.Snapshot ? Channel.Unreliable : Channel.Reliable;
+  return type === M.Ping || type === M.Pong || type === M.Snapshot ? Channel.Unreliable : Channel.Reliable;
 }
 
 export type TransportKind = "ws" | "wt";
+/** why a link that could have used WebTransport stayed on (or went back to) the WebSockets */
+export type FallbackReason = "flag-off" | "server-off" | "unsupported" | "connect-failed" | "timeout" | "auth" | "closed" | "no-datagrams";
+export const FALLBACK_REASONS: readonly FallbackReason[] = ["flag-off", "server-off", "unsupported", "connect-failed", "timeout", "auth", "closed", "no-datagrams"];
 
 /** per-transport counters, the same fields for every kind, so sessions compare across transports */
 export interface TransportStats {
