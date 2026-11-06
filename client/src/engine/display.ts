@@ -18,7 +18,6 @@ import type { Engine, Quality } from "./engine";
 import { flag } from "../flags";
 import { contextEpoch } from "./res/restore";
 import { gpuScore } from "./gpu-score";
-import { AUTO_RES_FLOOR } from "./res-guard";
 
 export type Level = "low" | "medium" | "high" | "epic";
 export type PresetId = "auto" | Level | "custom";
@@ -58,6 +57,8 @@ export interface VideoSettings {
 /** AUTO only, on laptop-class GPUs: an internal-resolution budget (megapixels). An M1 Pro's 3024×1964 backing store
  *  renders 81 % at Medium and 67 % at Low; a 1080p / 1440p screen stays at 100 %; High and Epic are always native. */
 const AUTO_MPX: Record<Level, number> = { low: 2.7, medium: 3.9, high: Infinity, epic: Infinity };
+/** the lowest 3D resolution Auto picks; the half-rate guard (res-guard.ts) never steps below it either */
+export const AUTO_RES_FLOOR = 0.67;
 export function presetRes(level: Level, backingPx: number) {
   const r = Math.sqrt((AUTO_MPX[level] * 1e6) / Math.max(1, backingPx));
   return Math.min(1, Math.max(AUTO_RES_FLOOR, Math.floor(r * 100) / 100));

@@ -80,14 +80,14 @@ const STATUS = `JSON.stringify((() => { const k = window.__kr; if (!k) return { 
     stream: String(k.streamStage || ""), streamed: !!k.streamed }; })())`;
 const INSTALL = `(() => {
   const k = window.__kr, e = k.engine, info = e.renderer.info, N = 20000;
-  const c = { on: false, n: 0, T: new Float64Array(N), CPU: new Float32Array(N), CALLS: new Float32Array(N), TRIS: new Float32Array(N), PTS: new Float32Array(N), PROG: new Float32Array(N), last: 0, phases: {} };
+  const c = { on: false, n: 0, T: new Float64Array(N), CPU: new Float32Array(N), CALLS: new Float32Array(N), TRIS: new Float32Array(N), PTS: new Float32Array(N), PROG: new Float32Array(N), last: 0, phaseOn: true, phases: {} };
   e.hitchLog = [];
   const step = e.step;
   e.step = function (dt) {
     // renderer.info resets on every render() call (the post chain makes many): count the whole frame instead
     const s0 = performance.now(), ar = info.autoReset, g = k.game, ph = g && g.inMatch && g.cm ? g.cm.phase : -1;
     // every frame from the match start on, by match phase: [frames, ms, frames over 33 ms]
-    if (c.last && ph >= 0) { const d = s0 - c.last, a = c.phases[ph] || (c.phases[ph] = [0, 0, 0]); a[0]++; a[1] += d; if (d > 1000 / 30) a[2]++; }
+    if (c.phaseOn && c.last && ph >= 0) { const d = s0 - c.last, a = c.phases[ph] || (c.phases[ph] = [0, 0, 0]); a[0]++; a[1] += d; if (d > 1000 / 30) a[2]++; }
     c.last = s0;
     if (c.on) { info.autoReset = false; info.reset(); }
     try { step.call(this, dt); }
@@ -111,7 +111,8 @@ const PLACE = (x: number, z: number, yaw: number, pitch: number) => `(() => {
   return "ok";
 })()`;
 const KEEP = (yaw: number, pitch: number) => "(() => { const g = window.__kr.game, m = g.link && g.link.match; if (!m) return 'no host'; const q = m.players[g.cm.me]; q.hp = Math.max(q.hp, 90); g.input.yaw = " + yaw + "; g.input.pitch = " + pitch + "; return 'ok'; })()";
-const COLLECT = (on: boolean) => "(() => { const c = window.__kr.holdC; c.on = " + on + "; return String(c.n); })()";
+// the phase counters stop with the hold, so the rAF probe's suspended frames after it count toward no phase
+const COLLECT = (on: boolean) => "(() => { const c = window.__kr.holdC; c.on = " + on + "; " + (on ? "" : "c.phaseOn = false; ") + "return String(c.n); })()";
 const RAF_PROBE = "(() => { const e = window.__kr.engine; e.suspended = true; const d = []; let last = 0; const f = (t) => { if (last) d.push(t - last); last = t; if (d.length < 180) requestAnimationFrame(f); else { e.suspended = false; window.__kr.rafProbe = d; } }; requestAnimationFrame(f); return 'ok'; })()";
 const READ = `JSON.stringify((() => {
   const k = window.__kr, c = k.holdC, e = k.engine, r = e.renderer, gl = r.getContext(), n = c.n, a = (x) => Array.from(x).slice(0, n);

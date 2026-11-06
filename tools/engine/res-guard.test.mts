@@ -2,16 +2,16 @@
 // sits past the half-rate line, never below Auto's floor, steps back up after a run of full-rate seconds, and backs off
 // instead of oscillating when an up-step falls back (RAY-186).
 import assert from "node:assert/strict";
-import { AUTO_RES_FLOOR, UP_AFTER_MAX_S, UP_AFTER_S, decide, newGuardState } from "../../client/src/engine/res-guard";
+import { AUTO_RES_FLOOR, UP_AFTER_MAX_S, UP_AFTER_S, decide, guardBudgetMs, newGuardState } from "../../client/src/engine/res-guard";
 
 const HZ60 = 1000 / 60;
 /** run the guard for "seconds" with a frame model (median ms of a second at a scale); the steps it took */
-function run(seconds: number, frameAt: (scale: number, s: number) => number, opts: { budgetMs?: number; top?: number; start?: number } = {}) {
+function run(seconds: number, frameAt: (scale: number, s: number) => number, opts: { budgetMs?: number; top?: number; start?: number; cpuMs?: number; gpuMs?: number } = {}) {
   const st = newGuardState(), top = opts.top ?? 1, steps: Array<{ s: number; from: number; to: number; why: string }> = [];
   let scale = opts.start ?? top;
   for (let s = 0; s < seconds; s++) {
     const med = frameAt(scale, s);
-    const d = decide(st, med, med, Math.round(1000 / med), opts.budgetMs ?? HZ60, scale, top, s);
+    const d = decide(st, med, med, Math.round(1000 / med), opts.budgetMs ?? HZ60, opts.cpuMs ?? 7, opts.gpuMs ?? 0, scale, top, s);
     if (!d) continue;
     steps.push({ s, from: scale, to: d.to, why: d.why });
     scale = d.to;
@@ -66,6 +66,30 @@ assert.equal(run(3, () => 4 * HZ60).steps[0].to, 0.85, "big step at 15 fps");
 // a stalled second (a few frames) decides nothing
 {
   const st = newGuardState();
-  for (let s = 0; s < 10; s++) assert.equal(decide(st, 500, 500, 2, HZ60, 1, 1, s), null);
+  for (let s = 0; s < 10; s++) assert.equal(decide(st, 500, 500, 2, HZ60, 7, 0, 1, 1, s), null);
+}
+// the budget: the player's cap wins; otherwise the highest refresh measured, so a match locked at half rate whose
+// refresh re-estimate reads 30 Hz is still judged against 60 Hz and keeps stepping down
+assert.equal(guardBudgetMs(30, 60), 1000 / 30, "cap");
+assert.equal(guardBudgetMs(0, 0), HZ60, "refresh unknown");
+{
+  let maxHz = 0;
+  const st = newGuardState();
+  let scale = 1, downs = 0;
+  for (let s = 0; s < 30; s++) {
+    maxHz = Math.max(maxHz, s < 20 ? 60 : 30);
+    const d = decide(st, 2 * HZ60, 2 * HZ60, 30, guardBudgetMs(0, maxHz), 7, 0, scale, 1, s);
+    if (d && d.why === "halfrate") { downs++; scale = d.to; }
+  }
+  assert.equal(scale, AUTO_RES_FLOOR, "keeps stepping after the refresh re-estimate reads 30 Hz (" + downs + " steps)");
+}
+// a CPU-bound half rate (the main thread alone takes a period, or the GPU timer says the GPU is the shorter side):
+// fewer pixels would not help, so the scale stays and the log says so once
+{
+  const r = run(30, () => 2 * HZ60, { cpuMs: 20 });
+  assert.deepEqual(r.steps.map((x) => x.why), ["cpu"], "CPU-bound, no timer");
+  assert.equal(r.scale, 1);
+  assert.deepEqual(run(30, () => 2 * HZ60, { cpuMs: 12, gpuMs: 9 }).steps.map((x) => x.why), ["cpu"], "CPU-bound by the GPU timer");
+  assert.equal(run(10, () => 2 * HZ60, { cpuMs: 7, gpuMs: 25 }).steps[0].why, "halfrate", "GPU-bound by the GPU timer");
 }
 console.log("res-guard: ok");
