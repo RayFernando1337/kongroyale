@@ -245,9 +245,12 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   }
   // (perf) a match never starts on a half-built island: while the world still streams in after the title, the first
   // PRACTICE / CREATE / JOIN finishes it at full speed behind a "preparing" card (main.ts __kr.prepare)
-  function prepareIsland(): Promise<void> {
+  // a session asked for before main.ts marks the title ready (Enter, a controller's A or a focused button behind the
+  // loading screen) waits for it: wiring a GameRender before the prefabs exist throws and strands the match scope
+  async function prepareIsland(): Promise<void> {
+    while (document.documentElement.dataset.ready !== "1") await new Promise((done) => setTimeout(done, 100));
     const p = (window as unknown as { __kr: { prepare?: () => Promise<void> } }).__kr.prepare;
-    return p ? p() : Promise.resolve();
+    if (p) await p();
   }
   async function offline(mode: Mode, range = false, difficulty: BotDifficulty = botDifficulty) {
     const generation = nextSessionGeneration();
