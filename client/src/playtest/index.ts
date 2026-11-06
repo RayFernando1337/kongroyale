@@ -5,6 +5,7 @@
 import type { Engine } from "../engine/engine";
 import { BUILD } from "../build";
 import { flag, flagQuery } from "../flags";
+import { diagOn } from "./beat";
 
 const MARK_GAP_MS = 5000, MAX_REPLAY_CHARS = 6_000_000, FLAG_NAME = /^[A-Za-z0-9_-]{1,40}$/;
 
@@ -33,13 +34,6 @@ function markMessage(): string {
   const cm = kr().game?.inMatch ? kr().game?.cm : null;
   const where = cm ? `in match at ${Math.floor(cm.time / 60)}:${String(Math.floor(cm.time % 60)).padStart(2, "0")}` : "outside a match";
   return `F8 mark ${where} (page ${Math.round(performance.now() / 1000)} s)`;
-}
-
-/** ?diag or ?diag=1 on, ?diag=0 off, absent = the build's VITE_KR_DIAG (Ray's stream build sets 1) */
-function diagOn(): boolean {
-  const v = flag("diag");
-  if (v !== null) return v !== "0";
-  return (import.meta as unknown as { env?: { VITE_KR_DIAG?: string } }).env?.VITE_KR_DIAG === "1";
 }
 
 export function installPlaytest(engine: Engine, game: boolean): void {
