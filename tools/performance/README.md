@@ -30,8 +30,8 @@ When a scenario's workload changes, bump its `version`. When a field in the cont
 | `npm run bench:host -- --out <file>` | `kong-perf-result` | Authoritative host and snapshot fan-out, CPU only. `--root <checkout>` measures another checkout, `--scenario combat` runs one scenario, `--ticks N` sets the synthetic window. Each scenario plays the real start, plane and drop untimed, then times the PLAY phase. `real-play` ([scenarios/real-play.mts](scenarios/real-play.mts)) is the representative one: a seeded all-bot trios match, nothing placed, timed for the first 7200 PLAY ticks (about 30 s on a 4-vCPU runner). The other four are synthetic: scripted placement and inputs, humans kept alive. `--trace` also hashes every packet. |
 | `npx tsx tools/performance/alloc.mts --out <file>` | `kong-perf-result` | Bytes allocated per host tick (`allocBytesPerTick`), GC count and GC time over `real-play`'s PLAY window, read from `v8.GCProfiler` with no inspector attached. The same match as `bench:host`'s real-play, with the same state digest. Ten runs on a 4-vCPU runner spread under 3% on bytes and GC count; `gcMs` spreads about 45%, so treat it as a guardrail. `--sample` adds the top allocating functions to `detail.topAllocators` (the sampling heap profiler perturbs the JIT, so sampled runs only compare with sampled runs). `run.mts --runner alloc` interleaves it. |
 | `npx tsx tools/performance/run.mts --base <checkout> --cand <checkout>` | a folder of results plus `comparison.md` | Interleaved repeated `bench:host` runs and the comparison. See below. |
-| `npm run bench:server -- --seconds 60 --out <file>` | `kong-perf-result` | Private server and 50 real WebSocket players, each also on an aux socket. Build first. The match gets a 5 s warm-up and a real plane, so the bench takes about 50 s plus `--seconds`. The timed window starts at the first PLAY snapshot. Linux and macOS only. |
-| `npx tsx tools/performance/net-tail.mts` | `kong-perf-result` (`reports/performance/net-tail.json`) | The network tail gate. Runs `tools/netlab.mts` with the game's two sockets over every weapon × path profile × RTT in [net-budgets.json](net-budgets.json) and checks each row against its budgets. Deterministic (simulated clock), so it needs no repetitions and no quiet machine; about 2 min on 2 vCPU. Exits 0 unless `--check`; `npm test` runs it with `--check` (id `nettail`, slow, so `--fast` skips it). See [Network tails](#network-tails). |
+| `npm run bench:server -- --seconds 60 --out <file>` | `kong-perf-result` | Private server and 50 real WebSocket players, each also on an aux socket. Build first. The match gets a 5 s warm-up and a real plane, so the bench takes about 50 s plus `--seconds`. The timed window starts at the first PLAY snapshot. Linux and macOS only. `--transport wt` starts the server with `KR_WT=1` and gives every player a WebTransport session (the QUIC module's Node client) instead of the aux socket: input windows and pings as datagrams, as a browser on `?wt=1` sends them, and a gate that `/health` counts every player on `wt`. Its default output is `sockets-final-wt.json`. |
+| `npx tsx tools/performance/net-tail.mts` | `kong-perf-result` (`reports/performance/net-tail.json`) | The network tail gate. Runs `tools/netlab.mts` over every transport × weapon × path profile × RTT in [net-budgets.json](net-budgets.json) and checks each row against its budgets: `ws` is the game's two WebSockets, `wt` is WebTransport with input windows and snapshots as datagrams. Deterministic (simulated clock), so it needs no repetitions and no quiet machine; about 80 s on 4 vCPU (`--transports ws` halves it). Exits 0 unless `--check`; `npm test` runs it with `--check` (id `nettail`, slow, so `--fast` skips it). See [Network tails](#network-tails). |
 | `npx tsx tools/performance/gpu-match.mts --out <file>` | `kong-perf-result` | Real GPU, in-match frame timing: a seed-42 trios practice match in Chrome at a pinned video preset (default High, 1920x1080, DPR 1, no dynamic resolution), normal rAF, valid `EXT_disjoint_timer_query_webgl2` samples per frame. Four cases: `warmup-15s`, `plane`, `descent`, `ground-pan`. Build first; `--root` measures another checkout's `dist/`. One timed GPU job per machine. `--route tour` replaces the pan with the play route in [tour.mts](tour.mts) (a sprint through Mango Market, a close fight with six bots, a tuk-tuk drive across the island, a helicopter flight over four towns), one case per segment (`gpu/tour/<id>`), and `--segments a,b` runs some of them. `--route survey` pans 360 degrees at every POI (`gpu/survey/<poi>`) to find the densest places. Both routes add per-frame attribution: practice-host sim, prediction, actors, vehicles, other hooks, streaming, culling, render submit, draw calls, triangles, new programs, heap growth, GC and long animation frames. `--software` lets SwiftShader check a route's path and counts, never its timing. |
 | `npx tsx tools/performance/tour-check.mts` | stdout | Drives the tour route on a headless seed-42 Match in seconds and fails when a segment gets stuck. Run it after editing [tour.mts](tour.mts) or the map near the route. `--only id,id`, `--trace`. |
 | `npx tsx tools/performance/load-profile.mts run --url http://127.0.0.1:<port> --browsers chrome,safari` | `kong-perf-result`, one file per run | Browser page load to the playable title and a practice match start, cold and warm, per phase (workload `page-load`). Chrome adds a CDP trace and CPU profile; Safari runs through safaridriver. `table` prints medians per browser. See [the profile-kongroyale-load skill](../../.agents/skills/profile-kongroyale-load/SKILL.md). |
@@ -121,14 +121,18 @@ npx tsx tools/performance/run.mts --base .           # A/A: the noise floor of t
 `net-tail.mts` is the gate for how the game feels over a network. Each row is one `tools/netlab.mts` run: the real
 client prediction (`ClientMatch`) and the real host loop (`MatchHost`) in one process, joined by simulated TCP links,
 with a shooter firing at a strafing, jumping target on the lobby islet. The matrix comes from
-[net-budgets.json](net-budgets.json): weapons (`ar`, `smg`, `shotgun`), RTTs (50, 150, 250 ms) and three path
+[net-budgets.json](net-budgets.json): transports (`ws`, `wt`), weapons (`ar`, `smg`, `shotgun`), RTTs (50, 150, 250 ms) and three path
 profiles:
 
 | Profile | Jitter | Loss | Stands for |
 |---|---|---|---|
 | `jitter20` | ±10 ms per way | 0 | a steady home connection |
 | `loss1` | ±10 ms per way | 1% per socket and direction | busy Wi-Fi |
-| `loss2j40` | ±20 ms per way | 2% | a bad connection (reported, no budget) |
+| `loss2j40` | ±20 ms per way | 2% | a bad connection (reported; only `wt` has a budget, on input acks) |
+
+A budget with `transports` holds only on those transports, one without holds on all of them. The `wt` budgets hold what
+datagrams buy on lossy links: a lost input rides the next window instead of waiting for a TCP resend, so at 1% loss
+`wt` keeps the steady link's input-ack budget and its instant hit markers up to 250 ms.
 
 Loss is modelled the way TCP behaves, not as dropped frames: a lost message arrives `max(1.25 × RTT, RTT + 35 ms)`
 late and every later message on that socket waits behind it. Each client has two sockets, like the game, and the first
@@ -159,6 +163,24 @@ sudo ip netns exec kr-cli sudo -u "$USER" env "PATH=$PATH" npx tsx tools/perform
   --url http://10.77.0.1:3020 --players 2 --aux --seconds 60 --out reports/performance/sockets-150-loss1.json
 # stop the server and netpath, then remove the namespaces
 sudo python3 tools/performance/netpath.py --down
+```
+
+For WebTransport over the same path, start the server with `KR_WT=1` and run sockets.mts with `--transport wt` instead
+of `--aux` (QUIC rides UDP through the relay like any other IP packet).
+
+### Netpath matrix
+
+`tools/performance/netpath-matrix.mts` does the steps above for every RTT × loss × transport arm, n runs per arm,
+interleaved: each repetition walks every cell once and runs the transports back to back in an order that alternates by
+repetition. Every run gets a fresh server (`KR_WT=1` for both transports) and its own sockets.mts result; each arm's
+metrics are summarised over the runs that passed sockets.mts's gates (`noDeathsInWindow` excepted: with two players the
+match is mostly bots, and bots die), with the median run as p50. It writes a `kong-perf-result`, a Markdown table and
+every run's result. The defaults (0/50/150/250 ms × 0/1% loss × ws/wt, n = 10, 30 s) take about 4 hours, so it runs as
+a Capy automation and never in CI or `npm test`. Linux with passwordless sudo only.
+
+```sh
+npx tsx tools/performance/netpath-matrix.mts                                         # the whole matrix, about 4 h
+npx tsx tools/performance/netpath-matrix.mts --rtts 150 --losses 1 --n 3 --secs 20   # one cell, both transports
 ```
 
 Label those results "emulated path". Neither tool replaces one measurement over a real WAN.
