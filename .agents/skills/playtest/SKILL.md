@@ -63,6 +63,9 @@ What the summary means:
   `replayMatch(log, world)` plays the match again bit for bit, and you can step to the tick of a stall. JSON has no
   `Infinity`, so non-finite numbers are saved as the strings `"Infinity"` and `"-Infinity"` (practice matches set
   `opts.botAimRange` to `Infinity`). Turn them back into numbers before `replayMatch`, or the bots aim differently.
+  Inputs are packed (`packLog`): most are `[tick, 8, id, mask, ...codes]` rather than `RE.Input` events, at about a
+  third of the size, so a 10-minute match is about 1 M characters. `replayMatch` and `tools/replay.mts` unpack them
+  with `unpackEvents`, which gives back the recorded numbers exactly. Read inputs through it, never the raw array.
 
 The raw timeline is `bundle.timeline` (`fields` plus one row per second). `ctx`, `logs` and `trail` are the
 usual KONGBOT report (`client/src/kongbot/context.ts`).
