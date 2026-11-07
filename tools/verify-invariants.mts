@@ -17,9 +17,9 @@
 // nearest stop, which counts its frames from the build; the far stop counts from when its impostor or proxy draws it),
 // --hold-max-s 120 (longest wait at one stop), --near-max-s 240 (longest wait for the nearest stop's build), --far-warn
 // <issue> (the far stop holds its frames without waiting for the far form, and warns, naming the open issue, instead of
-// failing when it never came), --out <file> (the
-// JSON verdict), --headed, --gpu (the machine's GPU instead of SwiftShader), --report-only (violations print as GitHub warnings and exit 0; the harness
-// still fails on its own errors). Exit 0 = no violation.
+// failing when it never came), --out <file> (the JSON verdict), --headed, --gpu (the machine's GPU instead of
+// SwiftShader), --report-only (violations print as GitHub warnings and exit 0; the harness still fails on its own
+// errors). Exit 0 = no violation.
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
