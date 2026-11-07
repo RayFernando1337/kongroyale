@@ -101,12 +101,14 @@ async function capture() {
   const krErrors = async (): Promise<string[]> => await page.evaluate(() => (window as any).__kr.errors ?? []).catch(() => []);
   let krSeen = 0;
   for (const view of views) {
-    const t1 = Date.now(), before = errors.length;
-    let errs: string[];
+    const t1 = Date.now(), before = errors.length, png = path.join(out, `${view}.png`);
+    fs.rmSync(png, { force: true });
+    let errs: string[], file: string | undefined;
     try {
       await page.evaluate((id) => (window as any).__kr.setView(id), view);
       const { shot, settled } = await settle(page);
-      fs.writeFileSync(path.join(out, `${view}.png`), shot);
+      fs.writeFileSync(png, shot);
+      file = `${view}.png`;
       errs = settled ? [] : [`still changing after ${SETTLE_FRAMES} frames`];
     } catch (e) {
       errs = [String(e).split("\n")[0]];
@@ -114,7 +116,7 @@ async function capture() {
     const kr = await krErrors();
     errs.push(...errors.slice(before), ...kr.slice(krSeen).map((e) => String(e).slice(0, 300)));
     krSeen = kr.length;
-    result[view] = { ...(fs.existsSync(path.join(out, `${view}.png`)) ? { file: `${view}.png` } : {}), ms: Date.now() - t1, errors: errs };
+    result[view] = { ...(file ? { file } : {}), ms: Date.now() - t1, errors: errs };
     console.log(view, JSON.stringify(result[view]));
   }
   await browser.close();
@@ -172,6 +174,7 @@ async function far() {
     const cam = [p.x + dx * FAR_DIST_M, y + FAR_UP_M, p.z + dz * FAR_DIST_M, p.x, y + 20, p.z, fov].map((v) => v.toFixed(1)).join(",");
     const notes: string[] = [];
     for (const side of ["built", "impostor"] as const) {
+      fs.rmSync(path.join(out, `${id}.${side}.png`), { force: true });
       const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(String(e).slice(0, 300)));
