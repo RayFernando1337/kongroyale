@@ -87,21 +87,15 @@ export function diagAutoApi(dir: string | null, log: (...a: unknown[]) => void, 
     return bytes;
   }
 
-  /** records a hit and says whether it is within n per windowMs */
-  function within(map: Map<string, number[]>, key: string, now: number, windowMs: number, n: number): boolean {
-    const hits = (map.get(key) ?? []).filter((t) => now - t < windowMs);
-    const ok = hits.length < n;
-    if (ok) hits.push(now);
-    map.set(key, hits);
-    return ok;
-  }
-
   async function handle(req: http.IncomingMessage, res: http.ServerResponse, ip: string) {
     if (!dir) { reply(res, 404, "automatic summaries are off on this server"); req.resume(); return; }
     if (req.method !== "POST") { reply(res, 405, "POST only"); req.resume(); return; }
     const now = Date.now();
     while (hour.length && now - hour[0] >= HOUR_MS) hour.shift();
-    if (hour.length >= SERVER_HOUR || !within(byAddress, ip, now, RATE_WINDOW_MS, PER_ADDRESS)) { counts.limited++; reply(res, 429, "too many rows"); req.resume(); return; }
+    const addressHits = (byAddress.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+    byAddress.set(ip, addressHits);
+    if (hour.length >= SERVER_HOUR || addressHits.length >= PER_ADDRESS) { counts.limited++; reply(res, 429, "too many rows"); req.resume(); return; }
+    addressHits.push(now);
     const chunks: Buffer[] = []; let size = 0;
     try {
       for await (const c of req) {
@@ -118,9 +112,11 @@ export function diagAutoApi(dir: string | null, log: (...a: unknown[]) => void, 
     const key = `${row.install}|${row.session}|${row.kind}|${row.t}|${row.sig ?? ""}`;
     const last = seen.get(key);
     if (last !== undefined && now - last < DEDUPE_MS) { counts.deduped++; reply(res, 204); return; }
-    if (!within(byInstall, row.install, now, HOUR_MS, PER_INSTALL_HOUR)) { counts.limited++; reply(res, 429, "too many rows"); return; }
-    // checked again after the body arrived: other rows may have been stored meanwhile, and nothing below awaits
-    if (hour.length >= SERVER_HOUR) { counts.limited++; reply(res, 429, "too many rows"); return; }
+    // the server-wide cap is checked again now the body has arrived (other rows may have been stored meanwhile), and an
+    // install's quota is charged only for a row that is stored; nothing below awaits
+    const installHits = (byInstall.get(row.install) ?? []).filter((t) => now - t < HOUR_MS);
+    byInstall.set(row.install, installHits);
+    if (hour.length >= SERVER_HOUR || installHits.length >= PER_INSTALL_HOUR) { counts.limited++; reply(res, 429, "too many rows"); return; }
     const at = new Date(now), line = JSON.stringify({ at: at.toISOString(), ...row }) + "\n";
     if (used(dir) + Buffer.byteLength(line) > capBytes) {
       counts.full++;
@@ -133,7 +129,7 @@ export function diagAutoApi(dir: string | null, log: (...a: unknown[]) => void, 
       fs.appendFileSync(path.join(dir, at.toISOString().slice(0, 10) + ".jsonl"), line, { mode: 0o600 });
     } catch (e) { log("automatic summary not written:", e instanceof Error ? e.message : e); reply(res, 500, "could not store the row"); return; }
     if (seen.size >= MAX_DEDUPE_KEYS) seen.delete(seen.keys().next().value!);
-    seen.set(key, now); hour.push(now); counts.accepted++;
+    seen.set(key, now); hour.push(now); installHits.push(now); counts.accepted++;
     reply(res, 204);
   }
 
