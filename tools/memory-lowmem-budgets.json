@@ -7,8 +7,8 @@
     "dpr": 1,
     "seed": 42,
     "matches": 1,
-    "walk": true,
-    "stops": "the-wreck"
+    "matchSecs": 60,
+    "tourS": 0
   },
   "underPct": 5,
   "headroomPct": 2,

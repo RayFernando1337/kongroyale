@@ -19,7 +19,6 @@ const MB = 2 ** 20;
 const mb = (b: number) => Math.round((b / MB) * 10) / 10;
 
 const SCENARIO_VERSION = 3;
-const WALK_STOP_S = 300, WALK_QUIET_MS = 15_000;
 type Profile = "nogpu" | "mac" | "win";
 
 const PROBE = `(function () {
@@ -425,7 +424,7 @@ async function run() {
   const profile = profileOf(), nogpu = profile === "nogpu";
   const [vw, vh] = opt("--viewport", nogpu ? "640x360" : "1600x900").split("x").map(Number);
   const warmup = flag("--warmup");
-  const dpr = Number(opt("--dpr", "1")), seed = Number(opt("--seed", "42")), matchSecs = Number(opt("--match-secs", "60")), matches = Number(opt("--matches", "2")), tourS = Number(opt("--tour", "0")), walking = flag("--walk");
+  const dpr = Number(opt("--dpr", "1")), seed = Number(opt("--seed", "42")), matchSecs = Number(opt("--match-secs", "60")), matches = Number(opt("--matches", "2")), tourS = Number(opt("--tour", "0"));
   url.searchParams.set("seed", String(seed));
   if (nogpu && !url.searchParams.has("vegsplat")) url.searchParams.set("vegsplat", "0");
   const args = [`--use-angle=${{ nogpu: "swiftshader", mac: "metal", win: "d3d11" }[profile]}`, "--ignore-gpu-blocklist", nogpu ? "--enable-unsafe-swiftshader" : "--enable-gpu"];
@@ -477,24 +476,6 @@ async function run() {
     }
     await readEvictions();
   };
-  const walk = async () => {
-    for (const p of stops) {
-      console.log(`    walk: ${p.id}`);
-      const end = Date.now() + WALK_STOP_S * 1000;
-      let settled = false, last = "", since = Date.now();
-      while (!settled && Date.now() < end && !overCap) {
-        if (!await teleport(p)) { errors.push("--walk needs a practice match (no local host to move the player in)"); return; }
-        const s = await evalIn<{ ids: string; ready: boolean }>(pageCdp, `(() => { const k = window.__kr, ids = (k.modules || []).filter((x) => x.startsWith("poi:")).sort(); return { ids: ids.join(","), ready: ids.includes("poi:${p.id}") && ids.every((x) => x === "poi:lobby-islet" || (k.streamMs && k.streamMs[x] !== undefined)) }; })()`);
-        if (s.ids !== last) { last = s.ids; since = Date.now(); }
-        settled = s.ready && Date.now() - since >= WALK_QUIET_MS;
-        await trace();
-        if (!settled) await sleep(2000);
-      }
-      if (!settled) { if (!overCap) errors.push(`--walk: the POIs around ${p.id} did not settle ${WALK_STOP_S} s after the player arrived (resident: ${last || "none"}; low-memory streaming stalled?)`); return; }
-      console.log(`    settled at ${p.id}: ${last}`);
-    }
-    await readEvictions();
-  };
   const watchdogBlind = new Map<number, number>();
   const watchdog = setInterval(() => {
     void processes(browserCdp).then((procs) => {
@@ -538,7 +519,7 @@ async function run() {
       } else {
       if (m === 1 && await waitFor("the plane phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 1", waitS, true)) samples.push(await takeSample("plane", browserCdp, pageCdp, t0));
       if (!await waitFor("the play phase", "((window.__kr.game.cm && window.__kr.game.cm.phase) | 0) >= 2", nogpu ? 1200 : 240)) break;
-      if (walking) await walk(); else if (tourS > 0) await tour(matchSecs); else await hold(matchSecs * 1000);
+      if (tourS > 0) await tour(matchSecs); else await hold(matchSecs * 1000);
       samples.push(await takeSample(`match${suffix}`, browserCdp, pageCdp, t0));
       }
       await evalIn<void>(pageCdp, "window.__kr.game.leave()");
@@ -583,7 +564,7 @@ async function run() {
   const result = {
     schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "memory", startedAt, durationMs: Math.round(performance.now() - t0),
     source: source(process.cwd()), environment: { ...env(), gpu: gpu || null },
-    config: { url: url.pathname + url.search, profile, viewport: `${vw}x${vh}`, dpr, seed, matchSecs, matches, warmup, heap: flag("--heap"), tourS, walk: walking, stops: only.join(",") },
+    config: { url: url.pathname + url.search, profile, viewport: `${vw}x${vh}`, dpr, seed, matchSecs, matches, warmup, heap: flag("--heap"), tourS, stops: only.join(",") },
     cases, errors, notes, timeline, artifacts: [], evictions, coldDraws,
     leaks: [delta("left1", "left2"), delta("match", "match2"), delta("warmup", "warmup2"), delta("title", "left1")].filter(Boolean),
   } satisfies RunResult & { leaks: unknown[]; notes: string[]; timeline: unknown[]; evictions: unknown[]; coldDraws: number };
@@ -680,4 +661,4 @@ function table() {
 if (cmd === "run") { await run(); process.exit(process.exitCode ?? 0); }
 else if (cmd === "table") table();
 else if (cmd === "check") { const b = opts("--budgets"), f = argv.slice(1).find((a) => !a.startsWith("--") && !b.includes(a)) ?? ""; process.exitCode = checkBudgets(parseResult(JSON.parse(fs.readFileSync(f, "utf8")), f), b.length ? b : ["tools/memory-budgets.json"]) ? 0 : 1; }
-else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--warmup] [--budgets FILE]... [--max-mb N] [--heap] [--tour SECONDS | --walk] [--stops poi,poi,...] | table result.json... [--md] | check result.json [--budgets FILE]... (default tools/memory-budgets.json)"); process.exitCode = cmd === "help" ? 0 : 2; }
+else { console.log("usage: npx tsx tools/performance/memory.mts run --url http://127.0.0.1:PORT [--profile nogpu|mac|win] [--warmup] [--budgets FILE]... [--max-mb N] [--heap] [--tour SECONDS [--stops poi,poi,...]] | table result.json... [--md] | check result.json [--budgets FILE]... (default tools/memory-budgets.json)"); process.exitCode = cmd === "help" ? 0 : 2; }
