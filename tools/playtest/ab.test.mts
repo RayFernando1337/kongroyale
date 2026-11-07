@@ -31,12 +31,15 @@ bundle("C1", 30, 40, report("forced-wt", "wt", null, 30, 50, 0, 30));
 // earlier report's folder sorts last
 bundle("C3", 30, 40, report("forced-wt", "ws", "closed", 30, 50, 0, 30, 7), 0, 0, "install-C2", "2026-11-07T00:05:00Z");
 bundle("C4", 30, 40, report("forced-wt", "wt", null, 30, 50, 0, 30, 7), 0, 0, "install-C2", "2026-11-07T00:01:00Z");
+// one forced-ws link: a report at 120 s of play uploads slowly and lands after one taken earlier, at 60 s
+bundle("E1", 60, 50, report("forced-ws", "ws", "flag-off", 40, 80, 9, 120, 3), 0, 0, "install-E", "2026-11-07T00:01:00Z");
+bundle("E2", 60, 50, report("forced-ws", "ws", "flag-off", 40, 80, 3, 60, 3), 0, 0, "install-E", "2026-11-07T00:09:00Z");
 bundle("D1", 60, 60, report("off", "ws", "server-off", 70, 90, 10, 600));
 bundle("P1", 60, -1, null);
 
 const rows = runAb(tmp, () => assert.fail("no bundle is skipped"));
 const by = new Map(rows.map((r) => [r.arm, r]));
-assert.deepEqual(rows.map((r) => r.arm), ["wt", "ws", "forced-wt", "off"], "one row per arm with bundles; the practice match has no link and no row");
+assert.deepEqual(rows.map((r) => r.arm), ["wt", "ws", "forced-wt", "forced-ws", "off"], "one row per arm with bundles; the practice match has no link and no row");
 const wt = by.get("wt")!, ws = by.get("ws")!;
 assert.equal(wt.bundles, 2); assert.equal(wt.players, 2); assert.equal(wt.onWt, 1);
 assert.deepEqual(wt.fallbacks, { timeout: 1 });
@@ -47,6 +50,9 @@ assert.equal(wt.pingMs, 70, "the practice match's 500 ms seconds before A1's lin
 assert.equal(wt.lagSPer10Min, 0, "nor are its lag spikes");
 assert.equal(by.get("off")!.deferredPerMin, 1, "10 markers over the link's 10 minutes of play, though the timeline kept only 1");
 assert.deepEqual(by.get("forced-wt")!.fallbacks, { closed: 1 }, "the newer report of C2's link wins a tie in play seconds");
+const fws = by.get("forced-ws")!;
+assert.equal(fws.links, 1); assert.equal(fws.playMin, 2, "E's report with more play wins though it landed first");
+assert.equal(fws.deferredPerMin, 4.5);
 assert.equal(ws.bundles, 2); assert.equal(ws.links, 1, "B0 and B1 are two reports of one link (same player, same since)");
 assert.deepEqual(ws.fallbacks, { "flag-off": 1 }); assert.equal(ws.ackP95Ms, 200);
 assert.equal(ws.deferredPerMin, 6, "the link's 6 markers over its 1 minute, from the later report only");

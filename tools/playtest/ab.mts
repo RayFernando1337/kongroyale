@@ -38,13 +38,14 @@ export function linkOf(s: Saved) {
 }
 type Link = NonNullable<ReturnType<typeof linkOf>>;
 
-/** the latest report of each link (one player's link that opened at `since`), by when the server received it, then by
- *  its counters: they are cumulative, so two reports of one link would count its start twice */
+/** the latest report of each link (one player's link that opened at `since`): its counters are cumulative, so two
+ *  reports of one link would count its start twice. The one with the most play and acks; on a tie (a fallback in the
+ *  room between them) the one the server received last, since uploads can finish out of order */
 export function latestPerLink(links: Link[]) {
   const by = new Map<string, Link>();
   links.forEach((k, i) => {
     const key = k.since === null ? `bundle ${i}` : `${k.player ?? "?"} ${k.since}`, o = by.get(key);
-    const newer = !o || (k.receivedAt !== o.receivedAt ? k.receivedAt > o.receivedAt : k.playS !== o.playS ? k.playS > o.playS : k.ackN >= o.ackN);
+    const newer = !o || (k.playS !== o.playS ? k.playS > o.playS : k.ackN !== o.ackN ? k.ackN > o.ackN : k.receivedAt >= o.receivedAt);
     if (newer) by.set(key, k);
   });
   return [...by.values()];
