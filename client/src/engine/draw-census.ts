@@ -13,6 +13,9 @@
 // material whose version moved since its last draw (three re-derives its program parameters then). The time between
 // two draws of one pass, less the hooks run in it (the next object's two matrix products, the render list step), is the
 // later draw's gap. A pass's walk is its own time outside draws, gaps and hooks: projectObject, sorting, setup.
+// Per draw it also notes a program lookup (three called getProgram, seen through material.customProgramCacheKey) and
+// which of the material's renderer properties changed then (why). Per world module it counts the matrix walk:
+// updateMatrixWorld visits and updateMatrix recomposes.
 //
 // __kr.drawCensus: { on, label, report(), reset() }. gpu-match.mts --census sets label to the tour segment and on to
 // the measured frames, then saves report().
