@@ -464,17 +464,16 @@ async function run() {
   const only = opt("--stops", "").split(",").filter(Boolean);
   const stops = only.length ? only.map((id) => POIS.find((p) => p.id === id) ?? (() => { throw Error(`--stops: no POI ${id}`); })()) : POIS.filter((p) => p.id !== "lobby-islet");
   let evictions: unknown[] = [], coldDraws = 0;
-  const teleport = (p: (typeof POIS)[number]) => evalIn<boolean>(pageCdp, `(() => { const k = window.__kr, me = k.game && k.game.link && k.game.link.match && k.game.link.match.players.find((q) => q && !q.bot); if (!me) return false; Object.assign(me, { x: ${p.x}, z: ${p.z}, y: k.engine.terrain.height(${p.x}, ${p.z}) + 1.5, vx: 0, vy: 0, vz: 0, hp: ${MAX_HP}, shield: ${MAX_SHIELD} }); return true; })()`);
-  const readEvictions = async () => { ({ evictions, coldDraws } = await evalIn<{ evictions: unknown[]; coldDraws: number }>(pageCdp, "({ evictions: window.__kr.evictions || [], coldDraws: window.__kr.coldDraws || 0 })")); };
   const tour = async (secs: number) => {
     const end = Date.now() + secs * 1000;
     for (let i = 0; Date.now() < end && !overCap; i++) {
       const p = stops[i % stops.length];
-      if (!await teleport(p)) { errors.push("--tour needs a practice match (no local host to move the player in)"); break; }
+      const moved = await evalIn<boolean>(pageCdp, `(() => { const g = window.__kr.game, l = g && g.link; if (!l || !l.hostTool || !g.cm) return false; l.hostTool({ op: "place", pid: g.cm.me, x: ${p.x}, z: ${p.z}, yaw: 0 }); l.hostTool({ op: "heal", pid: g.cm.me, hp: ${MAX_HP}, shield: ${MAX_SHIELD} }); return true; })()`);
+      if (!moved) { errors.push("--tour needs a practice match (no local host to move the player in)"); break; }
       console.log(`    tour: ${p.id}`);
       await hold(Math.min(tourS * 1000, Math.max(0, end - Date.now())));
     }
-    await readEvictions();
+    ({ evictions, coldDraws } = await evalIn<{ evictions: unknown[]; coldDraws: number }>(pageCdp, "({ evictions: window.__kr.evictions || [], coldDraws: window.__kr.coldDraws || 0 })"));
   };
   const watchdogBlind = new Map<number, number>();
   const watchdog = setInterval(() => {

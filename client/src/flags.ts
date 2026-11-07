@@ -64,6 +64,7 @@ const FLAGS = {
   gunrev: { kind: text, owner: "weapons", purpose: "chest stage hero gun muzzle side: =1 up-right, else down-left; absent = up-right" },
   harborhyst: { kind: on, owner: "pois", purpose: "hysteresis on Peel Harbor LOD switches" },
   harborNoCull: { kind: present, owner: "pois", purpose: "turn off Peel Harbor's LOD culling" },
+  hostworker: { kind: one, owner: "game", purpose: "=1 runs an offline practice match's host in a Web Worker instead of on the main thread" },
   harborOnly: { kind: subset, owner: "pois", purpose: "build only these Peel Harbor parts (plus the apron)" },
   headless: { kind: present, owner: "audio", purpose: "audition page without its buttons (scripted runs)" },
   heavyms: { kind: num(Infinity), owner: "boot", purpose: "modules that take longer than this (ms) build behind the match card" },
@@ -201,7 +202,7 @@ const FLAGS = {
   wprepass: { kind: present, owner: "water", purpose: "depth pre-pass for water" },
   wripple: { kind: present, owner: "water", purpose: "demo ripples" },
   ws: { kind: text, owner: "game", routing: true, purpose: "game server socket URL (ws:// or wss://) instead of the page's own" },
-  wt: { kind: one, owner: "game", purpose: "WebTransport when the server offers it" },
+  wt: { kind: text, owner: "game", purpose: "WebTransport: =1 on, =0 off, else the A/B arm" },
 } as const satisfies Record<string, Flag>;
 
 export type FlagName = keyof typeof FLAGS;
