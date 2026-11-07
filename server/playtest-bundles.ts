@@ -138,57 +138,38 @@ export function bundleLimits(env: { KR_PLAYTEST_BUNDLES_MAX?: string; KR_PLAYTES
   return { count: read("KR_PLAYTEST_BUNDLES_MAX", BUNDLE_CAP_COUNT), bytes: read("KR_PLAYTEST_BUNDLES_MB", BUNDLE_CAP_MB) * 1024 * 1024 };
 }
 
-/** a bundle untouched this long is final; a dot-named one this old was left by a stopped server */
+/** a bundle folder untouched this long is final, so its size is counted once */
 const SETTLED_MS = 60_000;
-/** the dot name a bundle is written under before it is renamed into place */
-const STAGED = /^\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[A-Za-z0-9-]+$/;
 
 export function bundleWriter(dir: string, log: (...a: unknown[]) => void, limits = { count: BUNDLE_CAP_COUNT, bytes: BUNDLE_CAP_MB * 1024 * 1024 }) {
   let full = false;
   // The folder is listed before every write, so servers sharing it share the cap and clearing it resumes writing.
-  // A bundle's bytes are counted once it has settled (untouched for SETTLED_MS: a bundle is never rewritten), so a
-  // write costs one listing instead of a stat per file, which took 70 ms at 5000 bundles. A bundle is written under a
-  // dot name and renamed into place; a newer one, or one an older server is still filling, is counted afresh each
-  // time, and so is a dot-named bundle still being written, which counts toward the bytes but not the bundles. The
-  // folder is counted in full once, when the server starts, which also removes dot-named bundles a stopped server left.
+  // A bundle is never rewritten, so its bytes are kept once its folder has settled (untouched for SETTLED_MS) and a
+  // write costs one listing instead of a stat per file, which took 70 ms at 5000 bundles. A newer folder, such as one
+  // another server is still filling, is counted afresh each time. The folder is counted in full once, at start.
   const sizes = new Map<string, number>();
 
-  function measure(name: string): { bytes: number; settled: boolean } {
-    let bytes = 0, settled = false;
-    try {
-      const folder = path.join(dir, name);
-      for (const f of fs.readdirSync(folder)) bytes += fs.statSync(path.join(folder, f)).size;
-      settled = Date.now() - fs.statSync(folder).mtimeMs > SETTLED_MS;
-    } catch { /* removed while being counted */ }
-    return { bytes, settled };
-  }
-
   function usage(): { count: number; bytes: number } {
-    let entries: fs.Dirent[];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()); }
+    let names: string[];
+    try { names = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); }
     catch { sizes.clear(); return { count: 0, bytes: 0 }; }
-    const listed = new Set<string>();
-    let count = 0, bytes = 0;
-    for (const d of entries) {
-      if (d.name.startsWith(".")) { if (STAGED.test(d.name)) bytes += measure(d.name).bytes; continue; }
-      listed.add(d.name); count++;
-      const known = sizes.get(d.name);
-      if (known !== undefined) { bytes += known; continue; }
-      const m = measure(d.name);
-      if (m.settled) sizes.set(d.name, m.bytes);
-      bytes += m.bytes;
-    }
+    const listed = new Set(names);
     for (const name of sizes.keys()) if (!listed.has(name)) sizes.delete(name);
-    return { count, bytes };
-  }
-
-  try {
-    for (const d of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!d.isDirectory() || !STAGED.test(d.name) || !measure(d.name).settled) continue;
-      fs.rmSync(path.join(dir, d.name), { recursive: true, force: true });
-      log(`playtest bundles: removed ${d.name}, a bundle a stopped server didn't finish writing`);
+    let bytes = 0;
+    for (const name of names) {
+      const known = sizes.get(name);
+      if (known !== undefined) { bytes += known; continue; }
+      let size = 0, settled = false;
+      try {
+        const folder = path.join(dir, name);
+        for (const f of fs.readdirSync(folder)) size += fs.statSync(path.join(folder, f)).size;
+        settled = Date.now() - fs.statSync(folder).mtimeMs > SETTLED_MS;
+      } catch { /* removed while being counted */ }
+      if (settled) sizes.set(name, size);
+      bytes += size;
     }
-  } catch { /* no folder yet */ }
+    return { count: names.length, bytes };
+  }
 
   function write(b: BundleFile): string | null {
     const body = Buffer.from(JSON.stringify(b.json));
@@ -202,13 +183,9 @@ export function bundleWriter(dir: string, log: (...a: unknown[]) => void, limits
     const name = `${b.at.toISOString().replace(/[:.]/g, "-")}-${b.id.replace(/[^A-Za-z0-9-]/g, "").slice(0, 24) || "report"}`;
     const folder = path.resolve(dir, name);
     if (path.dirname(folder) !== path.resolve(dir)) return null;
-    const part = path.join(dir, "." + name);
-    fs.mkdirSync(part, { recursive: true, mode: 0o700 });
-    try {
-      fs.writeFileSync(path.join(part, "bundle.json"), body, { mode: 0o600 });
-      if (b.shot) fs.writeFileSync(path.join(part, b.shotMime === "image/png" ? "shot.png" : b.shotMime === "image/webp" ? "shot.webp" : "shot.jpg"), b.shot, { mode: 0o600 });
-      fs.renameSync(part, folder);
-    } catch (e) { fs.rmSync(part, { recursive: true, force: true }); throw e; }
+    fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(folder, "bundle.json"), body, { mode: 0o600 });
+    if (b.shot) fs.writeFileSync(path.join(folder, b.shotMime === "image/png" ? "shot.png" : b.shotMime === "image/webp" ? "shot.webp" : "shot.jpg"), b.shot, { mode: 0o600 });
     sizes.set(name, size);
     return folder;
   }
