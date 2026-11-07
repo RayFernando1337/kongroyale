@@ -16,7 +16,7 @@ CONSTANTS Pois, Cap,
 VARIABLES
   st,       \* per POI: queued | trimming (picked, eviction pass running) | building | integrating | live
   dist,     \* per POI: "inside" (camera inside it: d <= 0) | "ahead" (the glide heads for it) | "near" | "far"
-  glide,    \* the local player is falling or gliding (low-mem.ts descending(): cm.pred.st Freefall or Glide)
+  glide,    \* the local player is falling or gliding (low-mem.ts nearModule: cm.pred.st Freefall or Glide)
   inMatch,  \* kr.game.inMatch (nextNearModule picks only in a match)
   loop,     \* the stream loop: "pick" (nextNearModule) | "trim" | "build" | "wait" (inflight back-pressure)
   thrown,   \* (for the rules) a POI was evicted while still building or fading in

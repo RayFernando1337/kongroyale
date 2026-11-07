@@ -39,12 +39,6 @@ function track(camera: THREE.Camera): boolean {
   return motion.known;
 }
 
-/** the local player is falling or gliding (never the caster's camera) */
-function descending(kr: Session | undefined): boolean {
-  const st = kr?.game?.cm?.pred?.st;
-  return !kr?.caster?.casting && (st === PS.Freefall || st === PS.Glide);
-}
-
 function distM(camera: THREE.Camera, p: Poi): number {
   const e = camera.matrixWorld.elements;
   const here = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
@@ -55,11 +49,11 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   const kr = (globalThis as unknown as { __kr?: Session }).__kr;
   const casting = !!kr?.caster?.casting;
   if (!kr?.game?.inMatch && !casting) return null;
-  const phase = kr?.game?.cm?.phase ?? Phase.Play;
+  const cm = kr?.game?.cm, phase = cm?.phase ?? Phase.Play, st = cm?.pred?.st;
   // on the plane (and in the warm-up) the build range counts height above the pad, so the overview builds stay the
   // only far ones; once the player falls or glides it is the horizontal 5 s lookahead like on foot, so the POI the glide
   // heads for builds as soon as it is within lowmemr and those behind are the first evicted (RAY-272)
-  const airborne = !casting && phase <= Phase.Plane && !descending(kr);
+  const airborne = !casting && phase <= Phase.Plane && st !== PS.Freefall && st !== PS.Glide;
   if (phase !== Phase.Plane) viewBuilds = 0;
   const overview = !casting && phase === Phase.Plane && viewBuilds < viewCap;
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
