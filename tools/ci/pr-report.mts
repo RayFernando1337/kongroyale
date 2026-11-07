@@ -65,13 +65,12 @@ export function extract(dir: string): Metric[] {
     if (!isObj(groups)) continue;
     for (const [key, metrics] of Object.entries(groups)) {
       if (!isObj(metrics) || !safeName(key)) continue;
-      const phaseUnder = isObj(budgets.phaseUnderPct) ? num(budgets.phaseUnderPct[key]) : null;
       const c = cases.find((x) => isObj(x.scenario) && x.scenario.id === (s.casePrefix ?? "") + key);
       const ms = c && isObj(c.metrics) ? c.metrics : {};
       for (const [name, budget] of Object.entries(metrics)) {
         if (num(budget) === null || !safeName(name)) continue;
         const m = ms[name];
-        out.push({ source: s.id, name: `${key}.${name}`, value: isObj(m) && m.status === "ok" ? num(m.value) : null, budget: budget as number, underPct: phaseUnder ?? underPct });
+        out.push({ source: s.id, name: `${key}.${name}`, value: isObj(m) && m.status === "ok" ? num(m.value) : null, budget: budget as number, underPct: (isObj(budgets.underPctBy) ? num(budgets.underPctBy[`${key}.${name}`]) : null) ?? underPct });
       }
     }
   }
