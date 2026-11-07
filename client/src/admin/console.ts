@@ -11,6 +11,7 @@ import { Roster } from "./roster";
 import type { Ack, ActBody, Ctx } from "./ctx";
 import { CONSOLE_CSS } from "./console-styles";
 import { qrSvg } from "./qr";
+import { ReportsView } from "./reports";
 
 const PHASES = ["Warm-up", "In the plane", "In play", "Results"];
 const ACK_TIMEOUT_MS = 10_000;
@@ -502,6 +503,9 @@ class App {
   private pills = h("nav", "tn-pills tn-adm-pills");
   private pillMap = new Map<string, HTMLButtonElement>();
   private newPill = h("button", "tn-pill tn-adm-newpill");
+  private reportsPill = h("button", "tn-pill tn-adm-reportspill");
+  private reporting = false;
+  private reports: ReportsView;
   private main = h("main", "tn-adm-main");
   private evNote = h("p", "tn-support tn-adm-evnote");
   private toasts = h("div", "tn-adm-toasts");
@@ -533,7 +537,12 @@ class App {
 
     this.newPill.type = "button";
     this.newPill.append(icon("plus"), h("span", "", "New lobby"));
-    this.newPill.addEventListener("click", () => { this.creating = true; this.create.reset(true); this.render(); this.create.focus(); });
+    this.newPill.addEventListener("click", () => { this.creating = true; this.reporting = false; this.create.reset(true); this.render(); this.create.focus(); });
+    this.reportsPill.type = "button";
+    this.reportsPill.addEventListener("click", () => { this.reporting = true; this.creating = false; this.render(); });
+    this.reports = new ReportsView((m, tone) => this.toast(m, tone), () => this.paintReportsPill());
+    this.paintReportsPill();
+    this.reports.start();
     this.pills.setAttribute("aria-label", "Lobbies");
 
     this.create = new CreateView(this.net, (code) => {
@@ -587,7 +596,7 @@ class App {
 
     const ls = this.lobbies;
     // lobby pills
-    this.pills.hidden = !ls || ls.length === 0;
+    this.pills.hidden = !ls;
     if (ls) {
       const kids: HTMLElement[] = [];
       for (const l of ls) {
@@ -596,7 +605,7 @@ class App {
           b = h("button", "tn-pill tn-adm-lpill");
           b.type = "button";
           const code = l.code;
-          b.addEventListener("click", () => { this.sel = code; this.creating = false; this.render(); });
+          b.addEventListener("click", () => { this.sel = code; this.creating = false; this.reporting = false; this.render(); });
           this.pillMap.set(l.code, b);
         }
         const nm = h("span", "nm", l.name);
@@ -607,12 +616,14 @@ class App {
           b.replaceChildren(...(l.match ? [h("i", "live")] : []), nm, ct);
           b.title = l.name;
         }
-        b.setAttribute("aria-pressed", String(!this.creating && l.code === this.sel));
+        b.setAttribute("aria-pressed", String(!this.creating && !this.reporting && l.code === this.sel));
         kids.push(b);
       }
       for (const [code, b] of this.pillMap) if (!ls.some((l) => l.code === code)) { b.remove(); this.pillMap.delete(code); }
-      this.newPill.setAttribute("aria-pressed", String(this.creating));
+      this.newPill.setAttribute("aria-pressed", String(this.creating && !this.reporting));
       kids.push(this.newPill);
+      this.reportsPill.setAttribute("aria-pressed", String(this.reporting));
+      kids.push(this.reportsPill);
       const cur = this.pills.children;
       if (cur.length !== kids.length || !kids.every((k, i) => cur[i] === k)) this.pills.replaceChildren(...kids);
     }
@@ -620,6 +631,7 @@ class App {
     // main
     let want: HTMLElement;
     if (!ls) want = this.loading;
+    else if (this.reporting) want = this.reports.el;
     else if (this.creating || !ls.length) {
       if (!ls.length) this.creating = false;
       this.create.setHasLobbies(ls.length > 0);
@@ -637,7 +649,13 @@ class App {
       want = this.view.el;
     }
     if (this.main.firstChild !== want || this.main.childNodes.length !== 1) this.main.replaceChildren(want);
-    this.main.dataset.view = want === this.create.el ? "create" : want === this.loading ? "loading" : "lobby";
+    this.main.dataset.view = want === this.create.el ? "create" : want === this.loading ? "loading" : want === this.reports.el ? "reports" : "lobby";
+    if (this.reports.shown !== (want === this.reports.el)) this.reports.show(want === this.reports.el);
+  }
+
+  private paintReportsPill(): void {
+    const n = this.reports?.unseen ?? 0;
+    this.reportsPill.replaceChildren(icon("alert"), h("span", "", "Reports"), ...(n ? [h("small", "", n > 99 ? "99+" : n)] : []));
   }
 
   toast(msg: string, tone: "ok" | "err"): void {
