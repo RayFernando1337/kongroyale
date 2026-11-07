@@ -43,11 +43,10 @@
     }
   ],
   "verified": {
-    "model": "51b3cd40ac36321a",
+    "model": "e753d1497cc68290",
     "regions": {
-      "client/src/low-mem.ts#nearModule": "323dec7618974b6d",
-      "client/src/low-mem.ts#descending": "3944d6640ca5783e",
-      "client/src/low-mem.ts#distM": "99cb8534b2e57ac0",
+      "client/src/low-mem.ts#nearModule": "b23f79ef7d033f1e",
+      "client/src/low-mem.ts#descending": "af29df69e7a20fb4",
       "client/src/low-mem.ts#nextNearModule": "ec86e5a21cca6356",
       "client/src/low-mem.ts#evictStreamed": "a09acc000ea7af2c",
       "client/src/low-mem.ts#over": "46885f6c04ab472c",
