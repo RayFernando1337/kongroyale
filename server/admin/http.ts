@@ -7,14 +7,15 @@
 //   GET  /admin/api/session   200 / 401
 //   WS   /admin/ws            state pushes + actions; same origin + live session at the upgrade AND on every message
 //   GET  /api/event/CODE      public: what a player link's screen shows (name, mode, count) — never anything else
-// Nothing here ever returns or logs the key, a session token or an IP address.
+// Nothing here ever returns or logs the key, a session token or an IP address. The lobbies come from o.events: this
+// process's own, or behind a front every match process's (server/front.ts).
 import fs from "node:fs";
 import path from "node:path";
 import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import * as auth from "./auth";
-import { EVENT_MODE, adminAction, adminSnapshot, onEventsDirty, publicInfo } from "./events";
+import { EVENT_MODE, localEvents, type AdminEvents, type Res } from "./events";
 import type { AdminServerMsg } from "../../shared/net/event";
 
 const MAX_BODY = 2048, MAX_ADMIN_SOCKETS = 8, WRONG_KEY_DELAY_MS = 400;
@@ -29,7 +30,8 @@ const PAGE = `<!doctype html>
 <body class="kr-admin"><div id="kr-admin"></div><noscript>The admin console needs JavaScript.</noscript><script src="admin/login.js"></script></body></html>
 `;
 
-export function createAdminHttp(o: { root: string; ipOf(req: http.IncomingMessage): string; log(...a: unknown[]): void }) {
+export function createAdminHttp(o: { root: string; ipOf(req: http.IncomingMessage): string; log(...a: unknown[]): void; events?: AdminEvents }) {
+  const ev = o.events ?? localEvents;
   const dir = path.join(o.root, "dist-admin");
   const files = new Map<string, { body: Buffer; mtime: number }>();
   function bundle(name: "login.js" | "console.js"): Buffer | null {
@@ -73,8 +75,7 @@ export function createAdminHttp(o: { root: string; ipOf(req: http.IncomingMessag
       if (req.method !== "GET" && req.method !== "HEAD") { json(res, 405, { ok: false }); return true; }
       if (!infoAllowed(auth.ipHash(o.ipOf(req)))) { json(res, 429, { ok: false, error: "slow-down" }); return true; }
       const code = url.slice("/api/event/".length).toUpperCase().slice(0, 16);
-      const info = publicInfo(code);
-      json(res, info.ok ? 200 : 404, info); return true;
+      void ev.info(code).then((info) => json(res, info.ok ? 200 : 404, info)); return true;
     }
     if (url !== "/admin" && !url.startsWith("/admin/")) return false;
     if (url === "/admin") {
@@ -127,11 +128,11 @@ export function createAdminHttp(o: { root: string; ipOf(req: http.IncomingMessag
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096, perMessageDeflate: false, clientTracking: false });
   const admins = new Set<{ ws: WebSocket; sid: string; tokens: number; at: number; strikes: number }>();
   const out = (ws: WebSocket, m: AdminServerMsg) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)); };
-  const stateMsg = (): AdminServerMsg => ({ t: "state", now: Date.now(), lobbies: adminSnapshot(), eventMode: EVENT_MODE });
+  const stateMsg = async (): Promise<AdminServerMsg> => ({ t: "state", now: Date.now(), lobbies: await ev.snapshot(), eventMode: EVENT_MODE });
   let pushTimer: NodeJS.Timeout | null = null;
-  function pushNow() { pushTimer = null; if (!admins.size) return; const s = JSON.stringify(stateMsg()); for (const a of admins) if (a.ws.readyState === WebSocket.OPEN) a.ws.send(s); }
-  onEventsDirty(() => { if (!pushTimer && admins.size) pushTimer = setTimeout(pushNow, 120); });
-  setInterval(() => { if (admins.size) pushNow(); }, 2000).unref();
+  async function pushNow() { pushTimer = null; if (!admins.size) return; const s = JSON.stringify(await stateMsg()); for (const a of admins) if (a.ws.readyState === WebSocket.OPEN) a.ws.send(s); }
+  ev.onDirty(() => { if (!pushTimer && admins.size) pushTimer = setTimeout(() => void pushNow(), 120); });
+  setInterval(() => { if (admins.size) void pushNow(); }, 2000).unref();
   auth.onSessionEnd((sid, why) => { for (const a of [...admins]) if (a.sid === sid) { out(a.ws, { t: "bye", why }); a.ws.close(4401, why); } });
 
   /** true = handled (or refused) */
@@ -147,7 +148,7 @@ export function createAdminHttp(o: { root: string; ipOf(req: http.IncomingMessag
       admins.add(a);
       ws.on("close", () => admins.delete(a));
       ws.on("error", () => { /* close follows */ });
-      out(ws, stateMsg());
+      void stateMsg().then((m) => out(ws, m));
       ws.on("message", (data: RawData, isBinary: boolean) => {
         // per message: the session must still be live (logout / expiry closes it — this is the belt to that brace)
         if (!auth.sessionLive(sid)) { out(ws, { t: "bye", why: "expired" }); ws.close(4401, "expired"); return; }
@@ -158,11 +159,12 @@ export function createAdminHttp(o: { root: string; ipOf(req: http.IncomingMessag
         let msg: Record<string, unknown>;
         try { const v = JSON.parse(String(data)); if (!v || typeof v !== "object" || Array.isArray(v)) { bad(); return; } msg = v; } catch { bad(); return; }
         if (msg.t !== "act" || typeof msg.id !== "number" || !Number.isInteger(msg.id) || typeof msg.a !== "string") { bad(); return; }
-        let r: { ok: boolean; msg: string; code?: string };
-        try { r = adminAction(msg); } catch (e) { o.log("admin action error", e); r = { ok: false, msg: "SERVER ERROR" }; }
-        o.log(`admin: ${String(msg.a).slice(0, 12)}${typeof msg.code === "string" ? " " + msg.code.slice(0, 8) : ""} → ${r.ok ? "ok" : "refused"}: ${r.msg}`);
-        out(ws, { t: "ack", id: msg.id, ok: r.ok, msg: r.msg, ...(r.code ? { code: r.code } : {}) });
-        if (!pushTimer) pushTimer = setTimeout(pushNow, 30);
+        const act = msg;
+        void ev.action(act).catch((e): Res => { o.log("admin action error", e); return { ok: false, msg: "SERVER ERROR" }; }).then((r) => {
+          o.log(`admin: ${String(act.a).slice(0, 12)}${typeof act.code === "string" ? " " + act.code.slice(0, 8) : ""} → ${r.ok ? "ok" : "refused"}: ${r.msg}`);
+          out(ws, { t: "ack", id: act.id as number, ok: r.ok, msg: r.msg, ...(r.code ? { code: r.code } : {}) });
+          if (!pushTimer) pushTimer = setTimeout(() => void pushNow(), 30);
+        });
       });
     });
     return true;
