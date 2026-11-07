@@ -183,9 +183,12 @@ export function bundleWriter(dir: string, log: (...a: unknown[]) => void, limits
     const name = `${b.at.toISOString().replace(/[:.]/g, "-")}-${b.id.replace(/[^A-Za-z0-9-]/g, "").slice(0, 24) || "report"}`;
     const folder = path.resolve(dir, name);
     if (path.dirname(folder) !== path.resolve(dir)) return null;
-    fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(path.join(folder, "bundle.json"), body, { mode: 0o600 });
-    if (b.shot) fs.writeFileSync(path.join(folder, b.shotMime === "image/png" ? "shot.png" : b.shotMime === "image/webp" ? "shot.webp" : "shot.jpg"), b.shot, { mode: 0o600 });
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(folder, { mode: 0o700 });
+    try {
+      fs.writeFileSync(path.join(folder, "bundle.json"), body, { mode: 0o600 });
+      if (b.shot) fs.writeFileSync(path.join(folder, b.shotMime === "image/png" ? "shot.png" : b.shotMime === "image/webp" ? "shot.webp" : "shot.jpg"), b.shot, { mode: 0o600 });
+    } catch (e) { fs.rmSync(folder, { recursive: true, force: true }); throw e; }
     sizes.set(name, size);
     return folder;
   }

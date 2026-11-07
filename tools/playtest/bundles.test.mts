@@ -120,6 +120,9 @@ assert.equal(bundleDir(root, path.join(root, "elsewhere")), path.join(root, "els
   assert.ok(w.write({ at, id: "KB-7", json: {}, shot: null, shotMime: null }), "clearing the folder lets writing resume");
   assert.ok(again.write({ at, id: "KB-8", json: {}, shot: null, shotMime: null }));
   assert.equal(w.write({ at, id: "KB-9", json: {}, shot: null, shotMime: null }), null, "a bundle another writer added counts toward the cap");
+  const failing = path.join(root, "failing"), fw = bundleWriter(failing, () => {}, { count: 10, bytes: 1024 * 1024 });
+  assert.throws(() => fw.write({ at, id: "KB-10", json: {}, shot: {} as Buffer, shotMime: "image/jpeg" }), "a write that fails part way throws");
+  assert.deepEqual(fs.readdirSync(failing), [], "and leaves no partial bundle to count toward the caps");
 
   const mixed = path.join(root, "mixed"), filling = path.join(mixed, "2026-11-04T12-00-02-000Z-KB-60");
   fs.mkdirSync(filling, { recursive: true });
