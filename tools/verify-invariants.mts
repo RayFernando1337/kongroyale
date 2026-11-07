@@ -126,7 +126,7 @@ try {
       // (the plantation's 870 m stop is occluded once it is built), staying outside the HLOD switch
       if (far) for (let n = 0; n < 8; n++) {
         // (the occlusion test runs once the camera has moved: two frames after the teleport)
-        for (const f = (await status()).frames; (await status()).frames < f + 2;) { await sleep(500); await place(x, z, yaw); }
+        for (const f = (await status()).frames, t = Date.now(); (await status()).frames < f + 2 && Date.now() - t < 30_000;) { await sleep(500); await place(x, z, yaw); }
         if (!(await occludedNow(id)) || d - FAR_STEP_M < hlodNear(p.r) + HLOD_HYST_M + 40) break;
         await at(d - FAR_STEP_M);
       }
