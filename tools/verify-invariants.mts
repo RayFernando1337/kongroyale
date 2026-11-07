@@ -12,8 +12,9 @@
 //   npx tsx tools/verify-invariants.mts --url http://127.0.0.1:3140 --query "lowmem=1&geofree=1&farimp=1"
 //
 // Options: --url (default http://127.0.0.1:3140), --query "a=1&b=2" (the arm's flags), --pois a,b (route POIs, default
-// ROUTE), --seed 42, --viewport 640x360, --hold-frames 12 (frames at each stop, after the stop's own POI has finished
-// streaming; at the nearest stop, after it is built; at the far stop, after its impostor or proxy draws it),
+// ROUTE), --seed 42, --viewport 640x360, --hold-frames 12 (frames at each stop; the middle stop also waits out a
+// build of the route POI already under way but not one still queued, so the model hand-over may land there or at the
+// nearest stop, which counts its frames from the build; the far stop counts from when its impostor or proxy draws it),
 // --hold-max-s 120 (longest wait at one stop), --near-max-s 240 (longest wait for the nearest stop's build), --far-warn
 // <issue> (the far stop holds its frames without waiting for the far form, and warns, naming the open issue, instead of
 // failing when it never came), --out <file> (the
