@@ -62,11 +62,15 @@ export function installDrawCensus(e: Engine): DrawCensus {
   const labels = new Map<string, Label>();
   const newLabel = (): Label => ({ frames: 0, stepMs: 0, submitMs: 0, passes: new Map(), classes: new Map(), objects: new Map(), outside: bucket() });
   let cur = newLabel();
-  const census: DrawCensus = { on: true, label: "all", report, reset: () => { labels.clear(); cur = newLabel(); } };
+  const census: DrawCensus = { on: true, label: "all", report, reset: () => { labels.clear(); cur = newLabel(); gen++; } };
 
   // ---- what a draw is: its module, kind, material and flags
   const moduleOf = new WeakMap<THREE.Object3D, string>();
-  const classOf = new WeakMap<THREE.Object3D, { m: THREE.Material; key: string }>();
+  // a class is re-derived after every ownership walk (gen), so a draw seen before its module root was tagged, or a
+  // material later seen drawing in two passes, moves to its right class within a second
+  const classOf = new WeakMap<THREE.Object3D, { m: THREE.Material; gen: number; key: string }>();
+  const twoPass = new WeakSet<THREE.Material>();
+  let gen = 0;
   const owned = (o: THREE.Object3D, h: HookName) => (o as unknown as Record<HookName, Hook>)[h] !== NOOP[h];
   function moduleName(o: THREE.Object3D): string {
     let p: THREE.Object3D = o;
@@ -75,14 +79,14 @@ export function installDrawCensus(e: Engine): DrawCensus {
   }
   function classKey(o: THREE.Object3D, m: THREE.Material): string {
     const c = classOf.get(o);
-    if (c && c.m === m) return c.key;
+    if (c && c.m === m && c.gen === gen) return c.key;
     const x = o as THREE.Object3D & { isBatchedMesh?: boolean; isInstancedMesh?: boolean; isSkinnedMesh?: boolean };
     const kind = x.isBatchedMesh ? "batched" : x.isInstancedMesh ? "instanced" : x.isSkinnedMesh ? "skinned" : o.type;
     // T transparent, 2 transparent double-sided in two passes, A alpha test, H own object hooks, M a material hook
-    const flags = (m.transparent ? "T" : "") + (m.transparent && m.side === THREE.DoubleSide && !m.forceSinglePass ? "2" : "") + (m.alphaTest > 0 ? "A" : "")
+    const flags = (m.transparent ? "T" : "") + (twoPass.has(m) || (m.transparent && m.side === THREE.DoubleSide && !m.forceSinglePass) ? "2" : "") + (m.alphaTest > 0 ? "A" : "")
       + (HOOKS.some((h) => owned(o, h)) ? "H" : "") + (m.onBeforeRender !== THREE.Material.prototype.onBeforeRender ? "M" : "");
     const key = moduleName(o) + " | " + kind + " | " + m.type + (flags ? " [" + flags + "]" : "");
-    classOf.set(o, { m, key });
+    classOf.set(o, { m, gen, key });
     return key;
   }
   const classBucket = (key: string) => { let b = cur.classes.get(key); if (!b) cur.classes.set(key, (b = bucket())); return b; };
@@ -116,13 +120,16 @@ export function installDrawCensus(e: Engine): DrawCensus {
   };
 
   // ---- one draw (draws never nest: bs is reused)
-  let lastProg: unknown = null, lastMat: THREE.Material | null = null, inDraw = false;
+  // three draws a transparent double-sided material as BackSide then FrontSide (renderObject flips material.side before
+  // each renderBufferDirect), so the side the census sees is never DoubleSide: the pair marks it
+  let lastProg: unknown = null, lastMat: THREE.Material | null = null, lastObj: THREE.Object3D | null = null, lastSide = -1, inDraw = false;
   const bs: Bucket[] = [bucket(), bucket(), bucket()], one: Bucket[] = [bucket()];
   const matVer = new WeakMap<THREE.Material, number>();
   const rbd = r.renderBufferDirect.bind(r);
   r.renderBufferDirect = (camera, scene, geometry, material, object, group) => {
     if (!census.on || !stack.length) return rbd(camera, scene, geometry, material, object, group);
     const f = stack[stack.length - 1];
+    if (material.transparent && material.side === THREE.FrontSide && lastSide === THREE.BackSide && lastObj === object && lastMat === material) twoPass.add(material);
     bs[0] = classBucket(classKey(object, material)); bs[1] = objBucket(object); bs[2] = f.pass.b;
     const v = matVer.get(material), moved = v !== undefined && v !== material.version;
     const t0 = now();
@@ -139,7 +146,7 @@ export function installDrawCensus(e: Engine): DrawCensus {
         if (material !== lastMat) b.matSwitch++;
         if (moved) b.matVersion++;
       }
-      lastProg = prog; lastMat = material; matVer.set(material, material.version); f.progs.add(prog); f.mats.add(material);
+      lastProg = prog; lastMat = material; lastObj = object; lastSide = material.side; matVer.set(material, material.version); f.progs.add(prog); f.mats.add(material);
     }
   };
 
@@ -154,10 +161,11 @@ export function installDrawCensus(e: Engine): DrawCensus {
       const w: Hook = function (this: unknown, ...a: unknown[]) {
         if (!census.on || hookDepth) return fn.apply(this, a);
         hookDepth++;
-        const t0 = now();
+        const f = stack[stack.length - 1], child0 = f ? f.child : 0, t0 = now();
         try { return fn.apply(this, a); } finally {
           hookDepth--;
-          const ms = now() - t0, m = (o as THREE.Mesh).material, f = stack[stack.length - 1];
+          // a hook that renders (the far shadow bake) runs passes of its own: they are child passes, not hook time
+          const incl = now() - t0, ms = incl - (f ? f.child - child0 : 0), m = (o as THREE.Mesh).material;
           if (f) f.hooks += ms;
           const hb = [classBucket(classKey(o, (Array.isArray(m) ? m[0] : m) ?? NO_MAT)), objBucket(o), f ? f.pass.b : cur.outside];
           for (const b of hb) { b.hookMs += ms; const s = (b.hooks[h] ??= { n: 0, ms: 0 }); s.n++; s.ms += ms; }
@@ -171,6 +179,7 @@ export function installDrawCensus(e: Engine): DrawCensus {
   const walk = () => {
     for (const id of kr?.moduleIds?.() ?? []) for (const root of kr?.moduleRoots?.(id) ?? []) moduleOf.set(root, id);
     e.scene.traverse(wrapHooks);
+    gen++;
   };
   walk(); setInterval(walk, 1000);
 
