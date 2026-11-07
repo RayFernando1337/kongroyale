@@ -33,6 +33,8 @@ export interface PoiWatch {
   seen: Float64Array;
   /** frames each POI was drawn at the floor or more by its impostor and HLOD proxies alone */
   farSeen: Float64Array;
+  /** at the last gap check, what would be in view were it shown: 1 the impostor, 2 an HLOD proxy, 4 a model mesh */
+  inView: Uint8Array;
   /** 1 once a POI has been drawn at the floor or more since it last had nothing to draw it */
   shownOnce: Uint8Array;
   /** lowest coverage during the current violation */
@@ -72,16 +74,18 @@ function paints(m: THREE.Material | THREE.Material[], hidden: boolean): boolean 
 }
 
 /** whether the renderer would draw `o` for this camera: on one of its layers and, unless it opts out of frustum culling,
- *  with its bounds in the view (the same test three.js makes before each draw) */
-function inView(o: THREE.Object3D, mask: number): boolean {
+ *  with its bounds in the view (the same test three.js makes before each draw). `bounds` asks whether its bounds are in
+ *  the view whatever its culling: a mesh drawn everywhere says nothing about where the camera looks */
+function inView(o: THREE.Object3D, mask: number, bounds: boolean): boolean {
   if ((o.layers.mask & mask) === 0) return false;
-  return !o.frustumCulled || !(o as THREE.Mesh).geometry || view.intersectsObject(o);
+  if (!(o as THREE.Mesh).geometry) return !bounds;
+  return (!bounds && !o.frustumCulled) || view.intersectsObject(o);
 }
 
 /** an impostor or proxy's share of the POI: what is left of it when it is shown and in view, else 0 */
 function standIn(o: THREE.Object3D, scene: THREE.Object3D, mask: number, cull: DetailCull): number {
   const m = (o as THREE.Mesh).material;
-  return shown(o, scene) && (!m || paints(m, false)) && inView(o, mask) ? opacity(o, cull) : 0;
+  return shown(o, scene) && (!m || paints(m, false)) && inView(o, mask, false) ? opacity(o, cull) : 0;
 }
 
 /** the highest opacity among the drawn meshes below `roots` that are in view; stops early once one reaches `enough`.
@@ -94,7 +98,7 @@ function nearOpacity(roots: THREE.Object3D[], scene: THREE.Object3D, mask: numbe
     const o = stack.pop()!;
     if (!hidden && !o.visible) continue;
     const m = o as THREE.Mesh;
-    if (m.material && (m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) && paints(m.material, hidden) && inView(o, mask)) {
+    if (m.material && (m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) && paints(m.material, hidden) && inView(o, mask, hidden)) {
       const f = hidden ? 1 : opacity(o, cull);
       if (f > best) best = f;
       if (best >= enough) { stack.length = 0; return best; }
@@ -147,9 +151,12 @@ export function scanPois(w: PoiWatch, camera: THREE.Camera, scene: THREE.Object3
  *  the POI's view sphere and an empty frame is no gap */
 function couldDraw(w: PoiWatch, i: number, built: boolean, proxy: FarPoi | null, scene: THREE.Object3D, mask: number, cull: DetailCull): boolean {
   const imp = w.impostors[i];
-  if (imp !== null && inView(imp, mask)) return true;
-  if (proxy) for (let k = 0; k < proxy.proxies.length; k++) if (inView(proxy.proxies[k], mask)) return true;
-  return built && nearOpacity(w.roots[i], scene, mask, cull, 1, true) > 0;
+  let parts = 0;
+  if (imp !== null && inView(imp, mask, true)) parts |= 1;
+  if (proxy) for (let k = 0; k < proxy.proxies.length; k++) if (inView(proxy.proxies[k], mask, true)) { parts |= 2; break; }
+  if (built && nearOpacity(w.roots[i], scene, mask, cull, 1, true) > 0) parts |= 4;
+  w.inView[i] = parts;
+  return parts !== 0;
 }
 
 function end(w: PoiWatch, i: number, frame: number) {

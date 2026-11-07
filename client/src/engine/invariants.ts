@@ -17,6 +17,8 @@ const COVER_MIN = 0.5;
 export interface Violation {
   id: string; frame: number; frames: number; distM: number; frameMs: number;
   cover: number; near: number; impostor: number; hlod: number;
+  /** what stands for the POI inside the view, shown or not: "impostor", "hlod", "model" */
+  inView: string[];
 }
 /** __kr.invariants: frames checked, the coverage a POI must keep, frames each POI was checked, frames it was drawn by
  *  its impostor and HLOD proxies alone, and every gap */
@@ -33,13 +35,14 @@ export function installInvariants(engine: Engine, roots: (id: string) => THREE.O
     cr: Float64Array.from(pois, (p) => Math.hypot(p.r, VIEW_H_M / 2)),
     roots: pois.map(() => []), impostors: pois.map(() => null),
     near: new Float32Array(n), imp: new Float32Array(n), hlod: new Float32Array(n), dist: new Float32Array(n),
-    since: new Float64Array(n).fill(-1), seen: new Float64Array(n), farSeen: new Float64Array(n), shownOnce: new Uint8Array(n), low: new Float32Array(n), floor: COVER_MIN,
+    since: new Float64Array(n).fill(-1), seen: new Float64Array(n), farSeen: new Float64Array(n), inView: new Uint8Array(n), shownOnce: new Uint8Array(n), low: new Float32Array(n), floor: COVER_MIN,
     isBuilt: (id) => engine.isBuilt(id),
     onBad(i, frame) {
       const r2 = (x: number) => Math.round(x * 100) / 100;
       const v: Violation = {
         id: w.ids[i], frame, frames: 0, distM: Math.round(w.dist[i]), frameMs: Math.round(engine.frameMs[(engine.frameCount + engine.frameMs.length - 1) % engine.frameMs.length]),
         cover: r2(w.low[i]), near: r2(w.near[i]), impostor: r2(w.imp[i]), hlod: r2(w.hlod[i]),
+        inView: ["impostor", "hlod", "model"].filter((_, b) => w.inView[i] & (1 << b)),
       };
       open.set(i, v);
       out.violations.push(v);
