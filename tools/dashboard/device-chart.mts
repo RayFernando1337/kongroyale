@@ -67,7 +67,7 @@ export function renderDeviceChart(chart: DeviceChart, slots: Slot[], compact = f
   const xs = (i: number) => left + (plotW / slots.length) * (i + 0.5);
   const ys = (mb: number) => top + plotH - (mb / 1000 / yTop) * plotH;
   const out: string[] = [];
-  out.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="' + esc(chart.title) + '" font-family="-apple-system,Segoe UI,Inter,Roboto,sans-serif" font-size="' + (compact ? 17 : 13) + '">');
+  out.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + w + " " + h + '" aria-label="' + esc(chart.title) + '" font-family="-apple-system,Segoe UI,Inter,Roboto,sans-serif" font-size="' + (compact ? 17 : 13) + '"><title>' + esc(chart.title) + "</title>");
   const firstPlanned = slots.findIndex((s) => s.planned);
   if (firstPlanned >= 0) {
     const x0 = left + (plotW / slots.length) * firstPlanned;
