@@ -41,10 +41,13 @@ assert.match(row("host/real-play.allocBytesPerTick"), /not measured/);
 assert.match(md, /\*\*3 to look at\*\*/);
 assert.match(md, /Not in this run: Memory at the title \(SwiftShader\), Match-to-match memory/);
 
+const leak = (v: number) => [{ source: "leak", name: "leak.webglMB", value: v, budget: 8, underPct: 100 }];
+assert.doesNotMatch(render(leak(3), leak(1)), /to look at/, "a leak row moving under its ceiling is not flagged");
+assert.match(render(leak(9), leak(1)), /to look at/, "a leak row over its ceiling is");
 assert.match(render(head, null), /against no main run with metrics yet/);
 assert.doesNotMatch(render(base, base), /to look at/, "identical runs flag nothing");
 
-const plain = spawnSync(process.execPath.endsWith("node") ? process.execPath : "node", ["tools/ci/pr-report.mts", "--head", path.join(root, "head")], { encoding: "utf8" });
+const plain = spawnSync(process.execPath.endsWith("node") ? process.execPath : "node", ["--experimental-strip-types", "--no-warnings", "tools/ci/pr-report.mts", "--head", path.join(root, "head")], { encoding: "utf8" });
 assert.equal(plain.status, 0, `plain node failed to run pr-report.mts: ${plain.stderr}`);
 assert.match(plain.stdout, /<!-- kong-pr-metrics -->/);
 

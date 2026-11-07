@@ -2,12 +2,13 @@
 // move before it crosses its budget. CI's jobs upload their reports as artifacts (ci-metrics-test, ci-metrics-boot,
 // memory-result); .github/workflows/pr-metrics.yml downloads a PR run's and main's, runs this file with plain Node
 // (type stripping, no npm install) from main's checkout, and posts the markdown as one comment it keeps updating.
-//   node tools/ci/pr-report.mts --head DIR [--base DIR] [--head-sha SHA] [--base-sha SHA] [--out FILE]
+//   node --experimental-strip-types tools/ci/pr-report.mts --head DIR [--base DIR] [--head-sha SHA] [--base-sha SHA] [--out FILE]
 // DIR is a folder of downloaded artifacts, one sub-folder per artifact. Every report is untrusted data from a PR's run:
 // this file only reads JSON, keeps finite numbers under names it already knows, and writes markdown. It never fails a
 // PR; the budgets themselves are enforced where they always were (npm test, the memory jobs).
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 /** Where a group of metrics comes from: the report file inside an artifact, and the budget file next to it. */
 interface Source {
@@ -18,6 +19,8 @@ interface Source {
   kind: "size" | "perf";
   /** a change smaller than this (percent of main) is noise and shows as unchanged; from a main of zero, only 0 counts any change */
   noisePct: number;
+  /** only budget verdicts: these numbers vary between runs well inside their ceilings, so a move is not news */
+  budgetOnly?: boolean;
   /** perf reports: case ids are this prefix plus the budget file's key */
   casePrefix?: string;
 }
@@ -27,7 +30,7 @@ export const SOURCES: Source[] = [
   { id: "size", title: "Download size (gzip bytes)", report: "ci-metrics-test/size.json", budgets: "ci-metrics-test/budgets/size-budgets.json", kind: "size", noisePct: 0 },
   { id: "alloc", title: "Host allocation (real-play, per tick)", report: "ci-metrics-test/alloc.json", budgets: "ci-metrics-test/budgets/alloc-budgets.json", kind: "perf", noisePct: 5 },
   { id: "title", title: "Memory at the title (SwiftShader)", report: "ci-metrics-boot/result.json", budgets: "ci-metrics-test/budgets/memory-budgets.json", kind: "perf", noisePct: 2, casePrefix: "memory/" },
-  { id: "leak", title: "Match-to-match memory (3 warm-ups)", report: "memory-result/result.json", budgets: "ci-metrics-test/budgets/memory-leak-budgets.json", kind: "perf", noisePct: 100, casePrefix: "memory/" },
+  { id: "leak", title: "Match-to-match memory (3 warm-ups)", report: "memory-result/result.json", budgets: "ci-metrics-test/budgets/memory-leak-budgets.json", kind: "perf", noisePct: 0, budgetOnly: true, casePrefix: "memory/" },
 ];
 
 /** One budgeted number from one run. */
@@ -80,7 +83,7 @@ export function render(head: Metric[], base: Metric[] | null, meta: { headSha?: 
   const rows = head.map((m) => {
     const s = SOURCES.find((x) => x.id === m.source)!, b = baseBy.get(key(m))?.value ?? null;
     const delta = m.value !== null && b !== null ? m.value - b : null, pct = delta !== null && b ? (delta / Math.abs(b)) * 100 : null;
-    const moved = delta !== null && delta !== 0 && (pct === null ? s.noisePct === 0 : Math.abs(pct) > s.noisePct);
+    const moved = !s.budgetOnly && delta !== null && delta !== 0 && (pct === null ? s.noisePct === 0 : Math.abs(pct) > s.noisePct);
     const verdict = m.value === null ? "not measured" : m.value > m.budget ? "over budget"
       : m.value < m.budget * (1 - m.underPct / 100) ? "far under: lower the budget" : moved ? (delta! > 0 ? "up" : "down") : "";
     const change = delta === null ? "" : delta === 0 ? "0" : `${delta > 0 ? "+" : ""}${fmt(delta)}${pct === null ? "" : ` (${pct > 0 ? "+" : ""}${pct.toFixed(Math.abs(pct) < 0.1 ? 3 : 1)}%)`}`;
@@ -96,7 +99,7 @@ export function render(head: Metric[], base: Metric[] | null, meta: { headSha?: 
   out.push("", "<details><summary>Every number</summary>");
   for (const s of SOURCES) {
     const rs = rows.filter((r) => r.s === s);
-    if (rs.length) out.push("", `**${s.title}**${s.noisePct ? ` (noise band ±${s.noisePct}%)` : ""}`, "", head_, ...rs.map(line));
+    if (rs.length) out.push("", `**${s.title}**${s.budgetOnly ? " (budget verdicts only)" : s.noisePct ? ` (noise band ±${s.noisePct}%)` : ""}`, "", head_, ...rs.map(line));
   }
   const missing = SOURCES.filter((s) => !rows.some((r) => r.s === s));
   if (missing.length) out.push("", `Not in this run: ${missing.map((s) => s.title).join(", ")}.`);
@@ -104,10 +107,10 @@ export function render(head: Metric[], base: Metric[] | null, meta: { headSha?: 
   return out.join("\n") + "\n";
 }
 
-if (import.meta.url === `file://${path.resolve(process.argv[1] ?? "")}`) {
+if (import.meta.url === pathToFileURL(path.resolve(process.argv[1] ?? "")).href) {
   const opt = (k: string) => { const i = process.argv.indexOf(k); return i < 0 ? undefined : process.argv[i + 1]; };
   const headDir = opt("--head"), baseDir = opt("--base");
-  if (!headDir) { console.error("usage: node tools/ci/pr-report.mts --head DIR [--base DIR] [--head-sha SHA] [--base-sha SHA] [--out FILE]"); process.exit(2); }
+  if (!headDir) { console.error("usage: node --experimental-strip-types tools/ci/pr-report.mts --head DIR [--base DIR] [--head-sha SHA] [--base-sha SHA] [--out FILE]"); process.exit(2); }
   const md = render(extract(headDir), baseDir ? extract(baseDir) : null, { headSha: opt("--head-sha"), baseSha: opt("--base-sha") });
   const out = opt("--out");
   if (out) fs.writeFileSync(out, md); else process.stdout.write(md);

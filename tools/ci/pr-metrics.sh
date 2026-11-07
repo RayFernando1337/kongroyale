@@ -21,7 +21,7 @@ fetch() { for a in "${artifacts[@]}"; do gh run download "$1" --repo "$REPO" --n
 fetch "$RUN_ID" "$work/head"
 base_args=()
 if [ -n "$base_run" ]; then fetch "$base_run" "$work/base"; base_args=(--base "$work/base" --base-sha "$base_used"); fi
-node tools/ci/pr-report.mts --head "$work/head" --head-sha "$HEAD_SHA" "${base_args[@]}" --out "$work/comment.md"
+node --experimental-strip-types --no-warnings tools/ci/pr-report.mts --head "$work/head" --head-sha "$HEAD_SHA" "${base_args[@]}" --out "$work/comment.md"
 cat "$work/comment.md"
 
 # a newer push has its own run coming; don't overwrite its comment with older numbers
