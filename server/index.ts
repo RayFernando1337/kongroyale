@@ -25,6 +25,7 @@ import { startWt, type WtEndpoint } from "./wt";
 import { makeBucket, struck, take } from "./limits";
 import { kongbotDb } from "./kongbot";
 import { annotationsApi } from "./annotations";
+import { reportFeed } from "./report-feed";
 import { autoCapBytes, autoDir, diagAutoApi } from "./diag-auto";
 import { serveStatic } from "./static";
 import { performanceMetrics } from "./perf";
@@ -131,13 +132,15 @@ initEvents({
 const serve = process.env.KR_SERVE === "1" || process.argv.includes("--serve");
 const dist = path.join(root, "dist");
 // player bug reports (/kongbot in the game's chat bar) → MongoDB
-const kongbot = kongbotDb(root);
+// the live report feed the admin console's Reports view streams (server/report-feed.ts)
+const feed = reportFeed();
+const kongbot = kongbotDb(root, feed.add);
 // dev view notes (?dev=annotate) → .kongbot/annotations/*.jsonl (+ Mongo kongbot_annotations)
 const annotations = annotationsApi(root);
 // automatic performance summaries from players who opted in (?diag) → <KR_DIAG_AUTO>/<date>.jsonl, own limits
 const diagAuto = diagAutoApi(autoDir(root, process.env.KR_DIAG_AUTO ?? (process.env.npm_lifecycle_event === "server" ? "1" : undefined)), log, autoCapBytes(process.env.KR_DIAG_AUTO_MB, log));
 if (diagAuto.dir) log(`automatic summaries are written to ${diagAuto.dir}`);
-const adminHttp = createAdminHttp({ root, ipOf: (req) => ipOf(req), log });
+const adminHttp = createAdminHttp({ root, ipOf: (req) => ipOf(req), log, feed });
 const server = http.createServer((req, res) => {
   const url = (req.url || "/").split("?")[0];
   // (admin lobby) /admin, /admin/api/*, /api/event/CODE — before anything else (server/admin/http.ts)

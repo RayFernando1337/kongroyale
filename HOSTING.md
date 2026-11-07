@@ -34,6 +34,11 @@ KR_ADMIN_KEY_SHA256=$(node tools/admin-lobby/key.mjs --hash) npm start
 Open `/admin` and paste the key from `.admin-key`. Keep that file private. `--rotate` replaces the key, and
 `KR_ADMIN_KEY_FILE=<path>` makes the tool use a different file.
 
+The console's **Reports** view lists player reports as they arrive: kind, symptom, place, browser and build. It keeps
+the newest 200 since the server started. A player's own words stay hidden until a moderator presses **Show text**,
+and the server logs which report's text was shown. The view is a stream of server-sent events from
+`/admin/api/reports`; the server asks nginx not to buffer it, and other proxies must pass it through unbuffered.
+
 If you'd rather let anyone create a private room and share its code, build and run with both of these:
 
 ```sh
