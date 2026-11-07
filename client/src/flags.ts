@@ -110,6 +110,7 @@ const FLAGS = {
   nochests: { kind: present, owner: "weapons", purpose: "chest stress stage without chests" },
   nocull: { kind: present, owner: "engine", purpose: "turn off detail, POI and harbor culling: draw everything at full detail" },
   nofreeze: { kind: present, owner: "engine", purpose: "turn off the static matrix cache" },
+  matsort: { kind: present, owner: "engine", purpose: "draw opaque objects in three's material-first order instead of program-first" },
   nohlod: { kind: present, owner: "engine", purpose: "turn off the far HLOD merge" },
   nolight: { kind: present, owner: "weapons", purpose: "chest studio without the chest's own light" },
   noloot: { kind: present, owner: "weapons", purpose: "chest stress stage without loot" },

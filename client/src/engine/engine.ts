@@ -8,6 +8,7 @@ import { FarMerge } from "./hlod";
 import { DetailCull } from "./cull";
 import { PoiOcclusion } from "./occlusion";
 import { StaticCache } from "./static-cache";
+import { nextSortFrame, programFirstSort, useProperties } from "./opaque-sort.hot";
 import { onStructure, ownVisible, activeGates, type Gate } from "./scene-hooks";
 import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
@@ -134,6 +135,7 @@ export class Engine implements WorldCtx {
     this.renderer.toneMappingExposure = 1;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    if (!flag("matsort")) { useProperties(this.renderer.properties as unknown as Parameters<typeof useProperties>[0]); this.renderer.setOpaqueSort(programFirstSort as unknown as Parameters<THREE.WebGLRenderer["setOpaqueSort"]>[0]); }
     watchContext(this.canvas, this);
     // initTexture runs outside the frame loop (stream integration, the GPU warmer, the title art) and three never stops it
     // on a lost context: a first compressed upload there caches the BPTC/ASTC extensions as missing. It uploads on its
@@ -564,6 +566,7 @@ export class Engine implements WorldCtx {
     this.occlusion.update(this.camera);
     this.far.update();
     this.statics.update();
+    nextSortFrame();
     this.cull.fovRef = (this.shared.get("display:fov") as number | undefined) ?? this.cull.fovRef;
     this.cull.update(this.camera, this.renderer.domElement.height);
     const h2 = hl ? performance.now() : 0;
