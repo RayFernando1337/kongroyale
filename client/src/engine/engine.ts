@@ -115,8 +115,7 @@ export class Engine implements WorldCtx {
   /** ?slicelog=N (default 50): main-thread slices of build or stream work over N ms between two yields, newest last */
   readonly sliceLog: Array<{ at: number; ms: number; stage: string; where: string }> = [];
   private readonly sliceLogMs = flag("slicelog");
-  private lastYield = performance.now();
-  private lastYieldFrame = 0;
+  private sliceFrame = 0;
   private builtIds = new Set<string>();
   private builtWaiters = new Map<string, Array<() => void>>();
   private streamOpen = false;
@@ -254,7 +253,7 @@ export class Engine implements WorldCtx {
 
   // ---- time-slicing
   /** start a fresh slice (the boot calls this before each module build) */
-  beginSlice() { this.sliceT0 = this.lastYield = performance.now(); this.lastYieldFrame = this.frameIdx; }
+  beginSlice() { this.sliceT0 = performance.now(); this.sliceFrame = this.frameIdx; }
   /** ms used by the current slice */
   sliceUsed() { return performance.now() - this.sliceT0; }
   /**
@@ -283,18 +282,19 @@ export class Engine implements WorldCtx {
   }
   yield(): Promise<void> {
     const now = performance.now();
-    if (this.sliceLogMs > 0) this.logSlice(now);
     if (now - this.sliceT0 < this.sliceMs) return RESOLVED;
+    if (this.sliceLogMs > 0) this.logSlice(now);
     // let the next frame (or the loading screen) paint, then continue in a fresh task right after it (engine/frame.ts:
     // without waiting for a frame the browser isn't painting)
-    return afterPaint().then(() => { this.sliceT0 = this.lastYield = performance.now(); this.lastYieldFrame = this.frameIdx; });
+    return afterPaint().then(() => { this.sliceT0 = performance.now(); this.sliceFrame = this.frameIdx; });
   }
-  /** ?slicelog: the work since the last yield, when no frame was drawn in between (a stretch that spans a frame awaited
-   *  something else, a worker or a fetch, and is not one slice); "where" is the stack of the yield that ended it */
+  /** ?slicelog: the slice this yield ends (the no-op yields before it included), when the engine was drawing and drew no
+   *  frame in it: a stretch that spans a frame awaited something else (a worker, a fetch) and is not one slice, and
+   *  before engine.start() no frame counter tells the two apart, so boot builds are not logged. "where" is the stack of
+   *  the yield that ended it */
   private logSlice(now: number) {
-    const ms = now - this.lastYield, framed = this.frameIdx !== this.lastYieldFrame;
-    this.lastYield = now; this.lastYieldFrame = this.frameIdx;
-    if (ms < this.sliceLogMs || framed) return;
+    const ms = now - this.sliceT0;
+    if (ms < this.sliceLogMs || !this.started || this.frameIdx !== this.sliceFrame) return;
     const kr = (globalThis as { __kr?: { streamStage?: string; stage?: string } }).__kr;
     const where = (new Error().stack ?? "").split("\n").slice(3, 7).join(" <").slice(0, 400);
     this.sliceLog.push({ at: Math.round(now), ms: Math.round(ms), stage: String(kr?.streamStage || kr?.stage || ""), where });
