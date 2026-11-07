@@ -1,0 +1,18 @@
+{
+  "about": "compare.mts --budgets for the perf workflow (.github/workflows/perf.yml) on GitHub's ubuntu-latest runner: per scenario/metric/statistic change (%) that counts. A change must also clear the range test (every candidate run outside the baseline runs' range, 5 runs a side). Placeholder: budgets.json's thresholds from the 4 vCPU cloud runner, until the A/A calibration on this runner (perf-aa label) replaces them.",
+  "calibration": {
+    "host/real-play": "pending: A/A on ubuntu-latest"
+  },
+  "thresholdPct": {
+    "host/real-play": {
+      "hostTickMs": {
+        "p50": 5,
+        "p99": 8
+      },
+      "simulationMs": {
+        "p50": 5,
+        "p99": 8
+      }
+    }
+  }
+}
