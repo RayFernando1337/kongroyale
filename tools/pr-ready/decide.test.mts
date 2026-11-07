@@ -22,7 +22,7 @@ const expectItem = (s: Snapshot, id: Item["id"], ok: boolean, reason: RegExp, wh
 };
 const okMap = (s: Snapshot) => Object.fromEntries(decide(s).items.map((i) => [i.id, i.ok]));
 // jobs ci.yml gained after the snapshots were recorded: a recorded head whose CI finished green gets them, green
-const LATER_JOBS = ["no-GPU invariants (lowmem)", "no-GPU invariants (default)"];
+const LATER_JOBS = ["no-GPU invariants (lowmem)", "no-GPU invariants (default)", "TLA+ models"];
 const finished = (s: Snapshot): Snapshot => {
   for (const name of LATER_JOBS) s.checkRuns.push({ conclusion: "success", id: 0, name, status: "completed" });
   return s;
