@@ -325,7 +325,7 @@ A rule only counts if a check fails when it breaks. Each rule lands together wit
 | The renderer holds no unowned resource | CI job "no-GPU match-to-match memory" (`memory.mts --warmup --budgets tools/memory-leak-budgets.json`, page loaded with `?resaudit`): `engine/res/audit.ts` records every geometry, texture and render target the renderer registers (three.js adds its `dispose` listener to each one when it first uploads it, which is what `renderer.info.memory` counts) and drops it on `dispose()`. After the third match it compares that set with the ledger's owners. Render-target attachments count with their target. The unowned count and bytes have a ceiling (`left3`) that is lowered as owners move to scopes, and the check reaches zero when every owner has moved. Bytes and categories come from the ledger, never from `renderer.info`. Programs and VAOs are outside the check; they are small |
 | Each category stays inside its budget | `npm test` memory step on KONG-43's harness: bytes per category against `tools/memory-budgets.json`. Over budget fails, and more than 5% under fails until the budget is lowered, as `tools/size-budgets.json` works today |
 | A match leaves nothing behind | The same CI job: three practice matches, each entered and left in its warm-up, with only the title modules (`?modules=`), because on SwiftShader the browser passes 10 GB once Peel Harbor streams in. What grows from the second left sample to the third (WebGL bytes, textures, geometries, unowned resources, ledger bytes per category) stays under `leak` in `tools/memory-leak-budgets.json`, and the run fails if the match scope is still open after leaving. The first match is not compared: the island keeps streaming through it. `--max-mb` stops the browser before the runner runs out of memory |
-| A match holds no more than it did | Two budget files with the title budget's rule (over fails, more than 5% under fails until the budget is lowered). `tools/memory-warmup-budgets.json` reads the first warm-up of the match-to-match run. `tools/memory-lowmem-budgets.json` is CI job "no-GPU low-memory memory": the low-memory setup with the whole island at the title, in the plane and in play, including the resident POI count, its peak and the evictions. See [In-match and low-memory budgets](#in-match-and-low-memory-budgets) |
+| A match holds no more than it did | Two budget files with the title budget's rule (over fails, more than 5% under fails until the budget is lowered). `tools/memory-warmup-budgets.json` reads the first warm-up of the match-to-match run. `tools/memory-lowmem-budgets.json` is CI job "no-GPU low-memory memory": the low-memory setup with the whole island at the title, in the plane and in play, including the resident POI count and its peak. See [In-match and low-memory budgets](#in-match-and-low-memory-budgets) |
 | No CPU copy without a reason | The ledger lists kept copies with their `keepCpu` reason, and the budget step fails on bytes kept with no reason |
 | Only the cache frees what it lends | Development builds throw on `dispose()` of a cached resource from outside the cache |
 | The game survives a WebGL context loss | CI job "no-GPU context restore" (`tools/verify-context-loss.mts`): `loseContext()` then `restoreContext()` at the title and again in a match's warm-up, the same document, a higher `__kr.restores`, no page, WebGL or three.js error and the picture as bright as before (see [Context loss](#context-loss)) |
@@ -342,12 +342,14 @@ calibrated on CI's own runner (`ubuntu-latest`, 4 vCPUs, 16 GB):
 - **Low-memory setup, title to play.** CI job "no-GPU low-memory memory" runs `memory.mts run --matches 1` on
   `?lowmem=1&geofree=1&farimp=1` with the whole island and checks `tools/memory-lowmem-budgets.json`. It fits the runner
   (about 5.5 GB for the whole browser) because POIs stream in near the player and past `lowmemcap` the farthest is
-  evicted. It samples `title`, `plane` (as the plane phase starts) and `match` (60 s into the play phase), and budgets
-  the same metrics plus three about residency: `residentPois` (built POI modules, the lobby islet included),
-  `peakResidentPois` (the most at once, polled every 250 ms in the page, so it is the cap plus the islet and fails if
-  the cap stops holding or nothing streams) and `evictions` (one on seed 42, as the player lands). In the plane only
-  WebGL bytes, textures and the heap are budgeted: which POI is mid-build when the phase starts varies, and CPU copies
-  move by 50-80 MB between runs. The job takes about 10 minutes beside the others, so the workflow is no slower.
+  evicted. It samples `title`, `plane` (as the plane phase starts) and `match` (60 s into the play phase), and adds
+  three residency numbers to every sample: `residentPois` (built POI modules, the lobby islet included),
+  `peakResidentPois` (the most at once, polled every 250 ms in the page) and `evictions`. The title budgets every
+  metric. After the title, which POI is mid-build at the sample varies between runner instances, so the plane budgets
+  WebGL bytes, textures and the heap, and the match budgets WebGL bytes, the heap, `residentPois` and
+  `peakResidentPois`. The peak is the cap plus the islet, so it fails over budget if eviction stops holding the cap and
+  under budget if nothing streams. The match's texture count, CPU copies and evictions (1-2 on seed 42) are recorded
+  but not budgeted. The job takes about 10 minutes beside the others, so the workflow is no slower.
 
 A scripted walk between POIs was tried and dropped: on SwiftShader a POI's integration runs one program per frame at
 about 1 fps, so waiting for the POIs around one stop to settle took over 5 minutes on the runner, and a walk that
