@@ -9,7 +9,7 @@ name: perf
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -17,8 +17,9 @@ permissions:
 jobs:
   host:
     name: host tick A/B
-    # an unrelated label skips the job before it joins the concurrency group, so it can't cancel a run that measures
-    if: github.event.action != 'labeled' || github.event.label.name == 'perf' || github.event.label.name == 'perf-aa'
+    # adding or removing an unrelated label skips the job before it joins the concurrency group, so it can't cancel a run
+    # that measures; removing perf or perf-aa reruns it, so a calibration's main-against-main pass never stands for the PR
+    if: (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'perf' || github.event.label.name == 'perf-aa'
     concurrency:
       group: perf-${{ github.event.pull_request.number }}
       cancel-in-progress: true
