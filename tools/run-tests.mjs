@@ -41,13 +41,16 @@ const checks = [
   { id: "res", name: "resource scopes", cmd: "npx", args: ["tsx", "tools/res/test.mts"] },
   { id: "refresh", name: "display refresh estimate", cmd: "npx", args: ["tsx", "tools/engine/refresh.test.mts"] },
   { id: "resguard", name: "half-rate guard decisions", cmd: "npx", args: ["tsx", "tools/engine/res-guard.test.mts"] },
+  { id: "scenegate", name: "visibility gate lifecycle", cmd: "npx", args: ["tsx", "tools/engine/scene-gate.test.mts"] },
   { id: "parity", name: "wire / matrix / geometry / http / splat parity", slow: true, cmd: "npm", args: ["run", "bench:verify"] },
   { id: "alloc", name: "host allocation per tick (against tools/alloc-budgets.json)", slow: true, cmd: "npx", args: ["tsx", "tools/performance/alloc.mts", "--budgets", "tools/alloc-budgets.json", "--out", tmp("alloc.json")] },
   { id: "sim", name: "headless match (seed 42)", slow: true, cmd: "npx", args: ["tsx", "tools/sim-smoke.mts", "trios", "42", "--check"] },
   { id: "nettail", name: "network tails (against tools/performance/net-budgets.json)", slow: true, cmd: "npx", args: ["tsx", "tools/performance/net-tail.mts", "--check", "--out", tmp("net-tail.json")] },
   { id: "afk", name: "AFK removal returns the player to the room (real server)", slow: true, cmd: "npx", args: ["tsx", "tools/verify-afk.mts"] },
   { id: "redteam", name: "admin lobby red team", slow: true, cmd: "node", args: ["tools/admin-lobby/redteam.mjs", "--md", tmp("redteam.md")] },
+  { id: "redteamprocs", name: "admin lobby red team (front with two match processes)", slow: true, cmd: "node", args: ["tools/admin-lobby/redteam.mjs", "--procs", "2", "--md", tmp("redteam-procs.md")] },
   { id: "wt", name: "WebTransport endpoint (loopback, Node client)", slow: true, cmd: "npx", args: ["tsx", "tools/net/wt-endpoint.test.mts"] },
+  { id: "procs", name: "one process per core: front, routing, limits (real server, two processes)", slow: true, cmd: "npx", args: ["tsx", "tools/net/procs.test.mts"] },
   { id: "wtbrowser", name: "WebTransport in a browser (loopback, headless Chromium; SKIP without one)", slow: true, cmd: "npx", args: ["tsx", "tools/net/wt-browser.test.mts"] },
 ];
 
