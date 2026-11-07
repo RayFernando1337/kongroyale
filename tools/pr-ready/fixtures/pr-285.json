@@ -1,0 +1,114 @@
+{
+  "pr": {
+    "baseRefName": "main",
+    "headRefOid": "4d27734c27fdf830d3cb5925f814f1a104649707",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN",
+    "mergeable": "MERGEABLE",
+    "number": 285,
+    "state": "OPEN"
+  },
+  "mergeableReads": 1,
+  "checkRuns": [
+    {
+      "conclusion": "success",
+      "id": 128310689467,
+      "name": "host tick A/B",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128310683437,
+      "name": "no-GPU match-to-match memory",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128310683321,
+      "name": "no secrets",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128310683312,
+      "name": "no-GPU context restore",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128310683309,
+      "name": "no-GPU boot smoke",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128310683289,
+      "name": "no-GPU low-memory memory",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128310683109,
+      "name": "build and test",
+      "status": "completed"
+    },
+    {
+      "conclusion": "cancelled",
+      "id": 128310682890,
+      "name": "host tick A/B",
+      "status": "completed"
+    }
+  ],
+  "statuses": [
+    {
+      "context": "Devin Review",
+      "description": "Completed analysis in 51s",
+      "state": "success"
+    },
+    {
+      "context": "capy/review",
+      "description": "Capy found 1 potential issue (1 medium)",
+      "state": "success"
+    }
+  ],
+  "threads": [
+    {
+      "isResolved": false,
+      "isOutdated": false,
+      "path": ".github/workflows/perf.yml",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-e7ae217d7572485fbdfca2e3a2fd1039_0001\", \"file_path\": \".github/workflows/perf.yml\", \"start_line\": 12, \"end_line\": 12, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Calibration label removal leaves gate bypassed**\n\nAfter `perf-aa` is removed from a simulation PR, `host` retains its successful main-versus-main result. No `unlabeled` run replaces it, so the PR's host regression remains untested.\n\n```suggestion\n    types: [opened, synchronize, reopened, labeled, unlabeled]\n```\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/285\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/285#discussion_r4500305776"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": false,
+      "isOutdated": false,
+      "path": ".github/workflows/perf.yml",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "capy-ai"
+            },
+            "body": "### Unrelated labels may bypass a failed performance gate\n\n**Medium Severity · Investigate**\n\nAfter a simulation PR fails the A/B measurement, adding any unrelated label starts another workflow run but skips this same `host tick A/B` job. GitHub treats skipped jobs as successful required checks, so if the newer same-name check supersedes the failed run, routine release/section labeling can unblock a performance regression without another measurement. Separate label handling from the required measurement check, or preserve the actual measurement result rather than emitting a successful skip. Verify GitHub's required-check selection for successive failed and skipped runs of this workflow on the same SHA.\n\n<!-- capy-badge:start -->\n<a href=\"https://capy.ai/pull/RayFernando1337/kongroyale/285\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://capy.ai/badge/neutral-dark.svg\"><source media=\"(prefers-color-scheme: light)\" srcset=\"https://capy.ai/badge/neutral-light.svg\"><img alt=\"Open in Capy\" src=\"https://capy.ai/badge/neutral-light.svg\"></picture></a>\n<!-- capy-badge:end -->",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/285#discussion_r4500307211"
+          }
+        ]
+      }
+    }
+  ],
+  "budgets": {
+    "mergeBase": "dfab9430ead97ed649c17378b58765ddb7a11a58",
+    "mergeBaseBlob": "fe3f42c7ffec96190d6d147fe426d85638124c95",
+    "baseBlob": "d32dd5711fec0ddc86affea448f9dad117869597",
+    "headBlob": "fe3f42c7ffec96190d6d147fe426d85638124c95"
+  }
+}

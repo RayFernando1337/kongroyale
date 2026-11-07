@@ -1,0 +1,32 @@
+{
+  "pr": {
+    "baseRefName": "main",
+    "headRefOid": "58f444e6e16e2d1ac130d9a681fd0d2e2b66a508",
+    "isDraft": false,
+    "mergeStateStatus": "DIRTY",
+    "mergeable": "CONFLICTING",
+    "number": 279,
+    "state": "OPEN"
+  },
+  "mergeableReads": 2,
+  "checkRuns": [],
+  "statuses": [
+    {
+      "context": "Devin Review",
+      "description": "Skipped: resolve merge conflicts to get a review",
+      "state": "success"
+    },
+    {
+      "context": "capy/review",
+      "description": "Capy found no issues",
+      "state": "success"
+    }
+  ],
+  "threads": [],
+  "budgets": {
+    "mergeBase": "cd7d105d17747963367f69b97e87e7a7c69a6e07",
+    "mergeBaseBlob": "f6d6a46d28785e9118802b5a02d40afaa8147bc8",
+    "baseBlob": "d32dd5711fec0ddc86affea448f9dad117869597",
+    "headBlob": "f3ffeb710f92b0ad0c997a99c47d858ed947bf4c"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "pr": {
+    "baseRefName": "main",
+    "headRefOid": "255689de0eaadccdf0fd5adfea6c24421f28c8f6",
+    "isDraft": false,
+    "mergeStateStatus": "UNKNOWN",
+    "mergeable": "UNKNOWN",
+    "number": 288,
+    "state": "MERGED"
+  },
+  "mergeableReads": 1,
+  "checkRuns": [
+    {
+      "conclusion": "success",
+      "id": 128313815636,
+      "name": "no-GPU match-to-match memory",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128313815634,
+      "name": "no-GPU context restore",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128313815602,
+      "name": "no-GPU boot smoke",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128313815597,
+      "name": "no-GPU low-memory memory",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128313815582,
+      "name": "no secrets",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128313815458,
+      "name": "build and test",
+      "status": "completed"
+    }
+  ],
+  "statuses": [
+    {
+      "context": "Devin Review",
+      "description": "Completed analysis in 47s",
+      "state": "success"
+    },
+    {
+      "context": "capy/review",
+      "description": "Capy found no issues",
+      "state": "success"
+    }
+  ],
+  "threads": [
+    {
+      "isResolved": true,
+      "isOutdated": false,
+      "path": "tools/size-budgets.json",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-96b6a6a3b4c14fe4a20d0c40b2574089_0001\", \"file_path\": \"tools/size-budgets.json\", \"start_line\": 7, \"end_line\": 7, \"side\": \"RIGHT\", \"based_on_repo_rules\": true, \"kind\": \"bug\"} -->\n\n🟡 **Lazy download budget grows**\n\nThe 38-byte increase in `lazy` lets the larger diagnostics bundle pass the size check. The repository's no-growth rule requires download budgets to decrease.\n\n<details>\n<summary>Learn more</summary>\n\nThe size check compares a build's compressed lazy JS against this budget. Raising the budget permits the 38-byte growth that the repository's download-size rule forbids. Earlier entries document exceptions with explicit approval, but this entry records only a measurement.\n\n**Example:** A lazy build measuring 3,061,495 bytes fails the previous 3,061,467-byte budget and passes the new 3,061,505-byte budget.\n\n**Recommended fix:** Reduce the lazy bundle to fit the existing budget, or obtain and document an approved exception before raising it.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/288\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/288#discussion_r4500285567"
+          }
+        ]
+      }
+    }
+  ],
+  "budgets": null
+}

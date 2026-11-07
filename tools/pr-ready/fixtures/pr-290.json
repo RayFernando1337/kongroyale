@@ -1,0 +1,166 @@
+{
+  "pr": {
+    "baseRefName": "main",
+    "headRefOid": "4b6ee0186b43cef05191b46426ad1e85458ade5a",
+    "isDraft": false,
+    "mergeStateStatus": "UNSTABLE",
+    "mergeable": "MERGEABLE",
+    "number": 290,
+    "state": "OPEN"
+  },
+  "mergeableReads": 1,
+  "checkRuns": [
+    {
+      "conclusion": null,
+      "id": 128319972475,
+      "name": "no-GPU low-memory memory",
+      "status": "in_progress"
+    },
+    {
+      "conclusion": null,
+      "id": 128319972377,
+      "name": "no-GPU boot smoke",
+      "status": "in_progress"
+    },
+    {
+      "conclusion": null,
+      "id": 128319972363,
+      "name": "no-GPU context restore",
+      "status": "in_progress"
+    },
+    {
+      "conclusion": null,
+      "id": 128319972330,
+      "name": "build and test",
+      "status": "in_progress"
+    },
+    {
+      "conclusion": "success",
+      "id": 128319972293,
+      "name": "no secrets",
+      "status": "completed"
+    },
+    {
+      "conclusion": null,
+      "id": 128319972117,
+      "name": "no-GPU match-to-match memory",
+      "status": "in_progress"
+    }
+  ],
+  "statuses": [
+    {
+      "context": "capy/review",
+      "description": "Capy found no issues",
+      "state": "success"
+    },
+    {
+      "context": "Devin Review",
+      "description": "Completed analysis in 59s",
+      "state": "success"
+    }
+  ],
+  "threads": [
+    {
+      "isResolved": true,
+      "isOutdated": true,
+      "path": "tools/dashboard/goals.mts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-cdf00137e6574be1b2d53401513ea968_0001\", \"file_path\": \"tools/dashboard/goals.mts\", \"start_line\": 118, \"end_line\": 118, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Historical Goals include future merges**\n\nWith a historical `--now`, `recent` includes PRs merged after that time because it checks only the lower bound. Goals labels those future merges as occurring in the last 24 hours.\n\n<details>\n<summary>Learn more</summary>\n\nThe dashboard accepts `--now` as a build timestamp. The existing [inDay](https://github.com/rayfernando1337/kongroyale/blob/806649ffc2d9203e2e4649c0dd25997a2e3dddaa/tools/dashboard/build.mts#L109 \"tools/dashboard/build.mts:109\") filter includes both bounds, but `recent` only checks whether a merged PR is no more than 24 hours old; a future merge produces a negative difference and passes. This makes historical Goals output inconsistent with Overview.\n\n**Example:** Build at November 5, 12:00 UTC with a PR merged November 6, 12:00 UTC. Goals shows that PR under “merged in the last 24 hours,” while Overview excludes it.\n\n**Recommended fix:** In `renderGoalsPage`, require `Date.parse(p.mergedAt) <= ctx.now` as well as the existing 24-hour lower bound.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/290\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/290#discussion_r4500364563"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": true,
+      "path": "tools/dashboard/goals.mts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-cdf00137e6574be1b2d53401513ea968_0002\", \"file_path\": \"tools/dashboard/goals.mts\", \"start_line\": 159, \"end_line\": 159, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Dual-channel release loses next status**\n\nWhen `nextTag` equals `stableTag`, `channel` displays only stable. The release no longer shows that the same build also occupies next.\n\n<details>\n<summary>Learn more</summary>\n\nRelease channels are separate movable tags. The earlier [release cards](https://github.com/rayfernando1337/kongroyale/blob/806649ffc2d9203e2e4649c0dd25997a2e3dddaa/tools/dashboard/build.mts \"tools/dashboard/build.mts\") rendered both pills when both tags pointed to the same release. The new channel ternary and the rail ternary each choose stable before checking next, so the next assignment disappears.\n\n**Example:** Set both `stable` and `next` to `kong-v1.1.0`. The release card and rail say only “stable,” although both channel tags point to this release.\n\n**Recommended fix:** Render both channel labels when both tags match, including in the rail, rather than selecting one with a ternary.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/290\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/290#discussion_r4500364623"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": true,
+      "path": "tools/dashboard/build.mts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-cdf00137e6574be1b2d53401513ea968_0003\", \"file_path\": \"tools/dashboard/build.mts\", \"start_line\": 226, \"end_line\": 226, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Release schedule vanishes between releases**\n\nWhen `unreleased` is empty, `unreleasedList` removes the only release schedule text. Visitors cannot see the schedule just after main has been fully released.\n\n<details>\n<summary>Learn more</summary>\n\nThe Releases page previously rendered [releaseTrain](https://github.com/rayfernando1337/kongroyale/blob/806649ffc2d9203e2e4649c0dd25997a2e3dddaa/tools/dashboard/data.json \"tools/dashboard/data.json\") regardless of pending changes. The replacement puts that text inside the conditional pending-changes block. A fully released main branch therefore loses the schedule, even though the Releases page is still available.\n\n**Example:** Cut a release containing every merged PR, leaving `unreleased.length === 0`. The Releases page lists the tags but no longer shows when releases are planned.\n\n**Recommended fix:** Render the release schedule independently of `unreleased.length`; condition only the pending PR list on that count.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/290\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/290#discussion_r4500364707"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": false,
+      "path": "tools/dashboard/goals.json",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-cdf00137e6574be1b2d53401513ea968_0001\", \"file_path\": \"tools/dashboard/goals.json\", \"start_line\": 295, \"end_line\": 300, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Upstream finish line and progress differ**\n\nThe upstream goal defines 100% as every PR reviewed, but `upMerged / upTotal` measures acceptance. A reviewed, closed PR never advances the bar. Clarify which outcome the goal tracks.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/290\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/290#discussion_r4500364763"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": true,
+      "path": "tools/dashboard/goals.mts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-cdf00137e6574be1b2d53401513ea968_0002\", \"file_path\": \"tools/dashboard/goals.mts\", \"start_line\": 130, \"end_line\": 130, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Overflow link omits open PRs**\n\nThe Goals overflow link points to Overview, which lists last-day merged highlights, not open PRs. Open entries beyond the eight-row limit remain on Waiting instead.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/290\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/290#discussion_r4500364807"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": true,
+      "path": "tools/dashboard/build.mts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-75935d344fca4b149ee55f618624c80e_0001\", \"file_path\": \"tools/dashboard/build.mts\", \"start_line\": 226, \"end_line\": 226, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Empty state overstates release coverage**\n\nWhen `nextTag` exists, `unreleased` checks only commits after that tag. An older merged PR omitted from release notes can leave the list empty despite never appearing in a release.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/290\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/290#discussion_r4500371924"
+          }
+        ]
+      }
+    }
+  ],
+  "budgets": {
+    "mergeBase": "4bc23fb2f1ca559ec26ed58e0acf9b7c57284063",
+    "mergeBaseBlob": "d32dd5711fec0ddc86affea448f9dad117869597",
+    "baseBlob": "d32dd5711fec0ddc86affea448f9dad117869597",
+    "headBlob": "d32dd5711fec0ddc86affea448f9dad117869597"
+  }
+}

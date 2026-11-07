@@ -27,6 +27,21 @@ npx tsx tools/release.mts rollback [--to <tag>] [--dry-run]
 
 Always run with `--dry-run` first. Run `npm run build` and `npm test` on the commit before `cut`; it checks CI, builds and publishes a prerelease and moves `next`. Every command is safe to repeat except a bare `rollback`, which steps back one more release each time: to retry a rollback, pass `--to <known-good tag>`. Use `--prefix kongtest` for any trial; it keeps its own `kongtest-next` and `kongtest-stable` and you delete what you created.
 
+## Is a PR ready to merge?
+
+```sh
+npx tsx tools/pr-ready.mts <number> [--repo owner/name]   # one JSON verdict; exit 0 ready, 1 not, 2 usage or gh error
+```
+
+Read-only (gh with its default login; it never merges, approves, comments, labels or pushes). `ready` is true only when every item is:
+
+- `checks`: on the exact head, every `ci.yml` job ran and passed by name (a Devin-only green fails), every other check run passed or was neutral/skipped, and no commit status is pending or failed.
+- `capy-review`: the `capy/review` status on the head says "Capy found no issues". It counts open non-note findings and updates when they are triaged; missing or failed means push an empty commit to retrigger.
+- `threads`: 0 unresolved review threads.
+- `mergeable`: open, not a draft, no conflicts; UNKNOWN is re-read a few times, then says to run again.
+- `base`: the base is `main`.
+- `size-budget-drift`: fails with "merge main first" when main and the PR both changed `tools/size-budgets.json` since their merge base.
+
 ## Flow
 
 1. **Trains** at 10:00, 13:00, 16:00, 19:00 PT cut when `main` has unreleased merges. On demand any time. An upstream sync PR freezes trains.

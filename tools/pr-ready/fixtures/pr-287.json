@@ -1,0 +1,182 @@
+{
+  "pr": {
+    "baseRefName": "main",
+    "headRefOid": "e845d35b6014ed4aed23b4afa73cf84bc6b238a7",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN",
+    "mergeable": "MERGEABLE",
+    "number": 287,
+    "state": "OPEN"
+  },
+  "mergeableReads": 1,
+  "checkRuns": [
+    {
+      "conclusion": "success",
+      "id": 128318280103,
+      "name": "no-GPU boot smoke",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128318279687,
+      "name": "no-GPU low-memory memory",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128318279659,
+      "name": "build and test",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128318279646,
+      "name": "no-GPU context restore",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128318279632,
+      "name": "no-GPU match-to-match memory",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "id": 128318279423,
+      "name": "no secrets",
+      "status": "completed"
+    }
+  ],
+  "statuses": [
+    {
+      "context": "Devin Review",
+      "description": "Completed analysis in 1m 18s",
+      "state": "success"
+    },
+    {
+      "context": "capy/review",
+      "description": "Capy found no issues",
+      "state": "success"
+    }
+  ],
+  "threads": [
+    {
+      "isResolved": true,
+      "isOutdated": false,
+      "path": "server/front.ts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-da13cd9163cc439e98b5c1b65586304b_0001\", \"file_path\": \"server/front.ts\", \"start_line\": 124, \"end_line\": 134, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Health checks miss match outages**\n\nWhen every match process exits, `health()` still produces an ordinary response. [createSite](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/server/site.ts#L51 \"server/site.ts:51\") marks it `ok: true`, so uptime checks pass while every game connection fails.\n\n<details>\n<summary>Learn more</summary>\n\nThe front owns the public HTTP port and returns `/health` while match processes are restarting. A worker's `health` becomes null when it exits, but the aggregated health response contains only counts and process status. [createSite](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/server/site.ts#L51 \"server/site.ts:51\") unconditionally writes HTTP 200 and `ok: true`. As a result, an uptime probe cannot distinguish an available game from one with no workers accepting WebSockets.\n\n**Example:** Start with `KR_PROCS=2`, then kill both workers before they finish restarting. `/health` answers `200` with `ok: true` and both entries marked `up: false`, while `/ws` upgrades return `503`.\n\n**Recommended fix:** Make `createSite` derive the health status and HTTP response code from the front's worker readiness, while preserving the single-process health contract. Decide whether one unavailable shard is also an unhealthy service, since its rooms cannot be served.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/287\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/287#discussion_r4500242243"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": true,
+      "path": "server/index.ts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-da13cd9163cc439e98b5c1b65586304b_0002\", \"file_path\": \"server/index.ts\", \"start_line\": 404, \"end_line\": 405, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Custom WebTransport URL targets wrong worker**\n\nWith `KR_WT_URL` set, workers advertise the same URL despite listening on different ports. [dialWt](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/client/src/game/wt.ts#L45 \"client/src/game/wt.ts:45\") ignores each worker's port, so secondary workers' players fall back to WebSockets.\n\n<details>\n<summary>Learn more</summary>\n\nEach match process binds its WebTransport endpoint to `KR_WT_PORT + PROC`. The endpoint's [welcome](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/server/wt.ts#L135 \"server/wt.ts:135\") includes the configured `KR_WT_URL` unchanged, and [dialWt](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/client/src/game/wt.ts#L45 \"client/src/game/wt.ts:45\") always prefers that URL over the advertised port. When the configured URL points to one UDP port, a player assigned to another process cannot authenticate there with that process's token and falls back to WebSockets.\n\n**Example:** With `KR_PROCS=2`, `KR_WT_PORT=3020`, and `KR_WT_URL=https://game.example:3020/wt`, process 1 listens on UDP 3021 but tells its clients to dial UDP 3020. Their token belongs to process 1 and process 0 refuses it.\n\n**Recommended fix:** Derive a process-specific URL from `KR_WT_URL` when building the worker's welcome, or define and validate a per-worker URL configuration; ensure clients use the matching worker port.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/287\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/287#discussion_r4500242280"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": false,
+      "path": "server/front.ts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-da13cd9163cc439e98b5c1b65586304b_0003\", \"file_path\": \"server/front.ts\", \"start_line\": 132, \"end_line\": 135, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Multi-process performance gates lose their measurements**\n\nWith `KR_PERF_METRICS=1`, `health()` omits top-level `performance`. [The socket benchmark](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/tools/performance/sockets.mts#L97-L128 \"tools/performance/sockets.mts:97-128\") treats CPU and tick measurements as unsupported and passes its tick gate without data.\n\n<details>\n<summary>Learn more</summary>\n\nThe single-process [health](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/server/index.ts#L112-L114 \"server/index.ts:112-114\") exposes `performance` at the top level when metrics are enabled. Multi-process health instead puts worker measurements only inside `procs`. The [socket benchmark](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/tools/performance/sockets.mts#L97-L128 \"tools/performance/sockets.mts:97-128\") still reads the top-level field: it marks CPU and tick metrics unsupported, and its `!(perf1?.tickMs?.p99 > limit)` gate passes when the field is absent.\n\n**Example:** Run a multi-process server with `KR_PERF_METRICS=1` and run `bench:server`. `/health` has `procs[0].performance.tickMs`, but the benchmark records `serverTickMsLifetime` as unsupported and reports `serverTickP99Within60Hz` as passed even if a worker exceeds 16.7 ms.\n\n**Recommended fix:** Update the benchmark to inspect every active worker's metrics and gate on the worst worker, or supply a documented aggregate metric with appropriate percentile aggregation; do not silently pass when samples are unavailable.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/287\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/287#discussion_r4500242311"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": true,
+      "path": "tools/size-budgets.json",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "devin-ai-integration"
+            },
+            "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-da13cd9163cc439e98b5c1b65586304b_0004\", \"file_path\": \"tools/size-budgets.json\", \"start_line\": 7, \"end_line\": 7, \"side\": \"RIGHT\", \"based_on_repo_rules\": true, \"kind\": \"bug\"} -->\n\n🟡 **Lazy download grows beyond prior budget**\n\nThe lazy budget rises by 142 bytes to accommodate the larger client build. That violates the repository's download-size-only-decreases rule.\n\n<details>\n<summary>Learn more</summary>\n\nThe repository's [download-size rule](https://github.com/rayfernando1337/kongroyale/blob/f191f608b39bfee41f91f42181fdfc6a9f73e3ec/AGENTS.md#L131 \"AGENTS.md:131\") requires gzip bytes in each browser bundle class to decrease or stay flat. The previous lazy budget was 3,061,467 bytes; this change raises it to 3,061,609, and the PR reports that the new code actually adds 142 gzip bytes. Raising the budget hides that regression from the size check.\n\n**Example:** A build producing 3,061,600 gzip bytes of lazy JS now passes the new 3,061,609-byte threshold, although it fails the previous 3,061,467-byte threshold.\n\n**Recommended fix:** Reduce the lazy client bundle by at least 142 gzip bytes and keep the prior budget, or lower the budget if the result is smaller.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/rayfernando1337/kongroyale/pull/287\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/287#discussion_r4500242349"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": false,
+      "path": "server/front.ts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "capy-ai"
+            },
+            "body": "### Unauthenticated WebTransport sessions bypass the global connection caps\n\n**Medium Severity**\n\nThe unchanged admission path in `server/wt.ts` counts a session before authenticating its token, but this front counts only handed-off WebSockets. With `KR_PROCS=N` and `KR_WT=1`, one address can open unauthenticated sessions on every worker's UDP port and withhold the token until the authentication timeout, consuming up to N independent per-address quotas without any primary WebSocket. Repeating this defeats the server-wide cap and multiplies unauthenticated QUIC resource use; the one-session-per-player check only applies after authentication. Coordinate WebTransport admission reservations across workers, including sessions awaiting authentication.\n\n<!-- capy-badge:start -->\n<a href=\"https://capy.ai/pull/RayFernando1337/kongroyale/287\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://capy.ai/badge/neutral-dark.svg\"><source media=\"(prefers-color-scheme: light)\" srcset=\"https://capy.ai/badge/neutral-light.svg\"><img alt=\"Open in Capy\" src=\"https://capy.ai/badge/neutral-light.svg\"></picture></a>\n<!-- capy-badge:end -->",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/287#discussion_r4500245681"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": false,
+      "path": "server/index.ts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "capy-ai"
+            },
+            "body": "### Explicit WebTransport URLs send every worker's clients to one endpoint\n\n**Medium Severity**\n\nThe unchanged `dialWt()` in `client/src/game/wt.ts` prefers `offer.url` over `offer.port`, and `server/wt.ts` advertises `KR_WT_URL` unchanged. With `KR_PROCS=2`, `KR_WT=1`, and an explicit URL pointing at worker 0's port, worker 1 now listens on the next port but still advertises worker 0's URL. Its clients therefore reach the wrong worker, where their tokens are unknown (or their certificate hashes differ), and fall back to WebSockets. Derive a worker-specific advertised URL as well as a worker-specific listening port, preserving the configured hostname.\n\n<!-- capy-badge:start -->\n<a href=\"https://capy.ai/pull/RayFernando1337/kongroyale/287\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://capy.ai/badge/neutral-dark.svg\"><source media=\"(prefers-color-scheme: light)\" srcset=\"https://capy.ai/badge/neutral-light.svg\"><img alt=\"Open in Capy\" src=\"https://capy.ai/badge/neutral-light.svg\"></picture></a>\n<!-- capy-badge:end -->",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/287#discussion_r4500245684"
+          }
+        ]
+      }
+    },
+    {
+      "isResolved": true,
+      "isOutdated": true,
+      "path": "server/front.ts",
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "login": "capy-ai"
+            },
+            "body": "### Health reports can erase pending admin-lobby reservations\n\n**Medium Severity**\n\nA worker health report emitted before a create is processed can arrive after the front increments `p.health.events`; the message handler then replaces `p.health` with that older report, erasing the reservation. For example, with ten existing event lobbies and two pending creates, losing one reservation lets another admin create pass the twelve-lobby check, producing thirteen lobbies across workers. Each worker's local twelve-lobby guard still permits this. Track pending creates separately from reported health and reconcile them with acknowledgements or a report sequence rather than mutating the replaceable snapshot.\n\n<!-- capy-badge:start -->\n<a href=\"https://capy.ai/pull/RayFernando1337/kongroyale/287\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://capy.ai/badge/neutral-dark.svg\"><source media=\"(prefers-color-scheme: light)\" srcset=\"https://capy.ai/badge/neutral-light.svg\"><img alt=\"Open in Capy\" src=\"https://capy.ai/badge/neutral-light.svg\"></picture></a>\n<!-- capy-badge:end -->",
+            "url": "https://github.com/RayFernando1337/kongroyale/pull/287#discussion_r4500245688"
+          }
+        ]
+      }
+    }
+  ],
+  "budgets": {
+    "mergeBase": "4bc23fb2f1ca559ec26ed58e0acf9b7c57284063",
+    "mergeBaseBlob": "d32dd5711fec0ddc86affea448f9dad117869597",
+    "baseBlob": "d32dd5711fec0ddc86affea448f9dad117869597",
+    "headBlob": "496508d5b909f01c8aaabfc84daae2699db29af9"
+  }
+}
