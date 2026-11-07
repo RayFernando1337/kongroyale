@@ -21,11 +21,12 @@
 //   server  the real game server (server/index.ts) on a free loopback port, over WebSockets: two seated players, a
 //           caster seat, an aux socket and a client that starts in no lobby send fuzzed binary frames and fuzzed JSON
 //           (every message type onJSON knows, admin-shaped ones, garbage text, deep nesting) while a third seated player
-//           plays normally; then floods past the rate limit and the strike limit, a frame past MAX_PAYLOAD and bad aux
-//           attaches. Passes when the process stays up with no handler or tick error in its log, every self state in
-//           every snapshot is finite, the sockets that kept within the limits stay open, the normal player's inputs keep
-//           arriving, each flood is closed (1008) after at most RATE_BURST + RATE_PER_S answers a second, the big frame
-//           is closed (1009) and /health still answers.
+//           plays normally; then a ping flood past the rate limit, malformed frames within the rate past the strike limit
+//           (in no lobby and in a match), a frame past MAX_PAYLOAD and bad aux attaches. Passes when the process stays up
+//           with no handler or tick error in its log, every self state in every snapshot is finite, the sockets that kept
+//           within the limits stay open, the normal player's inputs keep arriving, the ping flood is closed (1008) after at
+//           most RATE_BURST + RATE_PER_S answers a second, the malformed frames are closed (1008 "bad frame"), the big
+//           frame is closed (1009) and /health still answers.
 // A failure prints the layer, the seed, the packet (hex, or the JSON text) and the command that replays it, and exits 1.
 // The decode and host layers replay exactly; the server layer sends the same frames again (with that run's lobby code)
 // at wall-clock pace, so its timing differs from run to run.
@@ -47,7 +48,7 @@ import type { Match } from "../../shared/sim/match";
 import { AMMO_TYPES, B, PS, SK, copyInput, giveAmmo, makeInput, type Input, type Player } from "../../shared/sim/player";
 import { AMMO_CAP, ECON, INPUT_MAX_PER_TICK, INPUT_QUEUE_MAX, MAX_HP, MAX_REWIND_TICKS, MAX_SHIELD, WEAPON_DEFS, WEAPON_SLOTS } from "../../shared/sim/const";
 import { WEAPONS } from "../../shared/world/map";
-import { RATE_BURST, RATE_PER_S } from "../../server/limits";
+import { MAX_STRIKES, RATE_BURST, RATE_PER_S } from "../../server/limits";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const LAYERS = ["decode", "host", "server"] as const;
@@ -218,6 +219,8 @@ function runDecode(seed: number) {
     writeInputs(W.reset(), ring, first, count);
     const bytes = W.bytes(), rd = new Reader(bytes);
     if (bytes.length !== INPUTS_HEAD_BYTES + count * INPUT_BODY_BYTES || rd.u8() !== M.Inputs || rd.u8() !== count || rd.u32() !== first) fail("decode", seed, "writeInputs wrote a bad head", { bytes, label: `inputs/valid #${n}` });
+    // a body carries no seq (readInputBody leaves it as it was): MatchHost numbers entry k first + k, and the host layer
+    // checks that through each seat's lastSeq
     for (let k = 0; k < count; k++) {
       readInputBody(rd, got); copyInput(q, ring[(first + k) % count]); quantizeInput(q); got.seq = q.seq;
       const f = sameInput(q, got);
@@ -411,13 +414,13 @@ function runHost({ Match, Phase, MatchHost, trackInputGaps, VKind, world }: Awai
         if (replies.length !== 1 || p.length !== 17 || p[0] !== M.Pong || !Object.is(f64At(p, 1), f64At(pk.bytes, 1)) || !Number.isFinite(f64At(p, 9))) fail("host", seed, `the pong does not echo the ping: ${replies.map(hex).join(" | ")}`, { bytes: pk.bytes, label: label(pk, si) });
       } else if (replies.length) fail("host", seed, `a frame other than a ping was answered: ${replies.map(hex).join(" | ")}`, { bytes: pk.bytes, label: label(pk, si) });
       // an inventory op: once per seq (a late copy from the other socket never), and only on its own seat (a purchase
-      // may revive a squadmate: Offer.BuyBack)
+      // may revive a squadmate, Offer.BuyBack, so it may change its own squad but never another)
       if (isOp && invBefore) {
         const seq = pk.bytes[1] | (pk.bytes[2] << 8), d = (seq - opBefore) & 0xffff, dup = opBefore >= 0 && (d === 0 || d > 0x8000);
         if (peer.opSeq !== (dup ? opBefore : seq)) fail("host", seed, `op seq went ${opBefore} → ${peer.opSeq} for an op with seq ${seq}`, { bytes: pk.bytes, label: label(pk, si) });
         const actor = dup || peer.pid < 0 ? -1 : peer.pid, bought = actor >= 0 && m.players[actor].cash < cashBefore;
         for (const p of m.players) {
-          if (p.id === actor || bought) continue;
+          if (p.id === actor || (bought && p.team === m.players[actor].team)) continue;
           if (invKey(p) !== invBefore[p.id]) fail("host", seed, `an inventory op from ${senderName[si]} changed player ${p.id}: ${invBefore[p.id]} → ${invKey(p)}`, { bytes: pk.bytes, label: label(pk, si) });
         }
       }
@@ -587,22 +590,28 @@ async function runServer(srv: Server, seed: number) {
   if (P2.lastSeq !== p2Seq) problems.push(`P2 played normally beside the fuzz: it sent input ${p2Seq}, its snapshots say ${P2.lastSeq}`);
 
   // the limits: a ping flood in the match is answered at most RATE_BURST + RATE_PER_S a second, then closed; malformed
-  // frames are struck until the socket closes; a frame past MAX_PAYLOAD closes it; bad aux attaches are refused
-  const F = cl("F"), B = cl("B"), O = cl("O"), AQ = cl("AQ", "?aux=1"), AG = cl("AG", "?attach=1"), A2 = cl("A2", "?attach=1");
-  if (!(await until(() => F.uid > 0 && B.uid > 0 && O.uid > 0 && AG.ws.readyState === WebSocket.OPEN && A2.ws.readyState === WebSocket.OPEN, 5000))) fail("server", seed, "the limit clients did not connect");
-  json(F, { t: "join", code: P0.code });
-  await until(() => F.code === P0.code, 3000);
+  // frames are struck until the socket closes, both outside a lobby (B) and in a match (BM); a frame past MAX_PAYLOAD
+  // closes it; bad aux attaches are refused
+  const F = cl("F"), B = cl("B"), BM = cl("BM"), O = cl("O"), AQ = cl("AQ", "?aux=1"), AG = cl("AG", "?attach=1"), A2 = cl("A2", "?attach=1");
+  if (!(await until(() => F.uid > 0 && B.uid > 0 && BM.uid > 0 && O.uid > 0 && AG.ws.readyState === WebSocket.OPEN && A2.ws.readyState === WebSocket.OPEN, 5000))) fail("server", seed, "the limit clients did not connect");
+  json(F, { t: "join", code: P0.code }); json(BM, { t: "join", code: P0.code });
+  await until(() => F.code === P0.code && BM.code === P0.code, 3000);
   const ping = new Writer(new ArrayBuffer(16)).u8(M.Ping).f64(1).bytes();
   const floodAt = performance.now();
   for (let i = 0; i < 1200; i++) F.ws.send(ping);
-  for (let i = 0; i < 1200; i++) B.ws.send(new Uint8Array([0xee]));
+  // the malformed frames stay within the rate (RATE_BURST at once, the rest once the bucket refilled) so that only
+  // "bad frame" strikes can close the socket, never "rate" ones
+  const malformed = (n: number) => { for (let i = 0; i < n; i++) { B.ws.send(new Uint8Array([0xee])); BM.ws.send(new Uint8Array([M.Input])); } };
+  malformed(RATE_BURST - 10);
   O.ws.send(new Uint8Array(MAX_PAYLOAD_BYTES + 1));
   send(AG, "{\"t\":\"aux\",\"token\":\"not a token\"}"); send(A2, JSON.stringify({ t: "aux", token: P1.token }));
-  await until(() => !!(F.closed && B.closed && O.closed && AQ.closed && AG.closed && A2.closed), 5000);
+  await sleep(Math.ceil((60 / RATE_PER_S) * 1000));
+  malformed(MAX_STRIKES - RATE_BURST + 30);
+  await until(() => !!(F.closed && B.closed && BM.closed && O.closed && AQ.closed && AG.closed && A2.closed), 5000);
   const floodS = (performance.now() - floodAt) / 1000, pongCap = RATE_BURST + Math.ceil(RATE_PER_S * floodS);
   if (F.closed?.code !== 1008) problems.push(`a ping flood past the rate limit was not closed with 1008 (${JSON.stringify(F.closed)})`);
   if (F.pongs > pongCap) problems.push(`a ping flood got ${F.pongs} pongs in ${floodS.toFixed(2)} s, over the ${pongCap} the rate limit allows`);
-  if (B.closed?.code !== 1008) problems.push(`a flood of malformed frames was not closed with 1008 (${JSON.stringify(B.closed)})`);
+  for (const c of [B, BM]) if (c.closed?.code !== 1008 || c.closed.reason !== "bad frame") problems.push(`${c.name}'s malformed frames, sent within the rate, were not closed with 1008 "bad frame" (${JSON.stringify(c.closed)})`);
   if (O.closed?.code !== 1009) problems.push(`a frame past MAX_PAYLOAD was not closed with 1009 (${JSON.stringify(O.closed)})`);
   for (const c of [AQ, AG, A2]) if (c.closed?.code !== 1008) problems.push(`bad aux attach ${c.name} was not refused with 1008 (${JSON.stringify(c.closed)})`);
 
@@ -625,7 +634,7 @@ async function runServer(srv: Server, seed: number) {
     const last = fuzzers.map((f) => `  ${f.c.name} last frames:\n    ${f.c.sent.join("\n    ")}`).join("\n");
     fail("server", seed, `${problems.join("\n  ")}\n${last}\n  server log (tail):\n    ${srv.log().split("\n").slice(-25).join("\n    ")}`);
   }
-  return { frames: sentFrames, p2Inputs: p2Seq, floodPongs: F.pongs, floodS: +floodS.toFixed(2), closes: { flood: F.closed?.code, malformed: B.closed?.code, oversize: O.closed?.code } };
+  return { frames: sentFrames, p2Inputs: p2Seq, floodPongs: F.pongs, floodS: +floodS.toFixed(2), closes: { flood: F.closed?.code, malformed: B.closed?.code, malformedInMatch: BM.closed?.code, oversize: O.closed?.code } };
 }
 
 // ---- run
