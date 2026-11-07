@@ -2,7 +2,8 @@
 // cull update, right before the draw, so it reads exactly the state that renders). A POI is drawn by its built model, a
 // far impostor (?farimp) or an HLOD proxy (engine/hlod.ts). Each counts with what is left of it after the cull's fades
 // and reveals and the dither's dissolve (engine/cull.ts, engine/dither.ts); the model counts with its most opaque drawn
-// mesh that writes colour. The POI's coverage is their sum, capped at 1: a hand-over dissolves one out with the complementary mask of the
+// mesh that writes colour, and each piece counts only when it is on the camera's layers and in its frustum, as the
+// renderer culls it. The POI's coverage is their sum, capped at 1: a hand-over dissolves one out with the complementary mask of the
 // one dissolving in, so the two cover min(1, a + b) of its pixels. Once a POI has been drawn at w.floor or more, it must
 // stay there for as long as it is in view and has something to draw it with. RAY-148 (the impostor hid as the model's
 // dissolve began) and RAY-178 were found by people watching GPU screenshots; this makes that class of hand-over gap a
@@ -30,6 +31,8 @@ export interface PoiWatch {
   since: Float64Array;
   /** frames each POI was in view with something to draw it */
   seen: Float64Array;
+  /** frames each POI was drawn at the floor or more by its impostor and HLOD proxies alone */
+  farSeen: Float64Array;
   /** 1 once a POI has been drawn at the floor or more since it last had nothing to draw it */
   shownOnce: Uint8Array;
   /** lowest coverage during the current violation */
@@ -60,24 +63,39 @@ function opacity(o: THREE.Object3D, cull: DetailCull): number {
   return d ? Math.min(f, 1 - d.a) : f;
 }
 
-/** a material that puts colour on screen: shadow, depth and occluder proxies (colorWrite false) cover nothing */
-function paints(m: THREE.Material | THREE.Material[]): boolean {
-  if (!Array.isArray(m)) return m.visible && m.colorWrite;
-  for (let i = 0; i < m.length; i++) if (m[i] && m[i].visible && m[i].colorWrite) return true;
+/** a material that puts colour on screen: shadow, depth and occluder proxies (colorWrite false) cover nothing;
+ *  `hidden` also takes a material that is switched off */
+function paints(m: THREE.Material | THREE.Material[], hidden: boolean): boolean {
+  if (!Array.isArray(m)) return (hidden || m.visible) && m.colorWrite;
+  for (let i = 0; i < m.length; i++) if (m[i] && (hidden || m[i].visible) && m[i].colorWrite) return true;
   return false;
 }
 
-/** the highest opacity among the drawn meshes below `roots`; stops early once one reaches `enough` */
-function nearOpacity(roots: THREE.Object3D[], scene: THREE.Object3D, mask: number, cull: DetailCull, enough: number): number {
+/** whether the renderer would draw `o` for this camera: on one of its layers and, unless it opts out of frustum culling,
+ *  with its bounds in the view (the same test three.js makes before each draw) */
+function inView(o: THREE.Object3D, mask: number): boolean {
+  if ((o.layers.mask & mask) === 0) return false;
+  return !o.frustumCulled || !(o as THREE.Mesh).geometry || view.intersectsObject(o);
+}
+
+/** an impostor or proxy's share of the POI: what is left of it when it is shown and in view, else 0 */
+function standIn(o: THREE.Object3D, scene: THREE.Object3D, mask: number, cull: DetailCull): number {
+  const m = (o as THREE.Mesh).material;
+  return shown(o, scene) && (!m || paints(m, false)) && inView(o, mask) ? opacity(o, cull) : 0;
+}
+
+/** the highest opacity among the drawn meshes below `roots` that are in view; stops early once one reaches `enough`.
+ *  `hidden`: 1 when any mesh below `roots` would be in view were it shown, whatever hides it now, else 0 */
+function nearOpacity(roots: THREE.Object3D[], scene: THREE.Object3D, mask: number, cull: DetailCull, enough: number, hidden: boolean): number {
   let best = 0;
   stack.length = 0;
-  for (let i = 0; i < roots.length; i++) if (shown(roots[i], scene)) stack.push(roots[i]);
+  for (let i = 0; i < roots.length; i++) if (hidden || shown(roots[i], scene)) stack.push(roots[i]);
   while (stack.length) {
     const o = stack.pop()!;
-    if (!o.visible) continue;
+    if (!hidden && !o.visible) continue;
     const m = o as THREE.Mesh;
-    if (m.material && (m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) && paints(m.material) && (o.layers.mask & mask) !== 0) {
-      const f = opacity(o, cull);
+    if (m.material && (m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) && paints(m.material, hidden) && inView(o, mask)) {
+      const f = hidden ? 1 : opacity(o, cull);
       if (f > best) best = f;
       if (best >= enough) { stack.length = 0; return best; }
     }
@@ -109,18 +127,29 @@ export function scanPois(w: PoiWatch, camera: THREE.Camera, scene: THREE.Object3
     let hl = -1;
     if (merged) {
       hl = 0;
-      for (let k = 0; k < proxy.proxies.length; k++) { const x = proxy.proxies[k] as THREE.Mesh; if (shown(x, scene) && (!x.material || paints(x.material))) hl = Math.max(hl, opacity(x, cull)); }
+      for (let k = 0; k < proxy.proxies.length; k++) hl = Math.max(hl, standIn(proxy.proxies[k], scene, mask, cull));
     }
-    const ip = imp === null ? -1 : shown(imp, scene) ? opacity(imp, cull) : 0;
+    const ip = imp === null ? -1 : standIn(imp, scene, mask, cull);
     const other = Math.max(ip, 0) + Math.max(hl, 0);
-    const near = built && other < 1 ? nearOpacity(roots, scene, mask, cull, 1 - other) : 0;
+    const near = built && other < 1 ? nearOpacity(roots, scene, mask, cull, 1 - other, false) : 0;
     w.near[i] = near; w.imp[i] = ip; w.hlod[i] = hl;
     const cover = Math.min(1, near + other);
+    if (other >= w.floor) w.farSeen[i]++;
     if (cover >= w.floor) { w.shownOnce[i] = 1; end(w, i, frame); continue; }
     if (!w.shownOnce[i]) continue;
+    if (!couldDraw(w, i, built, merged ? proxy : null, scene, mask, cull)) { end(w, i, frame); continue; }
     if (w.since[i] < 0) { w.since[i] = frame; w.low[i] = cover; w.onBad(i, frame); }
     else if (cover < w.low[i]) w.low[i] = cover;
   }
+}
+
+/** whether anything that stands for POI `i` would be in view were it shown: when nothing would, the camera only grazes
+ *  the POI's view sphere and an empty frame is no gap */
+function couldDraw(w: PoiWatch, i: number, built: boolean, proxy: FarPoi | null, scene: THREE.Object3D, mask: number, cull: DetailCull): boolean {
+  const imp = w.impostors[i];
+  if (imp !== null && inView(imp, mask)) return true;
+  if (proxy) for (let k = 0; k < proxy.proxies.length; k++) if (inView(proxy.proxies[k], mask)) return true;
+  return built && nearOpacity(w.roots[i], scene, mask, cull, 1, true) > 0;
 }
 
 function end(w: PoiWatch, i: number, frame: number) {

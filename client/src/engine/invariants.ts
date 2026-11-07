@@ -18,8 +18,9 @@ export interface Violation {
   id: string; frame: number; frames: number; distM: number; frameMs: number;
   cover: number; near: number; impostor: number; hlod: number;
 }
-/** __kr.invariants: frames checked, the coverage a POI must keep, frames each POI was checked, and every gap */
-export interface InvariantReport { frames: number; floor: number; seen: Record<string, number>; violations: Violation[] }
+/** __kr.invariants: frames checked, the coverage a POI must keep, frames each POI was checked, frames it was drawn by
+ *  its impostor and HLOD proxies alone, and every gap */
+export interface InvariantReport { frames: number; floor: number; seen: Record<string, number>; farSeen: Record<string, number>; violations: Violation[] }
 
 /** `roots`: a POI's model roots ([] while not built); `modules`: the built module list, whose identity changes on every
  *  build and eviction (__kr.modules) */
@@ -32,7 +33,7 @@ export function installInvariants(engine: Engine, roots: (id: string) => THREE.O
     cr: Float64Array.from(pois, (p) => Math.hypot(p.r, VIEW_H_M / 2)),
     roots: pois.map(() => []), impostors: pois.map(() => null),
     near: new Float32Array(n), imp: new Float32Array(n), hlod: new Float32Array(n), dist: new Float32Array(n),
-    since: new Float64Array(n).fill(-1), seen: new Float64Array(n), shownOnce: new Uint8Array(n), low: new Float32Array(n), floor: COVER_MIN,
+    since: new Float64Array(n).fill(-1), seen: new Float64Array(n), farSeen: new Float64Array(n), shownOnce: new Uint8Array(n), low: new Float32Array(n), floor: COVER_MIN,
     isBuilt: (id) => engine.isBuilt(id),
     onBad(i, frame) {
       const r2 = (x: number) => Math.round(x * 100) / 100;
@@ -56,6 +57,7 @@ export function installInvariants(engine: Engine, roots: (id: string) => THREE.O
     get floor() { return w.floor; },
     set floor(x: number) { w.floor = x; },
     get seen() { return Object.fromEntries(w.ids.map((id, i) => [id, w.seen[i]])); },
+    get farSeen() { return Object.fromEntries(w.ids.map((id, i) => [id, w.farSeen[i]])); },
     violations: [],
   };
   let seenModules: unknown, sceneKids = -1, impGroup: THREE.Object3D | null = null, impKids = -1;

@@ -4,7 +4,8 @@
 // build distance and the HLOD switch distance. Fails on any frame where a POI in view that was drawn stopped
 // being drawn (__kr.invariants.violations), on any other __kr.errors entry or uncaught page error (a failed shader draws
 // nothing the scan can see), when the check never ran, when a stop's frames stopped advancing, when a route POI never
-// built at its nearest stop (its hand-over to the model was not exercised), or when a route POI was never in view with
+// built at its nearest stop (its hand-over to the model was not exercised), when its far stop never saw it drawn by
+// its impostor or HLOD proxy (its far form was not exercised), or when a route POI was never in view with
 // something to draw it. The browser only loads a server you started on 127.0.0.1 (AGENTS.md rule 7), for example:
 //
 //   node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs up --prod --port 3140
@@ -12,8 +13,9 @@
 //
 // Options: --url (default http://127.0.0.1:3140), --query "a=1&b=2" (the arm's flags), --pois a,b (route POIs, default
 // ROUTE), --seed 42, --viewport 640x360, --hold-frames 12 (frames at each stop, after the stop's own POI has finished
-// streaming; at the nearest stop, after it is built), --hold-max-s 120 (longest wait at one stop), --out <file> (the JSON verdict), --headed, --gpu (the
-// machine's GPU instead of SwiftShader), --report-only (violations print as GitHub warnings and exit 0; the harness
+// streaming; at the nearest stop, after it is built; at the far stop, after its impostor or proxy draws it),
+// --hold-max-s 120 (longest wait at one stop), --out <file> (the JSON verdict), --headed, --gpu (the machine's GPU
+// instead of SwiftShader), --report-only (violations print as GitHub warnings and exit 0; the harness
 // still fails on its own errors). Exit 0 = no violation.
 import fs from "node:fs";
 import path from "node:path";
@@ -68,6 +70,8 @@ const status = (): Promise<Status> => page.evaluate(() => {
 });
 /** "built": integrated and drawn by its model; "building": in the module list, not integrated yet; "" otherwise */
 const built = (id: string): Promise<string> => page.evaluate((m) => { const k = (window as any).__kr; return k.modules.includes(m) ? (k.engine.isBuilt(m) ? "built" : "building") : ""; }, "poi:" + id);
+/** frames the route POI was drawn by its impostor and HLOD proxies alone */
+const farFrames = (id: string): Promise<number> => page.evaluate((m) => (window as any).__kr.invariants?.farSeen[m] ?? 0, "poi:" + id);
 let reported = 0;
 const newViolations = async () => {
   const vs = await page.evaluate((from) => (window as any).__kr.invariants.violations.slice(from) as Array<Record<string, unknown>>, reported);
@@ -106,18 +110,19 @@ try {
     for (const [d, what] of stops(p.r)) {
       const x = p.x + ux * d, z = p.z + uz * d, yaw = Math.atan2(-(p.x - x), -(p.z - z));
       if (!(await place(x, z, yaw))) throw Error("no practice host to teleport on");
-      const nearest = d === stops(p.r)[2][0], f0 = (await status()).frames, h0 = Date.now();
-      let state = "", from = nearest ? -1 : f0;
+      const [far, , nearest] = stops(p.r).map(([dd]) => dd === d), f0 = (await status()).frames, h0 = Date.now(), far0 = await farFrames(id);
+      let state = "", from = nearest || far ? -1 : f0;
       for (;;) {
         await sleep(1000);
         await place(x, z, yaw);
         s = await status();
         state = await built(id);
-        if (from < 0 && state === "built") from = s.frames;
+        if (from < 0 && (nearest ? state === "built" : (await farFrames(id)) > far0)) from = s.frames;
         if ((from >= 0 && s.frames - from >= HOLD_FRAMES && state !== "building") || Date.now() - h0 > HOLD_MAX_S * 1000) break;
       }
       if (s.frames === f0) harness.push(id + " at " + Math.round(d) + " m: no frame was checked in " + HOLD_MAX_S + " s");
       else if (nearest && from < 0) harness.push(id + " at " + Math.round(d) + " m: not built after " + HOLD_MAX_S + " s, so its hand-over to the model was not exercised");
+      else if (far && from < 0) harness.push(id + " at " + Math.round(d) + " m: never drawn by its impostor or HLOD proxy in " + HOLD_MAX_S + " s, so its far form was not exercised");
       log(id + " at " + Math.round(d) + " m (" + what + "): " + (s.frames - f0) + " frames, " + (state || "not built") + ", stream " + (s.stream || "-") + ", " + s.violations + " violation(s) so far");
       await newViolations();
     }
