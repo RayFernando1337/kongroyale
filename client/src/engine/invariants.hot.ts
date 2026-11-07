@@ -74,12 +74,13 @@ function paints(m: THREE.Material | THREE.Material[], hidden: boolean): boolean 
 }
 
 /** whether the renderer would draw `o` for this camera: on one of its layers and, unless it opts out of frustum culling,
- *  with its bounds in the view (the same test three.js makes before each draw). `bounds` asks whether its bounds are in
- *  the view whatever its culling: a mesh drawn everywhere says nothing about where the camera looks */
+ *  with its bounds in the view (the same test three.js makes before each draw). `bounds` asks whether `o` shows where
+ *  the camera looks: a mesh that opts out of culling draws everywhere (and its instances may move without its cached
+ *  bounds following, rows.ts BananaField), so only culled meshes answer it */
 function inView(o: THREE.Object3D, mask: number, bounds: boolean): boolean {
   if ((o.layers.mask & mask) === 0) return false;
-  if (!(o as THREE.Mesh).geometry) return !bounds;
-  return (!bounds && !o.frustumCulled) || view.intersectsObject(o);
+  if (!(o as THREE.Mesh).geometry || !o.frustumCulled) return !bounds;
+  return view.intersectsObject(o);
 }
 
 /** an impostor or proxy's share of the POI: what is left of it when it is shown and in view, else 0 */
