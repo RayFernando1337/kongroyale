@@ -5,6 +5,7 @@ shots/
 reports/
 .kongbot/
 playtest-bundles/
+diag-auto/
 refs
 
 .env
