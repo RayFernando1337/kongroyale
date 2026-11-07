@@ -4,7 +4,7 @@
 //   npm test                         every check
 //   npm test -- --list               print each check's id and stop
 //   npm test -- --only types,lint    only these checks (ids from --list)
-//   npm test -- --fast               skip the checks marked slow (about 30 s instead of about 4 min);
+//   npm test -- --fast               skip the checks marked slow (about 50 s instead of about 4 min);
 //                                    run them all before a PR
 // A filtered run says how many checks it skipped, so it never reads as a full pass.
 import { spawnSync } from "node:child_process";
@@ -34,6 +34,7 @@ const checks = [
   { id: "face", name: "kong face", cmd: "npx", args: ["tsx", "tools/actors/face-test.mts"] },
   { id: "anim", name: "kong animation", cmd: "npx", args: ["tsx", "tools/actors/anim-test.mts"] },
   { id: "walkgraph", name: "building walk graph", cmd: "npx", args: ["tsx", "tools/buildings/walkgraph.test.mts"] },
+  { id: "fuzz", name: "protocol fuzz (seeded hostile packets: decoders, MatchHost, the real server)", cmd: "npx", args: ["tsx", "tools/net/fuzz.test.mts"] },
   { id: "solver", name: "path solver", slow: true, cmd: "npx", args: ["tsx", "tools/play/solver-tests.mts", "--json", tmp("solver-tests.json")] },
   { id: "glass", name: "glass", slow: true, cmd: "npx", args: ["tsx", "tools/glass/test.mts"] },
   { id: "planeview", name: "low-memory plane queues the POIs in view", slow: true, cmd: "npx", args: ["tsx", "tools/world/plane-view.test.mts"] },
