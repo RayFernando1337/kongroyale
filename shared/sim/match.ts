@@ -141,7 +141,9 @@ export class Match {
    *  shared/net/input-gaps.ts installs it on the server and in netlab */
   declare inputProbe: ((id: number, n: number, starve: number, queued: number) => void) | undefined;
   /** counters (tests / telemetry) */
-  readonly netStats = { inputsDropped: 0, starveSteps: 0, clampedShots: 0, driftCredits: 0 };
+  /** inputsLost: seqs skipped when a later input was queued (never arrived, or arrived too late to use);
+   *  inputsRecovered: inputs queued from an input window entry other than its newest (shared/net/host.ts) */
+  readonly netStats = { inputsDropped: 0, starveSteps: 0, clampedShots: 0, driftCredits: 0, inputsLost: 0, inputsRecovered: 0 };
   readonly brains: Array<BotBrain | null> = [];
   /** match time each player last touched down from a drop / redeploy (-1e9 = never): bots give a fresh lander a moment */
   readonly dropLandT = new Float64Array(MAX_PLAYERS).fill(-1e9);
@@ -315,17 +317,23 @@ export class Match {
 
   // ---------------------------------------------------------------- inputs
   /** queue one decoded input for human `id`. Duplicates (redundant sockets) and stale inputs are ignored. */
-  pushInput(id: number, i: Input) {
+  /** queue a human's input once per seq, in seq order; true when it was queued */
+  pushInput(id: number, i: Input): boolean {
     this.rec?.input(this.tick, id, i);
-    const p = this.players[id]; if (!p || p.bot) return;
-    if (!(i.seq > this.lastQueued[id])) return;
+    const p = this.players[id]; if (!p || p.bot) return false;
+    const last = this.lastQueued[id];
+    if (!(i.seq > last)) return false;
+    if (last > 0 && i.seq > last + 1) this.netStats.inputsLost += i.seq - last - 1;
     this.lastQueued[id] = i.seq;
     let len = this.qLen[id];
     if (len >= INPUT_QUEUE_MAX) { this.qHead[id] = (this.qHead[id] + 1) % INPUT_QUEUE_MAX; len--; this.netStats.inputsDropped++; }
     copyInput(this.qBuf[id][(this.qHead[id] + len) % INPUT_QUEUE_MAX], i); this.qLen[id] = len + 1;
+    return true;
   }
   /** inputs waiting for player `id` (telemetry) */
   queued(id: number) { return this.qLen[id]; }
+  /** the newest input seq queued for player `id` (telemetry: the server counts inputs per WebTransport A/B arm) */
+  lastSeq(id: number) { return this.lastQueued[id]; }
   /** one tick of a human: simulate queued inputs 1:1 (paced by credit); if the link is silent for too long, step a neutral input */
   private runHuman(p: Player) {
     const id = p.id, q = this.qBuf[id], last = this.lastInput[id];

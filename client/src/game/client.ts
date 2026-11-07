@@ -17,13 +17,14 @@ import { IK, lootReachable, type Chest, type Item } from "../../../shared/sim/lo
 import { B, PS, currentSpread, eyeY, invDrop, invMove, makeInput, makePlayer, pelletDamage, poseFlags, stepPlayer, weaponDef, copyInput, type Input, type Player } from "../../../shared/sim/player";
 import { makeStormState, stormAt, type StormPlan, type StormState } from "../../../shared/sim/storm";
 import type { StaticWorld } from "../../../shared/sim/world";
-import { EV, INV, KILL_BOMB, KILL_GUN, KILL_HELI, KILL_TUK, M, Reader, yawDec, Writer, makeCastStat, makePlayerSnap, makeSelfState, makeVehSnap, quantizeInput, readCastHeader, readCastStat, readInventory, readPlayer, readSelf, readSnapHeader, readVehicle, writeInput, writeInvOp, type CastHeader, type CastStat, type GunSelf, type PlayerSnap, type SelfState, type SnapHeader, type VehSelf, type VehSnap } from "../../../shared/net/proto";
+import { EV, INV, KILL_BOMB, KILL_GUN, KILL_HELI, KILL_TUK, M, Reader, yawDec, Writer, makeCastStat, makePlayerSnap, makeSelfState, makeVehSnap, quantizeInput, readCastHeader, readCastStat, readInventory, readPlayer, readSelf, readSnapHeader, readVehicle, writeInput, writeInputs, writeInvOp, INPUT_BODY_BYTES, INPUT_WINDOW, INPUTS_HEAD_BYTES, type CastHeader, type CastStat, type GunSelf, type PlayerSnap, type SelfState, type SnapHeader, type VehSelf, type VehSnap } from "../../../shared/net/proto";
 import { SEAT_EYE, TUK, VF, VKind, VS, VehicleSet, blendVeh, rayVehicle, seatPoint, seatRiderAt, vehPose, vehicleInReach, type Vehicle } from "../../../shared/sim/vehicle";
 import { GUN_SHOT, TOP_BANANA, gunBarrel, gunOf } from "../../../shared/sim/heli";
 import { fleetSpots, type TukSpot } from "../../../shared/sim/tuk-spots";
 import { heliIslet, heliPads, heliRange } from "../../../shared/sim/heli-spots";
 import { TARGET_STRIDE, blendPose, blendYaw, qf16, makeShotResult, shotDir, traceShot, type ShotResult } from "../../../shared/sim/hitscan";
 import type { Link } from "./net";
+import { Phase } from "../../../shared/sim/match";
 import { planeStep } from "../../../shared/sim/plane";
 import type { GameInput } from "./input";
 import { WEAPONS } from "../../../shared/world/map";
@@ -164,6 +165,9 @@ export class ClientMatch {
   planeStart = -1;
   /** ping = RTT ms (smoothed); jitter = 90th-percentile snapshot lateness ms; interpTicks = render delay behind the newest data */
   ping = 0; jitter = 0; interpTicks = SNAP_EVERY + 0.5; spectate = -1;
+  /** input to ack (ms, this tab's clock): from sending the newest input a snapshot acknowledges to handling that
+   *  snapshot. The host's wait for its tick and the next snapshot plus the link both ways; benchmark tools sample it */
+  ackMs = 0;
   /** visual correction offset (pred was corrected; smooth it out) */
   errX = 0; errY = 0; errZ = 0;
   /** previous predicted pose for render interpolation */
@@ -179,7 +183,7 @@ export class ClientMatch {
   /** when each input seq was sent (performance.now), by seq % PRING: how long the oldest unacked one has waited */
   private readonly sentAt = new Float64Array(PRING);
   private readonly pRing = new Float64Array(PRING * PS_STRIDE); private readonly pSeq = new Int32Array(PRING).fill(-1);
-  private readonly inputW = new Writer(new ArrayBuffer(64)); private readonly pingW = new Writer(new ArrayBuffer(16));
+  private readonly inputW = new Writer(new ArrayBuffer(64)); private readonly inputsW = new Writer(new ArrayBuffer(INPUTS_HEAD_BYTES + INPUT_WINDOW * INPUT_BODY_BYTES)); private readonly pingW = new Writer(new ArrayBuffer(16));
   private readonly scratch: Player;
   // ---- clocks
   private tickOffset = 0; private haveOffset = false; private lastPingAt = 0; private lastPongSent = 0;
@@ -277,6 +281,13 @@ export class ClientMatch {
     writeInvOp(this.invOpW.reset(), this.invOpSeq, op, a, b); this.link.sendBinary(this.invOpW.view());
     this.sink?.inventory();
     return true;
+  }
+  /** over datagrams (WebTransport) every input not yet acknowledged, so the next datagram repairs a lost one; over a
+   *  reliable link the one new input */
+  private sendInput(inp: Input) {
+    if (this.link.transport?.kind !== "wt") { writeInput(this.inputW.reset(), inp); this.link.sendBinary(this.inputW.view()); return; }
+    const first = Math.max(this.ackedSeq + 1, inp.seq - INPUT_WINDOW + 1);
+    writeInputs(this.inputsW.reset(), this.inRing, first, inp.seq - first + 1); this.link.sendBinary(this.inputsW.view());
   }
   private sendPing() { this.pingW.reset().u8(M.Ping).f64(performance.now()); this.link.sendBinary(this.pingW.view()); this.pingsSent++; }
   private readonly pings = new Float64Array(5); private readonly pingSort = new Float64Array(5); private pingN = 0; private pingsSent = 0;
@@ -415,6 +426,11 @@ export class ClientMatch {
     // inputs at once, and the newest of them may have waited no longer than usual
     const oldest = this.authSeq + 1;
     if (this.pingN >= 5 && ((this.lastSnapAt > 0 && at - this.lastSnapAt > DEFER_SNAP_GAPS * SNAP_EVERY * DT * 1000) || (h.lastSeq >= oldest && (this.inputSeq - oldest >= PRING || at - this.sentAt[oldest % PRING] > this.ping + DEFER_ACK_SLACK_MS)))) this.lastStallAt = at;
+    // input→ack for the KONGBOT and playtest reports (tools/playtest/ab.mts compares it between WebTransport
+    // arms): every input this snapshot newly acknowledges, so the older ones a stall held back count too (as netlab
+    // and sockets.mts do)
+    for (let s = Math.max(this.authSeq + 1, this.inputSeq - PRING + 1); s <= h.lastSeq; s++) this.link.noteAck?.(at - this.sentAt[s % PRING]);
+    if (h.phase === Phase.Play) this.link.notePlay?.(gGap * DT);
     this.lastSnapTick = h.tick; this.lastSnapAt = at; this.netStats.snapshots++;
     const nowT = at / 1000 / DT;
     this.clockSample(h.tick, nowT, performance.now());
@@ -423,6 +439,7 @@ export class ClientMatch {
     if (!this.haveOffset || est > this.tickOffset) { this.tickOffset = est; this.haveOffset = true; }
     this.snapTicks[this.snapN % TICKS_RING] = h.tick; this.snapN++;
     this.phase = h.phase; this.time = h.time; this.alive = h.alive; this.squads = h.squads; this.flags = h.flags;
+    if (h.lastSeq > this.authSeq && this.inputSeq - h.lastSeq < PRING) this.ackMs = performance.now() - this.sentAt[h.lastSeq % PRING];
     readSelf(r, this.auth); this.authTick = h.tick; this.authSeq = h.lastSeq;
     this.takeRemotes(r, h.count, h.tick, gGap);
     // …and only now the prediction: a replay may drive / sit in a tuk-tuk this very snapshot told us about
@@ -767,7 +784,7 @@ export class ClientMatch {
       if (p.thrown > 0) this.sink?.localThrow?.(p.thrown);
       this.onTick?.(inp);
       this.sentAt[inp.seq % PRING] = performance.now();
-      writeInput(this.inputW.reset(), inp); this.link.sendBinary(this.inputW.view());
+      this.sendInput(inp);
     }
     if (this.acc > DT * 6) this.acc = 0;
     this.stepStorm();
@@ -930,7 +947,7 @@ export class ClientMatch {
   predictShot(k: number, out: ShotResult, dir: Float64Array = DIR): ShotResult {
     const p = this.pred, w = weaponDef(p);
     this.predDmg = 0; this.predLeft = Infinity; this.predLate = false; this.predDefer = 0;
-    this.predVeh = -1;
+    this.predVeh = -1; if (k === 0) this.shotDeferred = false;
     // a round of TOP BANANA (I man a helicopter's door gun): along its barrels at the pose I sat at for this input (my
     // seat was put on the helicopter as drawn — the server rewinds to the same blend)
     const gun = gunOf(this.vehs, p);
@@ -965,6 +982,8 @@ export class ClientMatch {
   predLate = false;
   /** why the last predictShot left the hit it drew to the server and reported a miss (linkSlow's bits), 0 = it did not */
   predDefer = 0;
+  /** this shot already told the link it deferred a marker: a shotgun blast draws one marker however many pellets hit */
+  private shotDeferred = false;
   /**
    * Is the link too slow or stalled to trust a predicted hit? Then the hit marker waits for the server (KONG-78 §4 2b,
    * after Overwatch's ~220 ms rule). The bits say which signal fired: 1 = the RTT, either past what the rewind cap leaves
@@ -992,7 +1011,7 @@ export class ClientMatch {
    * no sample to judge it by, so the drawn verdict stands. On a slow or stalled link (linkSlow) no hit is predicted.
    */
   private lateVerdict(ox: number, oy: number, oz: number, dir: Float64Array, out: ShotResult) {
-    if (out.victim >= 0 && this.authSeq > 0) { this.predDefer = this.linkSlow(performance.now()); if (this.predDefer) { out.victim = -1; return; } }
+    if (out.victim >= 0 && this.authSeq > 0) { this.predDefer = this.linkSlow(performance.now()); if (this.predDefer) { if (this.phase === Phase.Play && !this.shotDeferred) { this.shotDeferred = true; this.link.noteDeferred?.(); } out.victim = -1; return; } }
     const lo = this.authTick + (this.inputSeq - this.authSeq) - MAX_REWIND_TICKS;
     if (out.victim < 0 || this.authSeq <= 0 || lo > this.lastSnapTick || !(this.viewA + this.viewSpan * this.viewF < lo)) return;
     const T = this.viewTargets, L = LATE_TARGETS, bl = this.blend;

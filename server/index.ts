@@ -18,13 +18,14 @@ import { buildStaticWorld } from "../shared/sim/static-world";
 import { lootSpots } from "../shared/sim/loot-spots";
 import { alive } from "../shared/sim/player";
 import { M, NET_VERSION } from "../shared/net/proto";
-import { FALLBACK_REASONS, sendFrame, type FallbackReason, type Path } from "../shared/net/transport";
+import { FALLBACK_REASONS, WT_ARMS, sendFrame, type FallbackReason, type Path, type WtArm } from "../shared/net/transport";
 import { WsTransport } from "./transport-ws";
 import type { WtTransport } from "./transport-wt";
 import { startWt, type WtEndpoint } from "./wt";
 import { makeBucket, struck, take } from "./limits";
 import { kongbotDb } from "./kongbot";
 import { annotationsApi } from "./annotations";
+import { autoCapBytes, autoDir, diagAutoApi } from "./diag-auto";
 import { serveStatic } from "./static";
 import { performanceMetrics } from "./perf";
 // (voice) squad comms + caster listen-in: the WebRTC handshake relay (the audio is peer to peer)
@@ -87,14 +88,22 @@ let wt: WtEndpoint | null = null;
 /** links that settled on WebTransport, and links that stayed on (or went back to) the WebSockets by reason, since the
  *  server started: what the clients said ({ t: "net" }), so fallbacks are counted across real players */
 const settled = { wt: 0, ws: Object.fromEntries(FALLBACK_REASONS.map((r) => [r, 0])) as Record<FallbackReason, number> };
+/** the share of sessions a WebTransport server (KR_WT=1) puts in the WebTransport arm of its A/B, 0..1 (default 1:
+ *  everyone). "welcome" tells each session its arm; a tab keeps its first one (client/src/game/net.ts armOf) */
+const WT_SHARE = Math.min(1, Math.max(0, Number(process.env.KR_WT_SHARE || 1) || 0));
+/** the A/B per arm (shared/net/transport.ts WtArm): links that reported it, how they settled, and their inputs in running
+ *  matches as the server queued them (seqs: how far their seqs advanced; lost; recovered from an input window) */
+const arms = Object.fromEntries(WT_ARMS.map((a) => [a, { links: 0, settled: { wt: 0, ws: Object.fromEntries(FALLBACK_REASONS.map((r) => [r, 0])) as Record<FallbackReason, number> }, inputs: { seqs: 0, lost: 0, recovered: 0 } }])) as Record<WtArm, { links: number; settled: typeof settled; inputs: { seqs: number; lost: number; recovered: number } }>;
 /** a client's last report and how many it sent: a link reports once per change, so a few is plenty */
 const netSaid = new WeakMap<Client, { last: string; n: number }>();
 const NET_REPORTS_MAX = 8;
-/** /health: clients by transport, how links settled, and the WebTransport endpoint's sessions (or why it is off) */
+/** /health: clients by transport, how links settled, the WebTransport endpoint's sessions (or why it is off), and the
+ *  running matches' human inputs: lost (a seq never queued), recovered by an input window, dropped from a full queue */
 function transportHealth() {
-  const by: Record<string, number> = {};
+  const by: Record<string, number> = {}, inputs = { lost: 0, recovered: 0, dropped: 0 };
   for (const c of byToken.values()) by[c.bin.kind] = (by[c.bin.kind] ?? 0) + 1;
-  return { clients: by, settled, webtransport: wt ? { port: wt.welcome().port, ...wt.counts } : { off: wtOff } };
+  for (const l of lobbies.values()) { const n = l.match?.netStats; if (n) { inputs.lost += n.inputsLost; inputs.recovered += n.inputsRecovered; inputs.dropped += n.inputsDropped; } }
+  return { clients: by, settled, inputs, arms, webtransport: wt ? { port: wt.welcome().port, share: WT_SHARE, ...wt.counts } : { off: wtOff } };
 }
 function allow(s: Sock): boolean { if (take(s)) return true; strike(s, "rate"); return false; }
 /** `weight`: a frame no honest client ever sends (a host-only or malformed event message) costs more than a rate blip */
@@ -125,6 +134,9 @@ const dist = path.join(root, "dist");
 const kongbot = kongbotDb(root);
 // dev view notes (?dev=annotate) → .kongbot/annotations/*.jsonl (+ Mongo kongbot_annotations)
 const annotations = annotationsApi(root);
+// automatic performance summaries from players who opted in (?diag) → <KR_DIAG_AUTO>/<date>.jsonl, own limits
+const diagAuto = diagAutoApi(autoDir(root, process.env.KR_DIAG_AUTO ?? (process.env.npm_lifecycle_event === "server" ? "1" : undefined)), log, autoCapBytes(process.env.KR_DIAG_AUTO_MB, log));
+if (diagAuto.dir) log(`automatic summaries are written to ${diagAuto.dir}`);
 const adminHttp = createAdminHttp({ root, ipOf: (req) => ipOf(req), log });
 const server = http.createServer((req, res) => {
   const url = (req.url || "/").split("?")[0];
@@ -139,6 +151,14 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (url === "/api/diag/auto") {
+    void diagAuto.handle(req, res, ipOf(req)).catch((error) => {
+      log("automatic summary request failed", error);
+      if (!res.headersSent) res.writeHead(500, { "content-type": "application/json", "cache-control": "no-store" });
+      if (!res.writableEnded) res.end(JSON.stringify({ ok: false, error: "could not store the row" }));
+    });
+    return;
+  }
   if (url === "/api/annotations") {
     void annotations.handle(req, res, ipOf(req)).catch((error) => {
       log("annotation request failed", error);
@@ -147,7 +167,7 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (url === "/health") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify({ ok: true, feedback: kongbot.health(), lobbies: lobbies.size, clients: [...lobbies.values()].reduce((a, l) => a + l.clients.length, 0), sockets: socks.size, transports: transportHealth(), inputs: [...lobbies.values()].flatMap((l) => (l.match && l.inputGaps ? [l.inputGaps.report()] : [])), ...(perf ? { performance: perf.read() } : {}) })); return; }
+  if (url === "/health") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify({ ok: true, feedback: kongbot.health(), diagAuto: diagAuto.health(), lobbies: lobbies.size, clients: [...lobbies.values()].reduce((a, l) => a + l.clients.length, 0), sockets: socks.size, transports: transportHealth(), inputs: [...lobbies.values()].flatMap((l) => (l.match && l.inputGaps ? [l.inputGaps.report()] : [])), ...(perf ? { performance: perf.read() } : {}) })); return; }
   if (!serve || (req.method !== "GET" && req.method !== "HEAD")) { res.writeHead(404); res.end(); return; }
   void serveStatic(req, res, url, dist).catch((error) => { log("asset request failed", error); if (!res.headersSent) res.writeHead(500); res.end(); });
 });
@@ -225,11 +245,11 @@ wss.on("connection", (ws, req) => {
 
   const aux: Sock[] = [];
   const wsT = new WsTransport(s, aux, strike);
-  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux, ws: wsT, wt: null, bin: wsT, lastInputAt: Date.now(), peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null };
+  const c: Client = { uid: uidSeq++, token: crypto.randomBytes(16).toString("hex"), name: "KONG", lobby: null, pid: -1, squad: 0, sock: s, aux, ws: wsT, wt: null, bin: wsT, lastInputAt: Date.now(), away: false, peer: null!, markAt: 0, seat: -1, camAt: 0, program: false, ev: null, arm: null };
   wsT.onMessage = (u8, _at, from) => onBinary(c, u8, from);
   c.peer = { pid: -1, invSeq: 0, send: (u8) => sendFrame(c.bin, u8), sendResult: (state) => sendJSON(c.sock.ws, { t: "result", state }) };
   byToken.set(c.token, c);
-  sendJSON(ws, { t: "welcome", uid: c.uid, aux: c.token, terrain: td.hash, world: worldHashV, boxes: boxes.length, net: NET_VERSION, ...(wt ? { wt: wt.welcome() } : {}) });
+  sendJSON(ws, { t: "welcome", uid: c.uid, aux: c.token, terrain: td.hash, world: worldHashV, boxes: boxes.length, net: NET_VERSION, ...(wt ? { wt: { ...wt.welcome(), use: Math.random() < WT_SHARE } } : {}) });
   ws.on("message", (data: RawData, isBinary: boolean) => {
     if (!allow(s)) return;
     if (isBinary) { c.ws.receive(s, data); return; }
@@ -255,9 +275,15 @@ function logClose(c: Client, s: Sock, code: number, reason: Buffer, aux: boolean
 /** one binary frame from a client, on any of its transport's paths */
 function onBinary(c: Client, u8: Uint8Array, from: Path) {
   const host = c.lobby?.host;
-  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
-  if (u8[0] === M.Input) c.lastInputAt = Date.now();
+  if (!host) { if (u8[0] !== M.Input && u8[0] !== M.Inputs && u8[0] !== M.Ping && u8[0] !== M.InvOp) from.strike("bad frame"); return; }
+  // a single input (WebSockets) or an input window (WebTransport): the player is here (lobby.ts housekeeping)
+  const input = u8[0] === M.Input || u8[0] === M.Inputs;
+  if (input) c.lastInputAt = Date.now();
+  // (the WebTransport A/B) this player's inputs, counted under its arm: only its own pushes run inside receive
+  const m = c.lobby?.match, pid = c.peer.pid, a = input && m && pid >= 0 && c.arm ? arms[c.arm].inputs : null;
+  const s0 = a ? m!.lastSeq(pid) : 0, l0 = a ? m!.netStats.inputsLost : 0, r0 = a ? m!.netStats.inputsRecovered : 0;
   if (!host.receive(c.peer, u8, from.reply)) from.strike("bad frame");
+  if (a) { a.seqs += Math.max(0, m!.lastSeq(pid) - s0); a.lost += m!.netStats.inputsLost - l0; a.recovered += m!.netStats.inputsRecovered - r0; }
 }
 const helloAt = new WeakMap<Client, number>(), helloLater = new WeakMap<Client, NodeJS.Timeout>();
 const ownedLobbies = (ip: string) => { let n = 0; for (const l of lobbies.values()) if (!l.event && l.owner && l.owner.sock?.ip === ip) n++; return n; };
@@ -344,7 +370,7 @@ function onJSON(c: Client, msg: { t?: unknown; [k: string]: unknown }) {
     }
     // (admin lobby) in an event lobby only the admin changes the mode or starts: a player asking is refused (and struck)
     case "mode": if (c.lobby?.event) { strike(c.sock, "not the host", 10); break; } if (c.lobby && c.lobby.owner === c && !c.lobby.match) { c.lobby.mode = msg.mode === "trios" ? "trios" : "solo"; c.lobby.assignSquads(); c.lobby.broadcastJSON(c.lobby.state()); } break;
-    case "start": if (c.lobby?.event) { strike(c.sock, "not the host", HEAVY); break; } if (c.lobby && c.lobby.owner === c) { if (!c.lobby.match) c.lobby.start(); else c.lobby.match.startNow(); } break;
+    case "start": if (c.lobby?.event) { strike(c.sock, "not the host", HEAVY); break; } c.lobby?.claimHost(c); if (c.lobby && c.lobby.owner === c) { if (!c.lobby.match) c.lobby.start(); else c.lobby.match.startNow(); } break;
     case "leave": leaveLobby(c); break;
     // which transport the link settled on and why (client/src/game/net.ts). Only counted when it matches what the
     // server sees (a "wt" claim needs an attached session), on a change, and a few times per client
@@ -355,6 +381,9 @@ function onJSON(c: Client, msg: { t?: unknown; [k: string]: unknown }) {
       if (said.last === key || said.n >= NET_REPORTS_MAX) break;
       netSaid.set(c, { last: key, n: said.n + 1 });
       if (onWt) settled.wt++; else settled.ws[why]++;
+      // its A/B arm: the first one it names (a link keeps its arm)
+      if (!c.arm && WT_ARMS.includes(msg.arm as WtArm)) { c.arm = msg.arm as WtArm; arms[c.arm].links++; }
+      if (c.arm) { if (onWt) arms[c.arm].settled.wt++; else arms[c.arm].settled.ws[why]++; }
       break;
     }
     // the client's island stream (the warm-up waits for it, ≤ 40 s: MatchHost.holdForStream)

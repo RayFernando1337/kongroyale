@@ -13,16 +13,23 @@ import { M } from "./proto";
 
 export const enum Channel { Reliable = 0, Unreliable = 1 }
 /** how a frame travels. Unreliable frames are newest-wins (a later one replaces a lost one); every other frame must
- *  arrive, in order. Caster snapshots stay reliable: they carry every player (often more than one datagram holds) and a
- *  commentator seat favours a complete picture over the lowest latency */
+ *  arrive, in order. A single input (M.Input) is reliable: each one is needed once. The input window (M.Inputs) is
+ *  unreliable: the next window carries every input a lost one did. Caster snapshots stay reliable: they carry every
+ *  player (often more than one datagram holds) and a commentator seat favours a complete picture over the lowest
+ *  latency */
 export function channelOf(type: number): Channel {
-  return type === M.Ping || type === M.Pong || type === M.Snapshot ? Channel.Unreliable : Channel.Reliable;
+  return type === M.Inputs || type === M.Ping || type === M.Pong || type === M.Snapshot ? Channel.Unreliable : Channel.Reliable;
 }
 
 export type TransportKind = "ws" | "wt";
 /** why a link that could have used WebTransport stayed on (or went back to) the WebSockets */
 export type FallbackReason = "flag-off" | "server-off" | "unsupported" | "connect-failed" | "timeout" | "auth" | "closed" | "no-datagrams";
 export const FALLBACK_REASONS: readonly FallbackReason[] = ["flag-off", "server-off", "unsupported", "connect-failed", "timeout", "auth", "closed", "no-datagrams"];
+/** a link's arm in the WebTransport A/B (KR_WT_SHARE, HOSTING.md): "wt" or "ws" as the server assigned it (a tab keeps
+ *  its first one for its session), "forced-wt" / "forced-ws" when the page's ?wt=1 / ?wt=0 overrode it, "off" when the
+ *  server offered no WebTransport. Only "wt" and "ws" are the experiment */
+export type WtArm = "wt" | "ws" | "forced-wt" | "forced-ws" | "off";
+export const WT_ARMS: readonly WtArm[] = ["wt", "ws", "forced-wt", "forced-ws", "off"];
 
 /** per-transport counters, the same fields for every kind, so sessions compare across transports */
 export interface TransportStats {
@@ -59,6 +66,10 @@ export interface Transport {
 }
 
 /** send a frame on the channel its type travels on */
+/** datagrams each snapshot goes out as (server/transport-wt.ts; tools/netlab.mts models the same). A lost snapshot
+ *  datagram is never resent, and the gap it leaves made remotes hold in place (netlab, 150 ms, 1% loss: 0.6% of frames
+ *  with one copy, 0 with two). Two copies cost what the WebSocket pair already does: every frame on both sockets */
+export const SNAPSHOT_DATAGRAM_COPIES = 2;
 export function sendFrame(t: Transport, u8: Uint8Array) {
   if (channelOf(u8[0]) === Channel.Unreliable) t.sendUnreliable(u8); else t.sendReliable(u8);
 }
