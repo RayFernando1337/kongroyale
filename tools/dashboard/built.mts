@@ -85,7 +85,10 @@ function readModel(root: string, cfg: ModelCfg, hide: RegExp): Model {
       for (let i = at - 1; i >= 0 && /^\\\*/.test(lines[i]); i--) above.unshift(lines[i].replace(/^\\\*\s?/, ""));
       const inline = at >= 0 ? /\\\*\s*(.+)$/.exec(lines[at])?.[1] : undefined;
       const text = publicText(above.join(" ") || inline || "", hide, cfg.id + " " + name);
-      rules.push({ name, kind, text: text.charAt(0).toUpperCase() + text.slice(1) });
+      let end = at + 1;
+      while (at >= 0 && end < lines.length && lines[end].trim() !== "") end++;
+      const eventually = at >= 0 && /<>|~>/.test(lines.slice(at, end).join(" "));
+      rules.push({ name, kind: kind === "property" && eventually ? "property" : "invariant", text: text.charAt(0).toUpperCase() + text.slice(1) });
     }
   }
   const sources: Diagram[] = [];
@@ -122,13 +125,13 @@ function readChecks(root: string, guards: Guards, hide: RegExp): { checks: Check
   const checks: Check[] = tests.map(([, id, slow, name]) => {
     const g = guards.tests[id];
     if (!g) unmapped.push(id);
-    return { kind: "test", id, label: publicText(g?.label ?? name, hide, "check " + id), speed: slow ? "slow" : "fast", catches: g?.catches ?? "description to come", budget: g?.budget };
+    return { kind: "test", id, label: publicText(g?.label ?? name, hide, "check " + id), speed: slow ? "slow" : "fast", catches: g?.catches ? publicText(g.catches, hide, "check " + id) : "description to come", budget: g?.budget };
   });
   const ci = [...fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8").matchAll(/^  ([\w-]+):\n    name: (.+)$/gm)];
   for (const [, id, name] of ci) {
     const g = guards.ci[id];
     if (!g) unmapped.push("ci:" + id);
-    checks.push({ kind: "ci", id, label: publicText(g?.label ?? name, hide, "job " + id), speed: "CI", catches: g?.catches ?? "description to come", budget: g?.budget });
+    checks.push({ kind: "ci", id, label: publicText(g?.label ?? name, hide, "job " + id), speed: "CI", catches: g?.catches ? publicText(g.catches, hide, "job " + id) : "description to come", budget: g?.budget });
   }
   for (const id of Object.keys(guards.tests)) if (!tests.some((t) => t[1] === id)) unmapped.push(id + " (in guards.json, not in run-tests.mjs)");
   return { checks, unmapped };

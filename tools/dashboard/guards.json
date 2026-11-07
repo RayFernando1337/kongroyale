@@ -2,41 +2,41 @@
   "about": "What each check on every PR catches, in my words. tests: id from node tools/run-tests.mjs --list; ci: job key from .github/workflows/ci.yml; budget: the checked-in file whose numbers it enforces (the build fails if the file is missing). A check without an entry still shows, marked 'description to come'. label replaces the raw check name where that name has wording the public page leaves out. coming: gates in flight; a PR number shows its live status.",
   "tests": {
     "types": {
-      "catches": "A type error anywhere in the project."
+      "catches": "A type error anywhere in the project (tsc --noEmit)."
     },
     "lint": {
       "catches": "Shared code that isn't deterministic, per-tick allocation in hot files, unowned GPU resources, raw URL flags, type-only imports written as values.",
       "budget": "tools/lint/baseline.json"
     },
     "formal": {
-      "catches": "Code a TLA+ model describes changing after the model last passed its checker.",
+      "catches": "A TLA+ model, or the code regions it names, changing since the model last passed its checker. It compares hashes of the code; it does not re-run the checker.",
       "label": "TLA+ models still match the code they describe"
     },
     "flags": {
-      "catches": "The feature-flag registry and its overrides behaving as documented."
+      "catches": "Feature-flag defaults, URL and stored overrides, and the query string the registry builds, not behaving as documented."
     },
     "bundles": {
       "label": "Playtest report uploads (hostile input, size caps)",
-      "catches": "A report bundle that is too big, malformed or sent too often."
+      "catches": "The playtest report endpoint: unknown fields are dropped, oversized or malformed bundles, hostile diagnostics and broken uploads are refused, and the folder's count and size caps hold."
     },
     "auto": {
-      "catches": "Automatic performance summaries: hostile rows, duplicates, their own limits and the folder cap."
+      "catches": "Automatic summary rows: hostile rows are refused, unknown fields dropped, and the endpoint's own limits and folder cap hold over HTTP."
     },
     "triage": {
-      "catches": "Reports grouped wrongly, or private text leaking into a summary."
+      "catches": "Playtest bundles not grouped into the expected clusters by fingerprint, or a callsign or message reaching a public output."
     },
     "ab": {
-      "catches": "The WebTransport A/B split putting a player in the wrong arm or recording the wrong one."
+      "catches": "Bundles not split by transport arm with the right medians and per-minute rates, a link counted twice, or a callsign or message reaching the output."
     },
     "gate": {
-      "catches": "A verifier that passes when it was given nothing to check."
+      "catches": "The shared flag parser for verifiers accepting an unknown flag, a missing or non-numeric value or a stray argument, or a verifier passing when it found nothing to check."
     },
     "size": {
-      "catches": "A change that makes the browser download more than its budget (entry, boot, workers, lazy chunks).",
+      "catches": "Gzip bytes of entry, boot, worker and lazy JavaScript going over the budget, or more than 5% under it until the budget is lowered.",
       "budget": "tools/size-budgets.json"
     },
     "farbake": {
-      "catches": "A far-away stand-in that no longer matches the location it replaces."
+      "catches": "A far-away stand-in file whose header or index entry doesn't match (fails). One that is stale or not baked yet is only reported for now."
     },
     "assets": {
       "catches": "A new art, sound or font file with no recorded source and licence.",
@@ -46,47 +46,47 @@
       "catches": "A math function that gives different bits than the recorded vectors, which would split client and server."
     },
     "movement": {
-      "catches": "Walking, jumping and sliding changing behaviour."
+      "catches": "Ledge climbs (up to 2.1 m climbed, 2.2 m not), slides, air steering and mantle timing changing, or the same inputs twice giving different state."
     },
     "swimming": {
-      "catches": "Swimming changing behaviour."
+      "catches": "Swimming in open deep water changing: floating at the surface, stroke speed, drawing and stowing the gun, and diving."
     },
     "face": {
-      "catches": "The kong face rig failing its checks."
+      "catches": "Idle blinks (12 to 40 a minute, never in sync across 50 kongs), expressions reaching their targets within 0.3 s, or gaze going past its limits."
     },
     "anim": {
-      "catches": "Kong animation failing its checks."
+      "catches": "Planted feet sliding, third-person reload animation drifting from the sim's reload flag, or hands leaving the weapon."
     },
     "walkgraph": {
-      "catches": "Building interiors a kong can no longer walk through."
+      "catches": "The building walk graph: window glass must block walking but not sight, stair heights must resolve, and a staircase must stay connected."
     },
     "solver": {
-      "catches": "The path solver failing its recorded tests."
+      "catches": "Capsule solver acceptance tests: the real step code against test boxes and against stuck spots found in live matches, each also run on the old solver for comparison."
     },
     "glass": {
-      "catches": "Panes that break differently on client and server, or can't be shot, punched or blasted."
+      "catches": "Breakable glass: every way to break a pane (shot, punch, sprint, rocket), window vaults, and the break events on the wire, including for a late joiner."
     },
     "planeview": {
-      "catches": "A low-memory plane view that leaves out locations in view.",
+      "catches": "In low-memory mode, the plane queuing locations that are out of view or fewer than are in view (up to 2), or the chase camera seeing locations on too few paths.",
       "label": "Low-memory plane queues the locations in view"
     },
     "raycast": {
-      "catches": "Raycast ties resolving differently."
+      "catches": "StaticWorld.raycast disagreeing with a reference walk: exact ties between boxes and thousands of seeded random rays must give the same hit."
     },
     "res": {
-      "catches": "Resource scopes: owners, lifetimes and cleanup."
+      "catches": "Resource scopes not disposing their geometry, material and texture when closed, in order, or the ledger miscounting bytes by category."
     },
     "refresh": {
-      "catches": "The display refresh estimate going wrong."
+      "catches": "The display refresh estimate: a slow game must still read as the screen's real rate (60, 120, 144 Hz), and real 30 Hz pacing must read 30."
     },
     "resguard": {
-      "catches": "The half-rate guard stepping resolution the wrong way."
+      "catches": "The half-rate guard lowering 3D resolution when it shouldn't, going below Auto's floor, not stepping back up after full-rate seconds, or oscillating."
     },
     "parity": {
-      "catches": "Wire, matrix, geometry, http or splat code that differs between the two sides."
+      "catches": "Five checks, each asserted against its own expected result: network snapshots, the matrix cache, the geometry index, static file serving and splat viewport selection."
     },
     "sim": {
-      "catches": "Any change to the rules that changes the state hash of a headless 50-bot match."
+      "catches": "A headless 50-bot match with no winner, friendly-fire hits, bots not arming up, tick cost over budget, a vehicle seat and its rider disagreeing, an illegal phase change, or a final state hash that differs from the recorded one."
     },
     "nettail": {
       "catches": "A network tail (slowest 1% of input replies) that gets worse.",
@@ -94,17 +94,17 @@
     },
     "afk": {
       "label": "AFK removal returns the player to the waiting area (real server)",
-      "catches": "A player who goes idle not being sent back."
+      "catches": "An idle player not being taken out of the match, kept in the waiting area with the reason shown, while active players carry on, tested against the real server."
     },
     "redteam": {
       "label": "Red team checks on the admin tools",
       "catches": "Hostile use of a server tool; the details stay out of this page."
     },
     "wt": {
-      "catches": "The WebTransport endpoint failing a loopback session."
+      "catches": "The WebTransport endpoint: off by default, refused on a wrong token or a second session, inputs and snapshots as datagrams with lost windows repaired, a session that floods the server being closed, and the A/B arm counted in /health."
     },
     "wtbrowser": {
-      "catches": "WebTransport failing in a real headless browser."
+      "catches": "WebTransport in headless Chromium against a real server: arm selection, ping and pong, the session outliving a quiet period, fallback to WebSockets when the server closes it, and the flag overrides. It passes with SKIP when no browser or QUIC build is present."
     }
   },
   "ci": {
@@ -118,7 +118,7 @@
     },
     "boot": {
       "label": "no-GPU boot smoke",
-      "catches": "A production build that doesn't boot, or holds more memory at the title than its budget.",
+      "catches": "A production build that doesn't boot in software-rendered Chromium (smoke only, not frame rate or looks), or holds more memory at the title than its budget.",
       "budget": "tools/memory-budgets.json"
     },
     "memory": {
@@ -128,12 +128,12 @@
     },
     "lowmem-memory": {
       "label": "no-GPU low-memory memory",
-      "catches": "More memory in a match or in low-memory mode than its budget.",
+      "catches": "More memory than budget in the low-memory setup: at the title, in the plane and 60 s into play.",
       "budget": "tools/memory-lowmem-budgets.json"
     },
     "context-restore": {
       "label": "no-GPU context restore",
-      "catches": "A WebGL context loss at the title or in a warm-up that doesn't restore."
+      "catches": "A WebGL context lost at the title or in a match warm-up that doesn't restore."
     }
   },
   "coming": [
