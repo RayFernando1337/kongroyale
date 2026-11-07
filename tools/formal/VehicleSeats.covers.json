@@ -211,7 +211,7 @@
   "verified": {
     "model": "40f4b33c657a90ca",
     "regions": {
-      "shared/sim/vehicle.ts#freeSeat": "706a387d7a9bfacb",
+      "shared/sim/vehicle.ts#freeSeat": "d6a7cf5da3d2467c",
       "shared/sim/vehicle.ts#enterVehicle": "5da2594d416b51fb",
       "shared/sim/vehicle.ts#exitVehicle": "2a22bc408324c4ee",
       "shared/sim/vehicle.ts#switchSeat": "15705ecc77387291",

@@ -1,0 +1,30 @@
+[
+  {
+    "name": "kill keeps the seat",
+    "why": "match.ts kill: the seat is no longer freed when a riding kong dies",
+    "find": "seats' = if (riding(p)) exitSeats(p, veh.get(p)) else seats,",
+    "replace": "seats' = seats,",
+    "expect": "seatsAgree"
+  },
+  {
+    "name": "freeSeat lets another squad in",
+    "why": "vehicle.ts freeSeat: the squad check is gone",
+    "find": "        or Seats.exists(k => s.get(k) != NONE and team(s.get(k)) != team(p))\n",
+    "replace": "",
+    "expect": "oneSquad"
+  },
+  {
+    "name": "ejectAll leaves the riders on",
+    "why": "match.ts ejectAll: the seats are cleared but the kongs still ride",
+    "find": "    st' = Players.mapBy(p => if (thrown(p, v)) Ground else st.get(p)),\n    veh' = Players.mapBy(p => if (thrown(p, v)) NONE else veh.get(p)),\n    seat' = Players.mapBy(p => if (thrown(p, v)) 0 else seat.get(p)),",
+    "replace": "    st' = st, veh' = veh, seat' = seat,",
+    "expect": "seatsAgree"
+  },
+  {
+    "name": "a seat switch keeps the old seat",
+    "why": "vehicle.ts switchSeat/takeSeat: the old seat is not freed",
+    "find": "seats' = exitSeats(p, veh.get(p)).setBy(veh.get(p), s => s.set(k, p)),",
+    "replace": "seats' = seats.setBy(veh.get(p), s => s.set(k, p)),",
+    "expect": "seatsAgree"
+  }
+]

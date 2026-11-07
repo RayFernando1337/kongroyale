@@ -297,6 +297,7 @@ export function vehPose(v: Vehicle, out: Float64Array | number[]): Float64Array 
 export const PITCH_VQ = 80, ROLL_VQ = 10000;
 export const qVPitch = (a: number) => Math.max(-127, Math.min(127, Math.round(a * PITCH_VQ)));
 export const qVRoll = (a: number) => Math.max(-32767, Math.min(32767, Math.round(wrapPi(a) * ROLL_VQ)));
+//@ skip
 const POSE = new Float64Array(6);
 /** this tick's pose into the lag-compensation history (quantised like the snapshot of this tick) */
 export function recordVehicle(v: Vehicle, tick: number) {
@@ -314,6 +315,7 @@ export function blendVeh(a: ArrayLike<number>, ao: number, b: ArrayLike<number>,
   out[3] = a[ao + 3] + wrapPi(b[bo + 3] - a[ao + 3]) * f; out[4] = a[ao + 4] + (b[bo + 4] - a[ao + 4]) * f; out[5] = a[ao + 5] + wrapPi(b[bo + 5] - a[ao + 5]) * f;
   return out;
 }
+//@ skip
 const M3 = new Float64Array(9);
 /** a body-frame point of pose P (x, y, z, yaw, pitch, roll) in the world → out[0..2] */
 export function vehPoint(P: ArrayLike<number>, lx: number, ly: number, lz: number, out: Float64Array | number[]): Float64Array | number[] {
@@ -353,6 +355,7 @@ export function rayVehicle(P: ArrayLike<number>, kind: number, ox: number, oy: n
 // ------------------------------------------------------------------------------------------------ the ground
 const GH = makeHit(), N3 = [0, 1, 0];
 /** wheel register: [front, rear-left, rear-right contact heights, origin height, pitch, roll, surface, lowest contact] */
+//@ skip
 const WH = new Float64Array(8);
 /** the surface under (x, z) within reach of a wheel at height y: the terrain itself (exact — a marched ray would wobble
  * a millimetre with its start height, and a parked tuk-tuk must be perfectly still) or the top of a box standing on it
@@ -681,6 +684,7 @@ export interface Rider {
 }
 /** PS.Ride / PS.Ground (shared/sim/player.ts), numeric here so this module never imports player.ts */
 export const RIDE_ST = 8;
+//@ skip
 const P6 = new Float64Array(6), S3 = new Float64Array(3);
 
 /** put a rider on its seat of v as v stands NOW (the driver also faces where the tuk-tuk does) */
@@ -693,12 +697,29 @@ export function seatRider(p: Rider, v: Vehicle) {
  * looking from; the server: the same pose rewound from the history — so both fire from the same eye) */
 export function seatRiderAt(p: Rider, kind: number, P: ArrayLike<number>) { seatPoint(P, kind, p.seat, S3); p.x = S3[0]; p.y = S3[1]; p.z = S3[2]; }
 
+//@ declare-type Vehicle { id: number, st: VS, seats: number[] }
+//@ declare-type Rider { id: number, seat: number }
 /** which seat a kong of `team` may take in v: the bars if they are free, else the bench; −1 = full, wrecked, on its
  * side, or carrying another squad */
 export function freeSeat(v: Vehicle, team: number, teamOf: (id: number) => number): number {
+  //@ verify
+  //@ autohavoc
+  //@ requires v.seats.length === 3
+  //@ ensures \result >= -1 && \result < 3
+  //@ ensures \result >= 0 ==> v.seats[\result] < 0
+  //@ ensures \result >= 0 ==> forall(j, 0 <= j && j < \result ==> v.seats[j] >= 0)
+  //@ ensures \result >= 0 ==> forall(j, 0 <= j && j < 3 && v.seats[j] >= 0 ==> teamOf(v.seats[j]) === team)
   if (v.st !== VS.Ok) return -1;
-  for (let k = 0; k < 3; k++) if (v.seats[k] >= 0 && teamOf(v.seats[k]) !== team) return -1;
-  for (let k = 0; k < 3; k++) if (v.seats[k] < 0) return k;
+  for (let k = 0; k < 3; k++) {
+    //@ invariant 0 <= k && k <= 3
+    //@ invariant forall(j, 0 <= j && j < k && v.seats[j] >= 0 ==> teamOf(v.seats[j]) === team)
+    if (v.seats[k] >= 0 && teamOf(v.seats[k]) !== team) return -1;
+  }
+  for (let k = 0; k < 3; k++) {
+    //@ invariant 0 <= k && k <= 3
+    //@ invariant forall(j, 0 <= j && j < k ==> v.seats[j] >= 0)
+    if (v.seats[k] < 0) return k;
+  }
   return -1;
 }
 export function enterVehicle(p: Rider, v: Vehicle, seat: number) {
