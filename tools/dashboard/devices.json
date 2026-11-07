@@ -94,6 +94,12 @@
       "device": "Worked out from the measurements named in the note",
       "method": "Estimate or plan, not a measurement. The note gives the arithmetic and its sources.",
       "source": "docs/memory-architecture.md, Captain drive reports/KONG-44, KONG-47 and KONG-62"
+    },
+    "mem-12gb": {
+      "label": "whole-browser flight, Mac mini (RAY-227)",
+      "device": "Mac mini, Apple M4, 16 GB, macOS 27.0.1, Chrome 154.0.8037.57 on Metal, Safari 27.0.1",
+      "method": "Prod build of fork main 0c1713f on a local server, DPR 1 at a 1080p surface, Auto quality, seed 42, the moving autopilot (v7) from the drop to the results screen, a full practice match per run. n=2 per arm, interleaved, each in a fresh browser process. Arm A is the defaults, arm B adds ?lowmem=1&geofree=1&farimp=1; both add &resaudit. Chrome is the sum of footprint over the Chrome process tree from the automation browser's main process; Safari is WebContent (max) and whole Safari (Safari, WebContent and WebKit GPU processes). Sampled every 2.5 s, peak kept. Notes: the first Chrome pass sampled the wrong process and was discarded and rerun; the Metal shader cache was not wiped between runs; the Mac also runs other work, so the operating system share (below) is an upper bound.",
+      "source": "project drive: handoffs/mem-12gb (RAY-227), measured by KONG-54"
     }
   },
   "skus": [
@@ -107,8 +113,7 @@
           "id": "peak",
           "title": "Peak memory in a match",
           "measure": "The highest memory seen from launch to the end of the match. For Safari, the page process (WebContent) is the number Safari watches, and the whole browser adds Safari's graphics process. For Chrome it is every Chrome process together.",
-          "caption": "v0.2.0 is the shared starting point of both projects. The fork set out to fit a full Safari match inside the limit Safari sets on a 16 GB Mac, and from v0.6 the match fits: across the v0.6 and v1.0 checks the page peaked between 6.8 and 7.7 GB against a limit of about 8.4 GB (one v0.6.1 run on a longer route reached 8.3 GB and still finished). Chrome doesn't close tabs this way, so its line shows how much it asks of the Mac. Chrome on this Mac was first measured with an earlier version of the measuring tool that read high, so those runs aren't plotted.",
-          "pending": "Main at 0c1713f, with and without the low-memory setup (?lowmem=1&geofree=1&farimp=1), is being measured on this Mac now in both browsers (RAY-227). Its points land here when the runs finish.",
+          "caption": "v0.2.0 is the shared starting point of both projects. The fork set out to fit a full Safari match inside the limit Safari sets on a 16 GB Mac, and from v0.6 the match fits: across the checks the page peaked between 6.8 and 7.7 GB against a limit of about 8.4 GB (one v0.6.1 run on a longer route reached 8.3 GB and still finished). Main at 0c1713f was measured in both browsers, two runs each way. In Chrome the low-memory setup cuts the peak from 10.9 to 8.0 GB at 60 fps. In Safari the flags change nothing measurable, because Safari already runs the low-memory path. Chrome doesn't close tabs this way, so its line shows how much it asks of the Mac. The main points use a pixel ratio of 1, the v1.0 Safari point forced 2, so the two aren't a like-for-like change.",
           "ceilings": [
             {
               "mb": 8400,
@@ -189,6 +194,18 @@
                   "note": "Run 2 reached the results screen. Run 1's driver dropped about 300 s in; the tab stayed open and peaked at 8,286 MB on a longer glide over the town. kong-v0.6.0 peaked at 7,235 MB and also finished."
                 },
                 {
+                  "slot": "main",
+                  "mb": 7060,
+                  "low": 6935,
+                  "high": 7185,
+                  "kind": "measured",
+                  "build": "main 0c1713f",
+                  "m": "mem-12gb",
+                  "n": 2,
+                  "date": "2026-11-07",
+                  "note": "Defaults arm. Auto picked Low, so Safari already ran the low-memory path. Runs peaked at 6,935 and 7,185 MB. n=2: the mean of two runs, whiskers show each run."
+                },
+                {
                   "slot": "v1.0",
                   "mb": 7072,
                   "kind": "measured",
@@ -254,6 +271,18 @@
                   "note": "Run 2, which reached the results screen; run 1 reached 9,512 MB on a longer route. kong-v0.6.0 peaked at 8,486 MB."
                 },
                 {
+                  "slot": "main",
+                  "mb": 8123,
+                  "low": 8004,
+                  "high": 8242,
+                  "kind": "measured",
+                  "build": "main 0c1713f",
+                  "m": "mem-12gb",
+                  "n": 2,
+                  "date": "2026-11-07",
+                  "note": "Defaults arm, Auto picked Low. Runs peaked at 8,004 and 8,242 MB. n=2: the mean of two runs, whiskers show each run."
+                },
+                {
                   "slot": "v1.0",
                   "mb": 8354,
                   "kind": "measured",
@@ -305,6 +334,18 @@
                   "note": "Highest 15 s sample per run, median of 6. macOS already had about 2.5 GB in swap before each run and reported memory pressure as warn, never critical."
                 },
                 {
+                  "slot": "main",
+                  "mb": 10862,
+                  "low": 10834,
+                  "high": 10889,
+                  "kind": "measured",
+                  "build": "main 0c1713f",
+                  "m": "mem-12gb",
+                  "n": 2,
+                  "date": "2026-11-07",
+                  "note": "Defaults arm, Auto picked High. Runs peaked at 10,834 and 10,889 MB, 60 fps in both. n=2: the mean of two runs, whiskers show each run."
+                },
+                {
                   "slot": "next",
                   "mb": 8145,
                   "kind": "planned",
@@ -325,6 +366,63 @@
                   "date": "2026-11-07",
                   "note": "The plan's whole-browser target: 3,850 MB.",
                   "work": "The memory plan's target (#120): the whole browser under 4 GB in a match at 1080p."
+                }
+              ]
+            },
+            {
+              "id": "chrome-whole-low",
+              "label": "Chrome, whole browser, low-memory setup",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "main",
+                  "mb": 7970,
+                  "low": 7950,
+                  "high": 7990,
+                  "kind": "measured",
+                  "build": "main 0c1713f",
+                  "m": "mem-12gb",
+                  "n": 2,
+                  "date": "2026-11-07",
+                  "note": "?lowmem=1&geofree=1&farimp=1. Runs peaked at 7,990 and 7,950 MB, 60 fps in both: 2.9 GB (27%) under the defaults, in both the GPU and renderer processes. n=2: the mean of two runs, whiskers show each run."
+                }
+              ]
+            },
+            {
+              "id": "safari-page-flags",
+              "label": "Safari, page process, with the low-memory flags",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "main",
+                  "mb": 7072,
+                  "low": 6522,
+                  "high": 7621,
+                  "kind": "measured",
+                  "build": "main 0c1713f",
+                  "m": "mem-12gb",
+                  "n": 2,
+                  "date": "2026-11-07",
+                  "note": "Same flags as Chrome's low-memory setup. Safari's defaults already run low-memory, so the arms don't separate: two runs of this arm differ by 1.1 GB, more than the gap between arms. n=2 can't rule out a small gain. n=2: the mean of two runs, whiskers show each run."
+                }
+              ]
+            },
+            {
+              "id": "safari-whole-flags",
+              "label": "Safari, whole browser, with the low-memory flags",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "main",
+                  "mb": 8168,
+                  "low": 7489,
+                  "high": 8846,
+                  "kind": "measured",
+                  "build": "main 0c1713f",
+                  "m": "mem-12gb",
+                  "n": 2,
+                  "date": "2026-11-07",
+                  "note": "Runs peaked at 7,489 and 8,846 MB; the spread within this arm (1.4 GB) is larger than the gap to the defaults arm. One run read 7.1 GB at the title where the other three read 5.7 to 6.1 GB, and I left it in. n=2: the mean of two runs, whiskers show each run."
                 }
               ]
             }
@@ -588,23 +686,22 @@
       "id": "mac12",
       "name": "Mac with 12 GB or 10 GB",
       "supported": true,
-      "plain": "Not measured on a 12 GB or 10 GB Mac yet. The game uses about the same memory whatever the Mac has, so this chart sets the 16 GB Mac's Safari numbers against estimated limits for smaller Macs. The estimates scale the measured 16 GB limit by memory size, and the measurement running now will replace them.",
+      "plain": "Not measured on a 12 GB or 10 GB Mac. The game's footprint is the same whatever the Mac has, so this chart sets the 16 GB Mac mini's measurements against how much a smaller Mac would have left for the browser. That headroom is an estimate: the operating system's share was read from the Mini's own idle state, 6.1 to 8.1 GB, median 6.5 GB. It is an upper bound for the system's share, because the Mini was also running other work and about 2 GB of swap. A clean system was not measured.",
       "charts": [
         {
           "id": "peak",
-          "title": "Safari peak against estimated limits for 12 GB and 10 GB",
-          "measure": "The 16 GB Mac's Safari numbers from the chart above. Only the limits are estimated.",
-          "caption": "Today's Safari page peak, 7.1 GB, is above both estimated limits. The planned copy cuts bring it near the 12 GB estimate, and the 4 GB target sits under both.",
-          "pending": "RAY-227 is measuring main on the Mac mini now, with and without the low-memory setup, and estimates how much a 12 GB and a 10 GB Mac leave for the browser after macOS. Its result replaces these estimated limits.",
+          "title": "Peak memory against estimated headroom for 12 GB and 10 GB",
+          "measure": "The 16 GB Mac mini's peaks from the chart above (n=2 each, main at 0c1713f). Only the headroom lines are estimated: 12 GB less the 6.5 GB median system share is 5.5 GB, and 10 GB less it is 3.5 GB. If a smaller Mac's system share were about 3.5 GB (a rough figure that was not measured), headroom would be 8.5 GB and 6.5 GB, Chrome's low-memory setup (8.0 GB) and Safari (8.0 to 8.2 GB on defaults; 7.5 to 8.8 GB with the flags, where one run is over) would fit on 12 GB with 0.5 GB or less to spare (Safari's lowest run, 7.5 GB, would leave 1.0 GB), and nothing would fit on 10 GB. On a real small Mac the system would compress and swap and the footprints would shrink somewhat, so this shows how close the game is, not what a player would see.",
+          "caption": "At the measured system share, nothing fits without swapping. Chrome's low-memory setup (8.0 GB) is over by 2.5 GB on 12 GB and 4.5 GB on 10 GB; Safari's whole browser (8.0 to 8.8 GB) is over by 2.0 to 3.3 GB on 12 GB. Fitting 12 GB takes about 2.5 GB less than Chrome's low-memory setup, and 10 GB about 4.5 GB less; with 1 GB to spare, about 3.5 GB and 5.5 GB. Memory pressure reached \"warn\" in both Chrome defaults runs and all four Safari runs, and stayed normal in both Chrome low-memory runs.",
           "ceilings": [
             {
-              "mb": 6300,
-              "label": "Estimated limit, 12 GB Mac: 6.3 GB",
+              "mb": 5500,
+              "label": "12 GB Mac: about 5.5 GB left for the browser (system share 6.5 GB, an upper bound)",
               "kind": "estimate"
             },
             {
-              "mb": 5250,
-              "label": "Estimated limit, 10 GB Mac: 5.3 GB",
+              "mb": 3500,
+              "label": "10 GB Mac: about 3.5 GB left for the browser (same system share)",
               "kind": "estimate"
             }
           ],
@@ -621,6 +718,27 @@
               "label": "Safari, whole browser (measured on 16 GB)",
               "setup": "defaults",
               "same": "mac16/peak/safari-whole",
+              "points": []
+            },
+            {
+              "id": "chrome-whole",
+              "label": "Chrome, whole browser (measured on 16 GB)",
+              "setup": "defaults",
+              "same": "mac16/peak/chrome-whole",
+              "points": []
+            },
+            {
+              "id": "chrome-whole-low",
+              "label": "Chrome, whole browser, low-memory setup (measured on 16 GB)",
+              "setup": "lowmem",
+              "same": "mac16/peak/chrome-whole-low",
+              "points": []
+            },
+            {
+              "id": "safari-whole-flags",
+              "label": "Safari, whole browser, low-memory flags (measured on 16 GB)",
+              "setup": "lowmem",
+              "same": "mac16/peak/safari-whole-flags",
               "points": []
             }
           ]

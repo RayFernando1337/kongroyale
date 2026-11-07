@@ -110,6 +110,9 @@
       "label": "One process per core (real server, two processes)",
       "catches": "The multi-process server: the single-process default staying unchanged, both processes coming up and reporting together, a player landing on the process that holds their game, per-address connection caps holding across processes, a process that dies being restarted, and WebTransport ports offset per process."
     },
+    "consent": {
+      "catches": "The player's choice about automatic performance summaries: on by default, nothing sent before the one-time toast was shown, nothing after the player turned it off in Settings or while Global Privacy Control or Do Not Track is on, and storage that is blocked."
+    },
     "feed": {
       "catches": "The admin console's report feed: it carries structured fields only (a coarse browser and system label, the place on the map, the build), keeps report text apart until asked for, and holds a bounded amount in memory."
     },
