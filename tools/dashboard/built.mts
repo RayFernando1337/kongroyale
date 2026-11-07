@@ -6,6 +6,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { listChecks } from "./guards-list.mts";
 import { ALWAYS_FORBIDDEN } from "./scan.mts";
 
 type Diagram = { caption: string; source: string };
@@ -121,19 +122,18 @@ function readModel(root: string, cfg: ModelCfg, hide: RegExp): Model {
 
 function readChecks(root: string, guards: Guards, hide: RegExp): { checks: Check[]; unmapped: string[] } {
   const unmapped: string[] = [];
-  const tests = execFileSync("node", ["tools/run-tests.mjs", "--list"], { cwd: root, encoding: "utf8" }).split("\n").filter((l) => l.trim()).map((l) => /^(\w+)\s+(slow\s+)?(.+)$/.exec(l.trim()) as RegExpExecArray);
-  const checks: Check[] = tests.map(([, id, slow, name]) => {
+  const listed = listChecks(root);
+  const checks: Check[] = listed.tests.map(({ id, slow, name }) => {
     const g = guards.tests[id];
     if (!g) unmapped.push(id);
     return { kind: "test", id, label: publicText(g?.label ?? name, hide, "check " + id), speed: slow ? "slow" : "fast", catches: g?.catches ? publicText(g.catches, hide, "check " + id) : "description to come", budget: g?.budget };
   });
-  const ci = [...fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8").matchAll(/^  ([\w-]+):\n    name: (.+)$/gm)];
-  for (const [, id, name] of ci) {
+  for (const { id, name } of listed.ci) {
     const g = guards.ci[id];
     if (!g) unmapped.push("ci:" + id);
     checks.push({ kind: "ci", id, label: publicText(g?.label ?? name, hide, "job " + id), speed: "CI", catches: g?.catches ? publicText(g.catches, hide, "job " + id) : "description to come", budget: g?.budget });
   }
-  for (const id of Object.keys(guards.tests)) if (!tests.some((t) => t[1] === id)) unmapped.push(id + " (in guards.json, not in run-tests.mjs)");
+  for (const id of Object.keys(guards.tests)) if (!listed.tests.some((t) => t.id === id)) unmapped.push(id + " (in guards.json, not in run-tests.mjs)");
   return { checks, unmapped };
 }
 
