@@ -50,12 +50,12 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   const casting = !!kr?.caster?.casting;
   if (!kr?.game?.inMatch && !casting) return null;
   const cm = kr?.game?.cm, phase = cm?.phase ?? Phase.Play, st = cm?.pred?.st;
-  // on the plane (and in the warm-up) the build range counts height above the pad, so the overview builds stay the
-  // only far ones; once the player falls or glides it is the horizontal 5 s lookahead like on foot, so the POI the glide
-  // heads for builds as soon as it is within lowmemr and those behind are the first evicted (RAY-272)
+  // on the plane (and in the warm-up) the build range counts height above the pad and POIs in view may build first; once
+  // the player falls or glides both stop and it is the horizontal 5 s lookahead like on foot, so the POI the glide heads
+  // for builds as soon as it is within lowmemr and those behind are the first evicted (RAY-272)
   const airborne = !casting && phase <= Phase.Plane && st !== PS.Freefall && st !== PS.Glide;
   if (phase !== Phase.Plane) viewBuilds = 0;
-  const overview = !casting && phase === Phase.Plane && viewBuilds < viewCap;
+  const overview = airborne && phase === Phase.Plane && viewBuilds < viewCap;
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const e = camera.matrixWorld.elements;
   if (!track(camera)) return null;
