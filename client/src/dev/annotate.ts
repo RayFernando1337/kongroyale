@@ -194,7 +194,7 @@ export function startDevView(kr: Kr) {
     scene.traverseVisible((ob) => {
       const m = ob as THREE.Mesh;
       if (!m.isMesh || ob === helpers || isDev(ob)) return;
-      // ?geofree=1 drops the CPU arrays of uploaded meshes; with no vertices left there is nothing to pick on them
+      // geofree (on by default) drops the CPU arrays of uploaded meshes; with no vertices left there is nothing to pick on them
       if (!m.geometry.attributes.position?.array) return;
       const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material | undefined;
       if (!mat || (mat.transparent && mat.blending === THREE.AdditiveBlending) || !mat.visible) return;
