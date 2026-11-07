@@ -98,7 +98,7 @@ function prep(src: THREE.BufferGeometry): THREE.BufferGeometry {
 }
 const triCount = (g: THREE.BufferGeometry) => (g.index ? g.index.count : g.attributes.position.count) / 3;
 
-const HALF_MAPS = false;
+const HALF_MAPS = flag("konghalf") && !flag("view") && !flag("cam");
 let loadFullMaps: (() => Promise<void>) | null = null;
 let fullMaps: Promise<void> | null = null;
 export function fullKongMaps(): Promise<void> {
