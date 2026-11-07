@@ -406,6 +406,32 @@ export function bananaStand(): Built {
   return { root: built.root, meshes: built.meshes, tris, pivots: {} };
 }
 
+/**
+ * The stands' static body (every mesh outside the detail group: counter, roof, thatch, sign) as ONE InstancedMesh per
+ * mesh, one instance per stand at `places`, and those meshes removed from `proto` (so its clones carry only the detail
+ * group). Every stand is a clone of one prefab, so 16 stands × ~7 body draws become ~7 draws (RAY-237: the RTX hide
+ * bound measured the stands, tuk-tuks and the market at ~3.9 ms of walk-town main thread, all draw + scene-walk cost).
+ */
+export function standBody(proto: THREE.Object3D, places: readonly THREE.Matrix4[]): THREE.Group {
+  proto.updateMatrixWorld(true);
+  const detail = proto.getObjectByName("banana-stand-detail");
+  const inDetail = (o: THREE.Object3D | null): boolean => { for (; o; o = o.parent) if (o === detail) return true; return false; };
+  const body: THREE.Mesh[] = [];
+  proto.traverse((c) => { if ((c as THREE.Mesh).isMesh && !inDetail(c)) body.push(c as THREE.Mesh); });
+  const group = new THREE.Group(); group.name = "banana-stand";
+  const toProto = proto.matrixWorld.clone().invert(), local = new THREE.Matrix4(), m = new THREE.Matrix4();
+  for (const mesh of body) {
+    local.multiplyMatrices(toProto, mesh.matrixWorld);
+    const x = new THREE.InstancedMesh(mesh.geometry, mesh.material, places.length);
+    x.name = mesh.name; x.castShadow = !mesh.userData.noCast; x.receiveShadow = true;
+    for (let i = 0; i < places.length; i++) x.setMatrixAt(i, m.multiplyMatrices(places[i], local));
+    x.computeBoundingSphere();
+    group.add(x);
+    mesh.removeFromParent();
+  }
+  return group;
+}
+
 // ------------------------------------------------------------------------------------------------ animation
 interface StandAnim { detail: THREE.Object3D; root: THREE.Object3D; body: THREE.Object3D; head: THREE.Object3D; eyes: THREE.Object3D; armL: THREE.Object3D; armR: THREE.Object3D; tail: THREE.Object3D;
   wave: number; waveT: number; near: boolean; cash: number; hop: number; phase: number; nextWave: number }
@@ -432,7 +458,7 @@ export function tickStands(views: readonly THREE.Object3D[], cx: number, cz: num
   for (const o of views) {
     const a = animOf(o); if (!a) continue;
     const show = Math.hypot(o.position.x - cx, o.position.z - cz) < DETAIL_M;
-    if (a.detail.visible !== show) a.detail.visible = show;
+    if (a.detail.visible !== show) { a.detail.visible = show; a.detail.matrixWorldAutoUpdate = show; }
     if (!show) { a.near = false; continue; }
     // the player in the stand's frame (+Z = the customers' side)
     const dx = px - o.position.x, dz = pz - o.position.z, c = Math.cos(o.rotation.y), s = Math.sin(o.rotation.y);

@@ -71,7 +71,7 @@ import { BombFx, bombPrefabs } from "./bomb";
 import { CoverViews, coverGhostPrefab } from "./cover";
 import { ANN_ECON, OFFERS, Offer, SOLO_LIFE } from "../../../shared/sim/economy";
 import { ECON, SWIM_FLOAT_Y, UW_EYE, SWIM_EYE, DIVE_MIN_DEPTH } from "../../../shared/sim/const";
-import { bananaStand, tickStands } from "../weapons/stand";
+import { bananaStand, standBody, tickStands } from "../weapons/stand";
 import { BOMB } from "../../../shared/sim/const";
 import { bombSlot } from "../../../shared/sim/player";
 import { killBaseWeapon, killMythic, MYTHIC_R, MYTHICS, mythicIndexOfPoi, mythicOf } from "../../../shared/sim/mythic";
@@ -289,8 +289,13 @@ export class GameRender implements EventSink {
     const geos = new Set<THREE.BufferGeometry>();
     proto.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) geos.add(m.geometry); });
     for (const g of geos) res.geometry("geo.world", g);
+    // (perf: the body of all stands is one instanced draw per part; the views keep the shopkeeper and the display)
+    const up = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
+    const body = standBody(proto, this.cm.stands.map((s) => new THREE.Matrix4().compose(new THREE.Vector3(s.x, s.y, s.z), q.setFromAxisAngle(up, s.yaw), one)));
+    for (const x of body.children as THREE.InstancedMesh[]) res.own("geo.world", x, () => x.instanceMatrix.array.byteLength);
+    this.engine.scene.add(body); patchTree(this.engine, body);
     const views = this.standViews = this.cm.stands.map((s) => { const o = proto.clone(true); o.position.set(s.x, s.y, s.z); o.rotation.y = s.yaw; o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); this.engine.scene.add(o); patchTree(this.engine, o); return o; });
-    res.defer(() => { for (const o of views) o.removeFromParent(); });
+    res.defer(() => { for (const o of views) o.removeFromParent(); body.removeFromParent(); });
   }
   /** the buy menu's view of the offers for this kong right now (the server re-checks every rule) */
   shopView(): import("../ui/shop").ShopView {
@@ -2781,8 +2786,10 @@ export function renderPrefabs(): THREE.Object3D[] {
   hl.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && !m.geometry.getAttribute("position")) m.geometry = geo; });
   effects.push(hl);
   // (a tuk-tuk, fresh and burnt out: its lamps, lightbox and glass compile here, not when the first one drives into view)
-  // (the Banana Stand kiosk — its shopkeeper's fur, the thatch, the leaves and the sign compile here too)
-  return [r, w, ...tukPrefabs(), ...heliPrefabs(), bananaStand().root, ...effects];
+  // (the Banana Stand kiosk — its shopkeeper's fur, the thatch, the leaves and the sign compile here too, the body as
+  // the instanced meshes a match draws it with)
+  const stand = bananaStand().root, standInst = standBody(stand, [new THREE.Matrix4()]);
+  return [r, w, ...tukPrefabs(), ...heliPrefabs(), stand, standInst, ...effects];
 }
 /** wind streaks: n thin quads, positions/extrusion entirely in the vertex shader (zero CPU per frame) */
 function buildStreaks(n: number, u: Record<string, THREE.IUniform>): THREE.Mesh {
