@@ -111,7 +111,7 @@ const collect = (base: Rel | undefined, target: string): { prs: Pr[]; loose: str
     synced.add(m[1]);
     for (const s of side) synced.add(s.split(" ")[0]);
     const tip = git("log", "-1", "--format=%P", m[1] + "^2").split(" ");
-    const upstream = tip.length === 2 ? tip[1].slice(0, 7) : /\(([0-9a-f]{7,})\)/.exec(git("log", "-1", "--format=%B", m[1]))?.[1] ?? "an unrecorded commit";
+    const upstream = tip.length === 2 ? tip[1].slice(0, 7) : /\(([0-9a-f]{7,})\)/.exec(git("log", "-1", "--format=%B", m[1]))?.[1] ?? git("rev-parse", "--short", m[1] + "^2");
     const forkPrs = new Set(side.map((s) => /^\S+ Merge Ray Fernando's PR #(\d+)/.exec(s)?.[1]).filter(Boolean)).size;
     const ranges = side.map((s) => /^\S+ Merge Ray Fernando's .*PRs \((#\d+[–-]#\d+)\)/.exec(s)?.[1]).filter(Boolean);
     const touched = Object.entries(SYNC_GUARDED).filter(([, paths]) => git("diff", "--name-only", m[1] + "^1", m[1], "--", ...paths) !== "").map(([what]) => what);
