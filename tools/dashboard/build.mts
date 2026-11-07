@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gb, readDevices, renderDeviceChart } from "./device-chart.mts";
 import type { DeviceChart } from "./device-chart.mts";
+import { renderBuilt } from "./built.mts";
+import type { Built } from "./built.mts";
 import { readFront, renderFront, renderHillPage } from "./front.mts";
 import { readGoals, renderGoalBars, renderGoalsPage, renderTimeline, scoreGoals } from "./goals.mts";
 import type { Gates } from "./goals.mts";
@@ -336,12 +338,14 @@ function main(): void {
   const gates = JSON.parse(fs.readFileSync(path.join(HERE, "release-gates.json"), "utf8")) as Gates;
   const releasesPage = renderTimeline(releases, goals, gates, { ...goalCtx, baseTag: data.baseTag, baseDate: "2026-11-02", nextTag, stableTag }) + unreleasedList;
 
+  const built = renderBuilt(root, JSON.parse(fs.readFileSync(path.join(HERE, "built.json"), "utf8")) as Built, JSON.parse(fs.readFileSync(path.join(HERE, "guards.json"), "utf8")), hide, prs, prLink, HERE);
   const pages: [string, string, string, string][] = [
     ["front", "Home", front, ""],
     ["goals", "Goals", renderGoalsPage(goals, scored, goalCtx), ""],
     ["releases", "Releases", releasesPage, ""],
     ["hill", "Hill climb", renderHillPage(hill, prLink), ""],
     ["devices", "Memory by device", devicePage, ""],
+    ["built", "How it's built", built, ""],
     ["start", "Start here", start, "The Safari story and the first words, with every match run."],
     ["summary", "Summary", summary, "The project in four numbers and what players get."],
     ["overview", "Overview", overview, "Live counts from GitHub and the last 24 hours."],

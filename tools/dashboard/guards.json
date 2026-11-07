@@ -1,0 +1,167 @@
+{
+  "about": "What each check on every PR catches, in my words. tests: id from node tools/run-tests.mjs --list; ci: job key from .github/workflows/ci.yml; budget: the checked-in file whose numbers it enforces (the build fails if the file is missing). A check without an entry still shows, marked 'description to come'. label replaces the raw check name where that name has wording the public page leaves out. coming: gates in flight; a PR number shows its live status.",
+  "tests": {
+    "types": {
+      "catches": "A type error anywhere in the project."
+    },
+    "lint": {
+      "catches": "Shared code that isn't deterministic, per-tick allocation in hot files, unowned GPU resources, raw URL flags, type-only imports written as values.",
+      "budget": "tools/lint/baseline.json"
+    },
+    "formal": {
+      "catches": "Code a TLA+ model describes changing after the model last passed its checker.",
+      "label": "TLA+ models still match the code they describe"
+    },
+    "flags": {
+      "catches": "The feature-flag registry and its overrides behaving as documented."
+    },
+    "bundles": {
+      "label": "Playtest report uploads (hostile input, size caps)",
+      "catches": "A report bundle that is too big, malformed or sent too often."
+    },
+    "auto": {
+      "catches": "Automatic performance summaries: hostile rows, duplicates, their own limits and the folder cap."
+    },
+    "triage": {
+      "catches": "Reports grouped wrongly, or private text leaking into a summary."
+    },
+    "ab": {
+      "catches": "The WebTransport A/B split putting a player in the wrong arm or recording the wrong one."
+    },
+    "gate": {
+      "catches": "A verifier that passes when it was given nothing to check."
+    },
+    "size": {
+      "catches": "A change that makes the browser download more than its budget (entry, boot, workers, lazy chunks).",
+      "budget": "tools/size-budgets.json"
+    },
+    "farbake": {
+      "catches": "A far-away stand-in that no longer matches the location it replaces."
+    },
+    "assets": {
+      "catches": "A new art, sound or font file with no recorded source and licence.",
+      "budget": "tools/verify-assets.baseline.json"
+    },
+    "dmath": {
+      "catches": "A math function that gives different bits than the recorded vectors, which would split client and server."
+    },
+    "movement": {
+      "catches": "Walking, jumping and sliding changing behaviour."
+    },
+    "swimming": {
+      "catches": "Swimming changing behaviour."
+    },
+    "face": {
+      "catches": "The kong face rig failing its checks."
+    },
+    "anim": {
+      "catches": "Kong animation failing its checks."
+    },
+    "walkgraph": {
+      "catches": "Building interiors a kong can no longer walk through."
+    },
+    "solver": {
+      "catches": "The path solver failing its recorded tests."
+    },
+    "glass": {
+      "catches": "Panes that break differently on client and server, or can't be shot, punched or blasted."
+    },
+    "planeview": {
+      "catches": "A low-memory plane view that leaves out locations in view.",
+      "label": "Low-memory plane queues the locations in view"
+    },
+    "raycast": {
+      "catches": "Raycast ties resolving differently."
+    },
+    "res": {
+      "catches": "Resource scopes: owners, lifetimes and cleanup."
+    },
+    "refresh": {
+      "catches": "The display refresh estimate going wrong."
+    },
+    "resguard": {
+      "catches": "The half-rate guard stepping resolution the wrong way."
+    },
+    "parity": {
+      "catches": "Wire, matrix, geometry, http or splat code that differs between the two sides."
+    },
+    "sim": {
+      "catches": "Any change to the rules that changes the state hash of a headless 50-bot match."
+    },
+    "nettail": {
+      "catches": "A network tail (slowest 1% of input replies) that gets worse.",
+      "budget": "tools/performance/net-budgets.json"
+    },
+    "afk": {
+      "label": "AFK removal returns the player to the waiting area (real server)",
+      "catches": "A player who goes idle not being sent back."
+    },
+    "redteam": {
+      "label": "Red team checks on the admin tools",
+      "catches": "Hostile use of a server tool; the details stay out of this page."
+    },
+    "wt": {
+      "catches": "The WebTransport endpoint failing a loopback session."
+    },
+    "wtbrowser": {
+      "catches": "WebTransport failing in a real headless browser."
+    }
+  },
+  "ci": {
+    "test": {
+      "label": "build and test",
+      "catches": "Runs npm run build and the whole npm test list above."
+    },
+    "secrets": {
+      "label": "no secrets",
+      "catches": "Keys, tokens or environment files committed to the repo (gitleaks)."
+    },
+    "boot": {
+      "label": "no-GPU boot smoke",
+      "catches": "A production build that doesn't boot, or holds more memory at the title than its budget.",
+      "budget": "tools/memory-budgets.json"
+    },
+    "memory": {
+      "label": "no-GPU match-to-match memory",
+      "catches": "Memory that grows from one match to the next, or resources no scope owns.",
+      "budget": "tools/memory-leak-budgets.json"
+    },
+    "lowmem-memory": {
+      "label": "no-GPU low-memory memory",
+      "catches": "More memory in a match or in low-memory mode than its budget.",
+      "budget": "tools/memory-lowmem-budgets.json"
+    },
+    "context-restore": {
+      "label": "no-GPU context restore",
+      "catches": "A WebGL context loss at the title or in a warm-up that doesn't restore."
+    }
+  },
+  "coming": [
+    {
+      "name": "Allocation per host tick",
+      "plain": "Bytes allocated per server tick become a budget in npm test.",
+      "pr": 283
+    },
+    {
+      "name": "PR metrics comment",
+      "plain": "Every budgeted number, main against the PR, as a comment on each PR.",
+      "pr": 284
+    },
+    {
+      "name": "Tick A/B",
+      "plain": "Main-thread time per tick compared between main and the PR on the same machine."
+    },
+    {
+      "name": "Visual diffs",
+      "plain": "Same-camera stills compared between main and the PR."
+    },
+    {
+      "name": "A location is never invisible",
+      "plain": "A runtime check that no location in view is missing from the frame."
+    },
+    {
+      "name": "Protocol fuzzing",
+      "plain": "Malformed frames thrown at the wire decoder to check it never crashes a match."
+    }
+  ]
+}
