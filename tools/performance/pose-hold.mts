@@ -282,7 +282,7 @@ if (page && page.n > 1) {
 const result: RunResult = {
   schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "tools/performance/pose-hold.mts", startedAt: new Date(t0).toISOString(), durationMs: Date.now() - t0,
   source: source(root), environment: { ...env(), gpu: page ? String(page.renderer) : null },
-  config: { browser: BROWSER + " " + (d?.version ?? "?"), viewport: VW + "x" + VH, preset: PRESET, query: QUERY, pose: [PX, PZ, YAW_DEG, PITCH_DEG].join(","), settleS: SETTLE_S, holdS: HOLD_S, mode: MODE, capture: CAPTURE ? "on" : "off", gpu: GPU ? "on" : "off", atPhase: AT_PHASE, dpr: page ? Number(page.dpr) : -1, headed: BROWSER === "safari" || process.argv.includes("--headed") },
+  config: { browser: BROWSER + " " + (d?.version ?? "?"), viewport: VW + "x" + VH, preset: PRESET, query: QUERY, pose: [PX, PZ, YAW_DEG, PITCH_DEG].join(","), settleS: SETTLE_S, holdS: HOLD_S, mode: MODE, capture: CAPTURE ? "on" : "off", ...(GPU ? { gpu: "on" } : {}), atPhase: AT_PHASE, dpr: page ? Number(page.dpr) : -1, headed: BROWSER === "safari" || process.argv.includes("--headed") },
   cases, errors, artifacts,
 };
 (result as unknown as Record<string, unknown>).detail = { marks, host: os.hostname(), page: page ? { ...page, T: undefined, frames: { t: page.T.map((x: number) => +(x - page.T[0]).toFixed(2)), cpu: page.CPU, calls: page.CALLS, tris: page.TRIS, points: page.PTS, programs: page.PROG } } : null };
