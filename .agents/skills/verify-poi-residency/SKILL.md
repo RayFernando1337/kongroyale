@@ -47,6 +47,10 @@ To see the AtMostCap path or redraw the chart, give the pstack `/statechart` ski
   `?lowmem=1&lowmemcap=2` (and `?seed=N` to replay one plane path), and move the camera between locations in the
   path's order (the memory tool's `--tour` teleport in `tools/performance/memory.mts` does this from a script). Log
   `residents()` and the build queue, and compare with the path. On a no-GPU machine this runs on SwiftShader, slowly.
+- **A pick-order question on the descent.** `npx tsx tools/performance/descent-residency.mts [other/low-mem.ts]` runs the real
+  `nextNearModule` and `trimStreamed` on a fake clock along Ray's KONG-103 glide (plane over peel-harbor and mango,
+  over mango at about 515 m) and prints when each POI is picked, built and evicted, with the altitude. Give it a main
+  worktree's low-mem.ts to compare.
 - **A modelling error.** A step the code cannot take. Fix the model to say what the code does, citing the line.
 
 ## Keep the model in step with the code
@@ -57,7 +61,7 @@ To see the AtMostCap path or redraw the chart, give the pstack `/statechart` ski
 | low-mem.ts `trimStreamed` (and its `residents()`: locations in `modOf` only), `evictionsFor`, `over`, `evictStreamed` | Counted, TrimEvict, TrimDone |
 | main.ts `buildStreamed`, `buildOne`, the back-pressure in `stream` | Built, Integrated |
 | main.ts `stream`'s 2 s timer (`trim(null)`) | Timer |
-| low-mem.ts `distM` (the rank: inside, ahead of the 5 s lookahead, near, far) and `descending` (cm.pred.st Freefall or Glide: the build range stops counting height) | Rank, Move's "ahead" class, Jump, Land |
+| low-mem.ts `distM` (the rank: inside, ahead of the 5 s lookahead, near, far) and `nearModule`'s airborne test (cm.pred.st Freefall or Glide: the build range stops counting height) | Rank, Move's "ahead" class, Jump, Land |
 | the camera; `enterMatch` / leaving | Move, EnterMatch, LeaveMatch |
 
 main.ts fills the queue (`streamList`, which low-mem.ts calls `pending`) in top-level boot code that no region can
