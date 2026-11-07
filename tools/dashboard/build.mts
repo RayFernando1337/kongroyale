@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gb, readDevices, renderDeviceChart } from "./device-chart.mts";
+import type { DeviceChart } from "./device-chart.mts";
 import { readTrace, renderSvg } from "./memory-chart.mts";
 
 type Area = { id: string; name: string; blurb: string };
@@ -298,6 +300,25 @@ function main(): void {
   };
   const memoryPage = '<h2>Memory over time</h2><p class="lead">' + esc(memoryData.plain) + "</p>" + memoryData.charts.map(memoryCard).join("");
 
+  const devices = readDevices(path.join(HERE, "devices.json"));
+  const kindName = { measured: "measured", estimate: "estimate", planned: "planned" };
+  const deviceCard = (c: DeviceChart) => {
+    const used = [...new Set(c.lines.flatMap((l) => l.points.map((p) => p.m)))];
+    const rows = c.lines.flatMap((l) => l.points.map((p) => ({ l, p }))).sort((a, b) => devices.slots.findIndex((s) => s.id === a.p.slot) - devices.slots.findIndex((s) => s.id === b.p.slot));
+    const range = (lo?: number, hi?: number) => hi === undefined ? "" : '<span class="muted"> (' + (lo === undefined ? "up to " : gb(lo).replace(" GB", "") + "–") + gb(hi) + ")</span>";
+    return '<div class="card device"><div class="perf-head"><h3>' + esc(c.title) + "</h3>" + (c.pending ? '<span class="pill s-waiting">measuring now</span>' : "") + "</div>" +
+      '<p class="plain">' + esc(c.caption) + "</p>" +
+      '<div class="chart dchart chart-wide">' + renderDeviceChart(c, devices.slots) + '</div><div class="chart dchart chart-compact">' + renderDeviceChart(c, devices.slots, true) + "</div>" +
+      '<ul class="dlegend">' + c.lines.map((l, i) => '<li><span class="sw l' + i + (l.setup === "lowmem" ? " sw-low" : "") + '"></span>' + esc(l.label) + "</li>").join("") + c.ceilings.map((x) => '<li><span class="sw-ceil ceil-' + x.kind + '"></span>' + esc(x.label) + (x.kind === "estimate" ? " (estimate)" : "") + "</li>").join("") + "</ul>" +
+      '<p class="muted">' + esc(c.measure) + "</p>" + (c.pending ? '<p class="pending">' + esc(c.pending) + "</p>" : "") +
+      '<details><summary>Every point</summary><div class="table-wrap"><table class="play points"><thead><tr><th>Release</th><th>Line</th><th>Value</th><th>Type</th><th>Build</th><th>Method</th><th>Runs</th><th>Date (UTC)</th></tr></thead><tbody>' +
+      rows.map(({ l, p }) => '<tr class="k-' + p.kind + '"><td data-label="Release">' + esc(devices.slots.find((s) => s.id === p.slot)?.label ?? p.slot) + '</td><td data-label="Line">' + esc(l.label) + '</td><td data-label="Value" class="now">' + gb(p.mb) + range(p.low, p.high) + '</td><td data-label="Type"><span class="pill k-' + p.kind + (p.killed ? " killed" : "") + '">' + kindName[p.kind] + (p.killed ? ", reached Safari's limit" : "") + '</span></td><td data-label="Build">' + esc(p.build) + '</td><td data-label="Method">' + esc(devices.methods[p.m].label) + '</td><td data-label="Runs">' + (p.n ? p.n : "none") + '</td><td data-label="Date (UTC)">' + p.date + "</td></tr>" + (p.note || p.work ? '<tr class="note-row"><td colspan="8">' + (p.work ? "<b>" + esc(p.work) + "</b> " : "") + esc(p.note ?? "") + "</td></tr>" : "")).join("") +
+      '</tbody></table></div></details><details><summary>How it was measured</summary><ul class="list">' + used.map((m) => '<li><span class="plain"><b>' + esc(devices.methods[m].label) + ".</b> " + esc(devices.methods[m].device) + ". " + esc(devices.methods[m].method) + '</span><p class="tech">' + esc(devices.methods[m].source) + "</p></li>").join("") + "</ul></details></div>";
+  };
+  const devicePage = '<h2>Memory by device</h2><p class="lead">' + esc(devices.plain) + "</p>" +
+    '<ul class="dlegend key"><li><span class="mk mk-measured"></span>measured</li><li><span class="mk mk-estimate"></span>estimate</li><li><span class="mk mk-planned"></span>planned</li><li><span class="mk-kill">✕</span>reached Safari\'s limit</li><li><span class="sw-ceil ceil-measured"></span>measured limit</li><li><span class="sw-ceil ceil-estimate"></span>estimated limit</li><li><span class="sw-ceil ceil-target"></span>target</li></ul>' +
+    devices.skus.map((s) => '<h2 class="sku">' + esc(s.name) + (s.supported ? "" : ' <span class="pill s-todo">not supported yet</span>') + '</h2><p class="lead">' + esc(s.plain) + "</p>" + s.charts.map(deviceCard).join("")).join("");
+
   const story = JSON.parse(fs.readFileSync(path.join(HERE, "story.json"), "utf8")) as Story;
   const mergedOn = (n: number) => {
     const p = merged.find((m) => m.number === n);
@@ -312,12 +333,12 @@ function main(): void {
     '<details class="more"><summary>' + esc(story.journey.title) + '</summary><ol class="timeline">' + story.journey.items.map((i) => "<li><span class=\"when\">" + mergedOn(i.pr) + "</span> " + prLink(i.pr) + " " + esc(i.text) + "</li>").join("") + "</ol></details>" +
     '<details class="more"><summary>Words used on this page</summary><dl class="words">' + story.firstWords.map((w) => "<dt>" + esc(w.term) + "</dt><dd>" + esc(w.plain) + "</dd>").join("") + "</dl></details>";
 
-  const pages: [string, string, string][] = [["start", "Start here", start], ["summary", "Summary", summary], ["overview", "Overview", overview], ["releases", "Releases", releasesPage], ["performance", "Performance", performance], ["memory", "Memory", memoryPage], ["fixes", "Fixes", fixes], ["roadmap", "Roadmap", roadmap], ["play", "Play experience", play], ["waiting", "Waiting", waiting]];
+  const pages: [string, string, string][] = [["start", "Start here", start], ["summary", "Summary", summary], ["overview", "Overview", overview], ["releases", "Releases", releasesPage], ["performance", "Performance", performance], ["memory", "Memory", memoryPage], ["devices", "Memory by device", devicePage], ["fixes", "Fixes", fixes], ["roadmap", "Roadmap", roadmap], ["play", "Play experience", play], ["waiting", "Waiting", waiting]];
   const css = fs.readFileSync(path.join(HERE, "style.css"), "utf8");
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>try{var t=localStorage.getItem("kr-theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="light"}</script><title>' + esc(data.title) + "</title><style>" + css + "</style></head><body>" +
     '<header><div class="brand">' + esc(data.title.split(":")[0]) + '</div><nav>' + pages.map((p) => '<a href="#' + p[0] + '" data-page="' + p[0] + '">' + p[1] + "</a>").join("") + '</nav><button type="button" class="theme"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><span class="theme-label"></span></button></header><main>' +
     pages.map((p) => '<section id="' + p[0] + '" class="page">' + p[2] + "</section>").join("") +
-    '</main><footer>Built from commit <a href="https://github.com/' + data.repo + "/commit/" + sha + '">' + sha + "</a> at " + stamp(now.toISOString()) + ". Counts are live from GitHub as of then. Measurements come from tools/dashboard/data.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
+    '</main><footer>Built from commit <a href="https://github.com/' + data.repo + "/commit/" + sha + '">' + sha + "</a> at " + stamp(now.toISOString()) + ". Counts are live from GitHub as of then. Measurements come from tools/dashboard/data.json, tools/dashboard/devices.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
     "<script>function show(){var id=(location.hash||'#start').slice(1);if(!document.getElementById(id))id='start';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){var on=a.dataset.page===id;a.classList.toggle('on',on);if(on){a.setAttribute('aria-current','page');var n=a.parentNode;n.scrollLeft=a.offsetLeft-(n.clientWidth-a.offsetWidth)/2}else a.removeAttribute('aria-current')});scrollTo(0,0)}addEventListener('hashchange',show);show();var tb=document.querySelector('.theme'),tl=tb.querySelector('.theme-label'),root=document.documentElement;function label(){var d=root.dataset.theme==='dark';tl.textContent=d?'Dark':'Light';tb.setAttribute('aria-label','Colour theme: '+(d?'dark':'light')+'. Switch to '+(d?'light':'dark'))}label();tb.addEventListener('click',function(){var n=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('kr-theme',n)}catch(e){}label()});matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){var s;try{s=localStorage.getItem('kr-theme')}catch(x){}if(s!=='light'&&s!=='dark'){root.dataset.theme=e.matches?'dark':'light';label()}});</script></body></html>";
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, "index.html"), html);
