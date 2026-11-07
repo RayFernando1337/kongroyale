@@ -596,12 +596,13 @@ function checkBudgets(r: RunResult, files: string[]): boolean {
   if (r.errors.length) { console.log(`FAIL the run had errors, so no budget was checked:\n  ${r.errors.join("\n  ")}`); return false; }
   const ci = !!process.env.GITHUB_ACTIONS, rows: string[] = [], failed: string[] = [];
   for (const file of files) {
-    const b = JSON.parse(fs.readFileSync(file, "utf8")) as { config: Record<string, string | number | boolean>; underPct: number; phaseUnderPct?: Record<string, number>; headroomPct: number; budgets: Record<string, Record<string, number>> };
+    const b = JSON.parse(fs.readFileSync(file, "utf8")) as { config: Record<string, string | number | boolean>; underPct: number; underPctBy?: Record<string, number>; headroomPct: number; budgets: Record<string, Record<string, number>> };
     const wrongConfig = Object.entries(b.config).filter(([k, v]) => r.config[k] !== v).map(([k, v]) => `${k} ${String(r.config[k])} (budgets are for ${String(v)})`);
     if (wrongConfig.length) { failed.push(`${file} doesn't apply to this run: ${wrongConfig.join(", ")}`); console.log(`FAIL ${failed.at(-1)}`); continue; }
     for (const [phase, metrics] of Object.entries(b.budgets)) {
-      const c = r.cases.find((x) => x.scenario.id === `memory/${phase}`), underPct = b.phaseUnderPct?.[phase] ?? b.underPct;
+      const c = r.cases.find((x) => x.scenario.id === `memory/${phase}`);
       for (const [metric, budget] of Object.entries(metrics)) {
+        const underPct = b.underPctBy?.[`${phase}.${metric}`] ?? b.underPct;
         const m = c?.metrics[metric], v = m && m.status === "ok" && "value" in m ? m.value : NaN, unit = m && "unit" in m && m.unit === "MB" ? " MB" : "";
         const d = Math.round((v - budget) * 10) / 10, pct = Math.round((v / budget - 1) * 1000) / 10;
         const verdict = !Number.isFinite(v) ? `not measured (no memory/${phase} sample)`
