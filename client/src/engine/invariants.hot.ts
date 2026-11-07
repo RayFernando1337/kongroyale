@@ -2,7 +2,7 @@
 // cull update, right before the draw, so it reads exactly the state that renders). A POI is drawn by its built model, a
 // far impostor (?farimp) or an HLOD proxy (engine/hlod.ts). Each counts with what is left of it after the cull's fades
 // and reveals and the dither's dissolve (engine/cull.ts, engine/dither.ts); the model counts with its most opaque drawn
-// mesh. The POI's coverage is their sum, capped at 1: a hand-over dissolves one out with the complementary mask of the
+// mesh that writes colour. The POI's coverage is their sum, capped at 1: a hand-over dissolves one out with the complementary mask of the
 // one dissolving in, so the two cover min(1, a + b) of its pixels. Once a POI has been drawn at w.floor or more, it must
 // stay there for as long as it is in view and has something to draw it with. RAY-148 (the impostor hid as the model's
 // dissolve began) and RAY-178 were found by people watching GPU screenshots; this makes that class of hand-over gap a
@@ -60,9 +60,10 @@ function opacity(o: THREE.Object3D, cull: DetailCull): number {
   return d ? Math.min(f, 1 - d.a) : f;
 }
 
-function materialShown(m: THREE.Material | THREE.Material[]): boolean {
-  if (!Array.isArray(m)) return m.visible;
-  for (let i = 0; i < m.length; i++) if (m[i] && m[i].visible) return true;
+/** a material that puts colour on screen: shadow, depth and occluder proxies (colorWrite false) cover nothing */
+function paints(m: THREE.Material | THREE.Material[]): boolean {
+  if (!Array.isArray(m)) return m.visible && m.colorWrite;
+  for (let i = 0; i < m.length; i++) if (m[i] && m[i].visible && m[i].colorWrite) return true;
   return false;
 }
 
@@ -75,7 +76,7 @@ function nearOpacity(roots: THREE.Object3D[], scene: THREE.Object3D, mask: numbe
     const o = stack.pop()!;
     if (!o.visible) continue;
     const m = o as THREE.Mesh;
-    if (m.material && (m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) && materialShown(m.material) && (o.layers.mask & mask) !== 0) {
+    if (m.material && (m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) && paints(m.material) && (o.layers.mask & mask) !== 0) {
       const f = opacity(o, cull);
       if (f > best) best = f;
       if (best >= enough) { stack.length = 0; return best; }
@@ -108,7 +109,7 @@ export function scanPois(w: PoiWatch, camera: THREE.Camera, scene: THREE.Object3
     let hl = -1;
     if (merged) {
       hl = 0;
-      for (let k = 0; k < proxy.proxies.length; k++) { const x = proxy.proxies[k]; if (shown(x, scene)) hl = Math.max(hl, opacity(x, cull)); }
+      for (let k = 0; k < proxy.proxies.length; k++) { const x = proxy.proxies[k] as THREE.Mesh; if (shown(x, scene) && (!x.material || paints(x.material))) hl = Math.max(hl, opacity(x, cull)); }
     }
     const ip = imp === null ? -1 : shown(imp, scene) ? opacity(imp, cull) : 0;
     const other = Math.max(ip, 0) + Math.max(hl, 0);
