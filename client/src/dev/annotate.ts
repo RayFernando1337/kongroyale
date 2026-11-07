@@ -304,10 +304,17 @@ export function startDevView(kr: Kr) {
   const wired = new Set<THREE.Material>();
   function applyWire(on: boolean) {
     if (!on) { for (const m of wired) (m as THREE.MeshBasicMaterial).wireframe = false; wired.clear(); return; }
+    // a material drawn by any geofree-released mesh stays solid: three.js builds wireframe edges from the CPU index
+    const released = new Set<THREE.Material>();
+    scene.traverse((o) => {
+      const g = (o as THREE.Mesh).geometry, mm = (o as THREE.Mesh).material;
+      if (!g || !mm || (g.attributes.position?.array && (!g.index || g.index.array))) return;
+      for (const m of Array.isArray(mm) ? mm : [mm]) released.add(m);
+    });
     scene.traverse((o) => {
       if (isDev(o)) return;
       const mm = (o as THREE.Mesh).material; if (!mm) return;
-      for (const m of Array.isArray(mm) ? mm : [mm]) if ("wireframe" in m && !(m as THREE.MeshBasicMaterial).wireframe) { (m as THREE.MeshBasicMaterial).wireframe = true; wired.add(m); }
+      for (const m of Array.isArray(mm) ? mm : [mm]) if ("wireframe" in m && !released.has(m) && !(m as THREE.MeshBasicMaterial).wireframe) { (m as THREE.MeshBasicMaterial).wireframe = true; wired.add(m); }
     });
   }
   function setWire(on: boolean) { wire = on; btn("wire").classList.toggle("on", on); applyWire(on); }
