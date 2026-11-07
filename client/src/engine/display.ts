@@ -295,16 +295,25 @@ export class Display {
    *  display's refresh (capped at 120 Hz: "smooth" is the goal on a laptop, not 240). Never on an
    *  Epic-class GPU; without a GPU timer query (Mac Chrome / Safari) only after the stream has ended plus 3 s of idle
    *  frames, and only for a clear miss (frame time > 1.5 × the budget); every step down is persisted and shown as a
-   *  notice with the new 3D resolution until the player dismisses it. */
-  async firstVisitBench(): Promise<void> {
+   *  notice with the new 3D resolution until the player dismisses it. Only title frames count: a player who pressed
+   *  Play before the island streamed in is measured on a later return to the title, since match frames judged against
+   *  the title's budget stepped an M4 in Chrome down to Medium (RAY-235). */
+  async firstVisitBench(inMatch: () => boolean): Promise<void> {
     if (!this.firstVisit) return;
     this.firstVisit = false;
     const e = this.engine;
     const t0 = performance.now();
     while (!(globalThis as { __kr?: { streamed?: boolean } }).__kr?.streamed && performance.now() - t0 < 40000) await sleep(250);
     const timer = hasTimer(e);
-    await sleep(timer ? 1200 : 3000);
-    const r = await measure(e, 2000);
+    const atTitle = () => !inMatch() && !e.suspended;
+    let r: Awaited<ReturnType<typeof measure>> | null = null;
+    while (!r) {
+      while (!atTitle()) await sleep(1000);
+      await sleep(timer ? 1200 : 3000);
+      if (!atTitle()) continue;
+      const m = await measure(e, 2000);
+      if (atTitle()) r = m;
+    }
     // (a refresh measured under a starved main thread reads far below 60 Hz — e.g. "7 Hz" → a 140 ms budget that
     // never stepped down; a display is 60-120 Hz for this purpose)
     const hz = Math.min(Math.max(e.refreshHz || 60, 60), 120);
