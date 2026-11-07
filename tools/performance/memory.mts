@@ -606,7 +606,7 @@ function checkBudgets(r: RunResult, files: string[]): boolean {
         const d = Math.round((v - budget) * 10) / 10, pct = Math.round((v / budget - 1) * 1000) / 10;
         const verdict = !Number.isFinite(v) ? `not measured (no memory/${phase} sample)`
           : v > budget ? `over budget by ${d}${unit} (+${pct}%)`
-          : v < budget * (1 - b.underPct / 100) ? `${-pct}% under, more than ${b.underPct}%: lower the budget to ${Math.ceil(v * (1 + b.headroomPct / 100))}`
+          : v < budget * (1 - b.underPct / 100) ? `${-pct}% under, more than ${b.underPct}%: lower the budget to ${Math.ceil(v * (1 + b.headroomPct / 100)) < budget ? Math.ceil(v * (1 + b.headroomPct / 100)) : v}`
           : "ok";
         const line = `${phase}.${metric} ${v}${unit}, budget ${budget}${unit}: ${verdict}`;
         console.log(`${verdict === "ok" ? "ok  " : "FAIL"} ${line}`);
