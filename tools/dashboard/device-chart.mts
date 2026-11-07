@@ -94,7 +94,7 @@ export function renderDeviceChart(chart: DeviceChart, slots: Slot[], compact = f
     }
     for (const p of pts) {
       const x = xOf(p), y = ys(p.mb);
-      const tip = "<title>" + esc(l.label + ", " + p.build + ": " + gb(p.mb) + " (" + p.kind + (p.killed ? ", Safari closed the tab" : "") + ")") + "</title>";
+      const tip = "<title>" + esc(l.label + ", " + p.build + ": " + gb(p.mb) + " (" + p.kind + (p.killed ? ", reached Safari's limit" : "") + ")") + "</title>";
       if (p.low !== undefined || p.high !== undefined) out.push('<line class="whisker l' + li + '" x1="' + x.toFixed(1) + '" x2="' + x.toFixed(1) + '" y1="' + ys(p.low ?? p.mb).toFixed(1) + '" y2="' + ys(p.high ?? p.mb).toFixed(1) + '"/>');
       if (p.kind === "planned") out.push('<path class="pt-open l' + li + '" d="M' + x.toFixed(1) + " " + (y - 7).toFixed(1) + 'l7 7-7 7-7-7z">' + tip + "</path>");
       else if (p.kind === "estimate") out.push('<circle class="pt-open l' + li + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="5.5">' + tip + "</circle>");

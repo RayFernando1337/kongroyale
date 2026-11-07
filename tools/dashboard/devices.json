@@ -68,7 +68,7 @@
     "safari-baseline": {
       "label": "first Safari baseline",
       "device": "Mac mini, Apple M4, 16 GB, macOS 27, Safari 27",
-      "method": "Cold Safari start, prod build, seed 42, 3 runs per build. Memory as Activity Monitor counts it (footprint). Safari closed the tab in every run, so the value is the size at the title, before the match pushed it higher.",
+      "method": "Cold Safari start, prod build, seed 42, 3 runs per build. Memory as Activity Monitor counts it (footprint). Every run reached Safari's limit on this 16 GB Mac, so the value is the size at the title.",
       "source": "Captain drive: reports/KONG-49 and renders/KONG-49"
     },
     "safari-acceptance": {
@@ -101,18 +101,18 @@
       "id": "mac16",
       "name": "Mac with 16 GB",
       "supported": true,
-      "plain": "Measured on a Mac mini with an M4 chip and 16 GB, in Safari and in Chrome. Since v0.6 a full match finishes in Safari: the game now keeps at most four streamed locations at a time, and Safari's page peaks about 1.3 GB under the size at which it closes a tab.",
+      "plain": "Measured on a Mac mini with an M4 chip and 16 GB, in Safari and in Chrome. Since v0.6 a full match finishes in Safari: the game now keeps at most four streamed locations at a time, and Safari's page peaks about 1.3 GB under Safari's limit.",
       "charts": [
         {
           "id": "peak",
           "title": "Peak memory in a match",
           "measure": "The highest memory seen from launch to the end of the match. For Safari, the page process (WebContent) is the number Safari watches, and the whole browser adds Safari's graphics process. For Chrome it is every Chrome process together.",
-          "caption": "Safari closed the tab on every build before v0.6. From v0.6 the match finishes: across the v0.6 and v1.0 checks the page peaked between 6.8 and 7.7 GB against a limit of about 8.4 GB (one v0.6.1 run on a longer route reached 8.3 GB and still finished). Chrome doesn't close tabs this way, so its line shows how much it asks of the Mac. An older measuring method put Chrome at 12.5 to 13.0 GB on v0.2.0 and v0.3, but it overstated memory, so those runs aren't plotted.",
+          "caption": "v0.2.0 is the shared starting point of both projects. The fork set out to fit a full Safari match inside the limit Safari sets on a 16 GB Mac, and from v0.6 the match fits: across the v0.6 and v1.0 checks the page peaked between 6.8 and 7.7 GB against a limit of about 8.4 GB (one v0.6.1 run on a longer route reached 8.3 GB and still finished). Chrome doesn't close tabs this way, so its line shows how much it asks of the Mac. Chrome on this Mac was first measured with an earlier version of the measuring tool that read high, so those runs aren't plotted.",
           "pending": "Main at 0c1713f, with and without the low-memory setup (?lowmem=1&geofree=1&farimp=1), is being measured on this Mac now in both browsers (RAY-227). Its points land here when the runs finish.",
           "ceilings": [
             {
               "mb": 8400,
-              "label": "Safari closed the tab at 8.4–8.8 GB (measured on this Mac)",
+              "label": "Safari's limit on a 16 GB Mac: 8.4–8.8 GB (measured)",
               "kind": "measured"
             },
             {
@@ -138,7 +138,7 @@
                   "m": "safari-baseline",
                   "n": 3,
                   "date": "2026-11-04",
-                  "note": "8.6–9.0 GB at the title; Safari closed the tab about 30 s into the match."
+                  "note": "The shared starting point. 8.6–9.0 GB at the title; the match reached Safari's 16 GB limit about 30 s in."
                 },
                 {
                   "slot": "v0.3",
@@ -151,7 +151,7 @@
                   "m": "safari-baseline",
                   "n": 3,
                   "date": "2026-11-04",
-                  "note": "8.6–9.0 GB at the title; Safari closed the tab about 3 s after the title was ready."
+                  "note": "8.6–9.0 GB at the title; it reached Safari's 16 GB limit about 3 s after the title was ready."
                 },
                 {
                   "slot": "v0.4",
@@ -164,7 +164,7 @@
                   "m": "safari-acceptance",
                   "n": 3,
                   "date": "2026-11-05",
-                  "note": "The title halved to about 4.2 GB. Memory then grew as locations streamed in, and Safari closed the tab in 2 of 3 runs."
+                  "note": "The title halved to about 4.2 GB. Memory then grew as locations streamed in, and 2 of 3 runs reached Safari's limit."
                 },
                 {
                   "slot": "v0.5",
@@ -175,7 +175,7 @@
                   "m": "safari-trace",
                   "n": 1,
                   "date": "2026-11-05",
-                  "note": "Closed while gliding in, before landing. main f417032 (after v0.5.0) was closed at 8,489 MB with the kong moving and reached the results screen at 8,049 MB with it standing still."
+                  "note": "Reached Safari's limit while gliding in, before landing. main f417032 (after v0.5.0) reached it at 8,489 MB with the kong moving and reached the results screen at 8,049 MB with it standing still."
                 },
                 {
                   "slot": "v0.6",
@@ -227,7 +227,7 @@
                   "m": "safari-baseline",
                   "n": 3,
                   "date": "2026-11-04",
-                  "note": "At the title; Safari closed the tab about 30 s into the match."
+                  "note": "The shared starting point, at the title; the match reached Safari's 16 GB limit about 30 s in."
                 },
                 {
                   "slot": "v0.3",
@@ -240,7 +240,7 @@
                   "m": "safari-baseline",
                   "n": 3,
                   "date": "2026-11-04",
-                  "note": "At the title; Safari closed the tab before Play."
+                  "note": "At the title; it reached Safari's 16 GB limit before Play."
                 },
                 {
                   "slot": "v0.6",
@@ -668,13 +668,13 @@
       "id": "win",
       "name": "Windows PC (Chrome on Direct3D 11)",
       "supported": true,
-      "plain": "Measured on a Windows PC with an NVIDIA RTX Spark N1X and 30 GB, in Chrome. Windows doesn't close the tab at a fixed size, so the line to watch is the plan's target of under 4 GB. The whole browser has come down about 2 GB since v0.2.0. It hasn't been measured this way since v0.5; the release checks for v0.6 and v1.0 timed loading and frames instead.",
+      "plain": "Measured on a Windows PC with an NVIDIA RTX Spark N1X and 30 GB, in Chrome. Windows doesn't close the tab at a fixed size, so the line to watch is the plan's target of under 4 GB. The whole browser is about 2 GB below the shared starting point, v0.2.0. It hasn't been measured this way since v0.5; the release checks for v0.6 and v1.0 timed loading and frames instead.",
       "charts": [
         {
           "id": "peak",
           "title": "Peak memory in a match, whole browser",
           "measure": "The highest 15 s sample of every Chrome process together, from launch to the second match.",
-          "caption": "v0.2.0 started at Ultra quality on Auto and later builds start at High on this PC, so about 0.35 GB of the drop to v0.5 is likely the quality change and the rest came from releases (an estimate across two days of runs). The low-memory setup only saves memory early on: before v0.6 it never let go of a location, so after about 4 km of walking it held as much as the defaults.",
+          "caption": "On Auto, v0.2.0 (the shared starting point) starts at Ultra quality on this PC and later builds start at High, so about 0.35 GB of the drop to v0.5 is likely the quality change and the rest came from releases (an estimate across two days of runs). The low-memory setup only saves memory early on: until v0.6 added letting go of far locations it kept every one it built, so after about 4 km of walking it held as much as the defaults.",
           "ceilings": [
             {
               "mb": 3850,
@@ -771,7 +771,7 @@
           "id": "gpu",
           "title": "Graphics memory (WebGL) at the title and in the plane",
           "measure": "What the game has allocated through WebGL. On Windows the graphics process holds about 1.8 times this, because the driver keeps its own copies.",
-          "caption": "The title has come down by about 1 GB since v0.4, mostly from the quality fix that stopped Auto starting every machine at Ultra (#125): v0.4.1 started at Ultra on this PC and v0.5 at High. The plane holds the whole island in the defaults, which compressed textures will shrink.",
+          "caption": "The title has come down by about 1 GB since v0.4, mostly from Auto picking the quality tier from the graphics card (#125): v0.4.1 started at Ultra on this PC and v0.5 at High. The plane holds the whole island in the defaults, which compressed textures will shrink.",
           "ceilings": [
             {
               "mb": 1200,
@@ -922,7 +922,7 @@
           "id": "cpu",
           "title": "Copies kept after upload (shapes and textures)",
           "measure": "Copies of shapes and textures the game keeps in ordinary memory after upload, read 30 s into the first match.",
-          "caption": "Texture copies fell from about 2.1 GB to 1.2 GB, mostly from releasing them after upload (#104) and the quality fix. Shape copies have stayed near 1.5 GB; geofree is the start of that work.",
+          "caption": "Texture copies fell from about 2.1 GB to 1.2 GB, mostly from releasing them after upload (#104) and Auto's quality tier (#125). Shape copies have stayed near 1.5 GB; geofree is the start of that work.",
           "ceilings": [
             {
               "mb": 150,

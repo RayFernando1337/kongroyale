@@ -16,7 +16,7 @@
 | `mb` | The value in MB. The page writes it in GB of 1,000 MB, as the measurement reports do |
 | `low`, `high` | The spread across runs, drawn as a whisker. Leave them out for a single run |
 | `kind` | `measured`, `estimate` or `planned`. Estimates and plans need a `note` with the arithmetic and `n: 0`; plans also name their `work` |
-| `killed` | Safari closed the tab in the run |
+| `killed` | The run reached Safari's memory limit |
 | `m`, `n`, `date` | The method id, the number of runs, and the date (UTC) |
 
 `readDevices` throws when a point lacks any of these, so a build fails rather than shows a number without its source. A line with `"same": "sku/chart/line"` copies another line's points, which is how the 12 GB and 8 GB Macs reuse the 16 GB Mac's Safari numbers against their estimated limits.
