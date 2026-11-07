@@ -26,6 +26,7 @@ const checks = [
   { id: "triage", name: "playtest triage (fingerprints, clusters, ticker, no private text)", cmd: "npx", args: ["tsx", "tools/playtest/triage.test.mts"] },
   { id: "ab", name: "WebTransport A/B split by arm (playtest bundles, /health)", cmd: "npx", args: ["tsx", "tools/playtest/ab.test.mts"] },
   { id: "gate", name: "verifier flag and empty-input gates", cmd: "npx", args: ["tsx", "tools/gate.test.mts"] },
+  { id: "prready", name: "merge-ready verdicts from recorded gh snapshots (tools/pr-ready.mts)", cmd: "npx", args: ["tsx", "tools/pr-ready/decide.test.mts"] },
   { id: "size", name: "download size (against tools/size-budgets.json)", cmd: "npx", args: ["tsx", "tools/check-size.mts", "--budgets", "tools/size-budgets.json", "--json", tmp("size.json")] },
   { id: "prreport", name: "PR metrics comment (tools/ci/pr-report.mts)", cmd: "npx", args: ["tsx", "tools/ci/pr-report.test.mts"] },
   { id: "farbake", name: "far impostors match their POI sources", cmd: "npx", args: ["tsx", "tools/world/far-bake.test.mts"] },
