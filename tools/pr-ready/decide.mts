@@ -162,7 +162,7 @@ function labels(s: Snapshot): Item {
   if (bumps.length !== 1) return no(`needs exactly one of ${BUMP_LABELS.join(", ")} (has ${bumps.join(", ") || "none"}); release.mts cut refuses unlabelled PRs`);
   if (sections.length !== 1) return no(`needs exactly one of ${SECTION_LABELS.join(", ")} (has ${sections.join(", ") || "none"}); release.mts cut refuses unlabelled PRs`);
   if (bumps[0] === "release:major" && !s.rayGo) return no("release:major needs Ray's go before it merges; once he gives it, run again with --ray-go");
-  return { id: "labels", ok: true, reason: `${bumps[0]}, ${sections[0]}${s.rayGo ? " (--ray-go: Ray said go)" : ""}` };
+  return { id: "labels", ok: true, reason: `${bumps[0]}, ${sections[0]}${bumps[0] === "release:major" ? " (--ray-go: Ray said go)" : ""}` };
 }
 
 export function decide(s: Snapshot): Verdict {
