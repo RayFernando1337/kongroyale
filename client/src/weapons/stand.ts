@@ -409,8 +409,8 @@ export function bananaStand(): Built {
 /**
  * The stands' static body (every mesh outside the detail group: counter, roof, thatch, sign) as ONE InstancedMesh per
  * mesh, one instance per stand at `places`, and those meshes removed from `proto` (so its clones carry only the detail
- * group). Every stand is a clone of one prefab, so 16 stands × ~7 body draws become ~7 draws (RAY-237: the RTX hide
- * bound measured the stands, tuk-tuks and the market at ~3.9 ms of walk-town main thread, all draw + scene-walk cost).
+ * group). Every stand is a clone of one prefab, so 16 stands × ~7 body draws become ~7 draws (RAY-237: hiding the
+ * stands, the tuk-tuks and Mango Market saved ~3.9 ms of walk-town main thread on RTX, ~18 µs per draw removed).
  */
 export function standBody(proto: THREE.Object3D, places: readonly THREE.Matrix4[]): THREE.Group {
   proto.updateMatrixWorld(true);
@@ -458,7 +458,7 @@ export function tickStands(views: readonly THREE.Object3D[], cx: number, cz: num
   for (const o of views) {
     const a = animOf(o); if (!a) continue;
     const show = Math.hypot(o.position.x - cx, o.position.z - cz) < DETAIL_M;
-    if (a.detail.visible !== show) { a.detail.visible = show; a.detail.matrixWorldAutoUpdate = show; }
+    if (a.detail.visible !== show) a.detail.visible = show;
     if (!show) { a.near = false; continue; }
     // the player in the stand's frame (+Z = the customers' side)
     const dx = px - o.position.x, dz = pz - o.position.z, c = Math.cos(o.rotation.y), s = Math.sin(o.rotation.y);
