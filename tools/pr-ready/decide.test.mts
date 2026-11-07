@@ -26,14 +26,14 @@ const okMap = (s: Snapshot) => Object.fromEntries(decide(s).items.map((i) => [i.
 const ready = load(287);
 const v = decide(ready);
 assert.deepEqual(Object.keys(v), ["pr", "head", "ready", "items"]);
-assert.deepEqual(v.items.map((i) => i.id), ["checks", "capy-review", "threads", "mergeable", "base", "size-budget-drift"]);
+assert.deepEqual(v.items.map((i) => i.id), ["checks", "capy-review", "threads", "mergeable", "base", "size-budget-drift", "labels"]);
 assert.equal(v.pr, 287);
 assert.equal(v.head, "e845d35b6014ed4aed23b4afa73cf84bc6b238a7");
 assert.equal(v.ready, true, JSON.stringify(v, null, 2));
 for (const i of v.items) assert.ok(i.reason.length > 0, i.id);
 expectItem(ready, "size-budget-drift", true, /this PR changes tools\/size-budgets\.json; main has not/, "#287 budgets");
 
-assert.deepEqual(okMap(load(288)), { checks: true, "capy-review": true, threads: true, mergeable: false, base: true, "size-budget-drift": false }, "#288 merged");
+assert.deepEqual(okMap(load(288)), { checks: true, "capy-review": true, threads: true, mergeable: false, base: true, "size-budget-drift": false, labels: true }, "#288 merged");
 expectItem(load(288), "mergeable", false, /MERGED/, "#288");
 
 const withFinding = load(285);
@@ -45,7 +45,7 @@ expectItem(withFinding, "checks", true, /plus host tick A\/B/, "#285 extra check
 expectItem(load(290), "checks", false, /^on 4b6ee01: pending: .*build and test \(in_progress\)/, "#290 CI running");
 
 const stale = load(279);
-assert.deepEqual(okMap(stale), { checks: false, "capy-review": true, threads: true, mergeable: false, base: true, "size-budget-drift": false }, "#279 conflicting");
+assert.deepEqual(okMap(stale), { checks: false, "capy-review": true, threads: true, mergeable: false, base: true, "size-budget-drift": false, labels: true }, "#279 conflicting");
 expectItem(stale, "checks", false, /missing required CI checks: build and test, no secrets/, "#279 no CI on a conflicting head");
 expectItem(stale, "size-budget-drift", false, /main changed tools\/size-budgets\.json since the merge base cd7d105 and this PR changes it too: merge main first/, "#279 drift");
 
@@ -87,6 +87,13 @@ expectItem(edit((s) => { s.pr.mergeStateStatus = "DIRTY"; }), "mergeable", false
 expectItem(edit((s) => { s.pr.mergeable = "CONFLICTING"; }), "mergeable", false, /conflicts with main/, "conflicting");
 expectItem(edit((s) => { s.pr.mergeStateStatus = "BEHIND"; }), "mergeable", true, /BEHIND/, "behind main is still mergeable");
 expectItem(edit((s) => { s.pr.isDraft = true; }), "mergeable", false, /draft/, "draft");
+expectItem(edit((s) => { s.pr.mergeStateStatus = "BLOCKED"; }), "mergeable", false, /blocks the merge .*required check or approval/, "blocked by a required check or approval");
+
+expectItem(ready, "labels", true, /^release:minor, section:performance$/, "#287 labels");
+expectItem(edit((s) => { s.pr.labels = []; }), "labels", false, /exactly one of release:patch.*has none/, "unlabelled");
+expectItem(edit((s) => { s.pr.labels = [{ name: "release:patch" }]; }), "labels", false, /exactly one of section:features.*has none/, "no section");
+expectItem(edit((s) => { s.pr.labels.push({ name: "release:patch" }); }), "labels", false, /has release:minor, release:patch/, "two bumps");
+expectItem(edit((s) => { s.pr.labels = [{ name: "release:major" }, { name: "section:features" }, { name: "bug" }]; }), "labels", false, /needs Ray's go/, "major");
 
 expectItem(edit((s) => { s.pr.baseRefName = "next"; }), "base", false, /base is next, not main/, "base");
 

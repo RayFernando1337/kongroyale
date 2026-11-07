@@ -6,7 +6,15 @@
     "mergeStateStatus": "UNKNOWN",
     "mergeable": "UNKNOWN",
     "number": 288,
-    "state": "MERGED"
+    "state": "MERGED",
+    "labels": [
+      {
+        "name": "release:patch"
+      },
+      {
+        "name": "section:fixes"
+      }
+    ]
   },
   "mergeableReads": 1,
   "checkRuns": [

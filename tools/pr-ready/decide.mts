@@ -20,7 +20,11 @@ export const CAPY_STATUS = "capy/review";
 
 export const BUDGETS_PATH = "tools/size-budgets.json";
 
-/** `gh pr view --json number,state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus` */
+/** The labels `tools/release.mts cut` needs on every merged PR: one bump, one section (.agents/skills/release/SKILL.md). */
+export const BUMP_LABELS: readonly string[] = ["release:patch", "release:minor", "release:major"];
+export const SECTION_LABELS: readonly string[] = ["section:features", "section:performance", "section:fixes", "section:tooling", "section:docs"];
+
+/** `gh pr view --json number,state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,labels` */
 export interface PrView {
   number: number;
   state: string;
@@ -29,6 +33,7 @@ export interface PrView {
   baseRefName: string;
   mergeable: string;
   mergeStateStatus: string;
+  labels: { name: string }[];
 }
 
 /** One check run on the head commit (`commits/{sha}/check-runs`), id/name/status/conclusion only. */
@@ -60,7 +65,7 @@ export interface Snapshot {
   budgets: BudgetBlobs | null;
 }
 
-export interface Item { id: "checks" | "capy-review" | "threads" | "mergeable" | "base" | "size-budget-drift"; ok: boolean; reason: string }
+export interface Item { id: "checks" | "capy-review" | "threads" | "mergeable" | "base" | "size-budget-drift" | "labels"; ok: boolean; reason: string }
 export interface Verdict { pr: number; head: string; ready: boolean; items: Item[] }
 
 const OK_CONCLUSIONS = ["success", "neutral", "skipped"];
@@ -129,6 +134,7 @@ function mergeable(s: Snapshot): Item {
   if (state !== "OPEN") return no(`the PR is ${state}`);
   if (isDraft) return no("the PR is a draft");
   if (m === "CONFLICTING" || ms === "DIRTY") return no(`conflicts with ${baseRefName} (mergeable=${m}, mergeStateStatus=${ms}): merge or rebase onto origin/${baseRefName}`);
+  if (ms === "BLOCKED") return no(`GitHub blocks the merge (mergeable=${m}, mergeStateStatus=BLOCKED): a required check or approval is missing`);
   if (m === "UNKNOWN" || ms === "UNKNOWN") return no(`GitHub is still computing mergeability (mergeable=${m}, mergeStateStatus=${ms} after ${s.mergeableReads} reads); run again in a minute`);
   return { id: "mergeable", ok: true, reason: `mergeable=${m}, mergeStateStatus=${ms}` };
 }
@@ -147,7 +153,17 @@ function budgetDrift(s: Snapshot): Item {
   return { id: "size-budget-drift", ok: true, reason: prChanged ? `this PR changes ${BUDGETS_PATH}; ${s.pr.baseRefName} has not ${since}` : `this PR does not change ${BUDGETS_PATH}` };
 }
 
+function labels(s: Snapshot): Item {
+  const names = s.pr.labels.map((l) => l.name);
+  const bumps = names.filter((n) => BUMP_LABELS.includes(n)), sections = names.filter((n) => SECTION_LABELS.includes(n));
+  const no = (reason: string): Item => ({ id: "labels", ok: false, reason });
+  if (bumps.length !== 1) return no(`needs exactly one of ${BUMP_LABELS.join(", ")} (has ${bumps.join(", ") || "none"}); release.mts cut refuses unlabelled PRs`);
+  if (sections.length !== 1) return no(`needs exactly one of ${SECTION_LABELS.join(", ")} (has ${sections.join(", ") || "none"}); release.mts cut refuses unlabelled PRs`);
+  if (bumps[0] === "release:major") return no("release:major needs Ray's go before it merges");
+  return { id: "labels", ok: true, reason: `${bumps[0]}, ${sections[0]}` };
+}
+
 export function decide(s: Snapshot): Verdict {
-  const items = [checks(s), capyReview(s), threads(s), mergeable(s), base(s), budgetDrift(s)];
+  const items = [checks(s), capyReview(s), threads(s), mergeable(s), base(s), budgetDrift(s), labels(s)];
   return { pr: s.pr.number, head: s.pr.headRefOid, ready: items.every((i) => i.ok), items };
 }

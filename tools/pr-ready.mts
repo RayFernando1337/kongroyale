@@ -70,7 +70,7 @@ async function readThreads(): Promise<ReviewThread[]> {
 }
 
 async function readSnapshot(): Promise<Snapshot> {
-  const view = () => ghJson<PrView>("pr", "view", String(number), "--repo", repo, "--json", "number,state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus");
+  const view = () => ghJson<PrView>("pr", "view", String(number), "--repo", repo, "--json", "number,state,isDraft,headRefOid,baseRefName,mergeable,mergeStateStatus,labels");
   let pr = await view(), mergeableReads = 1;
   while (pr.state === "OPEN" && (pr.mergeable === "UNKNOWN" || pr.mergeStateStatus === "UNKNOWN") && mergeableReads < MERGEABLE_READS) {
     await sleep(MERGEABLE_WAIT_MS);
@@ -80,7 +80,7 @@ async function readSnapshot(): Promise<Snapshot> {
   const sha = pr.headRefOid;
   const [checkRuns, statuses, threads, budgets] = await Promise.all([
     ghPages<CheckRun>("api", "--paginate", `repos/${repo}/commits/${sha}/check-runs?per_page=100`, "--jq", "[.check_runs[] | {id, name, status, conclusion}]"),
-    ghJson<CommitStatus[]>("api", `repos/${repo}/commits/${sha}/status?per_page=100`, "--jq", "[.statuses[] | {context, state, description}]"),
+    ghPages<CommitStatus>("api", "--paginate", `repos/${repo}/commits/${sha}/status?per_page=100`, "--jq", "[.statuses[] | {context, state, description}]"),
     readThreads(),
     (async (): Promise<BudgetBlobs | null> => {
       if (pr.state !== "OPEN") return null;

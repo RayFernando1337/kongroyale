@@ -38,9 +38,10 @@ Read-only (gh with its default login; it never merges, approves, comments, label
 - `checks`: on the exact head, every `ci.yml` job ran and passed by name (a Devin-only green fails), every other check run passed or was neutral/skipped, and no commit status is pending or failed.
 - `capy-review`: the `capy/review` status on the head says "Capy found no issues". It counts open non-note findings and updates when they are triaged; missing or failed means push an empty commit to retrigger.
 - `threads`: 0 unresolved review threads.
-- `mergeable`: open, not a draft, no conflicts; UNKNOWN is re-read a few times, then says to run again.
+- `mergeable`: open, not a draft, no conflicts, not BLOCKED; UNKNOWN is re-read a few times, then says to run again.
 - `base`: the base is `main`.
 - `size-budget-drift`: fails with "merge main first" when main and the PR both changed `tools/size-budgets.json` since their merge base.
+- `labels`: exactly one `release:*` and one `section:*` label; `release:major` fails until Ray says go.
 
 ## Flow
 

@@ -6,7 +6,15 @@
     "mergeStateStatus": "DIRTY",
     "mergeable": "CONFLICTING",
     "number": 279,
-    "state": "OPEN"
+    "state": "OPEN",
+    "labels": [
+      {
+        "name": "release:patch"
+      },
+      {
+        "name": "section:performance"
+      }
+    ]
   },
   "mergeableReads": 2,
   "checkRuns": [],

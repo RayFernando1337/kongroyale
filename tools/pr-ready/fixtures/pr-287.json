@@ -6,7 +6,15 @@
     "mergeStateStatus": "CLEAN",
     "mergeable": "MERGEABLE",
     "number": 287,
-    "state": "OPEN"
+    "state": "OPEN",
+    "labels": [
+      {
+        "name": "release:minor"
+      },
+      {
+        "name": "section:performance"
+      }
+    ]
   },
   "mergeableReads": 1,
   "checkRuns": [

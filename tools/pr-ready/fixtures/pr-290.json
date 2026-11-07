@@ -6,7 +6,15 @@
     "mergeStateStatus": "UNSTABLE",
     "mergeable": "MERGEABLE",
     "number": 290,
-    "state": "OPEN"
+    "state": "OPEN",
+    "labels": [
+      {
+        "name": "release:patch"
+      },
+      {
+        "name": "section:tooling"
+      }
+    ]
   },
   "mergeableReads": 1,
   "checkRuns": [
