@@ -31,7 +31,7 @@ bundle("C1", 30, 40, report("forced-wt", "wt", null, 30, 50, 0, 30));
 // earlier report's folder sorts last
 bundle("C3", 30, 40, report("forced-wt", "ws", "closed", 30, 50, 0, 30, 7), 0, 0, "install-C2", "2026-11-07T00:05:00Z");
 bundle("C4", 30, 40, report("forced-wt", "wt", null, 30, 50, 0, 30, 7), 0, 0, "install-C2", "2026-11-07T00:01:00Z");
-// one forced-ws link: a report at 120 s of play uploads slowly and lands after one taken earlier, at 60 s
+// one forced-ws link: a report taken at 60 s of play uploads slowly and lands after one taken later, at 120 s
 bundle("E1", 60, 50, report("forced-ws", "ws", "flag-off", 40, 80, 9, 120, 3), 0, 0, "install-E", "2026-11-07T00:01:00Z");
 bundle("E2", 60, 50, report("forced-ws", "ws", "flag-off", 40, 80, 3, 60, 3), 0, 0, "install-E", "2026-11-07T00:09:00Z");
 bundle("D1", 60, 60, report("off", "ws", "server-off", 70, 90, 10, 600));
