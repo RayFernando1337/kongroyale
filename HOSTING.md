@@ -156,7 +156,10 @@ KR_WT=1 KR_WT_SHARE=0.5 npm start    # WebTransport for half the players, WebSoc
   `server-off`, `unsupported`, `connect-failed`, `timeout`, `auth`, `closed`, `no-datagrams`), as each player's
   browser reports it. `transports.arms` splits that by arm (`wt`, `ws`, `forced-wt`, `forced-ws`, `off`) and adds
   each arm's inputs in running matches as the server queued them: `seqs`, `lost` and `recovered` (from the input
-  window). `transports.webtransport.share` is the share in force.
+  window). `transports.webtransport.share` is the share in force. The arm and the fallback reason are what each
+  browser reports: the server takes only a known arm, once per link, but a kept arm and a made-up one look the same
+  to it, so a player can move their own links between arms. That skews the counts by their share of the links and
+  touches nothing in the match.
 - Every KONGBOT report, F8 mark and diagnostics bundle carries the link's arm, transport, fallback reason, input→ack
   times and the hit markers that waited for the server (`ctx.game.net`).
 - `npx tsx tools/playtest/ab.mts --health http://<your server>:3020/health` splits the saved bundles by arm

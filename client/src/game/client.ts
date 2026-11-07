@@ -943,7 +943,7 @@ export class ClientMatch {
   predictShot(k: number, out: ShotResult, dir: Float64Array = DIR): ShotResult {
     const p = this.pred, w = weaponDef(p);
     this.predDmg = 0; this.predLeft = Infinity; this.predLate = false; this.predDefer = 0;
-    this.predVeh = -1;
+    this.predVeh = -1; if (k === 0) this.shotDeferred = false;
     // a round of TOP BANANA (I man a helicopter's door gun): along its barrels at the pose I sat at for this input (my
     // seat was put on the helicopter as drawn — the server rewinds to the same blend)
     const gun = gunOf(this.vehs, p);
@@ -978,6 +978,8 @@ export class ClientMatch {
   predLate = false;
   /** why the last predictShot left the hit it drew to the server and reported a miss (linkSlow's bits), 0 = it did not */
   predDefer = 0;
+  /** this shot already told the link it deferred a marker: a shotgun blast draws one marker however many pellets hit */
+  private shotDeferred = false;
   /**
    * Is the link too slow or stalled to trust a predicted hit? Then the hit marker waits for the server (KONG-78 §4 2b,
    * after Overwatch's ~220 ms rule). The bits say which signal fired: 1 = the RTT, either past what the rewind cap leaves
@@ -1005,7 +1007,7 @@ export class ClientMatch {
    * no sample to judge it by, so the drawn verdict stands. On a slow or stalled link (linkSlow) no hit is predicted.
    */
   private lateVerdict(ox: number, oy: number, oz: number, dir: Float64Array, out: ShotResult) {
-    if (out.victim >= 0 && this.authSeq > 0) { this.predDefer = this.linkSlow(performance.now()); if (this.predDefer) { if (this.phase === Phase.Play) this.link.noteDeferred?.(); out.victim = -1; return; } }
+    if (out.victim >= 0 && this.authSeq > 0) { this.predDefer = this.linkSlow(performance.now()); if (this.predDefer) { if (this.phase === Phase.Play && !this.shotDeferred) { this.shotDeferred = true; this.link.noteDeferred?.(); } out.victim = -1; return; } }
     const lo = this.authTick + (this.inputSeq - this.authSeq) - MAX_REWIND_TICKS;
     if (out.victim < 0 || this.authSeq <= 0 || lo > this.lastSnapTick || !(this.viewA + this.viewSpan * this.viewF < lo)) return;
     const T = this.viewTargets, L = LATE_TARGETS, bl = this.blend;
