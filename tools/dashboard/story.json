@@ -29,7 +29,7 @@
   "cards": [
     {
       "head": "A 16 GB Mac can play a whole match in Safari",
-      "plain": "Before, the game kept every location it had built, so memory only went up. Safari closed the tab (killed for memory) about 80 seconds after the player landed. The game now keeps at most four locations at a time and drops the farthest ones as the player moves on. In the newest test below it reached the results screen both times, with peak memory about 1 GB lower than the version before it.",
+      "plain": "Before, the game kept every location it had built, so memory only went up. The match reached Safari's limit on a 16 GB Mac (Safari closes a tab that passes it) about 80 seconds after the player landed. The game now keeps at most four locations at a time and drops the farthest ones as the player moves on. In the newest test below it reached the results screen both times, with peak memory about 1 GB lower than the version before it.",
       "notice": "What you'll notice: on a 16 GB Mac in Safari, the match no longer ends with the tab closing on you.",
       "prs": [
         140,
@@ -38,7 +38,7 @@
         160
       ],
       "method": "Mac mini M4, 16 GB, Safari 27, quality Auto (picked Low), ?seed=42, scripted moving player, production build served locally. Newest: main 3248912, 2 runs. Before: main 1ee1f52, 1 run. Details in the Safari panel below.",
-      "before": "Tab closed after about 80 s",
+      "before": "Reached Safari's limit about 80 s after landing",
       "after": "Survives the whole match",
       "label": "Safari on a 16 GB Mac"
     },
@@ -78,7 +78,7 @@
   ],
   "safari": {
     "title": "Safari on a 16 GB Mac mini: whole-match survival, before and after",
-    "plain": "One scripted player (it drops near the harbor, then keeps moving toward the next safe place) was played until the match ended or Safari closed the tab. Landing came at 103 to 106 s in every run. Peak WebContent is the size of the part of Safari that runs the game's page, which is the part Safari closes. Times below are seconds since the test started.",
+    "plain": "One scripted player (it drops near the harbor, then keeps moving toward the next safe place) was played until the match ended or reached Safari's limit. Landing came at 103 to 106 s in every run. Peak WebContent is the size of the part of Safari that runs the game's page, which is the part Safari closes. Times below are seconds since the test started.",
     "columns": [
       "Build",
       "How it ended",

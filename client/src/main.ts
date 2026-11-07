@@ -36,6 +36,7 @@ import { Display, bootQuality } from "./engine/display";
 import { WARMUP_S } from "../../shared/sim/const";
 import { afterPaint as nextFrame, noFrameWaitCount } from "./engine/frame";
 import { flag } from "./flags";
+import { diagOn, startBeat } from "./playtest/beat";
 import { resources, type Scope } from "./engine/res/scope";
 import { asOwner, contextEpoch, onRestore } from "./engine/res/restore";
 
@@ -64,6 +65,8 @@ const bootFail = (where: string, e: unknown) => { report(where, e); if (gameMode
 
 const viewId = flag("view"), camArg = flag("cam");
 const gameMode = !viewId && !camArg;
+// diagnostics: the crash heartbeat's first beat, before the world loads (playtest/beat.ts)
+if (gameMode && !shot && diagOn()) startBeat();
 const streamOn = gameMode && !flag("nostream");
 const only = flag("modules");
 const entries = MODULES.filter(([id]) => !only || only.some((o) => id === o || id.startsWith(o)));
@@ -93,6 +96,7 @@ const engine = (() => {
 })();
 kr.engine = engine;
 if (flag("texprof")) await import("./engine/dev-probes").then((m) => m.installTexProf(engine), (e) => report("texprof", e));
+if (flag("drawcensus")) await import("./engine/draw-census").then((m) => { kr.drawCensus = m.installDrawCensus(engine); }, (e) => report("drawcensus", e));
 // the video settings (engine/display.ts): frame cap / 3D resolution now, the rest once atmos + veg exist
 const display = gameMode && !shot ? new Display(engine) : null;
 kr.display = display;
@@ -299,13 +303,21 @@ function registerFar(id: string, m: WorldModule | null, streamed: boolean) {
   engine.far.register(id, roots, { x: poi.x, y, z: poi.z }, Math.max(240, poi.r * 2.2));
 }
 
-const world = { modOf, scopeOf, rootsOf, loaded, roots: (id: string) => moduleRoots(id, true), report, build: (id: string) => buildStreamed(id, false) };
+const world = { modOf, scopeOf, rootsOf, loaded, roots: (id: string) => moduleRoots(id, true), report, build: (id: string) => streamBuild(id, false) };
 
 const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | undefined;
+
+let buildQueue: Promise<unknown> = Promise.resolve();
+function streamBuild(id: string, fast: boolean): Promise<{ integrated: Promise<void> }> {
+  const built = buildQueue.then(() => buildStreamed(id, fast));
+  buildQueue = built.catch(() => {});
+  return built;
+}
 
 async function buildStreamed(id: string, fast: boolean): Promise<{ integrated: Promise<void> }> {
   const m = await buildOne(id, true);
   if (m) await runAfterBuild(m, true);
+  if (LOW_MEM) await postBuild!.warmTextures(moduleRoots(id, true));
   registerStatics(id, true);
   registerFar(id, m, true);
   if (LOW_MEM) startFarBuild();
@@ -475,6 +487,7 @@ if (display && bootReady) void import("./ui/settings").then(({ createVideoMenu, 
   const bot = !!navigator.webdriver;
   void display.firstVisitBench().then(() => { if (first && !flag("noannounce") && (!bot || flag("announce"))) ui.announceAuto(); }).catch((e) => report("display-bench", e));
   if (!bot || flag("guard")) display.startGuard(inMatch);
+  void import("./engine/res-guard").then((m) => m.startResGuard(engine), (e) => report("res-guard", e));
 }).catch((e) => report("settings-ui", e));
 
 // ---- stream the rest of the island in (game page)
@@ -609,7 +622,7 @@ async function stream(): Promise<void> {
     engine.sliceMs = fast ? 1e9 : engine.streamSlice(inMatch(), matchPhase(), 1.4 * (est(id) + streamList.reduce((a, x) => a + est(x), 0)), warmLeftMs()); // (×1.4: + integration)
     if (!fast) await nextFrame();
     const t0 = performance.now();
-    const { integrated } = await buildStreamed(id, fast);
+    const { integrated } = await streamBuild(id, fast);
     const done = integrated.then(() => { streamMs[id] = Math.round(performance.now() - t0); });
     inflight.push(done);
     if (inflight.length > 1) await inflight.shift();

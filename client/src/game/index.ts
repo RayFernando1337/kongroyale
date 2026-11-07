@@ -7,6 +7,7 @@ import type { WorldModule } from "../world/module";
 import { CONSUMABLES, POIS, RARITIES, WEAPONS, type ConsumableId, type WeaponId } from "../../../shared/world/map";
 import { staticWorld } from "../engine/static-world";
 import { adoptWorkerLootSpots } from "../engine/lootspots";
+import { hostWorker, startHostWorker } from "./host-worker";
 import { terrainData } from "../world/terrain/load";
 import { placeLoot, type Chest, type Item } from "../../../shared/sim/loot";
 import { lootSpotsIdle } from "../../../shared/sim/loot-spots";
@@ -48,7 +49,7 @@ import { preferences } from "../settings/preferences";
 import { RIDE_BINDS, type BindAction } from "../settings/bindings";
 import { ClientMatch } from "./client";
 import { GameRender, patchTree, renderPrefabs, type Kits } from "./render";
-import { OfflineLink, connectWs, type Link } from "./net";
+import { OfflineLink, connectWs, roomUrl, type Link } from "./net";
 import { createFallbackFx } from "./fx-fallback";
 import { createLightBalancer } from "./lights";
 import { createTitleScene, type TitleScene } from "./title";
@@ -77,6 +78,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   // objects alive for the whole session (the world has its own packed copy)
   const worldBoxes = { length: worldBoxesAll.length };
   adoptWorkerLootSpots(world, worldHashV); // (perf: the loot spots built off the main thread, hash-checked)
+  startHostWorker(worldHashV); // (?hostworker=1: the practice host off the main thread, hash-checked)
   gameStage("kits", 0.1);
 
   // ---- kits (contracts)
@@ -169,6 +171,8 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   try { const stored = localStorage.getItem("kr-bot-difficulty"); if (stored === "standard" || stored === "hard") botDifficulty = stored; } catch { /* private mode */ }
   const lobbyState: LobbyState & EventLobbyState = { code: null, inviteUrl: null, mode: "solo", players: [], meId: 0, isHost: false, busy: false, error: null, offline: false, capacity: 50, invite: eventCode !== null ? null : joinCode, difficulty: botDifficulty, event: null, ended: null };
   let link: Link | null = null, cm: ClientMatch | null = null, render: GameRender | null = null, myUid = 0;
+  /** the room code the online link was opened for (empty: none, a link to make a room on) */
+  let linkRoom = "";
   let inMatch = false, paused = false;
   // a session = one connect / practice / leave. Every async step re-checks its generation: a later choice (or LEAVE)
   // supersedes an earlier one still waiting on the island or the server. Its timers die with it.
@@ -192,7 +196,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     replayCoach() { coach.replay(); coachObserver.reset(); },
     setName(name) { link?.sendJSON({ t: "hello", name }); },
     async create(mode) { fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "create", mode }); },
-    async join(code) { lobbyState.ended = null; fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "join", code, tok: playerTok }); },
+    async join(code) { lobbyState.ended = null; fsOnPlay(); const generation = nextSessionGeneration(); await prepareIsland(); if (generation !== sessionGeneration || !await online(generation, code)) return; link?.sendJSON({ t: "hello", name: lobby.name }); link?.sendJSON({ t: "join", code, tok: playerTok }); },
     setMode(mode) { lobbyState.mode = mode; link?.sendJSON({ t: "mode", mode }); },
     start() { link?.sendJSON({ t: "start", mode: lobbyState.mode }); },
     practice(mode, difficulty) { fsOnPlay(); void offline(mode, false, difficulty ?? botDifficulty); },
@@ -226,17 +230,22 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   preferences.subscribe((p) => { audio.setMaster(p.master); audio.setDynamicRange?.(p.dynamicRange); audio.setMix?.({ combat: p.combat, ui: p.ui, ambience: p.ambience }); audio.radio?.setVolume(p.radio); });
   const currentFov = () => (engine.shared.get("display:fov") as number | undefined) ?? 72;
 
-  function setBusy(b: boolean, err: string | null = null) { lobbyState.busy = b; lobbyState.error = err; lobby.update(lobbyState); }
-  /** connect for this session; false when it failed or a newer session superseded it while connecting */
-  async function online(generation: number) {
-    if (link && !link.offline) return true;
+  /** why the server took us out of our match while keeping us in the room (AFK): the room shows it until the next match
+   *  or until the player moves on, so a later room frame does not wipe it */
+  let roomReason: string | null = null;
+  function setBusy(b: boolean, err: string | null = null) { roomReason = null; lobbyState.busy = b; lobbyState.error = err; lobby.update(lobbyState); }
+  /** connect for this session, for room `room` (empty: to make one); false when it failed or a newer session superseded
+   *  it while connecting. A link is reused unless a multi-process server's front sent it to another process than the
+   *  room's (net.ts roomUrl) */
+  async function online(generation: number, room = "") {
+    if (link && !link.offline && (link.proc === undefined || linkRoom === room)) return true;
     setBusy(true);
     try {
       const old = link; link = null;
       if (old) { old.onClose = () => {}; old.close(); }
-      const connected = await connectWs(wsUrl);
+      const connected = await connectWs(roomUrl(wsUrl, room));
       if (generation !== sessionGeneration) { connected.close(); return false; }
-      link = connected; wire(link);
+      link = connected; linkRoom = room; wire(link);
       lobbyState.offline = false; setBusy(false); return true;
     } catch {
       if (generation !== sessionGeneration) return false;
@@ -256,14 +265,17 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     const generation = nextSessionGeneration();
     await prepareIsland();
     if (generation !== sessionGeneration) return;
+    // (?hostworker=1) the host in its worker, which built its own loot spots; null = this tab hosts
+    const hw = await hostWorker();
+    if (generation !== sessionGeneration) return;
     // the loot spots: if the click beat their idle build, finish it in 12 ms slices here — the host's
     // placeLoot would otherwise run the rest as ONE 2-3 s synchronous task (a frozen frame at match start)
-    if (!range) await lootSpotsIdle(world, () => new Promise<void>((r) => setTimeout(r, 0)), 12);
+    if (!range && !hw) await lootSpotsIdle(world, () => new Promise<void>((r) => setTimeout(r, 0)), 12);
     if (generation !== sessionGeneration) return;
     leaveAll();
     // the bots' tier (EASY = 10% damage, accurate only within ~8 m) is the Match's to apply
     botDifficulty = difficulty; lobbyState.difficulty = difficulty;
-    const l = new OfflineLink(world, lobby.name, 1, Infinity, range, difficulty); link = l; wire(l);
+    const l = hw ? hw.link(lobby.name, range, difficulty) : new OfflineLink(world, lobby.name, 1, Infinity, range, difficulty); link = l; wire(l);
     lobbyState.offline = true; lobbyState.mode = mode; myUid = 1;
     l.sendJSON({ t: "hello", name: lobby.name }); l.sendJSON({ t: "practice", mode });
     setTimeout(() => l.sendJSON({ t: "start", mode }), 50);
@@ -312,14 +324,14 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     }
     else if (m.t === "lobby") {
       const players = m.players as Array<{ id: number; name: string; squad: number; pid: number; host: boolean }>;
-      lobbyState.code = m.code as string; lobbyState.mode = m.mode as Mode; lobbyState.isHost = (m.host as number) === myUid;
+      lobbyState.code = m.code as string; lobbyState.mode = m.mode as Mode; lobbyState.isHost = (m.host as number) === myUid; lobbyState.hostAway = m.hostAway === true;
       lobbyState.inviteUrl = link?.offline ? null : `${location.origin}${location.pathname}?join=${lobbyState.code}`;
       lobbyState.players = players.map((p) => ({ id: p.id, name: p.name, bot: false, host: p.host, squad: p.squad, ready: true }));
       lobbyState.matchRunning = m.inMatch === true && !inMatch;
       lobbyState.casters = Array.isArray(m.casters) ? m.casters.length : 0;
       lobbyState.event = m.ev && typeof m.ev === "object" && Array.isArray((m.ev as EventRoom).players) ? m.ev as EventRoom : null;
       if (staleMatch && m.inMatch === false && link) { staleMatch = false; render?.dispose(); wire(link); }
-      lobbyState.busy = false; lobbyState.error = null; lobbyState.invite = null; lobby.update(lobbyState);
+      lobbyState.busy = false; lobbyState.error = roomReason; lobbyState.invite = null; lobby.update(lobbyState);
       if (cm && render) for (const p of players) if (p.pid >= 0) { cm.names[p.pid] = p.name; render.names[p.pid] = p.name; }
       // the match is over (results done / crash): everyone goes back to the room
       // (practice: the results card stays up for PLAY AGAIN / BACK TO LOBBY)
@@ -329,7 +341,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
       // a refused re-join (the lobby is gone / locked / full) gets no room frame after it: stop trying
       if (reconnect) { const r = reconnect, msg = String(m.msg); clearTimeout(r.timer); r.timer = window.setTimeout(() => { if (reconnect === r) reconnectGiveUp(msg); }, 1500); }
       // (AFK) the server gave our seat to a bot for inactivity and kept us in the room: show the room
-      else if (m.afk === true && inMatch && link && !link.offline && lobbyState.code) backToRoom();
+      else if (m.afk === true && inMatch && link && !link.offline && lobbyState.code) { roomReason = String(m.msg); backToRoom(); }
     }
     // (admin lobby) out of the event lobby for good: the server closes the socket next (no "connection lost" after this)
     else if (m.t === "evend") {
@@ -338,6 +350,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
       leaveAll();
     }
     else if (m.t === "match") {
+      roomReason = null;
       if (staleMatch && link) { staleMatch = false; render?.dispose(); wire(link); }
       if (!cm || !render) return;
       resultOutcome = null; resultDismissed = false; recapSession = {};
@@ -460,10 +473,10 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     const r = reconnect; if (!r || generation !== sessionGeneration) return;
     r.tries++; reconnectPaint();
     let l: Link;
-    try { l = await connectWs(wsUrl, 5000); } catch { if (reconnect === r && generation === sessionGeneration) reconnectLater(generation); return; }
+    try { l = await connectWs(roomUrl(wsUrl, r.code), 5000); } catch { if (reconnect === r && generation === sessionGeneration) reconnectLater(generation); return; }
     if (reconnect !== r || generation !== sessionGeneration) { l.close(); return; }
     // a fresh ClientMatch + renderer on the new link (the frozen match goes; the card stays up until the server answers)
-    link = l; staleMatch = false;
+    link = l; linkRoom = r.code; staleMatch = false;
     exitToRoom();
     l.sendJSON({ t: "hello", name: lobby.name }); l.sendJSON({ t: "join", code: r.code, tok: playerTok });
     // no answer at all (a half-open path): drop this try and go again
@@ -501,8 +514,16 @@ export async function startGame(engine: Engine, boot: GameBoot) {
 
   // ---- keys: map, pause
   let resultsOpen = false;
+  // padLayer and gameplayAllowed run every frame: live class lists instead of document.querySelector, whose
+  // ":not([hidden])" selector walked the whole DOM each frame (~0.17 ms a frame on the RTX tour profile)
+  const videoMenus = document.getElementsByClassName("kr-video"), guides = document.getElementsByClassName("kr-guide");
+  const diagSheets = document.getElementsByClassName("kd-sheet"), crashCards = document.getElementsByClassName("kd-card");
+  function openVideoMenu(): HTMLElement | null {
+    for (let i = 0; i < videoMenus.length; i++) if (videoMenus[i].classList.contains("on")) return videoMenus[i] as HTMLElement;
+    return null;
+  }
   /** only live gameplay moves, aims or fires: never behind the map, the inventory, pause, results or the video menu */
-  const videoMenuOpen = () => !!document.querySelector(".kr-video.on");
+  const videoMenuOpen = () => !!openVideoMenu();
   input.gameplayAllowed = () => inMatch && !paused && !resultsOpen && !hud.mapOpen && !inv.open && !shop.open && !videoMenuOpen() && !spectating();
   // ---- spectating: out for good and watching someone. The cursor is free (the bar's ◀ ▶ and the
   // player list are clicked; a drag on the game looks around, the wheel zooms); ← / → (and the strafe keys) cycle,
@@ -652,11 +673,16 @@ export async function startGame(engine: Engine, boot: GameBoot) {
       first: () => video.querySelector<HTMLElement>(".preference-tabs button[aria-pressed=true]"),
     };
   }
+  function openDialog(): HTMLElement | null {
+    for (let i = 0; i < guides.length; i++) if (!(guides[i] as HTMLElement).hidden) return guides[i] as HTMLElement;
+    for (let i = 0; i < diagSheets.length; i++) if (!(diagSheets[i] as HTMLElement).hidden) return diagSheets[i] as HTMLElement;
+    return (crashCards[0] as HTMLElement | undefined) ?? null;   // the crash card is removed, never hidden, when dismissed
+  }
   function padLayer(): PadLayer | null {
-    const video = document.querySelector<HTMLElement>(".kr-video.on");
+    const video = openVideoMenu();
     if (video) return settingsLayer(video);
     // the onboarding guide, or the ?diag send sheet and crash prompt (playtest/report.ts): a dialog whose .close button is B
-    const guide = document.querySelector<HTMLElement>(".kr-guide:not([hidden]), .kd-sheet:not([hidden]), .kd-card");
+    const guide = openDialog();
     if (guide) return { root: guide, back: () => guide.querySelector<HTMLButtonElement>(".close")?.click() };
     if (inMatch) {
       if (resultsOpen) return { root: results.el, back: () => {}, noBack: true };

@@ -1,64 +1,79 @@
 ---
 name: verify-diagnostics
-description: Model-check Kong Royale's planned player diagnostics (KONG-71) with TLA+ - the crash heartbeat across tabs (no false crash prompt, no lost crash, one report per crash) and the send flow (consent first, callsign only when ticked, automatic summaries only when on, every send answered) - and draw them as statecharts (docs/statecharts/diagnostics.md). Use before changing the KONG-71 design, and before calling done any code that implements the heartbeat, the crash prompt, the consent sheet, Send diagnostics, Report a problem or the automatic summary.
+description: Model-check Kong Royale's player diagnostics (KONG-71, RAY-162) with TLA+ - the crash heartbeat across tabs (no false crash prompt, no lost crash, one report per crash) and the send flow (consent first, callsign only when ticked, every send answered) - against the code in client/src/playtest/beat.ts, diag.ts and report.ts. Use before calling done any change to the heartbeat (beat.ts startBeat, writeBeat and its pagehide/pageshow listeners, the startBeat call in main.ts, readBeats, findDeadSession, installDiag), the crash card, the send sheet, quickSend, send or body, or the consent and callsign rules.
 ---
 
 # Verify player diagnostics
 
-KONG-71's diagnostics are not built yet. These two models check the design so its bugs are fixed in the plan, and they
-become the check for the code once it lands.
+Two TLA+ models describe the diagnostics code on main (#198, #215, #233). Each first checked the design as written,
+found its bugs (docs/statecharts/diagnostics.md), and now checks the code that fixed them.
 
-- `tools/formal/DiagHeartbeat.tla`: two tabs of one profile share `localStorage`; every order of loads, 5 s beats,
-  closes, kills, back/forward-cache freezes and thaws, and crash-prompt answers. `Design` picks the plan as written
-  (`"plan"`, one shared record) or the fix (`"locks"`, one record per session plus a Web Lock per live page).
+- `tools/formal/DiagHeartbeat.tla`: two tabs of one browser profile share `localStorage` and Web Locks, through
+  every order of loads, the heartbeat starting, closes, kills, back/forward-cache freezes and thaws, and crash-card
+  answers. `Design = "locks"` is the code; `"plan"` is the first design (one shared record), kept for
+  `DiagHeartbeat.findings.cfg`.
 - `tools/formal/DiagSend.tla`: one tab's screens around a send, and the server accepting or refusing it.
-  `RefusedShown` picks the plan as written (`FALSE`) or the fix (`TRUE`, a refused send says so). `Spec` assumes every
-  upload is answered in the end (weak fairness on Accepted or Refused), which the code must earn with a request timeout.
+  `RefusedShown = TRUE` is the code; `FALSE` is the first design, kept for `DiagSend.findings.cfg`. `Spec` assumes
+  every upload ends (weak fairness on Accepted or Refused), which `send`'s `TIMEOUT_MS` abort earns.
 
 ## The rules
 
 | Model | Rule | In plain words |
 |---|---|---|
 | DiagHeartbeat | NoFalseCrash | The title never asks about a crash of a session that is still open or ended cleanly. |
-| DiagHeartbeat | NoLostCrash | A session that dies stays detectable until a later load picks it up. |
+| DiagHeartbeat | NoLostCrash | A session that dies after its first beat stays detectable until a later load picks it up. |
 | DiagHeartbeat | OneReportPerCrash | One crash is reported at most once, however many tabs load and whatever the player taps. |
-| DiagSend | NoManualSendWithoutConsent | Nothing sent by hand leaves the browser before the consent sheet was confirmed once. |
-| DiagSend | CallsignOnlyWhenTicked | The callsign goes only when ticked; an automatic summary never carries it. |
-| DiagSend | AutoOnlyWhenOn | Automatic summaries go only while the setting is on. |
+| DiagSend | NoManualSendWithoutConsent | Nothing a player sends leaves the browser before they have seen the consent text on the sheet. |
+| DiagSend | CallsignOnlyWhenTicked | The callsign goes only in a send where "Include my callsign" was ticked. |
 | DiagSend | EverySendAnswered | Every send ends with the thank-you and report id, or a message that it did not go. |
-| DiagSend | SendEnds | A send never hangs: one of the two shows in the end (needs a request timeout). |
+| DiagSend | SendEnds | A send never hangs: one of the two shows in the end. |
 
-`DiagHeartbeat.cfg` and `DiagSend.cfg` check the fixed design, where every rule holds. The `.findings.cfg` files
-check the design as written: all three heartbeat rules break, and EverySendAnswered and SendEnds break.
+## What each action is in the code
+
+| Code | Model action |
+|---|---|
+| The page loading, before main.ts runs (the boot JS downloading and evaluating) | DiagHeartbeat Open |
+| main.ts → beat.ts `startBeat` on a game page under diag: takes the session's Web Lock, then `writeBeat` inside it, and adds the pagehide and pageshow listeners | DiagHeartbeat BootBeat |
+| The lazy playtest chunk: diag.ts `installDiag` → (after `live.done`) `findDeadSession` (under the `kr.diag.claim` lock: `readBeats`, delete every record that isn't clean and whose lock isn't held, keep the newest as `prev`); report.ts `installReport` shows `crashCard` about it | DiagHeartbeat Check |
+| `startBeat`'s pagehide listener (clean), its pageshow listener with `persisted` (running again), the 5 s beat in `installDiag`'s per-second hook | Close, Freeze, Thaw (Beat is the first design's) |
+| report.ts `crashCard`: SEND opens the sheet in crash mode; NO THANKS or a match starting removes the card | DiagHeartbeat Answer; DiagSend OpenSheet, DismissCrash |
+| report.ts `quickSend` (SEND DIAGNOSTICS on the results card; reads `consented`) | DiagSend QuickSend |
+| `installReport`'s takeover of `__kr.kongbot.open` (REPORT A PROBLEM) | DiagSend OpenSheet |
+| report.ts `createSheet` (its SEND and CANCEL; stores `kr.diag.consent` after a send goes through) | SheetSend, SheetCancel, Accepted |
+| report.ts `send` (the POST and its `TIMEOUT_MS` abort), `notSent`, and `body` and `minimise` (what a send carries; the callsign only when ticked) | Accepted, Refused, ToastGone |
+
+**The first beat is written at boot, inside the lock.** main.ts calls `startBeat` once the boot JS has run, before the
+world loads and before the lazy diag chunk arrives, so a tab killed during load still leaves a record (SwiftShader,
+local server: first record at 3.3 s, diag chunk at 5.1 s; on a slow link the lazy chunk queues behind the world's
+downloads). The record is written only once the page holds its Web Lock, so a slow boot never looks dead to another
+tab: the mutant "the first beat is written outside the lock" breaks NoFalseCrash in 4 states. What is left, written
+into NoLostCrash as `\cap started`: a tab killed before main.ts runs (while the boot JS downloads and parses) leaves
+no record. Drop `\cap started` and TLC shows the path: Open, Kill, Open.
+
+**Two dead sessions, one card:** when two sessions died (a browser crash with two tabs open), one load claims both and
+the card asks about the newest only. The model counts both as picked up (`seen`), and at most one report goes out.
+
+Not modelled: time, the 7-day expiry of old records (`KEEP_MS`), browsers without Web Locks (they keep no heartbeat),
+`SEND_GAP_MS` (a send within 10 s of the last one is turned away on screen and sends nothing), and the automatic
+summary, which is not built (slice 2). When it is, add it back as the first design had it
+(`git show e1e3509:tools/formal/DiagSend.tla`, and DiagHeartbeat.tla), with its rule AutoOnlyWhenOn.
 
 ## Run it
 
 ```sh
-node tools/formal/tlc.mjs DiagHeartbeat --mutants
-node tools/formal/tlc.mjs DiagSend --mutants
+node tools/formal/tlc.mjs DiagHeartbeat --mutants --record
+node tools/formal/tlc.mjs DiagSend --mutants --record
 ```
 
-Java 11 or newer on PATH. About a second each (2,452 and 352 distinct states). Each mutant takes one part of the fix or
-one guard out of a scratch copy and must make TLC report the rule its entry names; a mutant that passes means the
-model can no longer see it. To see the paths the plan as written takes, or to redraw the charts, give the pstack
-`/statechart` skill a model with its `.findings.cfg`.
+Java 11 or newer on PATH. About a second each. Each mutant removes one guard the code has (the lock check, the pageshow
+beat, the claim's delete, the consent check, the callsign tick in each send path, the refused message, the timeout) and
+must make TLC report the rule its entry names. `--record` then writes the token hashes of the code regions into
+`<Model>.covers.json`, and npm test's `formal` check (`tools/formal/drift.mjs`) fails when that code changes without a
+re-check, or when other code writes the heartbeat records or the consent flag. To see the paths the first design takes,
+or to redraw the charts, give the pstack `/statechart` skill a model with its `.findings.cfg`.
 
-## When KONG-71 is built
+## Check it in a browser
 
-Then these models describe code, and they need what the other models in tools/formal have:
-
-1. Name each action's function in the action's comment (the heartbeat writer, the load-time check, the prompt, the
-   sheet, the uploader, the automatic sender) and fix any action the code does differently. A difference is either a
-   bug in the code or a model that was wrong about the plan; say which.
-2. Add `<Model>.covers.json` with one region per function and `writes` patterns for the heartbeat records and the
-   consent and settings flags, then run `node tools/formal/tlc.mjs <Model> --mutants --record`. From then on npm test's
-   `formal` check fails when that code changes without the model being re-checked.
-3. Confirm each rule against the real code: two tabs of one Playwright browser context share `localStorage` and Web
-   Locks, a killed page is `page.close({ runBeforeUnload: false })` or a crashed renderer, and a refused upload is the
-   local server's rate limit. Only test against a server you run.
-
-## What it does not cover
-
-Time is a step: "5 s" is a beat that may or may not happen before a kill. Bundle contents, sizes, the server's spool,
-and the triage pipeline are out of scope; only whether a report is sent, and how many, is modelled. The send model is
-one tab; the heartbeat model is the only place two tabs meet.
+Two tabs of one Playwright browser context share `localStorage` and Web Locks; a killed page is a crashed renderer (CDP
+`Page.crash`); a refused upload is a routed 429 on `/api/kongbot` or the local server's rate limit. Only test against a
+server you run. #198 and #215 record such runs.

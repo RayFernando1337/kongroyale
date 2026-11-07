@@ -1,8 +1,9 @@
 // KONGBOT context: everything we can learn about the moment a player hit a bug, gathered when the chat bar OPENS (the
 // thing they are reacting to is on screen right then) — screenshot, where they are, what the crosshair is on (both the
 // DRAWN world and the COLLISION world: "I can see him but can't hit him" is a mismatch between the two), match state,
-// perf, video settings, GPU, the browser. Read through window.__kr (the same handle the tools use) so a missing piece
-// (title screen, no match yet) just leaves a field null instead of failing the report.
+// the network link (its transport, why it isn't WebTransport, its counters), perf, video settings, GPU, the browser.
+// Read through window.__kr (the same handle the tools use) so a missing piece (title screen, no match yet) just leaves
+// a field null instead of failing the report.
 import * as THREE from "three";
 import type { Engine } from "../engine/engine";
 import { POIS } from "../../../shared/world/map";
@@ -24,6 +25,7 @@ interface KrGame {
     storm: Record<string, unknown>; world: StaticWorld;
     pred: { x: number; y: number; z: number; vx: number; vy: number; vz: number; st: number; hp: number; shield: number; grounded: boolean; crouch: boolean; sprint: boolean; swim: boolean; under: boolean; breath: number; swGun: number; surf: number; slope: boolean; active: number; kills: number; damage: number; slots: Array<{ kind: number; id: number; rarity: number; count: number; mag: number }>; ammo: ArrayLike<number> };
   };
+  link: null | { report?(): object };
   render: null | { actors?: Map<unknown, unknown>; lootViews?: Map<unknown, unknown>; chestViews?: Map<unknown, unknown>; rejected?: number };
   input: { yaw: number; pitch: number; locked: boolean };
   hud: { mapOpen?: boolean };
@@ -53,14 +55,15 @@ function pathOf(o: THREE.Object3D) {
   return parts.join("<");
 }
 
-/** the DRAWN world under the crosshair: visible meshes only (Raycaster alone also tests hidden objects) */
+/** the DRAWN world under the crosshair: visible meshes only (Raycaster alone also tests hidden objects), and only those
+ *  that still hold their vertex arrays (?geofree drops them after upload; a raycast would read null) */
 function visualAim(engine: Engine) {
   const t0 = performance.now();
   const cam = engine.camera, rc = new THREE.Raycaster();
   rc.setFromCamera(new THREE.Vector2(0, 0), cam);
   rc.far = 600;
   const list: THREE.Object3D[] = [];
-  engine.scene.traverseVisible((o) => { if ((o as THREE.Mesh).isMesh && !(o as THREE.Points).isPoints) list.push(o); });
+  engine.scene.traverseVisible((o) => { if ((o as THREE.Mesh).isMesh && !(o as THREE.Points).isPoints && (o as THREE.Mesh).geometry.attributes.position?.array) list.push(o); });
   const hits = rc.intersectObjects(list, false).slice(0, 4);
   const ms = Math.round(performance.now() - t0);
   return {
@@ -119,12 +122,14 @@ export function gatherContext(engine: Engine) {
     perf: {
       fps: safe(() => Math.round(engine.liveFps())), gpuMs: r2(engine.gpuMs), frameCap: engine.frameCap, refreshHz: engine.refreshHz, dynamicRes: engine.dynamicRes, renderScale: engine.renderScale,
       dprBase: engine.dprBase, pixelRatio: ren.getPixelRatio(), canvas: { w: canvas.width, h: canvas.height, cssW: canvas.clientWidth, cssH: canvas.clientHeight },
+      resSteps: Array.isArray(K.resLog) ? K.resLog.slice() : null,
       renderInfo: safe(() => K.info?.()), frames: frameStats(10),
       heapMB: mem ? { used: Math.round(mem.usedJSHeapSize / 1048576), total: Math.round(mem.totalJSHeapSize / 1048576), limit: Math.round(mem.jsHeapSizeLimit / 1048576) } : null,
     },
     camera: cam,
     game: g ? {
       inMatch: g.inMatch, lobby, callsign: g.lobby?.name ?? null, mapOpen: g.hud?.mapOpen ?? null,
+      net: g.link?.report?.() ?? null,
       match: cm ? { phase: PHASE[cm.phase] ?? cm.phase, time: r2(cm.time), mode: cm.mode, range: cm.range, alive: cm.alive, squads: cm.squads, flags: cm.flags, ping: Math.round(cm.ping), jitter: r2(cm.jitter), interpTicks: r2(cm.interpTicks), storm: { ...cm.storm } } : null,
       player: p ? {
         pos: [r2(p.x), r2(p.y), r2(p.z)], vel: [r2(p.vx), r2(p.vy), r2(p.vz)], speed: r2(Math.hypot(p.vx, p.vz)), yawDeg: r2(THREE.MathUtils.radToDeg(g.input.yaw)), pitchDeg: r2(THREE.MathUtils.radToDeg(g.input.pitch)),
