@@ -18,6 +18,8 @@ import { contextEpoch, watchContext } from "./res/restore";
 import "./geometry-release"; // in boot: the geofree owners in lazy chunks share this copy, fewer bytes than a chunk of its own
 
 const STREAM_SLICE_MS: readonly number[] = flag("streamslice") ?? [];
+/** ?hideroots: top-level root names (and, through main.ts, module ids) kept out of every frame (a perf upper bound) */
+export const HIDE_ROOTS: readonly string[] = flag("hideroots");
 
 // engine fades dissolve instead of scaling — three's shared chunks are patched before the first compile
 installDitherChunks();
@@ -90,6 +92,13 @@ export class Engine implements WorldCtx {
   time = 0;
   timeScale = 1;
   readonly updates: Array<(dt: number, t: number) => void> = [];
+  /** ?hideroots: runs after every hook that sets visibility (occlusion, far merge, cull), so the hidden roots stay hidden */
+  private hideRoots() {
+    const kids = this.scene.children;
+    for (let i = 0; i < kids.length; i++) if (HIDE_ROOTS.includes(kids[i].name)) this.hidden.add(kids[i]);
+    for (const o of this.hidden) { o.visible = false; o.matrixWorldAutoUpdate = false; }
+  }
+
   private failed = new Set<number>();
   private post: PostPipeline | null = null;
   private holds = new Map<number, string>();
@@ -103,6 +112,8 @@ export class Engine implements WorldCtx {
   frames = 0;
   /** static-transform cache for world-module content (engine/static-cache.ts) */
   readonly statics: StaticCache;
+  /** ?hideroots: roots forced hidden and out of the matrix walk just before every render (main.ts adds module roots) */
+  readonly hidden = new Set<THREE.Object3D>();
   /** far-POI merge (engine/hlod.ts): lossless per-material merge of a distant POI's small static meshes */
   readonly far: FarMerge;
   /** screen-size culling of world-module meshes (engine/cull.ts) */
@@ -568,6 +579,7 @@ export class Engine implements WorldCtx {
     this.cull.update(this.camera, this.renderer.domElement.height);
     const h2 = hl ? performance.now() : 0;
     const progs = hl ? (this.renderer.info.programs?.length ?? 0) : 0;
+    if (HIDE_ROOTS.length) this.hideRoots();
     if (this.drawOverride) this.drawOverride(dt);
     else if (this.post) this.post.render(dt);
     else this.renderer.render(this.scene, this.camera);

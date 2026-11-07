@@ -22,7 +22,7 @@
 // KONGBOT first: its console / error capture must see the whole boot (bug reports, client/src/kongbot)
 import "./kongbot/capture";
 import * as THREE from "three";
-import { Engine, type Quality } from "./engine/engine";
+import { Engine, HIDE_ROOTS, type Quality } from "./engine/engine";
 import { installKongbot } from "./kongbot";
 import { DEFAULT_VIEWS, applyView, parseCam, type CamSpec } from "./engine/views";
 import { MODULES, TITLE_MODULES } from "./world/registry";
@@ -286,6 +286,7 @@ kr.moduleIds = () => [...rootsOf.keys()];
 
 function registerStatics(id: string, streamed: boolean) {
   for (const r of moduleRoots(id, streamed)) { engine.statics.register(r); engine.cull.register(r); }
+  if (HIDE_ROOTS.includes(id)) for (const r of moduleRoots(id, streamed)) engine.hidden.add(r);
 }
 
 /** a POI's roots join the terrain-occlusion cull (engine/occlusion.ts) */
