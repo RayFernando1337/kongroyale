@@ -16,9 +16,9 @@ export function listChecks(root: string): { tests: ListedCheck[]; ci: { id: stri
   const ci: { id: string; name: string }[] = [];
   let inJobs = false;
   for (const line of lines) {
-    if (/^\S/.test(line)) inJobs = /^jobs:\s*$/.test(line);
+    if (/^[^\s#]/.test(line)) inJobs = /^jobs:\s*(#.*)?$/.test(line);
     else if (!inJobs) continue;
-    const job = /^  ([\w-]+):\s*$/.exec(line);
+    const job = /^  ([\w-]+):\s*(#.*)?$/.exec(line);
     if (job) ci.push({ id: job[1], name: job[1] });
     else if (ci.length) {
       const name = /^    name:\s*(.+?)\s*$/.exec(line);
