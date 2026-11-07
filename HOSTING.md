@@ -54,6 +54,8 @@ The server reads these environment variables. Leave a variable unset to get its 
 | `KR_PLAYTEST_BUNDLES` | off | `1` (or a folder path) saves playtest bundles (F8 and KONGBOT reports with `?perfhud`) to disk. `npm run server` and `tools/serve-channel.mts` default it to `1`; `npm start` does not. `0` switches it off. See the `playtest` skill. |
 | `KR_PLAYTEST_BUNDLES_MAX` | `500` | Most bundles the folder holds. At the cap the server keeps taking reports but writes no more bundles until the folder is cleared. |
 | `KR_PLAYTEST_BUNDLES_MB` | `1024` | Most megabytes the folder holds, with the same rule. A report with its replay and picture is a few MB, so 1 GB holds about 200 to 300. Raise both for a long stream on a big disk. |
+| `KR_DIAG_AUTO` | off | `1` (or a folder path) accepts automatic performance summaries from players who opted in, at `/api/diag/auto`, and appends them to `<UTC date>.jsonl` in that folder (`1` is `.kongbot/diag-auto/`). `npm run server` defaults it to `1`; `npm start` does not. See "Bug reports" below. |
+| `KR_DIAG_AUTO_MB` | `256` | Most megabytes of summaries the folder holds. At the cap the server refuses new rows until the folder is cleared. |
 | `KR_ADMIN_KEY_SHA256` | unset (admin off) | SHA-256 of the admin key, from `node tools/admin-lobby/key.mjs --hash`. Never the key itself. |
 | `KR_ADMIN_ALLOW_IPS` | empty | Comma list of addresses that skip the global wrong-key brake. Per-address lockouts still apply. |
 | `KR_ADMIN_ORIGINS` | `KR_ORIGINS` | Origins allowed to use the admin pages, if they differ from the site's own. |
@@ -78,6 +80,7 @@ The server reads these environment variables. Leave a variable unset to get its 
 | `KR_WT_HOST` | `KR_HOST`, or `0.0.0.0` when `KR_TRUST_PROXY=1` and `KR_HOST` is loopback | Address the WebTransport endpoint listens on. Behind a proxy on loopback it listens on every address, because UDP comes straight from players. |
 | `KR_WT_CERT`, `KR_WT_KEY` | unset (self-signed) | PEM certificate and key for the WebTransport endpoint, valid for the page's host name. |
 | `KR_WT_URL` | `https://<page host>:<KR_WT_PORT>/wt` | The address players dial, if it differs. |
+| `KR_PROCS` | `1` | Match processes: a number, or `auto` for one per CPU core. Above `1`, a front process hands each room's players to the process that holds the room. See "One process per core" below. |
 | `KR_ANNOTATE` | off | Set `1` to accept developer notes from other machines. A local dev tool; leave it off on a public server. |
 
 These are read when you build or run the dev server, not by the game server:
@@ -98,6 +101,13 @@ inflates them itself, up to the same 12 MB as an uncompressed report, so a proxy
 unchanged (nginx and Caddy do by default) and allow bodies that large (nginx: `client_max_body_size 12m;` on the
 `/api/kongbot` location).
 
+Automatic performance summaries (`KR_DIAG_AUTO`) are a separate endpoint, `/api/diag/auto`, with its own limits, so
+they never use up the budget for players' own reports. A row is at most 4 KB of numbers and short keys, with no
+picture, logs, callsign or note. The server takes at most 60 rows per address per 10 minutes, 30 per install per hour
+and 6000 per hour in total, and stores a row sent twice (same install, session, kind, time and signature) once.
+`/health` counts them under `diagAuto`. Without `KR_TRUST_PROXY=1` behind a proxy every player shares one address, so the per-address
+limit becomes a server-wide one.
+
 ## Be careful with these
 
 - **`KR_TRUST_PROXY`**: set it only when a reverse proxy (nginx, Caddy) runs on the same machine, or at an address you
@@ -108,6 +118,32 @@ unchanged (nginx and Caddy do by default) and allow bodies that large (nginx: `c
   commit `.admin-key` (it's in `.gitignore`), and rotate it with `--rotate` if it leaks.
 - **`KR_EVENT_MODE=0`** on a public server lets anyone create rooms (at most 4 per address and 400 in total).
 - **Raising `KR_MAX_CONNS` or `KR_MAX_PER_IP`** makes it easier for one address to exhaust the server.
+
+## One process per core
+
+The server runs every match on one thread, so one process uses one CPU core however big the machine is.
+`KR_PROCS=4` (or `auto`, one per core) starts a front and four match processes:
+
+- The front listens on `KR_PORT`. It serves the page, the API, the admin area and `/health`, and hands each game
+  WebSocket to a match process. After that it never sees the socket's traffic.
+- A room lives in one process, and its code says which. A player who joins a room dials `/ws?room=CODE` and lands on
+  that process. A new room goes to the process with the fewest rooms.
+- A match process that exits is started again after a second. Its players lose their match; the other processes and
+  their matches carry on.
+- The limits are for the whole server: the front counts `KR_MAX_CONNS` and `KR_MAX_PER_IP` over every process, an
+  address owns at most 4 rooms across them, the 400 rooms are split evenly between the processes, and the admin's 12
+  event lobbies are counted together.
+- With `KR_WT=1`, process *i* listens for WebTransport on UDP `KR_WT_PORT + i`. Open the whole range, from
+  `KR_WT_PORT` to `KR_WT_PORT + KR_PROCS - 1`. Each player's welcome names their port, and with `KR_WT_URL` set,
+  process *i* gives that URL with its port plus *i*.
+- `/health` adds the processes up and lists each one under `procs` (whether it is up, its rooms and sockets, and with
+  `KR_PERF_METRICS=1` its tick times). While any process is down it answers 503 with `ok: false`, because the rooms
+  that process holds can't be reached.
+- Each match process builds its own copy of the island when it starts: about 5 s and 600 MB of memory each, so
+  `auto` on a machine with many cores and little memory can run out of memory. Pick a number there.
+- A reverse proxy needs no change: it talks to the front only.
+
+Leave `KR_PROCS` unset for development: the server is then the single process it always was.
 
 ## WebTransport
 

@@ -21,6 +21,7 @@ const checks = [
   { id: "formal", name: "TLA+ models re-verified since the code they describe changed", cmd: "node", args: ["tools/formal/drift.mjs"] },
   { id: "flags", name: "feature flags", cmd: "npx", args: ["tsx", "tools/flags/test.mts"] },
   { id: "bundles", name: "playtest bundles (hostile input, caps, rate limit)", cmd: "npx", args: ["tsx", "tools/playtest/bundles.test.mts"] },
+  { id: "auto", name: "automatic summaries (hostile rows, dedupe, own limits, folder cap)", cmd: "npx", args: ["tsx", "tools/playtest/diag-auto.test.mts"] },
   { id: "triage", name: "playtest triage (fingerprints, clusters, ticker, no private text)", cmd: "npx", args: ["tsx", "tools/playtest/triage.test.mts"] },
   { id: "ab", name: "WebTransport A/B split by arm (playtest bundles, /health)", cmd: "npx", args: ["tsx", "tools/playtest/ab.test.mts"] },
   { id: "gate", name: "verifier flag and empty-input gates", cmd: "npx", args: ["tsx", "tools/gate.test.mts"] },
@@ -47,6 +48,7 @@ const checks = [
   { id: "afk", name: "AFK removal returns the player to the room (real server)", slow: true, cmd: "npx", args: ["tsx", "tools/verify-afk.mts"] },
   { id: "redteam", name: "admin lobby red team", slow: true, cmd: "node", args: ["tools/admin-lobby/redteam.mjs", "--md", tmp("redteam.md")] },
   { id: "wt", name: "WebTransport endpoint (loopback, Node client)", slow: true, cmd: "npx", args: ["tsx", "tools/net/wt-endpoint.test.mts"] },
+  { id: "procs", name: "one process per core: front, routing, limits (real server, two processes)", slow: true, cmd: "npx", args: ["tsx", "tools/net/procs.test.mts"] },
   { id: "wtbrowser", name: "WebTransport in a browser (loopback, headless Chromium; SKIP without one)", slow: true, cmd: "npx", args: ["tsx", "tools/net/wt-browser.test.mts"] },
 ];
 
