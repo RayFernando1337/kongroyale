@@ -14,10 +14,13 @@
 //     ancestors dirty every frame, so three still reaches them;
 //   • structure changes (add / remove / attach anywhere below a root) re-collect that root before the next frame; a root
 //     whose structure churns (> 12 re-collects in 240 frames) is handed back to three for good.
-// Exactness: identical matrices to three's own path. One difference: code that moves a registered object and reads its
-// world matrix IN THE SAME FRAME (getWorldPosition right after position.set, before the render) sees last frame's
-// matrix — call `o.updateMatrix()` first, or mark the subtree `userData.krDynamic = true` (never frozen).
-// Off switch: ?nofreeze (A/B + diagnosis). Gameplay / actors / weapons objects are never registered.
+// Exactness: identical matrices to three's own path, same-frame reads through updateWorldMatrix (getWorldPosition right
+// after position.set) included: updateWorldMatrix on a frozen object recomposes it when it moved and re-multiplies its
+// world matrix, as three does. A raw `.matrixWorld` read before the render sees last frame's matrix, as with three.
+// Off switch: ?nofreeze (A/B + diagnosis). Actors and weapons are never registered; of the gameplay views only the two
+// that are mostly still are, as transient roots: the banana stands (only the near shopkeeper moves) and loot on the
+// ground (only its bob frame moves). Together they were ~2.5 k of the ~5.5 k local matrices three recomposed per frame
+// in a town (draw census, RAY-232).
 import * as THREE from "three";
 import { onStructure } from "./scene-hooks";
 
@@ -32,8 +35,10 @@ interface Entry {
   dirty: THREE.Object3D[];         // frozen objects whose position / rotation / scale changed since the last frame
   worldDirty: Node[];             // explicit matrix writes, queued without scanning all static objects each frame
   frame: number;
+  /** a gameplay view (loot, a banana stand): dropped for good once it leaves the scene, never waited on to re-attach */
+  transient: boolean;
 }
-type Node = THREE.Object3D & { __krFrame?: number; __krUMW?: (force?: boolean) => void; __krQ?: boolean; __krEntry?: Entry | null; __krNeeds?: boolean; __krWQ?: boolean };
+type Node = THREE.Object3D & { __krFrozen?: boolean; __krFrame?: number; __krUMW?: (force?: boolean) => void; __krQ?: boolean; __krEntry?: Entry | null; __krNeeds?: boolean; __krWQ?: boolean };
 type WVec = THREE.Vector3 & { __krOwner: Node; __kx: number; __ky: number; __kz: number };
 
 /** queue a frozen object once per frame */
@@ -90,6 +95,19 @@ function unwatchRot(o: Node) {
   for (const r of [o.quaternion as unknown as CB, o.rotation as unknown as CB]) { if (r.__krPrev) { r._onChange(r.__krPrev); delete r.__krPrev; } }
 }
 
+// updateWorldMatrix (getWorldPosition, localToWorld, ...) on a frozen object behaves as three's own: it recomposes the
+// local matrix when it moved this frame and always re-multiplies the world matrix, so a same-frame read is exact
+let freshInstalled = false;
+function freshWorldReads() {
+  if (freshInstalled) return;
+  freshInstalled = true;
+  const own = THREE.Object3D.prototype.updateWorldMatrix;
+  THREE.Object3D.prototype.updateWorldMatrix = function (this: Node, updateParents: boolean, updateChildren: boolean, force?: boolean) {
+    if (this.__krFrozen) { if (this.__krQ) this.updateMatrix(); this.matrixWorldNeedsUpdate = true; }
+    own.call(this, updateParents, updateChildren, force);
+  };
+}
+
 const ROOT_KEY = "__krStaticRoot";
 function entryOf(o: THREE.Object3D | null): Entry | null {
   for (let p = o; p; p = p.parent) { const e = (p as unknown as Record<string, Entry | undefined>)[ROOT_KEY]; if (e) return e; }
@@ -111,16 +129,17 @@ export class StaticCache {
 
   constructor(enabled = true) {
     this.enabled = enabled;
-    if (enabled) onStructure((parent) => { const e = entryOf(parent); if (e) e.stale = true; });
+    if (enabled) { onStructure((parent) => { const e = entryOf(parent); if (e) e.stale = true; }); freshWorldReads(); }
   }
 
-  /** start caching the transforms below `root` (idempotent; never nested; skips userData.krDynamic roots) */
-  register(root: THREE.Object3D) {
+  /** start caching the transforms below `root` (idempotent; never nested; skips userData.krDynamic roots). A transient
+   *  root is handed back to three and forgotten the first frame it is found detached */
+  register(root: THREE.Object3D, transient = false) {
     if (!this.enabled) return;
     const R = root as unknown as Record<string, Entry | undefined>;
     if (R[ROOT_KEY] || root.userData.krDynamic || (root as THREE.Camera).isCamera) return;
     if (entryOf(root.parent)) return;
-    const e: Entry = { root, frozen: [], manual: [], always: [], overridden: [], stale: true, collects: [], dirty: [], worldDirty: [], frame: this.frame };
+    const e: Entry = { root, frozen: [], manual: [], always: [], overridden: [], stale: true, collects: [], dirty: [], worldDirty: [], frame: this.frame, transient };
     R[ROOT_KEY] = e;
     this.entries.push(e);
   }
@@ -132,7 +151,7 @@ export class StaticCache {
   }
 
   unfreeze(e: Entry) {
-    for (const o of e.frozen as Node[]) { o.matrixAutoUpdate = true; unwatchVec(o.position); unwatchVec(o.scale); unwatchRot(o); unwatchWorld(o); o.__krEntry = null; o.__krQ = false; }
+    for (const o of e.frozen as Node[]) { o.matrixAutoUpdate = true; o.__krFrozen = false; unwatchVec(o.position); unwatchVec(o.scale); unwatchRot(o); unwatchWorld(o); o.__krEntry = null; o.__krQ = false; }
     for (const o of e.manual as Node[]) { unwatchWorld(o); o.__krEntry = null; }
     e.dirty.length = 0;
     e.worldDirty.length = 0;
@@ -144,12 +163,16 @@ export class StaticCache {
 
   /** give a root back to three for good (its structure churns: re-collecting it would cost more than it saves) */
   private release(e: Entry) {
-    this.unfreeze(e);
+    this.forget(e);
     e.root.userData.krDynamic = true;
-    delete (e.root as unknown as Record<string, Entry | undefined>)[ROOT_KEY];
-    this.entries.splice(this.entries.indexOf(e), 1);
     this.released++;
     this.releasedNames.push(e.root.name || e.root.type);
+  }
+
+  private forget(e: Entry) {
+    this.unfreeze(e);
+    delete (e.root as unknown as Record<string, Entry | undefined>)[ROOT_KEY];
+    this.entries.splice(this.entries.indexOf(e), 1);
   }
 
   private collect(e: Entry): boolean {
@@ -181,7 +204,7 @@ export class StaticCache {
       o.updateMatrix();
       o.matrixAutoUpdate = false;
       o.matrixWorldNeedsUpdate = true;
-      o.__krEntry = e; o.__krQ = false;
+      o.__krEntry = e; o.__krQ = false; o.__krFrozen = true;
       watchVec(o.position, o); watchVec(o.scale, o); watchRot(o);
       watchWorld(o);
       this.markUp(o, e.root);
@@ -205,7 +228,7 @@ export class StaticCache {
     for (let k = 0; k < this.entries.length; k++) {
       const e = this.entries[k];
       e.frame = this.frame;
-      if (!e.root.parent) continue; // detached: its queue waits for the re-attach (deduplicated, cannot grow)
+      if (!e.root.parent) { if (e.transient) { this.forget(e); k--; } continue; } // detached: its queue waits for the re-attach (deduplicated, cannot grow)
       if (e.stale && !this.collect(e)) { k--; continue; }
       const root = e.root, d = e.dirty;
       count += e.frozen.length;

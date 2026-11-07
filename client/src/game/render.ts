@@ -289,7 +289,7 @@ export class GameRender implements EventSink {
     const geos = new Set<THREE.BufferGeometry>();
     proto.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) geos.add(m.geometry); });
     for (const g of geos) res.geometry("geo.world", g);
-    const views = this.standViews = this.cm.stands.map((s) => { const o = proto.clone(true); o.position.set(s.x, s.y, s.z); o.rotation.y = s.yaw; o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); this.engine.scene.add(o); patchTree(this.engine, o); return o; });
+    const views = this.standViews = this.cm.stands.map((s) => { const o = proto.clone(true); o.position.set(s.x, s.y, s.z); o.rotation.y = s.yaw; o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.castShadow = !m.userData.noCast; m.receiveShadow = true; } }); this.engine.scene.add(o); patchTree(this.engine, o); this.engine.statics.register(o, true); return o; });
     res.defer(() => { for (const o of views) o.removeFromParent(); });
   }
   /** the buy menu's view of the offers for this kong right now (the server re-checks every rule) */
@@ -2319,7 +2319,7 @@ export class GameRender implements EventSink {
       void this.kits.weapons.createLoot(kind, rarityOf(it.rarity), it.kind === IK.Weapon ? mythicOf(it.rarity)?.color ?? null : null).then((v) => {
         this.lootPending.delete(it.id);
         if (this.disposed || it.taken || !this.cm.items.has(it.id)) { v.dispose(); return; }
-        v.object.position.set(it.x, it.y, it.z); this.engine.scene.add(v.object); patchTree(this.engine, v.object); this.lootViews.set(it.id, v);
+        v.object.position.set(it.x, it.y, it.z); this.engine.scene.add(v.object); patchTree(this.engine, v.object); this.engine.statics.register(v.object, true); this.lootViews.set(it.id, v);
         if (it.bornAt > 0 && this.cm.time - it.bornAt < 1.2) this.startDrop(v, it);
         else this.growIn(v.object, LOOT_DRAW_R);
       });
