@@ -96,20 +96,27 @@ async function capture() {
   await page.goto(`${url.origin}/?view=${encodeURIComponent(views[0])}&shot=1&seed=42&vegsplat=0&atmos=notaa&modules=${encodeURIComponent(opt("--modules", MODULES))}`, { waitUntil: "load", timeout: 300_000 });
   await page.waitForFunction(() => (window as any).__kr?.ready === true, null, { timeout: 300_000, polling: 250 });
   console.log(`booted in ${Date.now() - t0} ms`);
+  // __kr.errors holds what the game caught itself (a module that failed to build still reaches ready): the boot's go
+  // to the first view, each later one to the view it happened in
+  const krErrors = async (): Promise<string[]> => await page.evaluate(() => (window as any).__kr.errors ?? []).catch(() => []);
+  let krSeen = 0;
   for (const view of views) {
     const t1 = Date.now(), before = errors.length;
+    let errs: string[];
     try {
       await page.evaluate((id) => (window as any).__kr.setView(id), view);
       const { shot, settled } = await settle(page);
       fs.writeFileSync(path.join(out, `${view}.png`), shot);
-      result[view] = { file: `${view}.png`, ms: Date.now() - t1, errors: [...(settled ? [] : [`still changing after ${SETTLE_FRAMES} frames`]), ...errors.slice(before)] };
+      errs = settled ? [] : [`still changing after ${SETTLE_FRAMES} frames`];
     } catch (e) {
-      result[view] = { ms: Date.now() - t1, errors: [String(e).split("\n")[0], ...errors.slice(before)] };
+      errs = [String(e).split("\n")[0]];
     }
+    const kr = await krErrors();
+    errs.push(...errors.slice(before), ...kr.slice(krSeen).map((e) => String(e).slice(0, 300)));
+    krSeen = kr.length;
+    result[view] = { ...(fs.existsSync(path.join(out, `${view}.png`)) ? { file: `${view}.png` } : {}), ms: Date.now() - t1, errors: errs };
     console.log(view, JSON.stringify(result[view]));
   }
-  const gameErrors = await page.evaluate(() => (window as any).__kr.errors ?? []).catch(() => []);
-  if (gameErrors.length) console.log("__kr.errors:", JSON.stringify(gameErrors));
   await browser.close();
   fs.writeFileSync(path.join(out, "capture.json"), JSON.stringify(result, null, 2) + "\n");
   if (Object.values(result).some((r) => !r.file)) process.exitCode = 1;
@@ -120,13 +127,27 @@ async function diff() {
   const threshold = Number(opt("--threshold", "0.1")), maxPct = Number(opt("--max-pct", "0.5"));
   if (!baseDir || !candDir) throw Error("diff needs --base DIR and --cand DIR");
   fs.mkdirSync(out, { recursive: true });
-  const names = [...new Set([baseDir, candDir].flatMap((d) => fs.existsSync(d) ? fs.readdirSync(d).filter((f) => f.endsWith(".png")) : []))].sort();
+  // every view either capture was asked for (capture.json), plus any image without one, so a view both sides failed
+  // still gets a row
+  const manifest = (d: string): Record<string, { file?: string; errors: string[] }> => {
+    const f = path.join(d, "capture.json");
+    return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : {};
+  };
+  const ma = manifest(baseDir), mb = manifest(candDir);
+  const pngs = [baseDir, candDir].flatMap((d) => fs.existsSync(d) ? fs.readdirSync(d).filter((f) => f.endsWith(".png")).map((f) => f.replace(/\.png$/, "")) : []);
+  const views = [...new Set([...Object.keys(ma), ...Object.keys(mb), ...pngs])].sort();
   const rows: Array<{ view: string; pct: number | null; note: string }> = [];
-  for (const name of names) {
-    const view = name.replace(/\.png$/, ""), a = path.join(baseDir, name), b = path.join(candDir, name);
-    if (!fs.existsSync(a) || !fs.existsSync(b)) { rows.push({ view, pct: null, note: `missing on the ${fs.existsSync(a) ? "PR" : "main"} side` }); continue; }
-    const pct = await compare(a, b, path.join(out, name), threshold);
-    rows.push({ view, pct, note: pct === null ? "sizes differ" : pct > maxPct ? `over ${maxPct}%` : "" });
+  for (const view of views) {
+    const a = path.join(baseDir, `${view}.png`), b = path.join(candDir, `${view}.png`);
+    const failed = [["main", ma[view]], ["PR", mb[view]]].filter(([, m]) => m && (m as { errors: string[] }).errors.length).map(([side]) => side);
+    const errNote = failed.length ? `capture errors on ${failed.join(" and ")} (capture.json)` : "";
+    if (!fs.existsSync(a) || !fs.existsSync(b)) {
+      const missing = [!fs.existsSync(a) && "main", !fs.existsSync(b) && "PR"].filter(Boolean).join(" and ");
+      rows.push({ view, pct: null, note: [`missing on ${missing}`, errNote].filter(Boolean).join("; ") });
+      continue;
+    }
+    const pct = await compare(a, b, path.join(out, `${view}.png`), threshold);
+    rows.push({ view, pct, note: [pct === null ? "sizes differ" : pct > maxPct ? `over ${maxPct}%` : "", errNote].filter(Boolean).join("; ") });
   }
   const md = [`| view | pixels changed | |`, `|---|---:|---|`, ...rows.map((r) => `| ${r.view} | ${r.pct === null ? "" : r.pct.toFixed(3) + "%"} | ${r.note} |`)].join("\n") + "\n";
   fs.writeFileSync(path.join(out, "summary.json"), JSON.stringify({ threshold, maxPct, rows }, null, 2) + "\n");

@@ -3,8 +3,8 @@
 # PR's, then the share of pixels that differ per view. An A/A of two captures of one build differs by at most 0.15%.
 # far: each baked far impostor (public/assets/far) against the POI it stands in for, from one camera, on the PR's build
 # (dark terraces, white alpha speckle and the like show as a number), in four shards because each POI takes ~4 min.
-# lobby runs when a PR changes the client, the shared world or the assets; far when it changes a POI, the impostors or
-# low-mem.ts; the "visual" label runs both. Images and summaries are the run's artifacts; the tables are on its page.
+# lobby runs when a PR changes the client, the shared world or the assets; far when it changes a POI, the map, the
+# impostors or low-mem.ts; the "visual" label runs both. Images and summaries are the run's artifacts; the tables are on its page.
 # Like "checks", it runs the PR's code with a read-only token and no secrets.
 name: visual
 
@@ -39,7 +39,7 @@ jobs:
           lobby=false; far=false
           if [[ " $LABELS " == *" visual "* ]]; then lobby=true; far=true; fi
           if grep -qE '^(client/|shared/(world|pois)/|public/assets/|tools/performance/visual\.mts$|\.github/workflows/visual\.yml$)' <<<"$files"; then lobby=true; fi
-          if grep -qE '^(client/src/world/pois/|shared/pois/|public/assets/far/|client/src/low-mem\.ts$|tools/performance/visual\.mts$|\.github/workflows/visual\.yml$)' <<<"$files"; then far=true; fi
+          if grep -qE '^(client/src/world/pois/|shared/(pois|world)/|public/assets/far/|client/src/low-mem\.ts$|tools/performance/visual\.mts$|\.github/workflows/visual\.yml$)' <<<"$files"; then far=true; fi
           echo "lobby=$lobby" >> "$GITHUB_OUTPUT"; echo "far=$far" >> "$GITHUB_OUTPUT"
           echo "lobby views: $lobby, far impostors: $far (base is main at $(git rev-parse --short HEAD^1))"
 
