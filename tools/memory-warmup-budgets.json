@@ -15,7 +15,7 @@
     "warmup": {
       "webglMB": 1920,
       "textureCount": 347,
-      "geometryCpuMB": 213,
+      "geometryCpuMB": 131,
       "textureCpuMB": 315,
       "heapUsedMB": 202
     }
