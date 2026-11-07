@@ -75,8 +75,8 @@ async function adminSession() {
   const state = async (until) => { await sleep(250); for (let i = 0; i < 45; i++) { const st = s.msgs.filter((m) => m.t === "state").pop(); if (!until || (st && until(st))) return st; await sleep(50); } return s.msgs.filter((m) => m.t === "state").pop(); };
   return { cookie, from, s, act, state };
 }
-async function player(code, { name = "PLAYER", tok = rnd(), from = addr() } = {}) {
-  const p = await wsTry(code ? "/ws?room=" + code : "/ws", { "x-forwarded-for": from });
+async function player(code, { name = "PLAYER", tok = rnd(), from = addr(), dial = code } = {}) {
+  const p = await wsTry(dial ? "/ws?room=" + dial : "/ws", { "x-forwarded-for": from });
   p.tok = tok; p.from = from;
   p.ws.send(JSON.stringify({ t: "hello", name }));
   if (code) p.ws.send(JSON.stringify({ t: "join", code, tok }));
@@ -199,7 +199,7 @@ await check("RT-08", "A KICKED player rejoins (same token, fresh token, same add
 await check("RT-09", "A player CREATES a lobby / exhibition / caster seat in event mode", async () => {
   const A = await adm();
   const before = (await http("/health")).json.lobbies;
-  const p = await player(null, { name: "MAKER" });
+  const p = await player(null, { name: "MAKER", dial: CODE });
   p.ws.send(JSON.stringify({ t: "create", mode: "trios" })); p.ws.send(JSON.stringify({ t: "exhibit", mode: "solo", auto: true })); p.ws.send(JSON.stringify({ t: "cast", code: CODE }));
   await sleep(400);
   const after = (await http("/health")).json.lobbies, errs = p.msgs.filter((m) => m.t === "error").map((m) => m.msg);
@@ -220,7 +220,7 @@ await check("RT-10", "OVERSIZED and MALFORMED payloads", async () => {
   const p3 = await player(CODE, { name: "BADTEAM" });
   for (let k = 0; k < 2; k++) for (const team of ["1", 1.5, 999, -2, null, NaN]) p3.ws.send(JSON.stringify({ t: "team", team }));
   out.push(["12 bad team indices", await Promise.race([p3.closed(), sleep(2000).then(() => "open")]), 1008]);
-  const p4 = await player(null); p4.ws.send(JSON.stringify({ t: "join", code: CODE, tok: "../../etc/passwd" })); p4.ws.send(JSON.stringify({ t: "join", code: { $gt: "" }, tok: rnd() }));
+  const p4 = await player(null, { dial: CODE }); p4.ws.send(JSON.stringify({ t: "join", code: CODE, tok: "../../etc/passwd" })); p4.ws.send(JSON.stringify({ t: "join", code: { $gt: "" }, tok: rnd() }));
   await sleep(300); out.push(["bad token / object code", p4.msgs.filter((m) => m.t === "error").length, 2]);
   const ev = await http("/api/event/..%2F..%2Fetc%2Fpasswd"); out.push(["/api/event path junk", ev.status, 404]);
   const aux = await wsTry("/ws?aux=deadbeef"); out.push(["?aux= token in URL", await Promise.race([aux.closed(), sleep(1500).then(() => "open")]), 1008]);
