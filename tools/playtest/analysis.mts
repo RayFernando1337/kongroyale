@@ -46,7 +46,7 @@ export function resolveDir(flag: string | undefined) {
 }
 
 export const bundleFolders = (dir: string) => {
-  try { return fs.readdirSync(dir).filter((f) => fs.existsSync(path.join(dir, f, "bundle.json"))).sort(); } catch { return []; }
+  try { return fs.readdirSync(dir).filter((f) => !f.startsWith(".") && fs.existsSync(path.join(dir, f, "bundle.json"))).sort(); } catch { return []; }
 };
 
 function cleanTimeline(v: unknown): Timeline | null {
