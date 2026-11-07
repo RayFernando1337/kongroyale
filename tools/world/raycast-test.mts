@@ -8,6 +8,7 @@ import { Terrain } from "../../shared/world/terrain";
 import { WORLD } from "../../shared/world/map";
 import type { Box } from "../../shared/world/colliders";
 import { StaticWorld, makeHit, type Hit } from "../../shared/sim/world";
+import { rayBox } from "../../shared/sim/world.hot";
 
 const RAYS = process.argv.includes("--rays") ? Number(process.argv[process.argv.indexOf("--rays") + 1]) : 20000;
 const res = Math.round((2 * WORLD.HALF) / WORLD.CELL) + 1;
@@ -22,7 +23,7 @@ function reference(w: StaticWorld, ox: number, oy: number, oz: number, dx: numbe
   if ((cx1 - cx0 + 1) * (cz1 - cz0 + 1) > 64) throw Error("reference covers the rectangle walk only");
   for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
     const c = cz * W.gridN + cx;
-    for (let k = W.cellStart[c]; k < W.cellStart[c + 1]; k++) { const i = W.cellItems[k]; if (!w.noShoot[i]) W.rayBox(i, ox, oy, oz, dx, dy, dz, out); }
+    for (let k = W.cellStart[c]; k < W.cellStart[c + 1]; k++) { const i = W.cellItems[k]; if (!w.noShoot[i]) rayBox(w, i, ox, oy, oz, dx, dy, dz, out); }
   }
   return out;
 }
@@ -60,7 +61,7 @@ for (let scene = 0; scene < 20; scene++) {
     rays++;
     if (!same(a, b)) fail(`scene ${scene} ray (${ox}, ${oy}, ${oz}) -> (${tx}, ${ty}, ${tz}): ${show(a)} vs reference ${show(b)}`);
     // count rays where another box ties the winner, so the run proves it exercised the tie rule
-    if (b.box >= 0) { let n = 0; for (let i = 0; i < w.n; i++) { all.t = 2; all.box = -1; (w as any).rayBox(i, ox, oy, oz, tx - ox, ty - oy, tz - oz, all); if (all.box === i && all.t === b.t) n++; } if (n > 1) ties++; }
+    if (b.box >= 0) { let n = 0; for (let i = 0; i < w.n; i++) { all.t = 2; all.box = -1; rayBox(w, i, ox, oy, oz, tx - ox, ty - oy, tz - oz, all); if (all.box === i && all.t === b.t) n++; } if (n > 1) ties++; }
   }
 }
 console.log(`${rays} random rays, ${ties} with an exact tie between boxes; ${failed} failed`);
