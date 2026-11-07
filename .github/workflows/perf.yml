@@ -4,6 +4,8 @@
 # noisy, so it fails only on a "worse" verdict: every PR run outside main's range AND the median past its threshold.
 # Runs when a PR changes the simulation, the netcode or the server, or carries the "perf" label. The "perf-aa" label
 # times main against itself instead (the noise floor), to recalibrate the thresholds. On other PRs the job passes at once.
+# A label change on a measured PR measures again (the newest run cancels the older one), so the check always reflects
+# the PR's current labels and code.
 # Like "checks", it runs the PR's code with a read-only token and no secrets.
 name: perf
 
@@ -17,9 +19,8 @@ permissions:
 jobs:
   host:
     name: host tick A/B
-    # adding or removing an unrelated label skips the job before it joins the concurrency group, so it can't cancel a run
-    # that measures; removing perf or perf-aa reruns it, so a calibration's main-against-main pass never stands for the PR
-    if: (github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'perf' || github.event.label.name == 'perf-aa'
+    # every label event measures again when the PR needs it: a skipped job would pass in place of a failed measurement,
+    # and removing perf-aa must replace a main-against-main pass. On PRs that need no A/B this costs seconds
     concurrency:
       group: perf-${{ github.event.pull_request.number }}
       cancel-in-progress: true
