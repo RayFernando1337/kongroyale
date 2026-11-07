@@ -19,7 +19,7 @@ const MB = 2 ** 20;
 const mb = (b: number) => Math.round((b / MB) * 10) / 10;
 
 const SCENARIO_VERSION = 3;
-const WALK_STOP_S = 240, WALK_SETTLE_MS = 5000;
+const WALK_STOP_S = 300, WALK_QUIET_MS = 15_000;
 type Profile = "nogpu" | "mac" | "win";
 
 const PROBE = `(function () {
@@ -481,15 +481,17 @@ async function run() {
     for (const p of stops) {
       console.log(`    walk: ${p.id}`);
       const end = Date.now() + WALK_STOP_S * 1000;
-      let built = false;
-      while (!built && Date.now() < end && !overCap) {
+      let settled = false, last = "", since = Date.now();
+      while (!settled && Date.now() < end && !overCap) {
         if (!await teleport(p)) { errors.push("--walk needs a practice match (no local host to move the player in)"); return; }
-        built = await evalIn<boolean>(pageCdp, `(window.__kr.modules || []).includes("poi:${p.id}")`);
+        const s = await evalIn<{ ids: string; ready: boolean }>(pageCdp, `(() => { const k = window.__kr, ids = (k.modules || []).filter((x) => x.startsWith("poi:")).sort(); return { ids: ids.join(","), ready: ids.includes("poi:${p.id}") && ids.every((x) => x === "poi:lobby-islet" || (k.streamMs && k.streamMs[x] !== undefined)) }; })()`);
+        if (s.ids !== last) { last = s.ids; since = Date.now(); }
+        settled = s.ready && Date.now() - since >= WALK_QUIET_MS;
         await trace();
-        if (!built) await sleep(2000);
+        if (!settled) await sleep(2000);
       }
-      if (!built) { if (!overCap) errors.push(`--walk: poi:${p.id} was not built ${WALK_STOP_S} s after the player arrived (low-memory streaming stalled?)`); return; }
-      await hold(WALK_SETTLE_MS);
+      if (!settled) { if (!overCap) errors.push(`--walk: the POIs around ${p.id} did not settle ${WALK_STOP_S} s after the player arrived (resident: ${last || "none"}; low-memory streaming stalled?)`); return; }
+      console.log(`    settled at ${p.id}: ${last}`);
     }
     await readEvictions();
   };

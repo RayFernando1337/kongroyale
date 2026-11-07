@@ -8,7 +8,7 @@
     "seed": 42,
     "matches": 1,
     "walk": true,
-    "stops": "the-wreck,stilt-town"
+    "stops": "the-wreck"
   },
   "underPct": 5,
   "headroomPct": 2,
