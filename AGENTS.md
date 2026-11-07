@@ -119,7 +119,7 @@ catching it; turn it into a check when the same mistake shows up twice.
 | 1. The server is authoritative | Review only. The `redteam` step of `npm test` attacks the admin lobby. |
 | 2. `shared/` is deterministic: no `Math.random`, wall-clock time, Node or DOM APIs | Lint rule `shared-determinism`; the `sim` step of `npm test` fails when the headless match's state hash changes |
 | 2. `shared/` math gives the same bits everywhere: transcendental functions, `hypot` and `**` go through `shared/sim/dmath.ts` | Lint rule `shared-math` (empty baseline); the `dmath` step of `npm test` checks every dmath function bit for bit against recorded vectors |
-| 2. Hot paths don't allocate | Lint rule `hot-alloc` over `*.hot.ts` and `tools/lint/hot.json`; `npm test` (`alloc` step): bytes allocated per host tick and GC count on the real-play match against `tools/alloc-budgets.json`. Over budget fails, and so does more than 12% under until the budget is lowered |
+| 2. Hot paths don't allocate | Lint rule `hot-alloc` over `*.hot.ts` and `tools/lint/hot.json`; `npm test` (`alloc` step): bytes allocated per host tick and GC count on the real-play match against `tools/alloc-budgets.json`. Over budget fails, and so does more than 20% under until the budget is lowered |
 | 3. Never commit secrets | CI job "no secrets" (key and env file check, gitleaks) |
 | 4. Every asset needs a source and a licence | `npm test` (`assets` step): no new unattributed asset beyond `tools/verify-assets.baseline.json`, which only shrinks |
 | 5. One change per pull request | Review only |
