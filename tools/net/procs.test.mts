@@ -9,12 +9,15 @@
 // what the address owns on the others); a match process that dies is started again and its players' sockets are freed;
 // while one is down /health answers 503; with KR_WT=1 each process listens for WebTransport on KR_WT_PORT + its index
 // and tells its players so (and KR_WT_URL with the same port offset), and an address's sessions on a process stay
-// within its WebSockets there plus a slack, so it can't fill every process's UDP port without sockets the front counted.
+// within its WebSockets there plus a slack, so it can't fill every process's UDP port without sockets the front counted;
+// admin event lobbies stop at MAX_EVENT_LOBBIES over both processes even when the creates arrive all at once.
 import { spawn, type ChildProcess } from "node:child_process";
+import crypto from "node:crypto";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
+import { MAX_EVENT_LOBBIES } from "../../server/admin/events";
 import { procOf } from "../../server/procs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -157,6 +160,26 @@ async function player(port: number, query = "", from?: string) {
     const urls = ps.map((c) => { const w = c.last("welcome")!; return [w.proc as number, (w.wt as { url?: string } | undefined)?.url] as const; });
     check(urls.every(([i, u]) => u === `https://game.example:${4000 + i}/wt`), `with KR_WT_URL, process i's players get its port plus i (${urls.map(([i, u]) => `${i}: ${u}`).join(", ")})`);
     for (const c of ps) c.ws.close();
+  } finally { s.proc.kill("SIGTERM"); }
+}
+
+// ---- 4. admin event lobbies: the cap is the processes' together, even for creates sent all at once
+{
+  const key = crypto.randomBytes(15).toString("hex").toUpperCase();
+  const s = await startServer({ KR_PROCS: "2", KR_EVENT_MODE: "1", KR_ADMIN_KEY: "", KR_ADMIN_KEY_SHA256: crypto.createHash("sha256").update(key).digest("hex") });
+  try {
+    const origin = `http://127.0.0.1:${s.port}`;
+    const login = await fetch(origin + "/admin/api/login", { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ key }) });
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
+    const ws = new WebSocket(`ws://127.0.0.1:${s.port}/admin/ws`, { headers: { cookie, origin } }); const acks: { ok: boolean }[] = [];
+    ws.on("message", (d: Buffer) => { const m = JSON.parse(String(d)); if (m.t === "ack") acks.push(m); });
+    await waitFor(() => ws.readyState === WebSocket.OPEN, 5000);
+    for (let i = 0; i < MAX_EVENT_LOBBIES + 4; i++) ws.send(JSON.stringify({ t: "act", id: i + 1, a: "create", name: "PROCS " + i, mode: "trios", cap: 12 }));
+    await waitFor(() => acks.length === MAX_EVENT_LOBBIES + 4, 15_000);
+    await waitFor(async () => (await health(s.port)).lobbies >= MAX_EVENT_LOBBIES, 3000);
+    const made = acks.filter((a) => a.ok).length, h = await health(s.port);
+    check(login.status === 200 && made === MAX_EVENT_LOBBIES && h.lobbies === MAX_EVENT_LOBBIES && (h.procs ?? []).every((p) => p.lobbies > 0), `${MAX_EVENT_LOBBIES + 4} event lobbies asked for at once: ${made} made over both processes (${(h.procs ?? []).map((p) => p.lobbies).join(" + ")}), the rest refused`);
+    ws.close();
   } finally { s.proc.kill("SIGTERM"); }
 }
 
