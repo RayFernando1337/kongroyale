@@ -50,7 +50,7 @@ const LONG_MS = 50;
 const SAFARIDRIVER = ["/System/Cryptexes/App/usr/bin/safaridriver", "/usr/bin/safaridriver"].find((p) => fs.existsSync(p)) ?? "safaridriver";
 const TRACE_CATEGORIES = ["-*", "devtools.timeline", "disabled-by-default-devtools.timeline", "disabled-by-default-devtools.timeline.frame", "toplevel", "v8", "v8.execute", "blink.user_timing", "loading", "gpu", "disabled-by-default-v8.cpu_profiler"];
 /** __kr fields copied into the result: the game's own boot instrumentation (client/src/main.ts, game/index.ts) */
-const KR_FIELDS = ["stage", "readyAt", "terrainMs", "buildMs", "afterBuildMs", "preReady", "preReadyPlan", "bootFactor", "gameStageAt", "prewarmMs", "prefabWarmMs", "matchWarmMs", "viewModelMs", "warmAllMs", "settleHolds", "settleHoldsMs", "programsAfterTitleModules", "programsAtReady", "streamed", "streamedAt", "streamedMs", "streamMs", "streamTotal", "prepareMs", "warmupHeld", "terrainBuild", "atmosFarBake", "atmosCloudShadowMs", "integrateLog", "lootSpots", "bootError"];
+const KR_FIELDS = ["stage", "readyAt", "terrainMs", "buildMs", "afterBuildMs", "preReady", "preReadyPlan", "bootFactor", "postBuildEstimate", "owedBeforeMatch", "gameStageAt", "prewarmMs", "prefabWarmMs", "matchWarmMs", "viewModelMs", "warmAllMs", "settleHolds", "settleHoldsMs", "programsAfterTitleModules", "programsAtReady", "streamed", "streamedAt", "streamedMs", "streamMs", "streamTotal", "prepareMs", "warmupHeld", "terrainBuild", "atmosFarBake", "atmosCloudShadowMs", "integrateLog", "lootSpots", "bootError"];
 
 // ---------------------------------------------------------------- the in-page probe
 // Injected by the proxy right before </body>: after the loading screen's inline script (it owns the window.__kr
