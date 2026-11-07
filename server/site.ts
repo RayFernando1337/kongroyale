@@ -1,0 +1,46 @@
+// The site a public server process serves over HTTP (the single server process, or the front of a multi-process one,
+// server/front.ts): the admin area (server/admin/http.ts), player bug reports, dev-view notes, /health and the built
+// client from dist/ (with KR_SERVE=1). The game WebSockets are not here: server/index.ts takes them.
+import path from "node:path";
+import type http from "node:http";
+import { ipOf } from "./addr";
+import { annotationsApi } from "./annotations";
+import { kongbotDb } from "./kongbot";
+import { serveStatic } from "./static";
+import type { createAdminHttp } from "./admin/http";
+
+export function createSite(o: { root: string; serve: boolean; adminHttp: ReturnType<typeof createAdminHttp>; health(): Record<string, unknown>; log(...a: unknown[]): void }) {
+  const dist = path.join(o.root, "dist"), log = o.log;
+  // player bug reports (/kongbot in the game's chat bar) → MongoDB
+  const kongbot = kongbotDb(o.root);
+  // dev view notes (?dev=annotate) → .kongbot/annotations/*.jsonl (+ Mongo kongbot_annotations)
+  const annotations = annotationsApi(o.root);
+  function handle(req: http.IncomingMessage, res: http.ServerResponse) {
+    const url = (req.url || "/").split("?")[0];
+    // (admin lobby) /admin, /admin/api/*, /api/event/CODE — before anything else (server/admin/http.ts)
+    if (o.adminHttp.handle(req, res, url)) return;
+    if (url === "/api/kongbot") {
+      // a failed store always answers (the client shows "couldn't send"), never a hung request
+      void kongbot.handle(req, res, ipOf(req)).catch((error) => {
+        log("report request failed", error);
+        if (!res.headersSent) res.writeHead(500, { "content-type": "application/json", "cache-control": "no-store" });
+        if (!res.writableEnded) res.end(JSON.stringify({ ok: false, error: "could not store the report" }));
+      });
+      return;
+    }
+    if (url === "/api/annotations") {
+      void annotations.handle(req, res, ipOf(req)).catch((error) => {
+        log("annotation request failed", error);
+        if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
+        if (!res.writableEnded) res.end(JSON.stringify({ ok: false, error: "could not store the note" }));
+      });
+      return;
+    }
+    if (url === "/health") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify({ ok: true, feedback: kongbot.health(), ...o.health() })); return; }
+    if (!o.serve || (req.method !== "GET" && req.method !== "HEAD")) { res.writeHead(404); res.end(); return; }
+    void serveStatic(req, res, url, dist).catch((error) => { log("asset request failed", error); if (!res.headersSent) res.writeHead(500); res.end(); });
+  }
+  /** (stops their timers; an in-flight queue import finishes first) */
+  const close = () => { void kongbot.close(); void annotations.close(); };
+  return { handle, close };
+}
