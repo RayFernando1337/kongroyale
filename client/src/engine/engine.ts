@@ -19,7 +19,7 @@ import "./geometry-release"; // in boot: the geofree owners in lazy chunks share
 
 const STREAM_SLICE_MS: readonly number[] = flag("streamslice") ?? [];
 /** ?hideroots: top-level root names (and, through main.ts, module ids) kept out of every frame (a perf upper bound) */
-export const HIDE_ROOTS: readonly string[] = flag("hideroots");
+export const HIDE_ROOTS: readonly string[] = flag("hideroots").length ? flag("hideroots") : ["banana-stand", "tuk-tuk", "poi:mango-market"];
 
 // engine fades dissolve instead of scaling — three's shared chunks are patched before the first compile
 installDitherChunks();
