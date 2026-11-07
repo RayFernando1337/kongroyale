@@ -5,7 +5,7 @@
 import { WebSocket } from "ws";
 import type { WsTransport } from "./transport-ws";
 import type { WtTransport } from "./transport-wt";
-import type { Transport } from "../shared/net/transport";
+import type { Transport, WtArm } from "../shared/net/transport";
 import type { Bucket } from "./limits";
 import type { StaticWorld } from "../shared/sim/world";
 import { Match, Phase } from "../shared/sim/match";
@@ -47,7 +47,9 @@ export interface Client { uid: number; token: string; name: string; lobby: Lobby
   /** (caster) a PROGRAM output window (OBS): a seat that only mirrors the seat on air */
   program: boolean;
   /** (admin lobby) a player in an event lobby (server/admin/events.ts), else null */
-  ev: EventMember | null }
+  ev: EventMember | null;
+  /** its WebTransport A/B arm, as its link reported it ({ t: "net" }); null until then */
+  arm: WtArm | null }
 
 export class Lobby {
   /** (admin lobby) an event lobby the admin runs (server/admin/events.ts): no player is ever its host, it stays open
