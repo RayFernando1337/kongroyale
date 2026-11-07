@@ -146,7 +146,7 @@ export function installDrawCensus(e: Engine): DrawCensus {
   // is a program lookup, and the material property fields it rewrote say why
   let reprogHit = false;
   const wrapKey = (m: { customProgramCacheKey: () => string; censusKey?: true }) => {
-    if (m.censusKey) return;
+    if (Object.prototype.hasOwnProperty.call(m, "censusKey")) return;
     const f = m.customProgramCacheKey;
     m.customProgramCacheKey = function (this: THREE.Material) { if (inDraw) reprogHit = true; return f.call(this); };
     m.censusKey = true;
@@ -233,6 +233,10 @@ export function installDrawCensus(e: Engine): DrawCensus {
   };
   const O3 = THREE.Object3D.prototype, umw = O3.updateMatrixWorld, um = O3.updateMatrix;
   O3.updateMatrixWorld = function (this: THREE.Object3D, force?: boolean) { if (census.on) matrixOf(this).visits++; return umw.call(this, force); };
+  // the scene's own updateMatrixWorld (static-cache.ts skipHiddenRoots, engine.ts) never reaches the prototype; the
+  // camera's own one ends in Camera.prototype's, which calls the prototype's (counted there)
+  const sceneUmw = e.scene.updateMatrixWorld;
+  e.scene.updateMatrixWorld = function (this: THREE.Scene, force?: boolean) { if (census.on) matrixOf(this).visits++; return sceneUmw.call(this, force); };
   O3.updateMatrix = function (this: THREE.Object3D) { if (census.on) matrixOf(this).composes++; return um.call(this); };
 
   // ---- GL calls: counted per group, read-backs timed, charged to the draw in progress (else the pass, else outside)
