@@ -110,10 +110,12 @@ const collect = (base: Rel | undefined, target: string): { prs: Pr[]; loose: str
     const side = git("log", "--format=%H %s", m[1] + "^1.." + m[1] + "^2").split("\n").filter(Boolean);
     synced.add(m[1]);
     for (const s of side) synced.add(s.split(" ")[0]);
-    const upstream = /\(([0-9a-f]{7,})\)/.exec(git("log", "-1", "--format=%B", m[1]))?.[1] ?? git("rev-parse", "--short", m[1] + "^2");
+    const tip = git("log", "-1", "--format=%P", m[1] + "^2").split(" ");
+    const upstream = tip.length === 2 ? tip[1].slice(0, 7) : /\(([0-9a-f]{7,})\)/.exec(git("log", "-1", "--format=%B", m[1]))?.[1] ?? "an unrecorded commit";
     const forkPrs = new Set(side.map((s) => /^\S+ Merge Ray Fernando's PR #(\d+)/.exec(s)?.[1]).filter(Boolean)).size;
+    const ranges = side.map((s) => /^\S+ Merge Ray Fernando's .*PRs \((#\d+[–-]#\d+)\)/.exec(s)?.[1]).filter(Boolean);
     const touched = Object.entries(SYNC_GUARDED).filter(([, paths]) => git("diff", "--name-only", m[1] + "^1", m[1], "--", ...paths) !== "").map(([what]) => what);
-    loose.push("Upstream sync (#" + m[2] + "): merges Max's main at " + upstream + ", which carries " + forkPrs + " of this fork's PRs merged upstream; " + (touched.length ? "changes the " + touched.join(", ") : "no wire, terrain or balance change") + ".");
+    loose.push("Upstream sync (#" + m[2] + "): merges Max's main at " + upstream + ", which carries " + forkPrs + " of this fork's PRs merged upstream" + (ranges.length ? " plus its PRs " + ranges.join(", ") : "") + "; " + (touched.length ? "changes the " + touched.join(", ") : "no wire, terrain or balance change") + ".");
   }
   for (const full of git("log", "--format=%H %s", base.sha + ".." + target).split("\n").filter(Boolean)) {
     if (synced.has(full.split(" ")[0])) continue;
