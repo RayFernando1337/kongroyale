@@ -201,6 +201,7 @@ async function player(port: number, query = "", from?: string) {
       }
       const mine = [];
       for (const code of codes) for (let i = 0; i < 3; i++) mine.push(await player(s.port, `?room=${code}`));
+      await sleep(1200);
       const w = mine.find((c) => c.last("welcome")!.proc === 1)!.last("welcome")!.wt as { port: number; hashes: string[] };
       const hashes = w.hashes.map((h) => ({ algorithm: "sha-256", value: new Uint8Array(Buffer.from(h, "base64")) }));
       const sessions: { ready: Promise<unknown>; close(): void }[] = [];
