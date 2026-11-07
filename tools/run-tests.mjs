@@ -17,6 +17,7 @@ const tmp = (f) => (process.env.KR_REPORT_DIR ? path.join(process.env.KR_REPORT_
 
 /** id: the name --only takes; slow: skipped by --fast (each takes 10 s or more) */
 const checks = [
+  { id: "guards", name: "dashboard describes every check", cmd: "npx", args: ["tsx", "tools/dashboard/guards-check.mts"] },
   { id: "types", name: "types", cmd: "npx", args: ["tsc", "--noEmit"] },
   { id: "lint", name: "lint", cmd: "npx", args: ["tsx", "tools/lint/check.mts"] },
   { id: "formal", name: "TLA+ models re-verified since the code they describe changed", cmd: "node", args: ["tools/formal/drift.mjs"] },
