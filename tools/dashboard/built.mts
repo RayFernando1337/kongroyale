@@ -86,7 +86,7 @@ function readModel(root: string, cfg: ModelCfg, hide: RegExp): Model {
       const inline = at >= 0 ? /\\\*\s*(.+)$/.exec(lines[at])?.[1] : undefined;
       const text = publicText(above.join(" ") || inline || "", hide, cfg.id + " " + name);
       let end = at + 1;
-      while (at >= 0 && end < lines.length && lines[end].trim() !== "") end++;
+      while (at >= 0 && end < lines.length && lines[end].trim() !== "" && !/^(\w+ ==|=+$|\\\*)/.test(lines[end])) end++;
       const eventually = at >= 0 && /<>|~>/.test(lines.slice(at, end).join(" "));
       rules.push({ name, kind: kind === "property" && eventually ? "property" : "invariant", text: text.charAt(0).toUpperCase() + text.slice(1) });
     }
