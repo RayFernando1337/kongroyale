@@ -289,8 +289,8 @@ export class Engine implements WorldCtx {
     // without waiting for a frame the browser isn't painting)
     return afterPaint().then(() => { this.sliceT0 = performance.now(); });
   }
-  /** ?slicelog: the slice this yield ends (the no-op yields before it included; only a yield that gives way ends one, so
-   *  nothing under sliceMs is logged whatever N is), measured from the slice's start or the end of the last animation
+  /** ?slicelog: the slice this yield ends (the no-op yields before it included; only a yield that gives way ends one, and
+   *  N is the floor: a window can be shorter than sliceMs when a frame ran inside the slice), measured from the slice's start or the end of the last animation
    *  frame task, whichever is later: an await that spans a frame (a worker, a fetch) ends in a later task, so only the
    *  work after it counts. Before engine.start() no frame marks those tasks, so boot builds are not logged. "where" is
    *  the stack of the yield that ended it */
