@@ -46,7 +46,7 @@
     "regions": {
       "client/src/low-mem.ts#nearModule": "51ae29ea9b2f6da8",
       "client/src/low-mem.ts#nextNearModule": "ec86e5a21cca6356",
-      "client/src/low-mem.ts#evictStreamed": "f5276593988617fe",
+      "client/src/low-mem.ts#evictStreamed": "a09acc000ea7af2c",
       "client/src/low-mem.ts#over": "46885f6c04ab472c",
       "client/src/low-mem.ts#evictionsFor": "3f64ff747f6f8c42",
       "client/src/low-mem.ts#trimStreamed": "4350086e2c0ee25a",

@@ -121,6 +121,7 @@ export type World = {
 
 export async function evictStreamed(engine: Engine, w: World, id: string) {
   const m = w.modOf.get(id)!, roots = w.roots(id);
+  integratedAt.delete(id); released.delete(id);
   const hooks = new Set(hooksOf.get(id)), u = engine.updates;
   for (let i = u.length - 1; i >= 0; i--) if (hooks.has(u[i])) { u.splice(i, 1); engine.updLabels.splice(i, 1); }
   engine.occlusion.unregister(id);
