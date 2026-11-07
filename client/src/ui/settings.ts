@@ -100,11 +100,12 @@ export function mountVideoUi(engine: Engine, display: Display, menu: VideoMenu) 
   }
 
   const toast = document.createElement("div"); toast.className = "kr-vtoast"; toast.setAttribute("role", "status"); document.body.appendChild(toast);
-  let toastTimer = 0, waited = false;
-  const show = (html: string, ms: number) => { toast.innerHTML = html; toast.classList.add("on"); clearTimeout(toastTimer); waited = !ms; if (ms) toastTimer = window.setTimeout(() => toast.classList.remove("on"), ms); };
+  let toastTimer = 0;
+  const show = (html: string, ms: number) => { toast.innerHTML = html; toast.classList.add("on"); clearTimeout(toastTimer); if (ms) toastTimer = window.setTimeout(() => toast.classList.remove("on"), ms); };
   // with the pointer locked a notice's buttons are out of reach (Ray, in full screen: the mouse aims), so the player gets
   // a passive line that never takes input, and the notice itself waits until the pointer is free: Esc's pause card, the
-  // results screen or the title. There it stays up, with no timer, until the player answers it or goes back to aiming.
+  // results screen or the title. There it stays up, with no timer, and an unanswered suggestion goes back in the queue
+  // when the player returns to aiming (the guard offers each level once a session, so it must not be lost).
   // The game never releases the pointer for a notice; only the player's own Esc does.
   const line = document.createElement("div"); line.className = "kr-vtoast kr-vline"; line.setAttribute("role", "status"); document.body.appendChild(line);
   let lineTimer = 0;
@@ -140,7 +141,7 @@ export function mountVideoUi(engine: Engine, display: Display, menu: VideoMenu) 
   document.addEventListener("pointerlockchange", () => {
     syncNote();
     if (locked()) {
-      if (toast.classList.contains("on") && toast.querySelector("button")) { const html = toast.innerHTML; toast.classList.remove("on"); if (!waited) held = () => show(html, 0); }
+      if (toast.classList.contains("on") && toast.querySelector("button")) { const html = toast.innerHTML; toast.classList.remove("on"); if (toast.querySelector("[data-a=apply]")) held = () => show(html, 0); }
       return;
     }
     line.classList.remove("on");
