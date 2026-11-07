@@ -105,6 +105,10 @@
     },
     "wtbrowser": {
       "catches": "WebTransport in headless Chromium against a real server: arm selection, ping and pong, the session outliving a quiet period, fallback to WebSockets when the server closes it, and the flag overrides. It passes with SKIP when no browser or QUIC build is present."
+    },
+    "procs": {
+      "label": "One process per core (real server, two processes)",
+      "catches": "The multi-process server: the single-process default staying unchanged, both processes coming up and reporting together, a player landing on the process that holds their game, per-address connection caps holding across processes, a process that dies being restarted, and WebTransport ports offset per process."
     }
   },
   "ci": {
