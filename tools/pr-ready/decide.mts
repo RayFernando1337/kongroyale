@@ -2,7 +2,7 @@
 // so tools/pr-ready/decide.test.mts can feed it recorded gh JSON. tools/pr-ready.mts gathers the Snapshot with gh and
 // prints the Verdict. Each item answers one question the Captain asks before merging, with a reason a person can act on.
 
-/** Every job in .github/workflows/ci.yml, by its check-run name. Each runs on every pull request, so a missing or
+/** Every job in .github/workflows/ci.yml, by its check-run name (one per arm of a matrix job). Each runs on every pull request, so a missing or
  *  skipped one is never normal; decide.test.mts fails when this list and ci.yml disagree. */
 export const REQUIRED_CHECKS: readonly string[] = [
   "build and test",
@@ -11,6 +11,8 @@ export const REQUIRED_CHECKS: readonly string[] = [
   "no-GPU match-to-match memory",
   "no-GPU low-memory memory",
   "no-GPU context restore",
+  "no-GPU invariants (lowmem)",
+  "no-GPU invariants (default)",
 ];
 
 /** The commit status Capy's reviewer posts on each commit it reviews. Its description counts the open non-note
