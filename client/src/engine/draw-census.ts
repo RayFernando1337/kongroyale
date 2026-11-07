@@ -45,8 +45,8 @@ const add = (to: Bucket, b: Bucket) => {
 };
 /** uniqProgs / uniqMats: distinct programs and materials drawn per call of the pass (the fewest switches any order could give) */
 interface Pass { calls: number; inclMs: number; exclMs: number; uniqProgs: number; uniqMats: number; b: Bucket }
-/** objects: by Object3D.id with the name taken at the first draw, so objects a match removes are never kept alive */
-interface Label { frames: number; stepMs: number; submitMs: number; passes: Map<string, Pass>; classes: Map<string, Bucket>; objects: Map<number, Bucket & { name: string }>; outside: Bucket }
+/** objects: by Object3D.id with the name re-taken after each ownership walk, so objects a match removes are never kept alive */
+interface Label { frames: number; stepMs: number; submitMs: number; passes: Map<string, Pass>; classes: Map<string, Bucket>; objects: Map<number, Bucket & { name: string; gen: number }>; outside: Bucket }
 interface Frame { key: string; t0: number; child: number; lastEnd: number; hooks: number; pass: Pass; progs: Set<unknown>; mats: Set<THREE.Material> }
 
 export interface DrawCensus {
@@ -92,7 +92,12 @@ export function installDrawCensus(e: Engine): DrawCensus {
   }
   const classBucket = (key: string) => { let b = cur.classes.get(key); if (!b) cur.classes.set(key, (b = bucket())); return b; };
   const pathOf = (o: THREE.Object3D) => { const p: string[] = []; for (let x: THREE.Object3D | null = o; x && x !== e.scene && p.length < 4; x = x.parent) p.push(x.name || x.type); return p.reverse().join("/"); };
-  const objBucket = (o: THREE.Object3D) => { let b = cur.objects.get(o.id); if (!b) cur.objects.set(o.id, (b = { ...bucket(), name: moduleName(o) + " / " + pathOf(o) })); return b; };
+  const objBucket = (o: THREE.Object3D) => {
+    let b = cur.objects.get(o.id);
+    if (!b) cur.objects.set(o.id, (b = { ...bucket(), name: "", gen: -1 }));
+    if (b.gen !== gen) { b.name = moduleName(o) + " / " + pathOf(o); b.gen = gen; }
+    return b;
+  };
 
   // ---- passes
   const stack: Frame[] = [];
