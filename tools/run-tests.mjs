@@ -40,6 +40,7 @@ const checks = [
   { id: "res", name: "resource scopes", cmd: "npx", args: ["tsx", "tools/res/test.mts"] },
   { id: "refresh", name: "display refresh estimate", cmd: "npx", args: ["tsx", "tools/engine/refresh.test.mts"] },
   { id: "resguard", name: "half-rate guard decisions", cmd: "npx", args: ["tsx", "tools/engine/res-guard.test.mts"] },
+  { id: "scenegate", name: "visibility gate lifecycle", cmd: "npx", args: ["tsx", "tools/engine/scene-gate.test.mts"] },
   { id: "parity", name: "wire / matrix / geometry / http / splat parity", slow: true, cmd: "npm", args: ["run", "bench:verify"] },
   { id: "sim", name: "headless match (seed 42)", slow: true, cmd: "npx", args: ["tsx", "tools/sim-smoke.mts", "trios", "42", "--check"] },
   { id: "nettail", name: "network tails (against tools/performance/net-budgets.json)", slow: true, cmd: "npx", args: ["tsx", "tools/performance/net-tail.mts", "--check", "--out", tmp("net-tail.json")] },
