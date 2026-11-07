@@ -130,10 +130,6 @@ jobs:
 
   lowmem-memory:
     name: no-GPU low-memory memory
-    strategy:
-      fail-fast: false
-      matrix:
-        calibration: [1, 2, 3]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -148,8 +144,9 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       # the whole island under the low-memory setup: POIs stream in near the player and past the cap the farthest is
-      # evicted, so it fits the runner through the plane and on foot. Its own job so it runs beside the others
-      - name: low-memory setup at the title, in the plane and on foot 60 s after landing
+      # evicted, so it fits the runner through the plane and on foot. Its own job (about 10 min) so it runs beside the
+      # others and the workflow takes no longer
+      - name: low-memory setup at the title, in the plane and 60 s into the play phase
         timeout-minutes: 30
         run: |
           node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs up --prod --port 3140
@@ -160,7 +157,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: memory-lowmem-result-${{ matrix.calibration }}
+          name: memory-lowmem-result
           path: shots/memory/ci/
           retention-days: 7
 
