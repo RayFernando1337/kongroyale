@@ -223,7 +223,7 @@ async function player(port: number, query = "", from?: string) {
       await open(0, 2);
       await waitFor(async () => ((await counts()).open ?? 0) >= 2, 3000);
       const on0 = (await counts()).open ?? 0;
-      await sleep(1200);
+      await sleep(900);
       const before = (await counts()).refused?.limit ?? 0;
       await open(1, 2);
       await waitFor(async () => ((await counts()).refused?.limit ?? 0) >= before + 2, 3000);
