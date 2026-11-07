@@ -65,11 +65,12 @@
     "kong-v1.1.0": {
       "d3d11": {
         "verdict": "pass",
+        "note": "including the two-player smoke",
         "source": "project drive handoffs/release-kong-v1.1.0-d3d11/README.md"
       },
       "metal": {
         "verdict": "in progress",
-        "note": "parts 1–4 pass, the two-player smoke is pending",
+        "note": "parts 1–4 pass; the two-player smoke is pending while the Metal Mac is offline, and the Windows two-player smoke stood in",
         "source": "Kong Mini renders/v110/, logged on RAY-235"
       },
       "safari": {
