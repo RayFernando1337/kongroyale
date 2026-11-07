@@ -134,9 +134,11 @@ The server runs every match on one thread, so one process uses one CPU core howe
   address owns at most 4 rooms across them, the 400 rooms are split evenly between the processes, and the admin's 12
   event lobbies are counted together.
 - With `KR_WT=1`, process *i* listens for WebTransport on UDP `KR_WT_PORT + i`. Open the whole range, from
-  `KR_WT_PORT` to `KR_WT_PORT + KR_PROCS - 1`. Each player's welcome names their port.
+  `KR_WT_PORT` to `KR_WT_PORT + KR_PROCS - 1`. Each player's welcome names their port, and with `KR_WT_URL` set,
+  process *i* gives that URL with its port plus *i*.
 - `/health` adds the processes up and lists each one under `procs` (whether it is up, its rooms and sockets, and with
-  `KR_PERF_METRICS=1` its tick times).
+  `KR_PERF_METRICS=1` its tick times). While any process is down it answers 503 with `ok: false`, because the rooms
+  that process holds can't be reached.
 - Each match process builds its own copy of the island when it starts: about 5 s and 600 MB of memory each, so
   `auto` on a machine with many cores and little memory can run out of memory. Pick a number there.
 - A reverse proxy needs no change: it talks to the front only.

@@ -94,7 +94,8 @@ try{
   let health:any=null,healthAt=0;fetch(base+'/health').then(r=>r.json()).then(j=>{health=j;healthAt=performance.now();},e=>errors.push(String(e)));
   while(health===null){if(errors.length)throw Error(errors[0]);drive(performance.now());await sleep(2);}
   await assetRequest;
-  const perf0=(health0 as any).performance,perf1=(health as any).performance;
+  // a front (KR_PROCS) reports each match process under procs: the match's own process is the one to read
+  const perfOf=(h:any)=>h.procs?h.procs[peers[0].proc]?.performance:h.performance,perf0=perfOf(health0),perf1=perfOf(health);
   // the server's input pacing (shared/net/input-gaps.ts, one match): the change between the two /health reads, which spans
   // the window plus the reads themselves (spanMs), so the metrics are shares of the live ticks in that span
   const in0=(health0 as any).inputs?.[0],in1=(health as any).inputs?.[0],inputs=in0&&in1?{liveTicks:in1.liveTicks-in0.liveTicks,inputGapTicks:in1.inputGapTicks-in0.inputGapTicks,catchupBursts:in1.catchupBursts-in0.catchupBursts,catchupBurstMaxMatch:in1.catchupBurstMax,spanMs:Math.round(healthAt-health0At)}:null;

@@ -7,7 +7,9 @@
 // ?p= its process but is refused on the other one; rooms made in a burst spread over both processes; the per-address
 // caps hold across processes: sockets (KR_MAX_PER_IP, counted at the front) and rooms (4 per address, each process told
 // what the address owns on the others); a match process that dies is started again and its players' sockets are freed;
-// with KR_WT=1 each process listens for WebTransport on KR_WT_PORT + its index and tells its players so.
+// while one is down /health answers 503; with KR_WT=1 each process listens for WebTransport on KR_WT_PORT + its index
+// and tells its players so (and KR_WT_URL with the same port offset), and an address's sessions on a process stay
+// within its WebSockets there plus a slack, so it can't fill every process's UDP port without sockets the front counted.
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -22,8 +24,9 @@ const check = (ok: boolean, what: string) => { console.log(`${ok ? "PASS" : "FAI
 async function waitFor(f: () => boolean | Promise<boolean>, ms: number) { const end = Date.now() + ms; while (!(await f())) { if (Date.now() > end) return false; await sleep(50); } return true; }
 const freePort = () => new Promise<number>((r) => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const p = (s.address() as net.AddressInfo).port; s.close(() => r(p)); }); });
 
-interface Health { lobbies: number; clients: number; sockets: number; procs?: { proc: number; pid: number; up: boolean; lobbies: number; sockets: number }[] }
+interface Health { ok: boolean; lobbies: number; clients: number; sockets: number; procs?: { proc: number; pid: number; up: boolean; lobbies: number; sockets: number }[] }
 const health = async (port: number) => (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as Health;
+const healthStatus = async (port: number) => (await fetch(`http://127.0.0.1:${port}/health`)).status;
 
 async function startServer(env: Record<string, string>): Promise<{ port: number; proc: ChildProcess }> {
   const port = await freePort(); let out = "";
@@ -120,8 +123,10 @@ async function player(port: number, query = "", from?: string) {
     process.kill(victim.pid, "SIGKILL");
     await waitFor(() => a.closed() !== null, 5000);
     check(a.closed() !== null, "a dead process's players' sockets close");
+    const down = await health(s.port);
+    check(!down.ok && (await healthStatus(s.port)) === 503, "while it is down /health answers 503, ok false");
     const back = await waitFor(async () => { const h = await health(s.port); return !!h.procs?.every((p) => p.up) && h.procs[procA].pid !== victim.pid; }, 60_000);
-    check(back, "the front starts the process again");
+    check(back && (await health(s.port)).ok && (await healthStatus(s.port)) === 200, "the front starts the process again, and /health is ok");
     const c2 = await player(s.port);
     check(!c2.refused() && !!c2.last("welcome"), "players get in after it: the dead process's sockets no longer count");
     for (const c of [b, aux, wrong, c2, ...burst]) c.ws.close();
@@ -130,11 +135,27 @@ async function player(port: number, query = "", from?: string) {
 
 // ---- 3. WebTransport: each process on its own UDP port, named in its players' welcome
 {
-  const s = await startServer({ KR_PROCS: "2", KR_WT: "1" });
+  const s = await startServer({ KR_PROCS: "2", KR_WT: "1", KR_WT_URL: "https://game.example:4000/wt" });
   try {
     const ps = [await player(s.port), await player(s.port)];
     const seen = ps.map((c) => { const w = c.last("welcome")!; return { proc: w.proc as number, port: (w.wt as { port?: number } | undefined)?.port }; });
     check(new Set(seen.map((x) => x.proc)).size === 2 && seen.every((x) => x.port === s.port + x.proc), `KR_WT=1: process i's players are told UDP KR_WT_PORT + i (${seen.map((x) => `${x.proc}:${x.port}`).join(", ")})`);
+    // sessions that never show a token, on process 1's port, from an address with one WebSocket there: 1 + 4 slack
+    type Lib = { WebTransport: new (url: string, o: unknown) => { ready: Promise<unknown>; close(): void } };
+    let lib: Lib | null = null;
+    try { await import("@fails-components/webtransport-transport-http3-quiche" as string); lib = await import("@fails-components/webtransport" as string) as Lib; await (lib as unknown as { quicheLoaded: Promise<unknown> }).quicheLoaded; } catch { console.log("SKIP  WebTransport admission: no QUIC module"); }
+    if (lib) {
+      const w1 = ps.find((c) => c.last("welcome")!.proc === 1)!.last("welcome")!.wt as { port: number; hashes: string[] };
+      const hashes = w1.hashes.map((h) => ({ algorithm: "sha-256", value: new Uint8Array(Buffer.from(h, "base64")) }));
+      const sessions: { ready: Promise<unknown>; close(): void }[] = [];
+      for (let i = 0; i < 7; i++) { const t = new lib.WebTransport(`https://127.0.0.1:${w1.port}/wt`, { serverCertificateHashes: hashes }); sessions.push(t); await t.ready.catch(() => {}); await sleep(100); }
+      const refused = async () => ((await health(s.port)) as unknown as { transports: { webtransport: { refused?: { limit?: number } } } }).transports.webtransport.refused?.limit ?? 0;
+      await waitFor(async () => (await refused()) >= 2, 3000);
+      check((await refused()) === 2, `an address's sessions on a process stay within its WebSockets there plus 4: of 7, 2 refused (${await refused()})`);
+      for (const x of sessions) try { x.close(); } catch { /* refused */ }
+    }
+    const urls = ps.map((c) => { const w = c.last("welcome")!; return [w.proc as number, (w.wt as { url?: string } | undefined)?.url] as const; });
+    check(urls.every(([i, u]) => u === `https://game.example:${4000 + i}/wt`), `with KR_WT_URL, process i's players get its port plus i (${urls.map(([i, u]) => `${i}: ${u}`).join(", ")})`);
     for (const c of ps) c.ws.close();
   } finally { s.proc.kill("SIGTERM"); }
 }

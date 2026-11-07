@@ -12,14 +12,20 @@ export const lobbyCode = (v: unknown) => String(v ?? "").toUpperCase().replace(/
 export const PROCS = Math.max(1, Math.min(CODE_CHARS.length, process.env.KR_PROCS === "auto" ? os.availableParallelism() : Math.floor(Number(process.env.KR_PROCS) || 1)));
 /** this match process's index under a front (0..PROCS-1); -1 for a single process, and for the front itself */
 export const PROC = process.env.KR_PROC === undefined ? -1 : Number(process.env.KR_PROC);
+/** the WebTransport URL a match process tells its players (KR_WT_URL): process i listens on KR_WT_PORT + i, so its URL's
+ *  port moves by i too */
+export const procWtUrl = (url: string | undefined, i = PROC) => {
+  if (!url || i <= 0) return url;
+  const u = new URL(url); u.port = String(Number(u.port || 443) + i); return u.href;
+};
 /** the match process that owns a lobby code: its first character's place in CODE_CHARS, modulo the process count. A
  *  process only mints codes it owns, so the front routes a code without asking anyone */
 export const procOf = (code: string, n = PROCS) => Math.max(0, CODE_CHARS.indexOf(code[0] ?? "")) % n;
 
-/** what a match process tells the front about itself every PUSH_MS: its share of /health, and its event lobbies (the
- *  admin's cap counts them across processes) */
+/** what a match process tells the front about itself every PUSH_MS: its share of /health, and what the front needs to
+ *  spread new rooms and to hold the per-address room cap across processes */
 export interface ProcHealth {
-  lobbies: number; clients: number; sockets: number; events: number;
+  lobbies: number; clients: number; sockets: number;
   /** rooms players have made here since it started: the front matches them against the rooms it sent here */
   made: number;
   /** rooms each address owns here (outside event mode's admin lobbies), for the per-address room cap across processes */

@@ -10,7 +10,7 @@ import { kongbotDb } from "./kongbot";
 import { serveStatic } from "./static";
 import type { createAdminHttp } from "./admin/http";
 
-export function createSite(o: { root: string; serve: boolean; adminHttp: ReturnType<typeof createAdminHttp>; health(): Record<string, unknown>; log(...a: unknown[]): void }) {
+export function createSite(o: { root: string; serve: boolean; adminHttp: ReturnType<typeof createAdminHttp>; /** what /health adds; `ok: false` (a front with a match process down) answers 503 */ health(): Record<string, unknown> & { ok?: boolean }; log(...a: unknown[]): void }) {
   const dist = path.join(o.root, "dist"), log = o.log;
   // player bug reports (/kongbot in the game's chat bar) → MongoDB
   const kongbot = kongbotDb(o.root);
@@ -48,7 +48,10 @@ export function createSite(o: { root: string; serve: boolean; adminHttp: ReturnT
       });
       return;
     }
-    if (url === "/health") { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify({ ok: true, feedback: kongbot.health(), diagAuto: diagAuto.health(), ...o.health() })); return; }
+    if (url === "/health") {
+      const h = { ok: true, feedback: kongbot.health(), diagAuto: diagAuto.health(), ...o.health() };
+      res.writeHead(h.ok ? 200 : 503, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify(h)); return;
+    }
     if (!o.serve || (req.method !== "GET" && req.method !== "HEAD")) { res.writeHead(404); res.end(); return; }
     void serveStatic(req, res, url, dist).catch((error) => { log("asset request failed", error); if (!res.headersSent) res.writeHead(500); res.end(); });
   }

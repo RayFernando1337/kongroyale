@@ -28,7 +28,7 @@ import { MAX_CONNS, MAX_CONNS_PER_IP, makeBucket, struck, take } from "./limits"
 import { createSite } from "./site";
 // (one process per core) the front, and which process owns a code
 import { runFront } from "./front";
-import { CODE_CHARS, PROC, PROCS, PUSH_MS, lobbyCode, procOf, type ToFront, type ToProc } from "./procs";
+import { CODE_CHARS, PROC, PROCS, PUSH_MS, lobbyCode, procOf, procWtUrl, type ToFront, type ToProc } from "./procs";
 import { performanceMetrics } from "./perf";
 // (voice) squad comms + caster listen-in: the WebRTC handshake relay (the audio is peer to peer)
 import { onVoiceJSON } from "./voice";
@@ -398,14 +398,23 @@ if (serve && !TRUST_PROXY && PROC < 0) log("note: KR_TRUST_PROXY is off — behi
 // other KR_HOST is kept
 const wtOwner = new WeakMap<WtTransport, Client>();
 let wtOff = process.env.KR_WT === "1" ? "" : "off (KR_WT unset)";
+/** (KR_PROCS) WebTransport sessions by address on this process, and how many more than its WebSockets here it may hold
+ *  (a player whose session and socket come from different addresses: IPv6 for one, IPv4 for the other) */
+const wtPerIp = new Map<string, number>(), WT_SESSION_SLACK = 4;
 if (!wtOff) {
   try {
     wt = await startWt({
       port: Number(process.env.KR_WT_PORT || PORT) + Math.max(0, PROC), host: process.env.KR_WT_HOST || (TRUST_PROXY && (isLoop(HOST) || HOST === "localhost") ? "0.0.0.0" : HOST), certFile: process.env.KR_WT_CERT, keyFile: process.env.KR_WT_KEY,
-      url: process.env.KR_WT_URL, maxPayload: MAX_PAYLOAD, origins: ORIGINS, silentMaxMs: SILENT_MAX_MS,
+      url: procWtUrl(process.env.KR_WT_URL), maxPayload: MAX_PAYLOAD, origins: ORIGINS, silentMaxMs: SILENT_MAX_MS,
     }, {
-      admit: (ip) => socks.size + wt!.counts.open < MAX_CONNS && (perIp.get(ip) ?? 0) < MAX_CONNS_PER_IP,
-      opened: addIp, closed: dropIp, log,
+      // under a front the per-address cap here sees only this process's sockets (the front counts the WebSockets of all
+      // of them), so sessions from an address, the ones still showing their token included, stay within its WebSockets
+      // here plus WT_SESSION_SLACK: an address can't fill every process's UDP port without sockets the front counted
+      admit: (ip) => socks.size + wt!.counts.open < MAX_CONNS && (perIp.get(ip) ?? 0) < MAX_CONNS_PER_IP
+        && (PROC < 0 || (wtPerIp.get(ip) ?? 0) < (perIp.get(ip) ?? 0) - (wtPerIp.get(ip) ?? 0) + WT_SESSION_SLACK),
+      opened: (ip) => { addIp(ip); wtPerIp.set(ip, (wtPerIp.get(ip) ?? 0) + 1); },
+      closed: (ip) => { dropIp(ip); const n = (wtPerIp.get(ip) ?? 1) - 1; if (n > 0) wtPerIp.set(ip, n); else wtPerIp.delete(ip); },
+      log,
       attach: (token, t) => {
         const c = byToken.get(token); if (!c || c.wt) return false;
         c.wt = t; c.bin = t; wtOwner.set(t, c); t.onMessage = (u8, _at, from) => onBinary(c, u8, from);
@@ -434,7 +443,7 @@ else {
     toFront({ t: "reply", id: m.id, v });
   });
   const ownersHere = () => { const n: Record<string, number> = {}; for (const l of lobbies.values()) { const ip = !l.event && l.owner?.sock?.ip; if (ip) n[ip] = (n[ip] ?? 0) + 1; } return n; };
-  const push = () => toFront({ t: "health", h: { ...health(), events: [...lobbies.values()].filter((l) => l.event).length, made: roomsMade, owners: ownersHere() } });
+  const push = () => toFront({ t: "health", h: { ...health(), made: roomsMade, owners: ownersHere() } });
   setInterval(push, PUSH_MS); push();
   onEventsDirty(() => toFront({ t: "dirty" }));
   // the front is gone: nothing can reach this process any more

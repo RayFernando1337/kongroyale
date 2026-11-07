@@ -104,16 +104,21 @@ export async function runFront(o: { root: string; port: number; host: string; se
     });
   }
   const busy = (): Res => ({ ok: false, msg: "THAT PART OF THE SERVER IS RESTARTING — TRY AGAIN" });
+  let creating: Promise<unknown> = Promise.resolve();
   const events: AdminEvents = {
     snapshot: async () => (await Promise.all(procs.map((p) => call<AdminLobby[]>(p, "snapshot").catch(() => [])))).flat().sort((a, b) => a.createdAt - b.createdAt),
-    action: async (act) => {
-      if (act.a === "create") {
-        if (procs.reduce((n, p) => n + (p.health?.events ?? 0), 0) >= MAX_EVENT_LOBBIES) return { ok: false, msg: `AT MOST ${MAX_EVENT_LOBBIES} LOBBIES` };
+    action: (act) => {
+      if (act.a !== "create") return call<Res>(procs[procOf(typeof act.code === "string" ? act.code : "")], "action", act).catch(busy);
+      // one create at a time, against a live count from every process: a report could still miss a lobby made a moment
+      // ago, and the cap is the processes' together
+      const run = creating.then(async () => {
+        const live = await Promise.all(procs.filter((p) => p.health).map((p) => call<AdminLobby[]>(p, "snapshot")));
+        if (live.flat().length >= MAX_EVENT_LOBBIES) return { ok: false, msg: `AT MOST ${MAX_EVENT_LOBBIES} LOBBIES` };
         const p = pick(); if (!p) return busy();
-        p.health!.events++; p.health!.lobbies++;
-        return call<Res>(p, "action", act).catch(busy);
-      }
-      return call<Res>(procs[procOf(typeof act.code === "string" ? act.code : "")], "action", act).catch(busy);
+        return call<Res>(p, "action", act);
+      }).catch(busy);
+      creating = run;
+      return run;
     },
     info: (code) => call<EventPublicInfo>(procs[procOf(code)], "info", code).catch((): EventPublicInfo => ({ ok: false, error: "not-found" })),
     onDirty: (fn) => { dirty.add(fn); },
@@ -129,8 +134,9 @@ export async function runFront(o: { root: string; port: number; host: string; se
     const wts = up.map((h) => h.transports.webtransport as { port?: number; share?: number } | undefined).filter((w) => typeof w?.port === "number");
     if (wts.length) Object.assign(transports.webtransport as object, { port: wts[0]!.port, ports: wts.map((w) => w!.port), share: wts[0]!.share });
     const sum = (k: "lobbies" | "clients" | "sockets") => up.reduce((n, h) => n + h[k], 0);
+    // not ok (and 503) while any match process is down: the rooms whose codes it owns can't be reached
     return {
-      lobbies: sum("lobbies"), clients: sum("clients"), sockets: sum("sockets"), transports, inputs: up.flatMap((h) => h.inputs),
+      ok: procs.every((p) => p.health), lobbies: sum("lobbies"), clients: sum("clients"), sockets: sum("sockets"), transports, inputs: up.flatMap((h) => h.inputs),
       procs: procs.map((p) => ({ proc: p.i, pid: p.pid, up: !!p.health, lobbies: p.health?.lobbies ?? 0, clients: p.health?.clients ?? 0, sockets: p.health?.sockets ?? 0, ...(p.health?.performance ? { performance: p.health.performance } : {}) })),
     };
   }
