@@ -1,0 +1,353 @@
+{
+  "title": "What I've been working on, and what I learned",
+  "byline": "Ray's update, with the numbers behind it",
+  "asOf": "2026-11-07",
+  "why": "I want Kong Royale to run smoothly for everyone, on any laptop and in any browser, Safari too, without crashing mid-match. So every change has to be proven on real machines before it ships, and every number on this page says where it came from.",
+  "kinds": {
+    "measured": "measured on a real machine",
+    "model": "from a network model, not a real network yet",
+    "estimate": "an estimate, not measured yet"
+  },
+  "wins": [
+    {
+      "id": "safari-match",
+      "head": "Safari finishes a whole match on a 16 GB Mac",
+      "before": 8.5,
+      "after": 7.3,
+      "unit": "GB peak",
+      "beforeText": "Reached Safari's limit 82 s after landing, at 8.5 GB",
+      "afterText": "Reaches the results screen, peaking at 6.9 to 7.3 GB",
+      "plain": "Safari gives one tab about 8.5 GB on a 16 GB Mac, and I set out to fit inside that. The game now keeps at most 4 far-away locations loaded instead of 10, and a full match ends on the results screen.",
+      "kind": "measured",
+      "source": "Mac mini M4 16 GB, Safari, main 3248912 (2 runs) against main 1ee1f52 (1 run); tools/dashboard/story.json, project drive handoffs/safari-growth/pr160/README.md",
+      "date": "2026-11-05",
+      "prs": [
+        140,
+        149,
+        157,
+        160
+      ],
+      "changeText": "from reaching the limit to finishing the match"
+    },
+    {
+      "id": "tuk-draws",
+      "head": "Tuk-tuks draw in fewer pieces",
+      "before": 113,
+      "after": 47,
+      "unit": "draws per tuk-tuk",
+      "beforeText": "113 meshes, 82 of them casting shadows",
+      "afterText": "47 meshes, 32 casting shadows, same triangles",
+      "plain": "Tuk-tuks were the biggest source of draw calls on my test route. Each part was split into pieces for no visual reason, so I merged each part into one mesh per material.",
+      "kind": "measured",
+      "source": "Mesh count in client/src/actors/tuktuk.ts, with same-camera stills (2 of 3 views identical, 1 pixel differs in the third); Captain drive reports/KONG-68.md",
+      "date": "2026-11-06",
+      "prs": [
+        220
+      ]
+    },
+    {
+      "id": "murk-draws",
+      "head": "The Murk's tree crowns draw in one go",
+      "before": 170,
+      "after": 10,
+      "approx": true,
+      "unit": "draws, seen from Mango Market",
+      "beforeText": "About 170 draws a frame for the crowns",
+      "afterText": "About 10: one multi-draw per pass",
+      "plain": "Each 36 m cell of crowns was three meshes. I batched the cells, so the whole canopy is one draw per pass.",
+      "kind": "measured",
+      "source": "Draw counts from Mango Market; on an RTX laptop walk-town draws went 655 to 513 (p50) with frame times inside the run-to-run spread; Captain drive handoffs/upstream/batch14/murk/bodies/murk-crown-batch.md",
+      "date": "2026-11-06",
+      "prs": [
+        234
+      ]
+    },
+    {
+      "id": "safari-high-fps",
+      "head": "Safari at High is smoother",
+      "before": 36.3,
+      "after": 46.6,
+      "higherIsBetter": true,
+      "unit": "fps",
+      "beforeText": "36.3 fps, 157 frames over 33 ms",
+      "afterText": "46.6 fps (43.3 to 47.9), 22 frames over 33 ms",
+      "plain": "At High on a Retina screen, Safari's frame lands just past 16.7 ms and snaps to 30 fps. The fix lowers only the 3D resolution while the game misses the refresh, then raises it again.",
+      "kind": "measured",
+      "source": "Safari 27.0.1 on a Mac, High, DPR 2, main 9cc83fa (n=4) against the PR (n=5); Captain drive reports/KONG-82.md",
+      "date": "2026-11-06",
+      "prs": [
+        265
+      ]
+    },
+    {
+      "id": "wt-lossy",
+      "head": "Inputs keep flowing on a lossy connection",
+      "before": 451,
+      "after": 292,
+      "unit": "ms, slowest 1% of input replies",
+      "beforeText": "451 ms on WebSockets at 250 ms ping and 1% loss",
+      "afterText": "292 ms on WebTransport, about the same as a clean line (289 ms)",
+      "plain": "On WebSockets one lost packet holds up every input behind it. The new optional WebTransport path sends every unacknowledged input in each packet, so the next packet repairs a lost one.",
+      "kind": "model",
+      "source": "npx tsx tools/netlab.mts 250 --jitter 20 --loss 1, the real client and server code over a simulated link; Captain drive handoffs/upstream/batch14/wt/bodies/wt-input-window.md",
+      "date": "2026-11-06",
+      "prs": [
+        231
+      ]
+    },
+    {
+      "id": "geofree",
+      "head": "Less memory held twice",
+      "before": 219,
+      "after": 138,
+      "unit": "MB of shape copies in a match",
+      "beforeText": "219 MB kept in main memory after upload",
+      "afterText": "138 MB with ?geofree=1",
+      "plain": "Meshes kept a copy of their shape in main memory after the graphics card had it. They now drop it and rebuild it only if the browser resets the graphics. It is behind a flag today; turning it on for everyone waits on a real-GPU check.",
+      "kind": "measured",
+      "source": "SwiftShader on a cloud machine, tools/performance/memory.mts; project drive handoffs/geofree-default/README.md (PR #268, open)",
+      "date": "2026-11-06",
+      "prs": [
+        241,
+        244,
+        251,
+        255,
+        262,
+        264
+      ]
+    }
+  ],
+  "lessons": [
+    {
+      "id": "thread",
+      "head": "One thread isn't really the wall",
+      "plain": "Every WebGL engine sends its draw calls from one JavaScript thread, three.js included. But the browser already does the heavy driver work in its own GPU process, and the WebGL calls are only about 10% of my main thread. What fills it is my own code around each draw: about 16 µs a draw on my RTX laptop and 12 µs on the Mac mini, against about 1.5 µs for plain three.js in a benchmark. That gap is mine to fix.",
+      "kind": "measured",
+      "source": "RTX laptop, Chrome D3D11, 1080p High, walk-town tour medians (765 draws) and 4 CPU profiles; Mac mini M4 Chrome tour (755 draws); three.js floor from a 1,500-mesh microbenchmark on a cloud machine; Captain drive reports/KONG-89.md",
+      "date": "2026-11-06",
+      "chart": {
+        "type": "bars",
+        "unit": "µs per draw",
+        "rows": [
+          {
+            "label": "My game, RTX laptop",
+            "value": 16,
+            "kind": "measured"
+          },
+          {
+            "label": "My game, Mac mini",
+            "value": 12,
+            "kind": "measured"
+          },
+          {
+            "label": "Plain three.js",
+            "value": 1.5,
+            "low": 0.8,
+            "high": 1.7,
+            "kind": "measured"
+          }
+        ]
+      }
+    },
+    {
+      "id": "split",
+      "head": "Where my main thread goes",
+      "plain": "Share of main-thread busy time on the RTX laptop walking through town. three.js drawing is the biggest piece; my game's own update is next.",
+      "kind": "measured",
+      "source": "4 Chrome CPU profiles, RTX laptop, walk-town, bucketed by call tree; Captain drive reports/KONG-89.md",
+      "date": "2026-11-06",
+      "chart": {
+        "type": "split",
+        "segments": [
+          {
+            "label": "three.js draw submit",
+            "pct": 30.7
+          },
+          {
+            "label": "game update",
+            "pct": 17.9
+          },
+          {
+            "label": "practice server",
+            "pct": 8.6
+          },
+          {
+            "label": "scene walk",
+            "pct": 7.7
+          },
+          {
+            "label": "shadows",
+            "pct": 7.4
+          },
+          {
+            "label": "matrices",
+            "pct": 7.1
+          },
+          {
+            "label": "everything else",
+            "pct": 20.6
+          }
+        ]
+      }
+    },
+    {
+      "id": "noise",
+      "head": "Small wins hide in the noise",
+      "plain": "A 5-run frame-time test can't see a change smaller than about 5%. So I price each idea with a profile and object counts before I spend GPU time on it, and a PR can say \"no clear change\" and still be a real saving.",
+      "kind": "measured",
+      "source": "Noise band of 5-run A/Bs from reports/KONG-68.md and KONG-89.md; the #265 result from reports/KONG-82.md; freezing static nodes is an estimate (0.15 to 0.3 ms of 18.9 ms) from reports/KONG-89.md",
+      "date": "2026-11-06",
+      "chart": {
+        "type": "band",
+        "band": 5,
+        "points": [
+          {
+            "label": "Safari High fps (#265)",
+            "pct": 28.4,
+            "kind": "measured"
+          },
+          {
+            "label": "Freezing static scene nodes",
+            "pct": 1.2,
+            "kind": "estimate"
+          }
+        ]
+      }
+    },
+    {
+      "id": "rays",
+      "head": "The same effect costs different amounts on different machines",
+      "plain": "The light rays are nearly free on my RTX laptop but likely cost a few ms on a Mac at Retina resolution. In Safari that can be the difference between 60 and 30 fps, because frames snap to the screen's refresh. These are estimates: there is no per-pass GPU timer yet, and adding one is on my list.",
+      "kind": "estimate",
+      "source": "Fetch counts for the quarter-resolution light-ray pass in client/src/world/atmos/post.ts; Captain drive reports/KONG-89.md",
+      "date": "2026-11-06",
+      "chart": {
+        "type": "bars",
+        "unit": "ms per frame",
+        "line": {
+          "value": 16.7,
+          "label": "one 60 Hz frame"
+        },
+        "rows": [
+          {
+            "label": "RTX laptop, 1080p",
+            "value": 0.2,
+            "high": 0.2,
+            "kind": "estimate"
+          },
+          {
+            "label": "Base M-series Mac, 1080p",
+            "value": 0.65,
+            "low": 0.3,
+            "high": 1,
+            "kind": "estimate"
+          },
+          {
+            "label": "Mac at Retina (DPR 2)",
+            "value": 2,
+            "low": 1,
+            "high": 3,
+            "kind": "estimate"
+          }
+        ]
+      }
+    },
+    {
+      "id": "gauge",
+      "head": "Safari plays by its own rules",
+      "plain": "Safari caps how much memory one tab can use: around 8.5 GB on a 16 GB Mac, where I saw tabs reach the limit at 8.4 to 8.8 GB. Its frame timing even fooled my refresh-rate detection, so I fixed that too.",
+      "kind": "measured",
+      "source": "Safari page memory on a Mac mini M4 16 GB; tools/dashboard/story.json; the limit range from Captain drive reports/KONG-62.md",
+      "date": "2026-11-05",
+      "chart": {
+        "type": "gauge",
+        "max": 10,
+        "unit": "GB",
+        "limit": 8.5,
+        "limitLabel": "Safari's limit, about 8.5 GB",
+        "marks": [
+          {
+            "label": "Before",
+            "value": 8.5,
+            "kind": "measured"
+          },
+          {
+            "label": "Now",
+            "value": 7.3,
+            "kind": "measured"
+          }
+        ]
+      }
+    },
+    {
+      "id": "evict",
+      "head": "Freeing memory takes ownership",
+      "plain": "Low-memory mode at first only waited to load far-away areas, so after a few km you were back to full memory. It now frees far areas and draws a cheap stand-in in their place.",
+      "kind": "measured",
+      "source": "Locations held at once in a Safari match on a Mac mini M4 16 GB, before and after eviction; tools/dashboard/story.json; Chrome D3D11 growth trace in project drive handoffs/lowmem-growth-d3d11/README.md",
+      "date": "2026-11-05",
+      "chart": {
+        "type": "bars",
+        "unit": "far-away locations loaded at once",
+        "rows": [
+          {
+            "label": "Before: load near, never free",
+            "value": 10,
+            "kind": "measured"
+          },
+          {
+            "label": "Now: free the farthest",
+            "value": 4,
+            "kind": "measured"
+          }
+        ]
+      }
+    }
+  ],
+  "machines": [
+    {
+      "name": "Mac mini M4, 16 GB",
+      "cells": {
+        "safari": "full match for memory, frame rate",
+        "chrome": "frame-time tour, memory",
+        "edge": "",
+        "none": ""
+      }
+    },
+    {
+      "name": "MacBook Pro M3 Max",
+      "cells": {
+        "safari": "my own playtests",
+        "chrome": "",
+        "edge": "",
+        "none": ""
+      }
+    },
+    {
+      "name": "RTX Windows laptop",
+      "cells": {
+        "safari": "",
+        "chrome": "release checks, frame-time tour, memory",
+        "edge": "release checks",
+        "none": ""
+      }
+    },
+    {
+      "name": "Cloud machines, no graphics card",
+      "cells": {
+        "safari": "",
+        "chrome": "",
+        "edge": "",
+        "none": "every check on every PR"
+      }
+    }
+  ],
+  "machineSource": "Release check notes in project drive handoffs/release-kong-v*-d3d11/; Mac runs in Captain drive reports/KONG-54.md, KONG-68.md and KONG-82.md; playtests in the Captain drive NOTES.md",
+  "gates": [
+    "A smoke test: the title loads with no errors, a bot match starts, the Firing Range works",
+    "A frame-time and load comparison against the last stable release",
+    "A full Safari match on a 16 GB Mac for memory",
+    "A two-player online match"
+  ],
+  "prsWhy": "I keep each change small and doing one thing, so it's easy to review, measure and roll back. Every PR runs the full check suite, the CI jobs and an AI review before it can land, and the numbers on this dashboard come from those checks."
+}

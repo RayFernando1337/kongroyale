@@ -4,6 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gb, readDevices, renderDeviceChart } from "./device-chart.mts";
 import type { DeviceChart } from "./device-chart.mts";
+import { readFront, renderFront, renderHillPage } from "./front.mts";
+import { readGoals, renderGoalBars, renderGoalsPage, renderTimeline, scoreGoals } from "./goals.mts";
+import type { Gates } from "./goals.mts";
+import { readHill } from "./hillclimb.mts";
 import { readTrace, renderSvg } from "./memory-chart.mts";
 
 type Area = { id: string; name: string; blurb: string };
@@ -38,7 +42,7 @@ type Story = {
   safari: { title: string; plain: string; columns: string[]; rows: { build: string; end: string; time: string; peak: string; pois: string }[]; steps: string; caveat: string; method: string };
   journey: { title: string; items: { pr: number; text: string }[] };
 };
-type Pr = { number: number; title: string; state: string; labels: { name: string }[]; mergedAt: string | null; createdAt: string; url: string };
+type Pr = { number: number; title: string; state: string; labels: { name: string }[]; mergedAt: string | null; createdAt: string; url: string; isDraft?: boolean; additions?: number; deletions?: number };
 type Release = { tagName: string; name: string; isPrerelease: boolean; publishedAt: string; url: string; body: string };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -106,7 +110,7 @@ function main(): void {
   const hide = new RegExp(data.hide, "i");
   const shown = (title: string) => !hide.test(title);
 
-  const prs = ghJson<Pr[]>(["pr", "list", "-R", data.repo, "--base", "main", "--state", "all", "--limit", "100000", "--json", "number,title,state,labels,mergedAt,createdAt,url"]);
+  const prs = ghJson<Pr[]>(["pr", "list", "-R", data.repo, "--base", "main", "--state", "all", "--limit", "100000", "--json", "number,title,state,labels,mergedAt,createdAt,url,isDraft,additions,deletions"]);
   if (prs.length === 0) throw new Error("gh returned no pull requests for " + data.repo);
   const upstream = ghJson<Pr[]>(["pr", "list", "-R", data.upstreamRepo, "--author", data.upstreamAuthor, "--state", "all", "--limit", "100000", "--json", "number,title,state,labels,mergedAt,createdAt,url"]);
   const totalCommits = Number(gh(["api", "repos/" + data.repo + "/compare/" + data.baseCommit + "...main", "--jq", ".total_commits"]).trim());
@@ -219,28 +223,7 @@ function main(): void {
       return '<div class="card area"><div class="perf-head"><h3>' + esc(a.name) + '</h3><div class="delta">' + list.length + '</div></div><p class="plain">' + esc(a.blurb) + '</p><ul class="list">' + plainFirst.map(prItem).join("") + "</ul></div>";
     }).join("");
 
-  const releaseCards = releases.map((r) => {
-    const groups = [...r.body.matchAll(/^## (.+)$/gm)].map((m, i, all) => {
-      const start = (m.index ?? 0) + m[0].length;
-      const end = i + 1 < all.length ? all[i + 1].index : r.body.length;
-      const nums = [...r.body.slice(start, end).matchAll(/^- #(\d+)/gm)].map((x) => Number(x[1]));
-      return { name: m[1], prs: nums.map((n) => merged.find((p) => p.number === n)).filter((p): p is Pr => !!p && shown(p.title)) };
-    });
-    const channels = [r.tagName === nextTag ? "next" : "", r.tagName === stableTag ? "stable" : ""].filter(Boolean);
-    const pills = (channels.length ? channels : [r.isPrerelease ? "prerelease" : "release"]).map((c) => '<span class="pill ' + c + '">' + c + "</span>").join(" ");
-    const total = groups.reduce((a, g) => a + g.prs.length, 0);
-    return '<div class="card"><div class="perf-head"><h3><a href="' + esc(r.url) + '">' + esc(r.tagName) + '</a></h3><div>' + pills + "</div></div>" +
-      '<p class="plain">' + total + " changes, published " + shortDate(r.publishedAt) + ".</p><div class=\"chips\">" + groups.map((g) => '<span class="chip"><b>' + g.prs.length + "</b> " + esc(g.name) + "</span>").join("") + "</div>" +
-      groups.map((g) => "<details><summary>" + esc(g.name) + " (" + g.prs.length + ')</summary><ul class="list">' + g.prs.map(prItem).join("") + "</ul></details>").join("") + "</div>";
-  }).join("");
-  const releasesPage =
-    '<h2>Release channels</h2><div class="stats">' +
-    stat(nextTag ?? "none", "next", nextTag && nextTag === stableTag ? "the newest release, which is also stable" : "the newest release, being tested on real graphics cards") +
-    stat(stableTag ?? "not set yet", "stable", stableTag ? "what players get" : "a release moves here after it passes the Mac and Windows checks") +
-    stat(unreleased.length, "merged since the last release", "these go out in the next release") + "</div>" +
-    '<div class="card"><h3>Release schedule</h3><p class="plain">' + esc(data.releaseTrain.plain) + "</p></div>" +
-    "<h2>Releases</h2>" + (releaseCards || '<p class="muted">No releases yet.</p>') +
-    (unreleased.length ? '<h2>On main, not released yet</h2><div class="card"><ul class="list">' + unreleased.filter((p) => shown(p.title)).map(prItem).join("") + "</ul></div>" : "");
+  const unreleasedList = unreleased.length ? '<h2>On main, not released yet</h2><div class="card"><p class="plain">' + esc(data.releaseTrain.plain) + '</p><ul class="list">' + unreleased.filter((p) => shown(p.title)).map(prItem).join("") + "</ul></div>" : "";
 
   const doneCount = (ph: Phase) => ph.issues.filter((i) => i[1] === "Done").length;
   const phaseCard = (name: string, plain: string, done: number, total: number, items: [string, string][], note: string) => {
@@ -333,13 +316,51 @@ function main(): void {
     '<details class="more"><summary>' + esc(story.journey.title) + '</summary><ol class="timeline">' + story.journey.items.map((i) => "<li><span class=\"when\">" + mergedOn(i.pr) + "</span> " + prLink(i.pr) + " " + esc(i.text) + "</li>").join("") + "</ol></details>" +
     '<details class="more"><summary>Words used on this page</summary><dl class="words">' + story.firstWords.map((w) => "<dt>" + esc(w.term) + "</dt><dd>" + esc(w.plain) + "</dd>").join("") + "</dl></details>";
 
-  const pages: [string, string, string][] = [["start", "Start here", start], ["summary", "Summary", summary], ["overview", "Overview", overview], ["releases", "Releases", releasesPage], ["performance", "Performance", performance], ["memory", "Memory", memoryPage], ["devices", "Memory by device", devicePage], ["fixes", "Fixes", fixes], ["roadmap", "Roadmap", roadmap], ["play", "Play experience", play], ["waiting", "Waiting", waiting]];
+  const root = path.join(HERE, "..", "..");
+  const checks = execFileSync("node", ["tools/run-tests.mjs", "--list"], { cwd: root, encoding: "utf8" }).split("\n").filter((l) => l.trim()).length;
+  const ciJobs = [...fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8").matchAll(/^  [\w-]+:\n    name: (.+)$/gm)].map((m) => m[1].trim());
+  const hill = readHill(path.join(HERE, "hillclimb.json"));
+  const goals = readGoals(path.join(HERE, "goals.json"));
+  const goalCtx = { prs, devices, hill, upMerged: upMerged.length, upTotal: upstream.length, now: now.getTime(), shown, plainOf: (n: number) => data.prs[String(n)]?.plain, prLink };
+  const scored = scoreGoals(goals, goalCtx);
+  const front = renderFront(readFront(path.join(HERE, "front.json")), {
+    merged: merged.map((p) => ({ mergedAt: p.mergedAt as string, additions: p.additions ?? 0, deletions: p.deletions ?? 0 })),
+    baseTag: data.baseTag,
+    checks,
+    ciJobs,
+    upMerged: upMerged.length,
+    upOpen: upOpen.length,
+    upTotal: upstream.length,
+    prLink,
+  }, renderGoalBars(scored));
+  const gates = JSON.parse(fs.readFileSync(path.join(HERE, "release-gates.json"), "utf8")) as Gates;
+  const releasesPage = renderTimeline(releases, goals, gates, { ...goalCtx, baseTag: data.baseTag, baseDate: "2026-11-02", nextTag, stableTag }) + unreleasedList;
+
+  const pages: [string, string, string, string][] = [
+    ["front", "Home", front, ""],
+    ["goals", "Goals", renderGoalsPage(goals, scored, goalCtx), ""],
+    ["releases", "Releases", releasesPage, ""],
+    ["hill", "Hill climb", renderHillPage(hill, prLink), ""],
+    ["devices", "Memory by device", devicePage, ""],
+    ["start", "Start here", start, "The Safari story and the first words, with every match run."],
+    ["summary", "Summary", summary, "The project in four numbers and what players get."],
+    ["overview", "Overview", overview, "Live counts from GitHub and the last 24 hours."],
+    ["performance", "Performance", performance, "Every before-and-after measurement, regressions included."],
+    ["memory", "Memory over time", memoryPage, "Memory traces through a whole match, per browser."],
+    ["fixes", "Fixes by area", fixes, "Every merged change, sorted by the part of the game it touches."],
+    ["roadmap", "Plan", roadmap, "The tracker's phases and how many items are done."],
+    ["play", "Play experience", play, "Each moment a player feels, with today's number and the goal."],
+    ["waiting", "Waiting", waiting, "Open PRs, PRs offered upstream, and decisions waiting on people."],
+  ];
+  const more = '<h2>More detail</h2><p class="lead">The full pages behind the front page. Everything here is also linked from the goal or number it explains.</p><ul class="morelist">' + pages.filter((p) => p[3]).map((p) => '<li><a href="#' + p[0] + '">' + esc(p[1]) + '</a><span class="muted">' + esc(p[3]) + "</span></li>").join("") + "</ul>";
+  pages.push(["more", "More", more, ""]);
+  const navPages = pages.filter((p) => !p[3]);
   const css = fs.readFileSync(path.join(HERE, "style.css"), "utf8");
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>try{var t=localStorage.getItem("kr-theme");if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="light"}</script><title>' + esc(data.title) + "</title><style>" + css + "</style></head><body>" +
-    '<header><div class="brand">' + esc(data.title.split(":")[0]) + '</div><nav>' + pages.map((p) => '<a href="#' + p[0] + '" data-page="' + p[0] + '">' + p[1] + "</a>").join("") + '</nav><button type="button" class="theme"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><span class="theme-label"></span></button></header><main>' +
+    '<header><div class="brand">' + esc(data.title.split(":")[0]) + '</div><nav>' + navPages.map((p) => '<a href="#' + p[0] + '" data-page="' + p[0] + '">' + p[1] + "</a>").join("") + '</nav><button type="button" class="theme"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><span class="theme-label"></span></button></header><main>' +
     pages.map((p) => '<section id="' + p[0] + '" class="page">' + p[2] + "</section>").join("") +
     '</main><footer>Built from commit <a href="https://github.com/' + data.repo + "/commit/" + sha + '">' + sha + "</a> at " + stamp(now.toISOString()) + ". Counts are live from GitHub as of then. Measurements come from tools/dashboard/data.json, tools/dashboard/devices.json and the memory traces in tools/dashboard/memory/, where each one names its source.</footer>" +
-    "<script>function show(){var id=(location.hash||'#start').slice(1);if(!document.getElementById(id))id='start';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});document.querySelectorAll('nav a').forEach(function(a){var on=a.dataset.page===id;a.classList.toggle('on',on);if(on){a.setAttribute('aria-current','page');var n=a.parentNode;n.scrollLeft=a.offsetLeft-(n.clientWidth-a.offsetWidth)/2}else a.removeAttribute('aria-current')});scrollTo(0,0)}addEventListener('hashchange',show);show();var tb=document.querySelector('.theme'),tl=tb.querySelector('.theme-label'),root=document.documentElement;function label(){var d=root.dataset.theme==='dark';tl.textContent=d?'Dark':'Light';tb.setAttribute('aria-label','Colour theme: '+(d?'dark':'light')+'. Switch to '+(d?'light':'dark'))}label();tb.addEventListener('click',function(){var n=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('kr-theme',n)}catch(e){}label()});matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){var s;try{s=localStorage.getItem('kr-theme')}catch(x){}if(s!=='light'&&s!=='dark'){root.dataset.theme=e.matches?'dark':'light';label()}});</script></body></html>";
+    "<script>function show(){var id=(location.hash||'#front').slice(1);if(!document.getElementById(id))id='front';document.querySelectorAll('.page').forEach(function(s){s.hidden=s.id!==id});var known=document.querySelector('nav a[data-page='+JSON.stringify(id)+']')?id:'more';document.querySelectorAll('nav a').forEach(function(a){var on=a.dataset.page===known;a.classList.toggle('on',on);if(on){a.setAttribute('aria-current','page');var n=a.parentNode;n.scrollLeft=a.offsetLeft-(n.clientWidth-a.offsetWidth)/2}else a.removeAttribute('aria-current')});scrollTo(0,0)}addEventListener('hashchange',show);show();var tb=document.querySelector('.theme'),tl=tb.querySelector('.theme-label'),root=document.documentElement;function label(){var d=root.dataset.theme==='dark';tl.textContent=d?'Dark':'Light';tb.setAttribute('aria-label','Colour theme: '+(d?'dark':'light')+'. Switch to '+(d?'light':'dark'))}label();tb.addEventListener('click',function(){var n=root.dataset.theme==='dark'?'light':'dark';root.dataset.theme=n;try{localStorage.setItem('kr-theme',n)}catch(e){}label()});matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(e){var s;try{s=localStorage.getItem('kr-theme')}catch(x){}if(s!=='light'&&s!=='dark'){root.dataset.theme=e.matches?'dark':'light';label()}});</script></body></html>";
   fs.mkdirSync(out, { recursive: true });
   fs.writeFileSync(path.join(out, "index.html"), html);
   console.log("dashboard: " + path.join(out, "index.html") + " (" + merged.length + " merged, " + open.length + " open, " + upOpen.length + " upstream open, " + totalCommits + " commits)");

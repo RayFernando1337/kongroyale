@@ -1,0 +1,306 @@
+{
+  "about": [
+    "Goals and tentpoles for the dashboard's front page and Goals page.",
+    "progress says how the bar is computed, never guessed: steps (share of steps done; a step with a pr is done when that PR is merged on GitHub, a step with hill is done when the newest measured point meets atMost or atLeast, any other step needs done and evidence), device (the first and newest measured points of a devices.json line against its goal point), hill (the first and newest measured points of a hillclimb.json series against target), or upstream (PRs accepted on Max's game, live from GitHub).",
+    "full says what 100% means. match is a regex on PR titles that ties PRs to the goal; a step's pr counts too. waiting names open PRs held for a check, shown as their status."
+  ],
+  "waiting": {
+    "249": "waiting on GPU gate",
+    "268": "waiting on GPU gate"
+  },
+  "goals": [
+    {
+      "id": "cpu",
+      "name": "CPU, power and smoothness",
+      "issue": "RAY-237",
+      "tentpole": true,
+      "plain": "Cut what my game spends on each draw, so a core gets idle time every frame and fans stay quiet.",
+      "full": "All five roadmap phases landed with measured A/B numbers, and the RTX laptop's main thread under 16.7 ms walking through town.",
+      "page": "hill",
+      "progress": {
+        "type": "steps"
+      },
+      "match": "census|hostworker|host in a Web Worker|per-draw|pose-hold|KONG-89|RAY-23[127]",
+      "steps": [
+        {
+          "label": "Per-draw cost census",
+          "pr": 281
+        },
+        {
+          "label": "Practice host in a worker (phase 2, behind a flag)",
+          "pr": 277
+        },
+        {
+          "label": "Power and thermal baseline on a Mac",
+          "hill": {
+            "metric": "power-w"
+          }
+        },
+        {
+          "label": "Phase 1: per-draw fixes bring the RTX main thread under 16.7 ms",
+          "hill": {
+            "metric": "main-ms",
+            "series": "rtx-walk-town",
+            "atMost": 16.7
+          }
+        },
+        {
+          "label": "Phase 3: fewer scene objects walked",
+          "done": false
+        },
+        {
+          "label": "Phase 4: per-pass GPU timers and budgets per tier",
+          "done": false
+        },
+        {
+          "label": "Phase 5: battery and thermal mode (my call, with A/B numbers)",
+          "done": false
+        }
+      ]
+    },
+    {
+      "id": "gates",
+      "name": "Checks that stop regressions",
+      "issue": "RAY-238",
+      "tentpole": true,
+      "plain": "Every PR is checked so memory, speed, loading and looks can't quietly get worse.",
+      "full": "Every PR checked for memory, performance, load time and visuals, with a comment showing what changed.",
+      "progress": {
+        "type": "steps"
+      },
+      "match": "budget|gate|check-size|nettail|net-tail|RAY-238|RAY-230",
+      "steps": [
+        {
+          "label": "Download size budget",
+          "pr": 61
+        },
+        {
+          "label": "Memory at the title",
+          "pr": 114
+        },
+        {
+          "label": "Memory from match to match",
+          "done": true,
+          "evidence": "CI job no-GPU match-to-match memory (.github/workflows/ci.yml)"
+        },
+        {
+          "label": "Network tails",
+          "pr": 216
+        },
+        {
+          "label": "Same match on every computer (state hash)",
+          "done": true,
+          "evidence": "npm test step sim (tools/run-tests.mjs)"
+        },
+        {
+          "label": "Memory in a match and in low-memory mode",
+          "pr": 272
+        },
+        {
+          "label": "Per-draw cost budget",
+          "done": false
+        },
+        {
+          "label": "Load time",
+          "done": false
+        },
+        {
+          "label": "Same-camera visual check",
+          "done": false
+        },
+        {
+          "label": "A comment on each PR showing what changed",
+          "done": false
+        }
+      ]
+    },
+    {
+      "id": "lowmem",
+      "name": "Smaller machines",
+      "issue": "RAY-227",
+      "plain": "Fit a whole match on 16 GB Macs in Safari, then 12 GB and 10 GB machines.",
+      "full": "Safari's whole-browser peak in a match at the plan's 3,850 MB target on a 16 GB Mac.",
+      "page": "devices",
+      "progress": {
+        "type": "device",
+        "sku": "mac16",
+        "chart": "peak",
+        "line": "safari-whole"
+      },
+      "match": "lowmem|low-mem|geofree|farimp|far impostor|poicap|evict|RAY-22[78]|RAY-10[4-7]",
+      "steps": [
+        {
+          "label": "Free far-away places in low-memory mode",
+          "pr": 149
+        },
+        {
+          "label": "Safari finishes a match on a 16 GB Mac",
+          "done": true,
+          "evidence": "kong-v0.6.1 and kong-v1.0.1 reached the results screen (tools/dashboard/devices.json)"
+        },
+        {
+          "label": "Drop shape copies after upload (behind a flag)",
+          "pr": 264
+        },
+        {
+          "label": "Drop shape copies for everyone",
+          "pr": 268
+        },
+        {
+          "label": "Far stand-ins on by default",
+          "pr": 249
+        },
+        {
+          "label": "Measure 12 GB and 10 GB machines",
+          "done": false
+        }
+      ]
+    },
+    {
+      "id": "safari",
+      "name": "Smooth Safari",
+      "issue": "RAY-186",
+      "plain": "Safari at High on a Retina Mac should hold 60 fps, not snap to 30.",
+      "full": "60 fps at High, DPR 2, in Safari on the Mac.",
+      "page": "hill",
+      "progress": {
+        "type": "hill",
+        "metric": "fps",
+        "series": "honu-safari-high",
+        "target": 60
+      },
+      "match": "RAY-186|half-rate|safari",
+      "steps": [
+        {
+          "label": "Half-rate guard lowers 3D resolution while frames miss",
+          "pr": 265
+        }
+      ]
+    },
+    {
+      "id": "wt",
+      "name": "Better on bad connections",
+      "issue": "RAY-184",
+      "plain": "WebTransport so a lost packet doesn't hold up every input behind it.",
+      "full": "Tested with real players against WebSockets, and switched on by default if it wins.",
+      "progress": {
+        "type": "steps"
+      },
+      "match": "WebTransport|RAY-184|\\bwt\\b",
+      "steps": [
+        {
+          "label": "Server endpoint (off by default)",
+          "pr": 227
+        },
+        {
+          "label": "Client link with WebSocket fallback",
+          "pr": 228
+        },
+        {
+          "label": "Inputs sent as datagrams",
+          "pr": 231
+        },
+        {
+          "label": "Network checks per transport",
+          "pr": 254
+        },
+        {
+          "label": "A/B split for a share of players",
+          "pr": 274
+        },
+        {
+          "label": "Run the real-player A/B",
+          "done": false
+        },
+        {
+          "label": "Decide the default from the numbers",
+          "done": false
+        }
+      ]
+    },
+    {
+      "id": "cores",
+      "name": "Servers that use every core",
+      "plain": "Spread server work across every CPU core instead of one.",
+      "full": "Matches spread across cores, benchmarked with 50 players per match.",
+      "progress": {
+        "type": "steps"
+      },
+      "match": "per-core|every core",
+      "steps": [
+        {
+          "label": "Design",
+          "done": false
+        },
+        {
+          "label": "Build it behind a flag",
+          "done": false
+        },
+        {
+          "label": "Benchmark with bench:server",
+          "done": false
+        }
+      ]
+    },
+    {
+      "id": "diag",
+      "name": "Reports from players",
+      "issue": "RAY-162",
+      "plain": "Esc → REPORT A PROBLEM sends me your logs, a replay and a screenshot, and I sort them into clusters.",
+      "full": "Players can send a report in one click, and every report lands in a ranked queue I can fix from.",
+      "progress": {
+        "type": "steps"
+      },
+      "match": "diag|playtest|triage|RAY-162|KONG-71",
+      "steps": [
+        {
+          "label": "Bundles with metrics, build and replay",
+          "pr": 105
+        },
+        {
+          "label": "Diagnostics recorder",
+          "pr": 198
+        },
+        {
+          "label": "Triage into clusters",
+          "pr": 199
+        },
+        {
+          "label": "Send sheet and crash prompt",
+          "pr": 215
+        },
+        {
+          "label": "Consent wording I signed off",
+          "pr": 233
+        },
+        {
+          "label": "Smaller uploads",
+          "pr": 275
+        },
+        {
+          "label": "Folder caps",
+          "pr": 276
+        },
+        {
+          "label": "Automatic performance summaries",
+          "pr": 280
+        },
+        {
+          "label": "Agent triage pipeline",
+          "done": false
+        }
+      ]
+    },
+    {
+      "id": "upstream",
+      "name": "Sharing with Max's game",
+      "plain": "Every fix offered back to the original Kong Royale as a small, tested PR.",
+      "full": "Every PR offered upstream accepted or closed by Max.",
+      "progress": {
+        "type": "upstream"
+      },
+      "match": "^$",
+      "steps": []
+    }
+  ]
+}

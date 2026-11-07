@@ -1,0 +1,60 @@
+{
+  "about": "Release gate results per kong-v tag, from the gate notes. Safari survival comes from tools/dashboard/devices.json (mac16, peak, safari-page), so it isn't repeated here. A tag with no entry for a gate shows \"no record\".",
+  "releases": {
+    "kong-v0.3.0": {
+      "d3d11": {
+        "verdict": "pass",
+        "source": "Chrome and Edge; Captain drive renders/KONG-21/release-kong-v0.3.0"
+      },
+      "metal": {
+        "verdict": "pass",
+        "source": "Mac mini M4, Chrome and Safari load; Captain drive NOTES.md 2026-11-04"
+      }
+    },
+    "kong-v0.4.0": {
+      "d3d11": {
+        "verdict": "pass",
+        "source": "Chrome and Edge; Captain drive NOTES.md 2026-11-05"
+      },
+      "metal": {
+        "verdict": "pass",
+        "source": "Mac mini M4, Chrome; Captain drive NOTES.md 2026-11-05"
+      }
+    },
+    "kong-v0.5.0": {
+      "d3d11": {
+        "verdict": "pass",
+        "source": "project drive handoffs/release-kong-v0.5.0-d3d11/README.md"
+      }
+    },
+    "kong-v0.6.0": {
+      "d3d11": {
+        "verdict": "fail",
+        "source": "low-memory plane view missed 3 places, the same as v0.5.0; waived (RAY-175). project drive handoffs/release-kong-v0.6.0-d3d11/README.md",
+        "note": "waived"
+      }
+    },
+    "kong-v0.6.1": {
+      "d3d11": {
+        "verdict": "pass",
+        "source": "project drive handoffs/release-kong-v0.6.1-d3d11/README.md"
+      }
+    },
+    "kong-v1.0.1": {
+      "metal": {
+        "verdict": "pass",
+        "source": "Mac mini M4; Captain drive NOTES.md 2026-11-07"
+      }
+    },
+    "kong-v1.0.2": {
+      "d3d11": {
+        "verdict": "pass",
+        "source": "project drive handoffs/release-kong-v1.0.2-d3d11/README.md"
+      },
+      "metal": {
+        "verdict": "pass",
+        "source": "carried over from kong-v1.0.1, an identical game build; Captain drive NOTES.md 2026-11-07"
+      }
+    }
+  }
+}
