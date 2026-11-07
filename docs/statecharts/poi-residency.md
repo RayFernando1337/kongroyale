@@ -2,12 +2,18 @@
 
 In low-memory mode (on by default in Safari and on devices that report under 8 GB, `client/src/low-mem-device.ts`) the
 client does not build every location at boot. During a match it builds the nearest queued location, and before each
-build it evicts the farthest live one while the list would go over `lowmemcap` (3) or the `lowmembudget` estimate
+build it evicts the farthest live one. While the player falls or glides, "nearest" and "farthest" are measured from
+where the glide will land (the camera's velocity carried down to each location's pad, `distM`), so the location ahead
+builds first and the ones behind or to the side are the first evicted (RAY-272). Before RAY-272 the plane and the
+descent counted height above the pad too, so nothing ahead built until the player was about 450 m from it in a
+straight line while the list would go over `lowmemcap` (3) or the `lowmembudget` estimate
 (1500 MB). This is what keeps a 16 GB Mac's Safari tab alive. Desktop Chrome builds every location once and keeps it,
 so none of this runs there.
 
-The TLA+ model `tools/formal/PoiResidency.tla` checks every order of camera moves, builds, fade-ins, evictions and match
-starts and ends for four locations with a cap of 2. `MaxInside` says how many location circles the camera can stand in
+The TLA+ model `tools/formal/PoiResidency.tla` checks every order of camera moves, jumps and landings, builds, fade-ins,
+evictions and match starts and ends for four locations with a cap of 2. Each location's distance is one of four
+classes in the order the code ranks them: you are in it, the glide lands on it ("ahead", only while gliding), near,
+far. `MaxInside` says how many location circles the camera can stand in
 at once: 1, or 2, because some circles overlap on the map. The `verify-poi-residency` skill
 (`.agents/skills/verify-poi-residency/`) says how to run it.
 
@@ -25,16 +31,16 @@ stateDiagram-v2
   integrating: Fading in
   live: Live
   [*] --> queued
-  queued --> trimming: in a match, it is the nearest queued location
+  queued --> trimming: in a match, it is the nearest queued location (while gliding, nearest to where you land)
   trimming --> building: the list is under the cap, or nothing more can be evicted
   building --> integrating: build() returns
   integrating --> live: the fade-in finishes
-  live --> queued: evicted (farthest first, never the one you are in)
+  live --> queued: evicted (farthest first, never the one you are in; behind the glide before ahead of it)
 ```
 
 ## The paths that break a rule
 
-TLC reaches 66,096 states with `MaxInside = 2`, too many to draw, so the chart below draws only the shortest path to
+TLC reaches 177,633 states with `MaxInside = 2`, too many to draw, so the chart below draws only the shortest path to
 each broken rule, made by the pstack `/statechart` skill.
 
 ```mermaid
@@ -116,12 +122,14 @@ Three things put more than `lowmemcap` locations in memory, or start a build whe
 |---|---|---|
 | NoEvictWhileBuilding | A location is never thrown away while it is still building or fading in. | Yes |
 | NothingPickedOutsideMatch | Nothing new is picked to build outside a match (title, room, results lobby). | Yes |
+| GlideTargetFirst | While you fall or glide, the location you will land on builds before any queued one behind you or to the side. | Yes (RAY-272) |
+| GlideTargetKept | Making room never throws away the location you will land on while one behind you or to the side stays. | Yes (RAY-272) |
 | AtMostCapPlusOne | At most `lowmemcap` + 1 streamed locations hold memory, counting the one being built. | Only when you stand in one location at a time |
 | AtMostCap | At most `lowmemcap` streamed locations hold memory, counting the one being built. | No: one over during a fade-in |
 | NothingBuiltOutsideMatch | No build starts outside a match. | No: leaving during a trim |
 
-`tools/formal/PoiResidency.cfg` (`MaxInside = 1`) checks the first three; `PoiResidency.findings.cfg` (`MaxInside = 2`)
-checks all five.
+`tools/formal/PoiResidency.cfg` (`MaxInside = 1`) checks the first five; `PoiResidency.findings.cfg` (`MaxInside = 2`)
+checks all seven.
 
 One more thing the model shows that is not a broken rule: nothing listens for the end of a match. After you leave, the
 locations stay in memory and builds in flight finish; the 2 s timer only trims down to the cap.
@@ -133,4 +141,5 @@ locations stay in memory and builds in flight finish; the 2 s timer only trims d
 - Standing where two locations overlap keeps both whatever the cap. Is that the right call?
 - Should a location picked just before you leave a match still be built?
 - Should leaving a match evict the streamed locations, so the title and the room hold less memory?
-- Does the order of builds you see in Safari (nearest first, the one you are in never evicted) match this chart?
+- Does the order of builds you see in Safari (nearest first, the one you are in never evicted, and from the parachute
+  the location you are gliding toward first) match this chart?

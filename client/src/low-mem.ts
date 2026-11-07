@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Poi } from "../../shared/world/map";
 import { Phase } from "../../shared/sim/match";
+import { PS } from "../../shared/sim/player";
 import type { Engine } from "./engine/engine";
 import type { StaticCache } from "./engine/static-cache";
 import type { WorldModule } from "./world/module";
@@ -17,31 +18,46 @@ export function lowMemoryDevice(forced: string | null, fullPrepare: boolean): bo
   return on;
 }
 
-type Session = { game?: { inMatch?: boolean; cm?: { phase: number } | null }; caster?: { casting?: boolean } };
+type Session = { game?: { inMatch?: boolean; cm?: { phase: number; pred?: { st: number } } | null }; caster?: { casting?: boolean } };
 
 const VIEW_HALF_H_M = 150;
 const OFFSCREEN_RANK_M = 1e6;
 let viewBuilds = 0, pickedByView = false;
 const view = new THREE.Frustum(), viewProj = new THREE.Matrix4(), poiSphere = new THREE.Sphere();
 const LOOKAHEAD_S = 5, AHEAD_MIN_M = 0.01, SAMPLE_MS = 200, STALE_MS = 1000, TELEPORT_MPS = 150, FAST_MPS = 12, FAST_BUILD_GAP_MS = 8000;
-const motion = { x: 0, z: 0, at: 0, vx: 0, vz: 0, known: false, builtAt: -Infinity };
+/** while the player falls or glides, a POI's distance is taken where the glide lands on it: (height above its pad) /
+ *  sink rate seconds ahead, at least LOOKAHEAD_S and at most LANDING_MAX_S, and only once the camera sinks faster
+ *  than SINK_MIN_MPS (a stalled reading falls back to LOOKAHEAD_S) */
+const LANDING_MAX_S = 60, SINK_MIN_MPS = 1;
+const motion = { x: 0, y: 0, z: 0, at: 0, vx: 0, vy: 0, vz: 0, known: false, builtAt: -Infinity };
 
 function track(camera: THREE.Camera): boolean {
   const e = camera.matrixWorld.elements, now = performance.now(), dt = (now - motion.at) / 1000;
   if (dt * 1000 < SAMPLE_MS) return motion.known;
-  const vx = (e[12] - motion.x) / dt, vz = (e[14] - motion.z) / dt;
+  const vx = (e[12] - motion.x) / dt, vy = (e[13] - motion.y) / dt, vz = (e[14] - motion.z) / dt;
   const jump = dt * 1000 > STALE_MS || Math.hypot(vx, vz) > TELEPORT_MPS;
   motion.vx = jump ? 0 : motion.known ? (motion.vx + vx) / 2 : vx;
   motion.vz = jump ? 0 : motion.known ? (motion.vz + vz) / 2 : vz;
+  motion.vy = jump ? 0 : motion.known ? (motion.vy + vy) / 2 : vy;
   motion.known = !jump;
-  motion.x = e[12]; motion.z = e[14]; motion.at = now;
+  motion.x = e[12]; motion.y = e[13]; motion.z = e[14]; motion.at = now;
   return motion.known;
 }
 
+/** the local player is falling or gliding (not the caster's camera) */
+function descending(): boolean {
+  const kr = (globalThis as unknown as { __kr?: Session }).__kr, st = kr?.game?.cm?.pred?.st;
+  return !kr?.caster?.casting && (st === PS.Freefall || st === PS.Glide);
+}
+
+/** metres from the POI's edge: <= 0 inside it, else from where the camera will be (5 s ahead on foot, where the glide
+ *  lands while descending), so the POI ahead ranks nearest and the ones behind or to the side farthest (RAY-272) */
 function distM(camera: THREE.Camera, p: Poi): number {
   const e = camera.matrixWorld.elements;
   const here = Math.hypot(e[12] - p.x, e[14] - p.z) - p.r;
-  return here <= 0 ? here : Math.max(AHEAD_MIN_M, Math.hypot(e[12] + motion.vx * LOOKAHEAD_S - p.x, e[14] + motion.vz * LOOKAHEAD_S - p.z) - p.r);
+  if (here <= 0) return here;
+  const t = descending() && motion.vy < -SINK_MIN_MPS ? Math.min(LANDING_MAX_S, Math.max(LOOKAHEAD_S, (e[13] - (p.padY ?? 0)) / -motion.vy)) : LOOKAHEAD_S;
+  return Math.max(AHEAD_MIN_M, Math.hypot(e[12] + motion.vx * t - p.x, e[14] + motion.vz * t - p.z) - p.r);
 }
 
 function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[], radiusM: number, viewCap: number): string | null {
@@ -49,7 +65,7 @@ function nearModule(pending: string[], camera: THREE.Camera, pois: readonly Poi[
   const casting = !!kr?.caster?.casting;
   if (!kr?.game?.inMatch && !casting) return null;
   const phase = kr?.game?.cm?.phase ?? Phase.Play;
-  const airborne = !casting && phase <= Phase.Plane;
+  const airborne = !casting && phase <= Phase.Plane && !descending();
   if (phase !== Phase.Plane) viewBuilds = 0;
   const overview = !casting && phase === Phase.Plane && viewBuilds < viewCap;
   if (overview) view.setFromProjectionMatrix(viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
