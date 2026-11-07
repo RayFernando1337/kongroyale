@@ -346,7 +346,7 @@ calibrated on CI's own runner (`ubuntu-latest`, 4 vCPUs, 16 GB):
   three residency numbers to every sample: `residentPois` (built POI modules, the lobby islet included),
   `peakResidentPois` (the most at once, polled every 250 ms in the page) and `evictions`. The title budgets every
   metric. After the title, which POI is mid-build at the sample varies between runner instances, so the plane budgets
-  WebGL bytes, textures and the heap, and the match budgets WebGL bytes, the heap, `residentPois` and
+  WebGL bytes and textures, and the match budgets WebGL bytes, the heap, `residentPois` and
   `peakResidentPois`. The peak is the cap plus the islet, so it fails over budget if eviction stops holding the cap and
   under budget if nothing streams. The match's texture count, CPU copies and evictions (1-2 on seed 42) are recorded
   but not budgeted. The job takes about 10 minutes beside the others, so the workflow is no slower.
