@@ -11,7 +11,8 @@
 // Options: --browser safari|chrome|chromium (chromium = Playwright's own build; on a machine without a GPU add
 // --software, which checks the route and the counts, never the timing), --root <checkout> (serve its dist/; build
 // first), --port 3032, --viewport 1592x960 (CSS px; Safari renders at the display's own DPR, Chrome at --dpr 2),
-// --preset low|medium|high|epic|auto|auto-high|auto-medium (default high; auto leaves the game's own pick and its first-visit bench), --query "a=1&b=2" (extra URL
+// --preset low|medium|high|epic|auto|auto-high|auto-medium (default high; auto leaves the game's own pick and its
+// first-visit bench), --query "a=1&b=2" (extra URL
 // flags), --pose x,z,yawDeg,pitchDeg (default: Ray's Banana Temple report, RAY-186), --settle-s 20, --hold-s 10,
 // --capture "<command>" (a shell command started when the match starts and stopped after the hold, e.g. a screen
 // recorder, for the "while streaming" arm), --mode solo|trios, --seed 42, --ready-timeout-s 300, --play-timeout-s 300,
@@ -281,7 +282,7 @@ if (page && page.n > 1) {
 const result: RunResult = {
   schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "tools/performance/pose-hold.mts", startedAt: new Date(t0).toISOString(), durationMs: Date.now() - t0,
   source: source(root), environment: { ...env(), gpu: page ? String(page.renderer) : null },
-  config: { browser: BROWSER + " " + (d?.version ?? "?"), viewport: VW + "x" + VH, preset: PRESET, query: QUERY, pose: [PX, PZ, YAW_DEG, PITCH_DEG].join(","), settleS: SETTLE_S, holdS: HOLD_S, mode: MODE, capture: CAPTURE ? "on" : "off", atPhase: AT_PHASE, dpr: page ? Number(page.dpr) : -1, headed: BROWSER === "safari" || process.argv.includes("--headed") },
+  config: { browser: BROWSER + " " + (d?.version ?? "?"), viewport: VW + "x" + VH, preset: PRESET, query: QUERY, pose: [PX, PZ, YAW_DEG, PITCH_DEG].join(","), settleS: SETTLE_S, holdS: HOLD_S, mode: MODE, capture: CAPTURE ? "on" : "off", gpu: GPU ? "on" : "off", atPhase: AT_PHASE, dpr: page ? Number(page.dpr) : -1, headed: BROWSER === "safari" || process.argv.includes("--headed") },
   cases, errors, artifacts,
 };
 (result as unknown as Record<string, unknown>).detail = { marks, host: os.hostname(), page: page ? { ...page, T: undefined, frames: { t: page.T.map((x: number) => +(x - page.T[0]).toFixed(2)), cpu: page.CPU, calls: page.CALLS, tris: page.TRIS, points: page.PTS, programs: page.PROG } } : null };
