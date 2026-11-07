@@ -82,7 +82,7 @@ export function scoreGoals(g: Goals, ctx: GoalCtx): Scored[] {
       const done = steps.filter((s) => s.done).length;
       return { goal, steps, pct: steps.length ? (done / steps.length) * 100 : 0, headline: done + " of " + steps.length + " steps done" };
     }
-    if (p.type === "upstream") return { goal, steps, pct: ctx.upTotal ? (ctx.upMerged / ctx.upTotal) * 100 : 0, headline: ctx.upMerged + " merged upstream, " + ctx.upOpen + " open" };
+    if (p.type === "upstream") return { goal, steps, pct: ctx.upMerged + ctx.upOpen ? (ctx.upMerged / (ctx.upMerged + ctx.upOpen)) * 100 : 0, headline: ctx.upMerged + " merged upstream, " + ctx.upOpen + " open" };
     if (p.type === "hill") {
       const pts = measured(ctx.hill, p.metric, p.series);
       if (!pts.length) return { goal, steps, pct: 0, headline: "not measured yet" };
@@ -115,7 +115,7 @@ export function renderGoalBars(scored: Scored[]): string {
 
 /** The Goals page: each goal's bar, what 100% means, its steps, and the open and recent PRs that advance it. */
 export function renderGoalsPage(g: Goals, scored: Scored[], ctx: GoalCtx): string {
-  const recent = ctx.prs.filter((p) => ctx.shown(p.title) && (p.state === "OPEN" || (p.mergedAt && ctx.now - Date.parse(p.mergedAt) <= RECENT_MS)));
+  const recent = ctx.prs.filter((p) => ctx.shown(p.title) && (p.state === "OPEN" || (p.mergedAt && Date.parse(p.mergedAt) <= ctx.now && ctx.now - Date.parse(p.mergedAt) <= RECENT_MS)));
   const owner = (p: GhPr) => g.goals.find((goal) => goal.steps.some((s) => s.pr === p.number)) ?? g.goals.find((goal) => new RegExp(goal.match, "i").test(p.title));
   const status = (p: GhPr) => p.state === "MERGED" ? '<span class="pill s-done">merged ' + (p.mergedAt as string).slice(5, 10) + "</span>" : p.isDraft ? '<span class="pill s-todo">draft</span>' : g.waiting[String(p.number)] ? '<span class="pill s-waiting">' + esc(g.waiting[String(p.number)]) + "</span>" : '<span class="pill next">in review</span>';
   const prRow = (p: GhPr) => "<li>" + status(p) + ' <span class="plain">' + esc(ctx.plainOf(p.number) ?? clean(p.title)) + "</span> " + ctx.prLink(p.number) + "</li>";
@@ -127,7 +127,7 @@ export function renderGoalsPage(g: Goals, scored: Scored[], ctx: GoalCtx): strin
       '<p class="plain">' + esc(s.goal.plain) + '</p><div class="goal-head"><span class="goal-pct big">' + Math.round(s.pct) + '%</span><span class="muted">' + esc(s.headline) + "</span></div>" + bar(s.pct) +
       '<p class="muted gfull"><b>100% means:</b> ' + esc(s.goal.full) + "</p>" +
       (s.steps.length ? '<ul class="gsteps">' + s.steps.map((x) => '<li class="' + (x.done ? "done" : "todo") + '"><span class="tick" aria-hidden="true">' + (x.done ? "✓" : "○") + "</span>" + esc(x.step.label) + (x.step.pr ? " " + ctx.prLink(x.step.pr) : "") + (x.why && !x.step.pr ? ' <span class="muted">' + esc(x.why) + "</span>" : "") + "</li>").join("") + "</ul>" : "") +
-      (mine.length ? '<details open><summary>Open, and merged in the last 24 hours (' + mine.length + ')</summary><ul class="list">' + mine.slice(0, PR_LIST_MAX).map(prRow).join("") + "</ul>" + (mine.length > PR_LIST_MAX ? '<p class="muted">and ' + (mine.length - PR_LIST_MAX) + ' more on the <a href="#overview">Overview</a> page.</p>' : "") + "</details>" : "") +
+      (mine.length ? '<details open><summary>Open, and merged in the last 24 hours (' + mine.length + ')</summary><ul class="list">' + mine.slice(0, PR_LIST_MAX).map(prRow).join("") + "</ul>" + (mine.length > PR_LIST_MAX ? '<p class="muted">and ' + (mine.length - PR_LIST_MAX) + ' more: open PRs are on <a href="#waiting">Waiting</a>, merged ones on <a href="#fixes">Fixes by area</a>.</p>' : "") + "</details>" : "") +
       (s.goal.page ? '<p class="tech-line"><a href="#' + s.goal.page + '">' + esc(pageName[s.goal.page] ?? s.goal.page) + " →</a></p>" : "") + "</div>";
   }).join("");
   const other = recent.filter((p) => !owner(p));
@@ -148,15 +148,19 @@ export function renderTimeline(releases: GhRelease[], g: Goals, gates: Gates, ct
     if (!p) return '<span class="gate none" title="no Safari match on record for this tag">Safari 16 GB: no record</span>';
     return '<span class="gate ' + (p.killed ? "fail" : "pass") + '" title="' + esc(p.build + ", " + p.date + ". " + (p.note ?? "")) + '">Safari 16 GB: ' + (p.killed ? "reached the limit" : "finished, " + gb(p.mb)) + "</span>";
   };
+  const channels = (tag: string) => [tag === ctx.nextTag ? "next" : "", tag === ctx.stableTag ? "stable" : ""].filter(Boolean);
   const byNum = new Map(ctx.prs.map((p) => [p.number, p]));
   const goalOf = (p: GhPr) => g.goals.find((goal) => goal.steps.some((s) => s.pr === p.number)) ?? g.goals.find((goal) => new RegExp(goal.match, "i").test(p.title));
   const sorted = [...releases].sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt));
-  const rail = '<ol class="rail"><li class="base"><span class="dot"></span><b>' + esc(ctx.baseTag) + '</b><span class="muted">shared start</span></li>' + sorted.map((r) => '<li class="' + (r.tagName === ctx.stableTag ? "stable" : r.tagName === ctx.nextTag ? "next" : "") + '"><span class="dot"></span><b>' + esc(r.tagName.replace(/^kong-/, "")) + '</b><span class="muted">' + (r.tagName === ctx.stableTag ? "stable" : r.tagName === ctx.nextTag ? "next" : r.publishedAt.slice(5, 10)) + "</span></li>").join("") + "</ol>";
+  const rail = '<ol class="rail"><li class="base"><span class="dot"></span><b>' + esc(ctx.baseTag) + '</b><span class="muted">shared start</span></li>' + sorted.map((r) => {
+    const on = channels(r.tagName);
+    return '<li class="' + on.join(" ") + '"><span class="dot"></span><b>' + esc(r.tagName.replace(/^kong-/, "")) + '</b><span class="muted">' + (on.length ? on.join(" · ") : r.publishedAt.slice(5, 10)) + "</span></li>";
+  }).join("") + "</ol>";
   const card = (r: GhRelease) => {
     const prs = [...r.body.matchAll(/^- #(\d+)/gm)].map((m) => byNum.get(Number(m[1]))).filter((p): p is GhPr => !!p && ctx.shown(p.title));
     const groups = g.goals.map((goal) => ({ name: goal.name, list: prs.filter((p) => goalOf(p) === goal) })).filter((x) => x.list.length);
     const other = prs.filter((p) => !goalOf(p));
-    const channel = r.tagName === ctx.stableTag ? '<span class="pill stable">stable</span>' : r.tagName === ctx.nextTag ? '<span class="pill next">next</span>' : "";
+    const channel = channels(r.tagName).map((c) => '<span class="pill ' + c + '">' + c + "</span>").join(" ");
     const g2 = gates.releases[r.tagName] ?? {};
     const li = (p: GhPr) => '<li><span class="plain">' + esc(ctx.plainOf(p.number) ?? clean(p.title)) + "</span> " + ctx.prLink(p.number) + "</li>";
     return '<div class="card rcard"><div class="fwin-top"><h3><a href="' + esc(r.url) + '">' + esc(r.tagName) + "</a> " + channel + '</h3><span class="muted">' + r.publishedAt.slice(0, 10) + "</span></div>" +

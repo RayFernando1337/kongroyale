@@ -1,7 +1,7 @@
 {
   "about": [
     "Goals and tentpoles for the dashboard's front page and Goals page.",
-    "progress says how the bar is computed, never guessed: steps (share of steps done; a step with a pr is done when that PR is merged on GitHub, a step with hill is done when the newest measured point meets atMost or atLeast, any other step needs done and evidence), device (the first and newest measured points of a devices.json line against its goal point), hill (the first and newest measured points of a hillclimb.json series against target), or upstream (PRs accepted on Max's game, live from GitHub).",
+    "progress says how the bar is computed, never guessed: steps (share of steps done; a step with a pr is done when that PR is merged on GitHub, a step with hill is done when the newest measured point meets atMost or atLeast, any other step needs done and evidence), device (the first and newest measured points of a devices.json line against its goal point), hill (the first and newest measured points of a hillclimb.json series against target), or upstream (PRs merged on Max's game out of those merged or still open, live from GitHub).",
     "full says what 100% means. match is a regex on PR titles that ties PRs to the goal; a step's pr counts too. waiting names open PRs held for a check, shown as their status."
   ],
   "waiting": {
@@ -295,7 +295,7 @@
       "id": "upstream",
       "name": "Sharing with Max's game",
       "plain": "Every fix offered back to the original Kong Royale as a small, tested PR.",
-      "full": "Every PR offered upstream has been reviewed there.",
+      "full": "Every PR still offered upstream merged into Max's game.",
       "progress": {
         "type": "upstream"
       },

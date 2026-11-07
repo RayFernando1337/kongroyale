@@ -223,7 +223,7 @@ function main(): void {
       return '<div class="card area"><div class="perf-head"><h3>' + esc(a.name) + '</h3><div class="delta">' + list.length + '</div></div><p class="plain">' + esc(a.blurb) + '</p><ul class="list">' + plainFirst.map(prItem).join("") + "</ul></div>";
     }).join("");
 
-  const unreleasedList = unreleased.length ? '<h2>On main, not released yet</h2><div class="card"><p class="plain">' + esc(data.releaseTrain.plain) + '</p><ul class="list">' + unreleased.filter((p) => shown(p.title)).map(prItem).join("") + "</ul></div>" : "";
+  const unreleasedList = '<h2>On main, not released yet</h2><div class="card"><p class="plain">' + esc(data.releaseTrain.plain) + "</p>" + (unreleased.length ? '<ul class="list">' + unreleased.filter((p) => shown(p.title)).map(prItem).join("") + "</ul>" : '<p class="muted">Nothing: every merged change is in a release.</p>') + "</div>";
 
   const doneCount = (ph: Phase) => ph.issues.filter((i) => i[1] === "Done").length;
   const phaseCard = (name: string, plain: string, done: number, total: number, items: [string, string][], note: string) => {
