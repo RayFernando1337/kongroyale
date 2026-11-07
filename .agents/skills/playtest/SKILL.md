@@ -19,7 +19,9 @@ timeline and replay without the HUD, for players on a stream (RAY-162). It also 
 evicted, shader-program jumps, 3D-resolution steps, heap drops over 50 MB, context loss, visibility, fullscreen, errors; times in page seconds,
 the timeline's `t`), `path` (position and view once a second in a match) and `prev`, the last heartbeat of a session
 that died without closing (a killed tab; Web Locks tell a dead session from a live tab, see docs/statecharts/diagnostics.md from #204). GPU timer queries run as they do under `?perfhud`. The
-player's send sheet (a later PR) sends the snapshot as `ctx.diag`; the typed `/kongbot` bar and F8 don't.
+player's send sheet sends the snapshot as `bundle.diag`, which the server validates like the rest of the bundle
+(`parseBundle`, `server/playtest-bundles.ts`); the typed `/kongbot` bar and F8 don't. Reports from before that carried
+it as `ctx.diag`, and the tools (`cleanBundle` in `tools/playtest/analysis.mts`) read both.
 
 ## Where bundles land
 
@@ -38,7 +40,7 @@ side by side both write there. For the dev pair: `KR_EVENT_MODE=0 npm run server
 `npm run dev`, then open <http://localhost:5317/?perfhud>.
 
 Each bundle is a folder `<UTC time>-<report id>/` with `bundle.json` and `shot.jpg`. The server stops writing at
-500 bundles or 1 GB, counted on disk before every write (so two servers sharing a folder share the cap), logs that once, and resumes as soon as the folder is cleared. MongoDB keeps the timeline but never
+500 bundles or 1 GB (`KR_PLAYTEST_BUNDLES_MAX` and `KR_PLAYTEST_BUNDLES_MB` change them), counted on disk before every write (so two servers sharing a folder share the cap), logs that once, and resumes as soon as the folder is cleared. MongoDB keeps the timeline but never
 the replay log.
 
 ## Read them
@@ -101,6 +103,14 @@ npx tsx tools/playtest/cli.mts watch [--dir DIR] [--ticker FILE]   # a line per 
   bundle caught mid-write still shows up.
 
 `npm test -- --only triage` checks all of this against the hand-written bundles in `tools/playtest/fixtures/`.
+
+## The WebTransport A/B
+
+With `KR_WT=1` and `KR_WT_SHARE` (HOSTING.md "WebTransport"), each online bundle's `ctx.game.net` names the link's arm
+(`wt` or `ws`; `forced-wt` / `forced-ws` under `?wt=1` / `?wt=0`; `off` when the server offered none), the transport it
+settled on, the fallback reason, input→ack percentiles and the hit markers that waited for the server.
+`npx tsx tools/playtest/ab.mts [--dir DIR] [--health FILE|URL] [--json]` splits the bundles by arm and, with a
+`/health` from a server you run, adds the server's input gaps per arm. Compare only `wt` with `ws`.
 
 ## Rules
 

@@ -124,6 +124,49 @@ details.more>summary::after{margin-left:auto;font-size:1.2rem;color:var(--muted)
 .timeline li{padding:10px 0;border-top:1px solid var(--line)}
 .timeline li:first-child{border-top:0}
 .timeline .when{display:inline-block;min-width:3.8rem;margin:0 8px 0 0}
+:root{--c0:#1f6fd1;--c1:#b85a08;--c2:#166c2e;--c3:#7a30c4;--c4:#0b7c88;--c5:#a8189a}
+:root[data-theme=dark]{--c0:#5aa9ff;--c1:#ff9f43;--c2:#3ddc84;--c3:#c58cff;--c4:#4dd8e6;--c5:#f368e0}
+.dchart .grid{stroke:var(--line)}
+.dchart .t{fill:var(--muted)}
+.dchart .t-plan{font-style:italic}
+.dchart .plan-bg{fill:var(--soft)}
+.dchart .ln{stroke-width:2.5;fill:none}
+.dchart .ln-plan{stroke-dasharray:7 6}
+.dchart .whisker{stroke-width:2;opacity:.55}
+.dchart .pt{stroke:var(--bg);stroke-width:1.5}
+.dchart .pt-open{fill:var(--bg);stroke-width:2.5}
+.dchart .kill{stroke:var(--bad);stroke-width:2.5;fill:none}
+.dchart text.v{font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
+.dchart .ceil{stroke-width:2}
+.dchart .ceil-measured{stroke:var(--bad)}
+.dchart .ceil-estimate{stroke:var(--warn);stroke-dasharray:10 6}
+.dchart .ceil-target{stroke:var(--good);stroke-dasharray:2 5}
+.dchart .l0{stroke:var(--c0)}.dchart .pt.l0,.dchart text.v.l0{fill:var(--c0)}.sw.l0{background:var(--c0)}
+.dchart .l1{stroke:var(--c1)}.dchart .pt.l1,.dchart text.v.l1{fill:var(--c1)}.sw.l1{background:var(--c1)}
+.dchart .l2{stroke:var(--c2)}.dchart .pt.l2,.dchart text.v.l2{fill:var(--c2)}.sw.l2{background:var(--c2)}
+.dchart .l3{stroke:var(--c3)}.dchart .pt.l3,.dchart text.v.l3{fill:var(--c3)}.sw.l3{background:var(--c3)}
+.dchart .l4{stroke:var(--c4)}.dchart .pt.l4,.dchart text.v.l4{fill:var(--c4)}.sw.l4{background:var(--c4)}
+.dchart .l5{stroke:var(--c5)}.dchart .pt.l5,.dchart text.v.l5{fill:var(--c5)}.sw.l5{background:var(--c5)}
+.dlegend{list-style:none;padding:0;margin:14px 0 4px;display:flex;flex-wrap:wrap;gap:6px 22px;font-size:.9rem;color:var(--muted)}
+.dlegend li{display:flex;align-items:center}
+.sw{display:inline-block;width:22px;height:4px;border-radius:2px;margin-right:8px;flex:none}
+.sw-ceil{display:inline-block;width:22px;height:0;border-top:2px solid;margin-right:8px;flex:none}
+.sw-ceil.ceil-measured{border-color:var(--bad)}
+.sw-ceil.ceil-estimate{border-color:var(--warn);border-top-style:dashed}
+.sw-ceil.ceil-target{border-color:var(--good);border-top-style:dotted}
+.mk{display:inline-block;width:10px;height:10px;margin-right:8px;border:2px solid var(--text);border-radius:50%;flex:none}
+.mk-measured{background:var(--text)}
+.mk-planned{border-radius:0;transform:rotate(45deg);width:9px;height:9px}
+.mk-kill{color:var(--bad);font-weight:700;margin-right:6px}
+.pending{border-left:2px solid var(--warn);padding:2px 0 2px 14px;margin:12px 0;max-width:64ch}
+.pill.k-measured{color:var(--good)}
+.pill.k-estimate{color:var(--warn)}
+.pill.k-planned{color:var(--muted)}
+.pill.killed{color:var(--bad)}
+table.points td{font-size:.9rem}
+table.points tr:has(+ .note-row) td{border-bottom:0}
+table.points .note-row td{color:var(--muted);font-size:.85rem;padding-top:0}
+h2.sku .pill{vertical-align:middle;font-size:.8rem;letter-spacing:0}
 @media (max-width:700px){
 header{flex-wrap:wrap;padding-top:10px}.brand{flex:1}.theme{order:2}nav{order:3;flex-basis:100%;margin:0 -12px}nav a{min-height:48px}
 .chart-wide{display:none}.chart-compact{display:block}
