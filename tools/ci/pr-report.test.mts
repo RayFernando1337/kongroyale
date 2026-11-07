@@ -39,7 +39,7 @@ assert.match(row("lazy"), /far under: lower the budget/);
 assert.match(row("workers"), /\| 480 \| 480 \| 0 \| 500 \|  \|$/);
 assert.match(row("host/real-play.allocBytesPerTick"), /not measured/);
 assert.match(md, /\*\*3 to look at\*\*/);
-assert.match(md, /Not in this run: Memory at the title \(SwiftShader\), Match-to-match memory/);
+assert.match(md, /Not in this run: Memory at the title \(SwiftShader\), Memory in the first warm-up \(SwiftShader\), Match-to-match memory/);
 
 const leak = (v: number) => [{ source: "leak", name: "leak.webglMB", value: v, budget: 8, underPct: 100 }];
 assert.doesNotMatch(render(leak(3), leak(1)), /to look at/, "a leak row moving under its ceiling is not flagged");
