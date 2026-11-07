@@ -15,6 +15,7 @@ import type { Engine } from "../engine/engine";
 import type { StaticWorld } from "../../../shared/sim/world";
 import { makeHit, surfaceById } from "../../../shared/sim/world";
 import { POIS } from "../../../shared/world/map";
+import { flag } from "../flags";
 
 interface Note {
   id: string; at: string; author: string; text: string; status: "open" | "resolved";
@@ -103,10 +104,12 @@ export function startDevView(kr: Kr) {
   authorBox.value = author;
   let showDone = false;
   const btn = (a: string) => panel.querySelector(`[data-a="${a}"]`) as HTMLButtonElement;
+  // three.js builds wireframe edges from the CPU index, which geofree drops after upload (?dev=annotate keeps it)
+  if (flag("geofree")) { btn("wire").disabled = true; btn("wire").title = "needs CPU vertices: open with ?dev=annotate or ?geofree=0"; }
   panel.addEventListener("click", (e) => {
     const a = (e.target as HTMLElement).closest("[data-a]")?.getAttribute("data-a"); if (!a) return;
     if (a === "fly") setFly(!fly);
-    else if (a === "wire") setWire(!wire);
+    else if (a === "wire" && !flag("geofree")) setWire(!wire);
     else if (a === "overlap") setOverlap(!overlap);
     else if (a === "hide") setPanel(false);
     else if (a === "save") void save();
@@ -304,17 +307,10 @@ export function startDevView(kr: Kr) {
   const wired = new Set<THREE.Material>();
   function applyWire(on: boolean) {
     if (!on) { for (const m of wired) (m as THREE.MeshBasicMaterial).wireframe = false; wired.clear(); return; }
-    // a material drawn by any geofree-released mesh stays solid: three.js builds wireframe edges from the CPU index
-    const released = new Set<THREE.Material>();
-    scene.traverse((o) => {
-      const g = (o as THREE.Mesh).geometry, mm = (o as THREE.Mesh).material;
-      if (!g || !mm || (g.attributes.position?.array && (!g.index || g.index.array))) return;
-      for (const m of Array.isArray(mm) ? mm : [mm]) released.add(m);
-    });
     scene.traverse((o) => {
       if (isDev(o)) return;
       const mm = (o as THREE.Mesh).material; if (!mm) return;
-      for (const m of Array.isArray(mm) ? mm : [mm]) if ("wireframe" in m && !released.has(m) && !(m as THREE.MeshBasicMaterial).wireframe) { (m as THREE.MeshBasicMaterial).wireframe = true; wired.add(m); }
+      for (const m of Array.isArray(mm) ? mm : [mm]) if ("wireframe" in m && !(m as THREE.MeshBasicMaterial).wireframe) { (m as THREE.MeshBasicMaterial).wireframe = true; wired.add(m); }
     });
   }
   function setWire(on: boolean) { wire = on; btn("wire").classList.toggle("on", on); applyWire(on); }
