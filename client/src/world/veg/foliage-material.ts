@@ -840,8 +840,8 @@ const VEG_LITE = { value: 1 };
 /**
  * Perf: the LOD1 tier (15–85 m) of a part — no GGX sun glint, no sky-reflection fetch, no normal map: at that
  * distance the glint is sub-pixel sparkle, the sky sheen a flat tint the fill already carries, the bump detail below a
- * pixel. It shares its part's program and skips those paths on a per-material uniform (uVegLite), so a species
- * compiles one program instead of two before the island is ready (RAY-132).
+ * pixel. It shares its part's program and skips the glint and sky reflection on a per-material uniform (uVegLite), so a
+ * species without a normal map compiles one program instead of two before the island is ready (RAY-132).
  */
 export function liteMaterial(fm: FoliageMaterials): THREE.MeshStandardMaterial {
   const src = fm.mat;
@@ -850,6 +850,9 @@ export function liteMaterial(fm: FoliageMaterials): THREE.MeshStandardMaterial {
     m = src.clone();
     m.onBeforeCompile = (sh, r) => { src.onBeforeCompile(sh, r); sh.uniforms.uVegLite = VEG_LITE; };
     m.customProgramCacheKey = src.customProgramCacheKey;
+    // (no normal map: a fetch with implicit gradients inside the uVegLite branch gets flattened on D3D11, so it would
+    // still run on every LOD1 fragment; species with a normal map keep a separate lite program for this)
+    m.normalMap = null;
     m.userData = src.userData;
     (m as unknown as { defaultAttributeValues: Record<string, number[]> }).defaultAttributeValues = { aLodFade: [0, 0], aAtlas: [0], aVar: [0] };
     m.name = src.name + "-lite";
