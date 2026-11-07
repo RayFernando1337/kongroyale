@@ -82,7 +82,7 @@ export function scoreGoals(g: Goals, ctx: GoalCtx): Scored[] {
       const done = steps.filter((s) => s.done).length;
       return { goal, steps, pct: steps.length ? (done / steps.length) * 100 : 0, headline: done + " of " + steps.length + " steps done" };
     }
-    if (p.type === "upstream") return { goal, steps, pct: ctx.upMerged + ctx.upOpen ? (ctx.upMerged / (ctx.upMerged + ctx.upOpen)) * 100 : 0, headline: ctx.upMerged + " merged upstream, " + ctx.upOpen + " open" };
+    if (p.type === "upstream") return { goal, steps, pct: ctx.upTotal ? (ctx.upMerged / ctx.upTotal) * 100 : 0, headline: ctx.upMerged + " merged upstream, " + ctx.upOpen + " open" + (ctx.upTotal > ctx.upMerged + ctx.upOpen ? ", " + (ctx.upTotal - ctx.upMerged - ctx.upOpen) + " closed without merging" : "") };
     if (p.type === "hill") {
       const pts = measured(ctx.hill, p.metric, p.series);
       if (!pts.length) return { goal, steps, pct: 0, headline: "not measured yet" };
