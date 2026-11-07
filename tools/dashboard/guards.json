@@ -109,6 +109,34 @@
     "procs": {
       "label": "One process per core (real server, two processes)",
       "catches": "The multi-process server: the single-process default staying unchanged, both processes coming up and reporting together, a player landing on the process that holds their game, per-address connection caps holding across processes, a process that dies being restarted, and WebTransport ports offset per process."
+    },
+    "feed": {
+      "catches": "The admin console's report feed: it carries structured fields only (a coarse browser and system label, the place on the map, the build), keeps report text apart until asked for, and holds a bounded amount in memory."
+    },
+    "prready": {
+      "label": "Merge-ready verdicts (recorded snapshots of real PRs)",
+      "catches": "The merge-ready check giving the wrong verdict on recorded snapshots of real PRs or edited copies, or its list of required checks differing from the jobs in ci.yml. It uses no network."
+    },
+    "prreport": {
+      "catches": "The PR metrics comment misreading hostile or partial result files, giving a wrong verdict on a row, or needing an install to run."
+    },
+    "fuzz": {
+      "catches": "Seeded hostile packets against the decoders, the match host and the real server over WebSockets: anything that throws, a malformed frame accepted, a number going NaN or infinite, or the server not staying up with no handler error."
+    },
+    "scenegate": {
+      "catches": "The visibility gate: a gated object must hide while any gate is active and go back to a plain value once the last one is removed (a leftover gate once made a far stand-in vanish in one frame)."
+    },
+    "alloc": {
+      "catches": "Bytes allocated per host tick, or garbage collections, over the 7,200 play ticks of the seeded 50-bot match going over the ceiling, or more than the allowed margin under it until the ceiling is lowered.",
+      "budget": "tools/alloc-budgets.json"
+    },
+    "redteamprocs": {
+      "label": "Red team checks on the admin tools (front with two match processes)",
+      "catches": "The same hostile checks on the admin tools, run against the multi-process server; the details stay out of this page."
+    },
+    "guards": {
+      "label": "Every check is described on the How it's built page",
+      "catches": "A check in npm test or a CI job with no description in tools/dashboard/guards.json, or a description for one that no longer exists."
     }
   },
   "ci": {
