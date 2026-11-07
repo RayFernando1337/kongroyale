@@ -121,6 +121,25 @@ assert.equal(bundleDir(root, path.join(root, "elsewhere")), path.join(root, "els
   assert.ok(again.write({ at, id: "KB-8", json: {}, shot: null, shotMime: null }));
   assert.equal(w.write({ at, id: "KB-9", json: {}, shot: null, shotMime: null }), null, "a bundle another writer added counts toward the cap");
   assert.deepEqual(fs.readdirSync(dir).filter((f) => f.startsWith(".")), [], "no half-written bundle is left behind");
+
+  const stage = path.join(root, "staged"), old = new Date(Date.now() - 120_000);
+  const left = path.join(stage, ".2026-11-04T12-00-00-000Z-KB-50"), live = path.join(stage, ".2026-11-04T12-00-01-000Z-KB-51");
+  for (const f of [left, live]) { fs.mkdirSync(f, { recursive: true }); fs.writeFileSync(path.join(f, "bundle.json"), "x".repeat(200)); }
+  fs.utimesSync(left, old, old);
+  fs.mkdirSync(path.join(stage, ".keep"));
+  const st = bundleWriter(stage, () => {}, { count: 10, bytes: 300 });
+  assert.ok(!fs.existsSync(left), "a dot-named bundle a stopped server left is removed at start");
+  assert.ok(fs.existsSync(live) && fs.existsSync(path.join(stage, ".keep")), "one still being written, and other dot folders, are kept");
+  assert.equal(st.write({ at, id: "KB-52", json: { pad: "c".repeat(150) }, shot: null, shotMime: null }), null, "a bundle still being written counts toward the bytes");
+  fs.rmSync(live, { recursive: true });
+  assert.ok(st.write({ at, id: "KB-53", json: {}, shot: null, shotMime: null }));
+
+  const mixed = path.join(root, "mixed"), filling = path.join(mixed, "2026-11-04T12-00-02-000Z-KB-60");
+  fs.mkdirSync(filling, { recursive: true });
+  const mw = bundleWriter(mixed, () => {}, { count: 10, bytes: 300 });
+  assert.ok(mw.write({ at, id: "KB-61", json: {}, shot: null, shotMime: null }), "an empty folder an older server just made counts as nothing yet");
+  fs.writeFileSync(path.join(filling, "bundle.json"), "d".repeat(298));
+  assert.equal(mw.write({ at, id: "KB-62", json: {}, shot: null, shotMime: null }), null, "its bytes count once that server fills it");
   assert.ok(parseBundle({ ...good, replay: { ...good.replay, opts: { seed: 1, botAimRange: "Infinity", humans: [{ id: 0, name: "KONG", team: 0 }] } } }).ok);
 }
 
