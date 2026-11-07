@@ -1,6 +1,6 @@
 // The PR metrics comment: one table of every budgeted number, main against the pull request, so an author sees a number
 // move before it crosses its budget. CI's jobs upload their reports as artifacts (ci-metrics-test, ci-metrics-boot,
-// memory-result); .github/workflows/pr-metrics.yml downloads a PR run's and main's, runs this file with plain Node
+// memory-result, memory-lowmem-result); .github/workflows/pr-metrics.yml downloads a PR run's and main's, runs this file with plain Node
 // (type stripping, no npm install) from main's checkout, and posts the markdown as one comment it keeps updating.
 //   node --experimental-strip-types tools/ci/pr-report.mts --head DIR [--base DIR] [--head-sha SHA] [--base-sha SHA] [--out FILE]
 // DIR is a folder of downloaded artifacts, one sub-folder per artifact. Every report is untrusted data from a PR's run:
@@ -30,7 +30,9 @@ export const SOURCES: Source[] = [
   { id: "size", title: "Download size (gzip bytes)", report: "ci-metrics-test/size.json", budgets: "ci-metrics-test/budgets/size-budgets.json", kind: "size", noisePct: 0 },
   { id: "alloc", title: "Host allocation (real-play, per tick)", report: "ci-metrics-test/alloc.json", budgets: "ci-metrics-test/budgets/alloc-budgets.json", kind: "perf", noisePct: 5 },
   { id: "title", title: "Memory at the title (SwiftShader)", report: "ci-metrics-boot/result.json", budgets: "ci-metrics-test/budgets/memory-budgets.json", kind: "perf", noisePct: 2, casePrefix: "memory/" },
+  { id: "warmup", title: "Memory in the first warm-up (SwiftShader)", report: "memory-result/result.json", budgets: "ci-metrics-test/budgets/memory-warmup-budgets.json", kind: "perf", noisePct: 2, casePrefix: "memory/" },
   { id: "leak", title: "Match-to-match memory (3 warm-ups)", report: "memory-result/result.json", budgets: "ci-metrics-test/budgets/memory-leak-budgets.json", kind: "perf", noisePct: 0, budgetOnly: true, casePrefix: "memory/" },
+  { id: "lowmem", title: "Low-memory setup: title, plane, match (SwiftShader)", report: "memory-lowmem-result/result.json", budgets: "ci-metrics-test/budgets/memory-lowmem-budgets.json", kind: "perf", noisePct: 3, casePrefix: "memory/" },
 ];
 
 /** One budgeted number from one run. */

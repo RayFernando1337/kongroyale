@@ -5,7 +5,7 @@
 # Every downloaded file is data from a PR's run: nothing here executes it.
 set -euo pipefail
 work=$(mktemp -d)
-artifacts=(ci-metrics-test ci-metrics-boot memory-result)
+artifacts=(ci-metrics-test ci-metrics-boot memory-result memory-lowmem-result)
 
 pr=$(gh pr list --repo "$REPO" --state open --limit 200 --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD_SHA\") | .number" | head -1)
 if [ -z "$pr" ]; then echo "no open pull request has head $HEAD_SHA (pushed again or closed); nothing to post"; exit 0; fi
