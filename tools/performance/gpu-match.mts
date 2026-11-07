@@ -317,10 +317,18 @@ function startTour(cfg: { segs: Segment[]; maxHp: number; ar: number; arMag: num
 const browser: Browser = await chromium.launch({ executablePath: CHROME || undefined, channel: CHROME ? undefined : "chrome", headless: !HEADED, args: FLAGS, timeout: 120_000 });
 const browserVersion = browser.version();
 const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+// a fetch the local server resets under load is retried once, then left to the browser (a subresource keeps loading
+// without the isolation headers, which only the document needs); an unhandled rejection here used to end the run
 if (CENSUS) await ctx.route(ORIGIN + "/**", async (rt) => {
-  const res = await rt.fetch(), headers = { ...res.headers(), "cross-origin-opener-policy": "same-origin", "cross-origin-embedder-policy": "require-corp" };
-  delete headers["content-encoding"]; delete headers["content-length"];
-  await rt.fulfill({ response: res, headers });
+  for (let i = 0; i < 2; i++) {
+    try {
+      const res = await rt.fetch(), headers = { ...res.headers(), "cross-origin-opener-policy": "same-origin", "cross-origin-embedder-policy": "require-corp" };
+      delete headers["content-encoding"]; delete headers["content-length"];
+      await rt.fulfill({ response: res, headers });
+      return;
+    } catch { /* retried, then continued below */ }
+  }
+  await rt.continue().catch(() => {});
 });
 await ctx.addInitScript((v) => { try { localStorage.setItem("kr-video", v); localStorage.setItem("kr-fov-moved", "1"); } catch { /* private mode */ } }, JSON.stringify(VIDEO));
 // tsx compiles the page functions below with esbuild's keepNames, which calls a __name helper the page doesn't have
