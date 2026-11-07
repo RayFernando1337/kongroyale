@@ -6,7 +6,8 @@
 // (procOf), a player who dials ?room=CODE lands on that process and joins the room, and its aux socket attaches with
 // ?p= its process but is refused on the other one; rooms made in a burst spread over both processes; the per-address
 // caps hold across processes: sockets (KR_MAX_PER_IP, counted at the front) and rooms (4 per address, each process told
-// what the address owns on the others); a match process that dies is started again and its players' sockets are freed.
+// what the address owns on the others); a match process that dies is started again and its players' sockets are freed;
+// with KR_WT=1 each process listens for WebTransport on KR_WT_PORT + its index and tells its players so.
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -124,6 +125,17 @@ async function player(port: number, query = "", from?: string) {
     const c2 = await player(s.port);
     check(!c2.refused() && !!c2.last("welcome"), "players get in after it: the dead process's sockets no longer count");
     for (const c of [b, aux, wrong, c2, ...burst]) c.ws.close();
+  } finally { s.proc.kill("SIGTERM"); }
+}
+
+// ---- 3. WebTransport: each process on its own UDP port, named in its players' welcome
+{
+  const s = await startServer({ KR_PROCS: "2", KR_WT: "1" });
+  try {
+    const ps = [await player(s.port), await player(s.port)];
+    const seen = ps.map((c) => { const w = c.last("welcome")!; return { proc: w.proc as number, port: (w.wt as { port?: number } | undefined)?.port }; });
+    check(new Set(seen.map((x) => x.proc)).size === 2 && seen.every((x) => x.port === s.port + x.proc), `KR_WT=1: process i's players are told UDP KR_WT_PORT + i (${seen.map((x) => `${x.proc}:${x.port}`).join(", ")})`);
+    for (const c of ps) c.ws.close();
   } finally { s.proc.kill("SIGTERM"); }
 }
 
