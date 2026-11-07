@@ -18,6 +18,11 @@ const SECTIONS = [
 const BUMPS = ["patch", "minor", "major"] as const;
 type Bump = (typeof BUMPS)[number];
 const FORBIDDEN = /advisor|GHSA|CVE-\d|lobby.?cap/i;
+const SYNC_GUARDED = {
+  "wire format": ["shared/net/proto.ts", "shared/net/event.ts"],
+  terrain: ["shared/world/map.ts", "shared/world/terrain-gen.ts", "public/assets/terrain/island.bin"],
+  balance: ["shared/sim/const.ts"],
+};
 
 const argv = process.argv.slice(2);
 const flag = (n: string) => argv.includes(n);
@@ -98,8 +103,21 @@ const collect = (base: Rel | undefined, target: string): { prs: Pr[]; loose: str
     return { prs: merged.filter((p) => p.mergedAt > UPSTREAM_V020_TIME && new Date(p.mergedAt).getTime() <= new Date(until).getTime() + MERGED_AT_SLACK_MS).map((p) => p.number).sort((a, b) => a - b).map(prInfo), loose: [] };
   }
   git("fetch", "--quiet", "origin", base.sha);
-  const nums = new Set<number>(), loose: string[] = [];
-  for (const line of git("log", "--format=%h %s", base.sha + ".." + target).split("\n").filter(Boolean)) {
+  const nums = new Set<number>(), loose: string[] = [], synced = new Set<string>();
+  for (const line of git("log", "--first-parent", "--merges", "--format=%H %s", base.sha + ".." + target).split("\n").filter(Boolean)) {
+    const m = /^(\S+) Merge pull request #(\d+) from \S+\/sync\/upstream-/.exec(line);
+    if (!m) continue;
+    const side = git("log", "--format=%H %s", m[1] + "^1.." + m[1] + "^2").split("\n").filter(Boolean);
+    synced.add(m[1]);
+    for (const s of side) synced.add(s.split(" ")[0]);
+    const upstream = /\(([0-9a-f]{7,})\)/.exec(git("log", "-1", "--format=%B", m[1]))?.[1] ?? git("rev-parse", "--short", m[1] + "^2");
+    const forkPrs = new Set(side.map((s) => /^\S+ Merge Ray Fernando's PR #(\d+)/.exec(s)?.[1]).filter(Boolean)).size;
+    const touched = Object.entries(SYNC_GUARDED).filter(([, paths]) => git("diff", "--name-only", m[1] + "^1", m[1], "--", ...paths) !== "").map(([what]) => what);
+    loose.push("Upstream sync (#" + m[2] + "): merges Max's main at " + upstream + ", which carries " + forkPrs + " of this fork's PRs merged upstream; " + (touched.length ? "changes the " + touched.join(", ") : "no wire, terrain or balance change") + ".");
+  }
+  for (const full of git("log", "--format=%H %s", base.sha + ".." + target).split("\n").filter(Boolean)) {
+    if (synced.has(full.split(" ")[0])) continue;
+    const line = full.slice(0, 8) + full.slice(40);
     const m = /\(#(\d+)\)\s*$/.exec(line);
     if (m) nums.add(Number(m[1])); else loose.push(line);
   }
