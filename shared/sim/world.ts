@@ -7,7 +7,7 @@ import type { GlassState } from "./glass";
 import type { VehicleSet } from "./vehicle";
 import type { CoverSet } from "./cover";
 
-const GRID_CELL = 24;
+export const GRID_CELL = 24;
 /** padding (m) on each box's x/z bounds so float32 rounding can never cull a box a ray really hits */
 const BOUNDS_PAD_M = 0.01;
 // terrain slopes: full speed up to 35°, uphill
@@ -80,6 +80,7 @@ export interface Hit { hit: boolean; t: number; x: number; y: number; z: number;
 export const makeHit = (): Hit => ({ hit: false, t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 1, nz: 0, surf: 5, box: -1, cover: -1 });
 
 import type { Climb } from "./climb";
+import { raycast, rayBox as rayBoxHot } from "./world.hot";
 import * as dmath from "./dmath";
 /** StaticWorld.roundDx: not a tree box; an offset (m) as whole centimetres, clamped to Int16 */
 const ROUND_NONE = -32768;
@@ -95,7 +96,7 @@ export class StaticWorld {
   /** each box's lowest grid cell column / row: where a row-major walk of the grid first meets it */
   private gx0!: Int32Array; private gz0!: Int32Array;
   /** while a ray skips cells of its rectangle: the rectangle's first column / row (−1 = not skipping) */
-  private tieX0 = -1; private tieZ0 = -1;
+  tieX0 = -1; tieZ0 = -1;
   surf!: Uint8Array; noShoot!: Uint8Array; noWalk!: Uint8Array;
   /** boxes a tuk-tuk drives through (fences, hedges, crop stems — Box.noDrive), and the switch the vehicle step
    * sets around its own collision queries (shared/sim/vehicle.ts move): while on, movement and ground rays skip them */
@@ -127,7 +128,7 @@ export class StaticWorld {
     }
     return t.biomeAt(x, z);
   }
-  private gridMin = 0; private gridN = 0;
+  gridMin = 0; gridN = 0;
   private cellStart!: Int32Array; private cellItems!: Int32Array;
 
   constructor(readonly terrain: Terrain, boxes: Box[]) { this.setBoxes(boxes); }
@@ -173,7 +174,7 @@ export class StaticWorld {
     }
     this.initScratch();
   }
-  private cell(v: number) { return Math.min(this.gridN - 1, Math.max(0, Math.floor((v - this.gridMin) / GRID_CELL))); }
+  cell(v: number) { return Math.min(this.gridN - 1, Math.max(0, Math.floor((v - this.gridMin) / GRID_CELL))); }
   /** (the client's fence-break effect, never the sim) the first box with `flag[i]` set that a vertical cylinder at
    * (x, z), radius r, from y0 to y1 overlaps, or −1 */
   firstFlagged(x: number, z: number, r: number, y0: number, y1: number, flag: Uint8Array): number {
@@ -822,86 +823,12 @@ export class StaticWorld {
   /** forget a player's unstick state (tools teleporting a reused player object) */
   unstickReset(p: object) { US.delete(p); }
 
-  // ---- raycast against boxes + terrain. Writes into `out`. dir need not be normalised (t in units of dir).
-  // `firstHit` stops at the first hit found, which need not be the nearest: only for yes/no tests like clear().
   raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, out: Hit, bullets = true, firstHit = false): Hit {
-    out.hit = false; out.t = maxT; out.box = -1; out.cover = -1;
-    // terrain: march with adaptive steps, refine with bisection
-    const len = dmath.hypot3(dx, dy, dz);
-    if (len > 0) {
-      let t = 0, prevAbove = oy - this.terrain.height(ox, oz);
-      if (prevAbove < 0) { // start under ground → immediate hit
-        out.hit = true; out.t = 0; out.x = ox; out.y = oy; out.z = oz; const n = this.terrain.normal(ox, oz, TN); out.nx = n[0]; out.ny = n[1]; out.nz = n[2]; out.surf = 255;
-      } else {
-        const step0 = Math.max(0.5, Math.min(4, prevAbove * 0.5)) / len;
-        let step = step0;
-        while (t < out.t) {
-          const nt = Math.min(out.t, t + step);
-          const px = ox + dx * nt, py = oy + dy * nt, pz = oz + dz * nt;
-          const above = py - this.terrain.height(px, pz);
-          if (above < 0) {
-            // bisect between t and nt
-            let a = t, b = nt;
-            for (let k = 0; k < 8; k++) { const m = (a + b) * 0.5; const ay = oy + dy * m - this.terrain.height(ox + dx * m, oz + dz * m); if (ay < 0) b = m; else a = m; }
-            out.hit = true; out.t = a; out.x = ox + dx * a; out.y = oy + dy * a; out.z = oz + dz * a;
-            const n = this.terrain.normal(out.x, out.z, TN); out.nx = n[0]; out.ny = n[1]; out.nz = n[2]; out.surf = 255; out.box = -1;
-            break;
-          }
-          t = nt; prevAbove = above;
-          step = Math.max(0.35, Math.min(6, above * 0.6)) / len;
-        }
-      }
-    }
-    // firstHit (a line-of-sight test): any hit decides the answer, so stop at the first one instead of finding the nearest
-    if (firstHit && out.hit) return out;
-    // boxes: walk grid cells along the ray (2D DDA over x/z)
-    const ex = ox + dx * out.t, ez = oz + dz * out.t;
-    const rx0 = Math.min(ox, ex), rx1 = Math.max(ox, ex), rz0 = Math.min(oz, ez), rz1 = Math.max(oz, ez);
-    const cx0 = this.cell(rx0 - 1), cx1 = this.cell(rx1 + 1), cz0 = this.cell(rz0 - 1), cz1 = this.cell(rz1 + 1);
-    const span = (cx1 - cx0 + 1) * (cz1 - cz0 + 1);
-    if (span <= 64) {
-      // a diagonal ray's cell rectangle is mostly cells it never enters: skip a cell (grown by the 1 m margin above)
-      // unless the segment up to the nearest hit so far passes through it; the rest keep their row-major order
-      // Skipping changes which cell first offers a box, so rayBox settles an exact tie as the full walk would have.
-      const ix = 1 / dx, iz = 1 / dz;
-      if (span > 2) { this.tieX0 = cx0; this.tieZ0 = cz0; }
-      cells: for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
-        if (span > 2) {
-          const x0 = this.gridMin + cx * GRID_CELL - 1, z0 = this.gridMin + cz * GRID_CELL - 1, x1 = x0 + GRID_CELL + 2, z1 = z0 + GRID_CELL + 2;
-          let t0 = 0, t1 = out.t;
-          if (dx === 0) { if (ox < x0 || ox > x1) continue; }
-          else { const a = (x0 - ox) * ix, b = (x1 - ox) * ix; t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b)); }
-          if (dz === 0) { if (oz < z0 || oz > z1) continue; }
-          else { const a = (z0 - oz) * iz, b = (z1 - oz) * iz; t0 = Math.max(t0, Math.min(a, b)); t1 = Math.min(t1, Math.max(a, b)); }
-          if (t0 > t1) continue;
-        }
-        this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
-        if (firstHit && out.hit) break cells;
-      }
-      this.tieX0 = this.tieZ0 = -1;
-    } else {
-      // long ray: DDA
-      let cx = this.cell(ox), cz = this.cell(oz);
-      const tcx = this.cell(ex), tcz = this.cell(ez);
-      const sx = dx > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
-      const tdx = dx !== 0 ? Math.abs(GRID_CELL / dx) : 1e9, tdz = dz !== 0 ? Math.abs(GRID_CELL / dz) : 1e9;
-      const bx = this.gridMin + cx * GRID_CELL, bz = this.gridMin + cz * GRID_CELL;
-      let tmx = dx !== 0 ? ((dx > 0 ? bx + GRID_CELL - ox : ox - bx) / Math.abs(dx)) : 1e9;
-      let tmz = dz !== 0 ? ((dz > 0 ? bz + GRID_CELL - oz : oz - bz) / Math.abs(dz)) : 1e9;
-      for (let guard = 0; guard < 400; guard++) {
-        // visit this cell and its neighbours across (boxes may straddle)
-        this.rayCell(cz * this.gridN + cx, ox, oy, oz, dx, dy, dz, out, bullets, rx0, rx1, rz0, rz1);
-        if ((firstHit && out.hit) || (cx === tcx && cz === tcz)) break;
-        if (tmx < tmz) { if (tmx > out.t) break; cx += sx; tmx += tdx; } else { if (tmz > out.t) break; cz += sz; tmz += tdz; }
-        if (cx < 0 || cz < 0 || cx >= this.gridN || cz >= this.gridN) break;
-      }
-    }
-    if (!(firstHit && out.hit) && this.cover !== null && this.cover.n > 0) this.cover.ray(ox, oy, oz, dx, dy, dz, out);
-    return out;
+    return raycast(this, ox, oy, oz, dx, dy, dz, maxT, out, bullets, firstHit);
   }
   private lastCellVisited = -1;
   /** test the boxes of grid cell c; rx0..rz1 bound the ray segment in x/z (a box outside it can't be hit) */
-  private rayCell(c: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, out: Hit, bullets: boolean, rx0: number, rx1: number, rz0: number, rz1: number) {
+  rayCell(c: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, out: Hit, bullets: boolean, rx0: number, rx1: number, rz0: number, rz1: number) {
     for (let k = this.cellStart[c]; k < this.cellStart[c + 1]; k++) {
       const i = this.cellItems[k];
       if (bullets ? this.noShoot[i] : this.noWalk[i] || (this.drive && this.noDrive[i])) continue;
@@ -910,42 +837,11 @@ export class StaticWorld {
     }
   }
   private rayBox(i: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, out: Hit) {
-    // Exact Y-slab rejection before the x/z transforms. Keep the original slab order below
-    // for survivors so equal-distance axes retain their original normal and hit semantics.
-    const yo = oy - this.cy[i], yh = this.hy[i];
-    if (Math.abs(dy) < 1e-9) { if (yo < -yh || yo > yh) return; }
-    else {
-      const yi = 1 / dy; let yl = (-yh - yo) * yi, yu = (yh - yo) * yi;
-      if (yl > yu) { const tmp = yl; yl = yu; yu = tmp; }
-      if (Math.max(0, yl) > Math.min(out.t, yu)) return;
-    }
-    const c = this.cos[i], s = this.sin[i];
-    const rx = ox - this.cx[i], rz = oz - this.cz[i];
-    const lox = rx * c + rz * s, loz = -rx * s + rz * c, loy = oy - this.cy[i];
-    const ldx = dx * c + dz * s, ldz = -dx * s + dz * c, ldy = dy;
-    let tmin = 0, tmax = out.t, axis = -1, sign = 0;
-    // slab x
-    let lo: number, hi: number;
-    for (let a = 0; a < 3; a++) {
-      const o = a === 0 ? lox : a === 1 ? loy : loz, d = a === 0 ? ldx : a === 1 ? ldy : ldz, h = a === 0 ? this.hx[i] : a === 1 ? this.hy[i] : this.hz[i];
-      if (Math.abs(d) < 1e-9) { if (o < -h || o > h) return; continue; }
-      const inv = 1 / d; lo = (-h - o) * inv; hi = (h - o) * inv;
-      let sg = -1; if (lo > hi) { const tmp = lo; lo = hi; hi = tmp; sg = 1; }
-      if (lo > tmin) { tmin = lo; axis = a; sign = sg; }
-      if (hi < tmax) tmax = hi;
-      if (tmin > tmax) return;
-    }
-    if (axis < 0 || tmin > out.t || tmin <= 0) return;
-    // an exact tie keeps the box found first, in the full row-major walk of the ray's cell rectangle
-    if (tmin === out.t && !(this.tieZ0 >= 0 && out.box >= 0 && this.walkedFirst(i, out.box))) return;
-    out.hit = true; out.t = tmin; out.box = i; out.surf = this.surf[i];
-    out.x = ox + dx * tmin; out.y = oy + dy * tmin; out.z = oz + dz * tmin;
-    const nx = axis === 0 ? sign : 0, ny = axis === 1 ? sign : 0, nz = axis === 2 ? sign : 0;
-    out.nx = nx * c - nz * s; out.ny = ny; out.nz = nx * s + nz * c;
+    rayBoxHot(this, i, ox, oy, oz, dx, dy, dz, out);
   }
 
   /** does the row-major walk of the current ray's cell rectangle reach box a before box b? (cell, then box index) */
-  private walkedFirst(a: number, b: number): boolean {
+  walkedFirst(a: number, b: number): boolean {
     const za = Math.max(this.tieZ0, this.gz0[a]), zb = Math.max(this.tieZ0, this.gz0[b]);
     if (za !== zb) return za < zb;
     const xa = Math.max(this.tieX0, this.gx0[a]), xb = Math.max(this.tieX0, this.gx0[b]);
