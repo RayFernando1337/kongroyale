@@ -1,9 +1,10 @@
 // Real socket load; launch a PRIVATE test server, then pass --url http://127.0.0.1:5795. Writes a kong-perf-result
 // (schema.ts). No public-server traffic unless the operator explicitly points this command there.
-// --transport wt (a server with WebTransport, which is on unless KR_WT=0): each player also opens a WebTransport session with the Node client from
-// the server's QUIC module, like a browser does by default: inputs go out as input-window datagrams (M.Inputs, the window
-// past the last acknowledged seq, as client.ts sends it) and pings as datagrams, snapshots and pongs come back as
-// datagrams and the reliable frames on the session's stream; JSON stays on the WebSocket. No --aux: the session replaces it.
+// --transport wt (a server with WebTransport, which is on unless KR_WT=0): each player also opens a WebTransport
+// session with the Node client from the server's QUIC module, like a browser does by default: inputs go out as
+// input-window datagrams (M.Inputs, the window past the last acknowledged seq, as client.ts sends it) and pings as
+// datagrams, snapshots and pongs come back as datagrams and the reliable frames on the session's stream; JSON stays on
+// the WebSocket. No --aux: the session replaces it.
 // The players drive inputs through the match's real warm-up and plane; the timed window starts when snapshots report
 // the PLAY phase, so --seconds measures ground play, not the warm-up islet. --max-setup-s bounds the wait for PLAY.
 // Tails follow netlab's definitions: pings go out on both sockets and the first pong counts; input→ack samples every

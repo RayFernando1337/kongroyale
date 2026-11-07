@@ -2,13 +2,13 @@
 // Node WebTransport client from the same QUIC module. No browser, no root, about 20 s.
 //   npx tsx tools/net/wt-endpoint.test.mts
 // Checks: off with KR_WT=0 (no "wt" in welcome, /health says why); on by default, welcome announces the port and the
-// certificate hash; a session with a wrong token, and a second one for the same client, are refused; an attached session
-// is told so ({ t: "wt-ok" } on its stream); an authenticated
-// session carries inputs, on the stream and as input-window datagrams with lost windows repaired by the next one and
-// gaps past the window counted (the snapshots' lastSeq follows them, /health counts them), pings (a pong comes back as a datagram), snapshots as
-// datagrams and the reliable frames (inventory) on the stream; /health counts the client on "wt"; a flood of frames
-// past the rate limit closes the session and the client's frames go back to its WebSockets. A session counts against the
-// per-address cap like a WebSocket, and closing the primary WebSocket closes the session and frees both slots.
+// certificate hash; a session with a wrong token, and a second one for the same client, are refused; an attached
+// session is told so ({ t: "wt-ok" } on its stream); an authenticated session carries inputs, on the stream and as
+// input-window datagrams with lost windows repaired by the next one and gaps past the window counted (the snapshots'
+// lastSeq follows them, /health counts them), pings (a pong comes back as a datagram), snapshots as datagrams and the
+// reliable frames (inventory) on the stream; /health counts the client on "wt"; a flood of frames past the rate limit
+// closes the session and the client's frames go back to its WebSockets. A session counts against the per-address cap
+// like a WebSocket, and closing the primary WebSocket closes the session and frees both slots.
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -73,8 +73,8 @@ catch (e) {
   process.exit(failed ? 1 : 0);
 }
 // two connections per address: the primary WebSocket and one session (the per-address cap counts both kinds)
-// KR_WT unset: on by default
-const s = await startServer({ KR_WARMUP_S: "60", KR_MAX_PER_IP: "2" });
+// KR_WT unset: on by default (cleared here, so a KR_WT=0 in the environment this test runs in can't turn it off)
+const s = await startServer({ KR_WT: "", KR_WARMUP_S: "60", KR_MAX_PER_IP: "2" });
 try {
   const c = await wsClient(s.port), wtw = c.welcome.wt;
   check(!!wtw && wtw.port === s.port && wtw.hashes?.length === 1, `KR_WT unset (on by default): welcome announces port ${wtw?.port} and one certificate hash`);

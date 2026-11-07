@@ -1,13 +1,13 @@
 // WEBTRANSPORT IN A BROWSER — the client's real link code (client/src/game/net.ts and its lazy ./wt.ts) in headless
 // Chromium against a real server on loopback. Needs a Chromium or Chrome with WebTransport; no GPU, no root, ~30 s.
 //   npx tsx tools/net/wt-browser.test.mts [--chrome PATH]     (also KR_CHROME; default: Playwright's own Chromium)
-// Checks: by default, against a server that offers WebTransport (it does unless KR_WT=0), the link settles on "wt", a ping sent through the link comes
-// back as a pong, /health counts the client on wt and one link settled on wt; the session outlives a lobby that sends
-// nothing for longer than the server's heartbeat timeout (the link's keepalive pings); a page on "localhost" reaches
-// the IPv4 endpoint too; when the server closes the session (a
-// flood past its rate limit) the link goes back to the WebSockets ("closed") and keeps working; with ?wt=0 it stays on the
-// WebSockets with "flag-off"; against a server started with KR_WT=0 it stays there with "server-off", and /health
-// counts each reason. With no browser to launch, or no QUIC module build for this platform, it prints SKIP and passes.
+// Checks: by default, against a server that offers WebTransport (it does unless KR_WT=0), the link settles on "wt", a
+// ping sent through the link comes back as a pong, /health counts the client on wt and one link settled on wt; the
+// session outlives a lobby that sends nothing for longer than the server's heartbeat timeout (the link's keepalive
+// pings); a page on "localhost" reaches the IPv4 endpoint too; when the server closes the session (a flood past its
+// rate limit) the link goes back to the WebSockets ("closed") and keeps working; with ?wt=0 it stays on the WebSockets
+// with "flag-off"; against a server started with KR_WT=0 it stays there with "server-off", and /health counts each
+// reason. With no browser to launch, or no QUIC module build for this platform, it prints SKIP and passes.
 import { spawn, type ChildProcess } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
@@ -115,7 +115,8 @@ try {
   // ---- 1. the server offers WebTransport
   const wtPort = await freePort();
   // a short heartbeat timeout, so a session nobody keeps alive would be ended inside the idle lobby below
-  const s = await startServer({ KR_WT_PORT: String(wtPort), KR_WARMUP_S: "60", KR_HEARTBEAT_TIMEOUT_S: "15" });
+  // KR_WT cleared: a KR_WT=0 in the environment this test runs in would turn the endpoint off
+  const s = await startServer({ KR_WT: "", KR_WT_PORT: String(wtPort), KR_WARMUP_S: "60", KR_HEARTBEAT_TIMEOUT_S: "15" });
   try {
     const h0 = await health(s.port);
     if (h0.transports.webtransport.off) console.log(`SKIP  WebTransport checks: the endpoint is off (${h0.transports.webtransport.off})`);
