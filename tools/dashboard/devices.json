@@ -1,0 +1,1029 @@
+{
+  "plain": "How much memory the game needs on each kind of computer, release by release, against the limit each one can give it. Solid lines and filled dots are measurements. Hollow dots are estimates, and dashed lines with diamonds are planned work, each tied to the change that should get it there. Open \"Every point\" under a chart for the build, machine, method, number of runs and date behind each value. A GB here is 1,000 MB, as the measurement reports write it.",
+  "slots": [
+    {
+      "id": "v0.2.0",
+      "label": "v0.2.0"
+    },
+    {
+      "id": "v0.3",
+      "label": "v0.3"
+    },
+    {
+      "id": "v0.4",
+      "label": "v0.4"
+    },
+    {
+      "id": "v0.5",
+      "label": "v0.5"
+    },
+    {
+      "id": "v0.6",
+      "label": "v0.6"
+    },
+    {
+      "id": "v1.0",
+      "label": "v1.0"
+    },
+    {
+      "id": "main",
+      "label": "main"
+    },
+    {
+      "id": "next",
+      "label": "Next",
+      "planned": true
+    },
+    {
+      "id": "goal",
+      "label": "Goal",
+      "planned": true
+    }
+  ],
+  "methods": {
+    "d3d11-v3": {
+      "label": "memory.mts v3, Windows",
+      "device": "Windows PC with an NVIDIA RTX Spark N1X, Chrome on Direct3D 11 (30 GB visible to the browser)",
+      "method": "memory.mts v3: 1600x900, seed 42, Auto quality, the kong standing still through two 30-second matches. The whole browser is read from the operating system every 15 s and the game's own WebGL and copy counters at each phase. Median of interleaved runs.",
+      "source": "project drive: handoffs/memory-v020-vs-main-d3d11 (RAY-138) and handoffs/memory-baseline-d3d11-v3 (RAY-130)"
+    },
+    "d3d11-trace": {
+      "label": "growth trace, Windows",
+      "device": "Windows PC with an NVIDIA RTX Spark N1X, Chrome on Direct3D 11 (30 GB visible to the browser)",
+      "method": "Growth trace: Chrome started on its own and attached over CDP, 1600x900, seed 42, a bot walking a fixed route to the results screen, sampled every 5 s. The page was read with page.evaluate, which can add some memory, so compare it only with its own control run.",
+      "source": "project drive: handoffs/lowmem-growth-d3d11 (RAY-122)"
+    },
+    "metal-chrome-v3": {
+      "label": "memory.mts v3, Mac Chrome",
+      "device": "Mac mini, Apple M4, 16 GB, macOS 27, Chrome 154 on Metal",
+      "method": "memory.mts v3: 1600x900, seed 42, Auto quality, the kong standing still through two 60-second matches. Whole browser read every 15 s, game counters at each phase. Median of 6 runs.",
+      "source": "project drive: handoffs/memory-baseline-metal-v3"
+    },
+    "metal-chrome-flight": {
+      "label": "flight check, Mac Chrome",
+      "device": "Mac mini, Apple M4, 16 GB, macOS 27, Chrome 154 on Metal",
+      "method": "Flight check harness (gpu-match), headed Chrome, seed 42. WebGL is the game's textures plus buffers from the memory probe at the title and 8 s into the plane.",
+      "source": "project drive: handoffs/farimp-regate2-metal (RAY-177)"
+    },
+    "safari-baseline": {
+      "label": "first Safari baseline",
+      "device": "Mac mini, Apple M4, 16 GB, macOS 27, Safari 27",
+      "method": "Cold Safari start, prod build, seed 42, 3 runs per build. Memory as Activity Monitor counts it (footprint). Safari closed the tab in every run, so the value is the size at the title, before the match pushed it higher.",
+      "source": "Captain drive: reports/KONG-49 and renders/KONG-49"
+    },
+    "safari-acceptance": {
+      "label": "Safari acceptance",
+      "device": "Mac mini, Apple M4, 16 GB, macOS 27, Safari 27",
+      "method": "Safari acceptance: cold start, prod build, seed 42, low-memory mode on (Safari's default), the kong left standing, a full match. Value is the highest page-process (WebContent) footprint; the whisker spans the 3 runs.",
+      "source": "KONG-54's acceptance report to the Captain, 2026-11-05"
+    },
+    "safari-trace": {
+      "label": "Safari growth trace",
+      "device": "Mac mini, Apple M4, 16 GB, macOS 27, Safari 27",
+      "method": "Safari growth trace: prod build, seed 42, low-memory mode on (Safari's default), an autopilot that drops and runs between locations, footprint sampled every 5 s until the results screen or until Safari closes the tab. WebGL and copy counters come from the memory probe injected before the game's scripts.",
+      "source": "project drive: handoffs/safari-growth (KONG-54)"
+    },
+    "safari-gate": {
+      "label": "Safari release check",
+      "device": "Mac mini, Apple M4, 16 GB, macOS 27, Safari 27.0.1",
+      "method": "Release check on the Mac: prod build of the tag, seed 42, Auto quality (it picked Low), the moving autopilot through a full match to the results screen, peak footprint per phase. v0.6 ran at the display's own pixel ratio of 1; from v1.0 the check forces a Retina pixel ratio of 2, which draws more pixels, so v1.0 is not lower because of that.",
+      "source": "Kong Mini's release checks (renders/v060, v061, v100, v101 in its drive), as reported to the Captain"
+    },
+    "plan": {
+      "label": "estimate or plan",
+      "device": "Worked out from the measurements named in the note",
+      "method": "Estimate or plan, not a measurement. The note gives the arithmetic and its sources.",
+      "source": "docs/memory-architecture.md, Captain drive reports/KONG-44, KONG-47 and KONG-62"
+    }
+  },
+  "skus": [
+    {
+      "id": "mac16",
+      "name": "Mac with 16 GB",
+      "supported": true,
+      "plain": "Measured on a Mac mini with an M4 chip and 16 GB, in Safari and in Chrome. Since v0.6 a full match finishes in Safari: the game now keeps at most four streamed locations at a time, and Safari's page peaks about 1.3 GB under the size at which it closes a tab.",
+      "charts": [
+        {
+          "id": "peak",
+          "title": "Peak memory in a match",
+          "measure": "The highest memory seen from launch to the end of the match. For Safari, the page process (WebContent) is the number Safari watches, and the whole browser adds Safari's graphics process. For Chrome it is every Chrome process together.",
+          "caption": "Safari closed the tab on every build before v0.6. From v0.6 the match finishes: across the v0.6 and v1.0 checks the page peaked between 6.8 and 7.7 GB against a limit of about 8.4 GB (one v0.6.1 run on a longer route reached 8.3 GB and still finished). Chrome doesn't close tabs this way, so its line shows how much it asks of the Mac. An older measuring method put Chrome at 12.5 to 13.0 GB on v0.2.0 and v0.3, but it overstated memory, so those runs aren't plotted.",
+          "pending": "Main at 0c1713f, with and without the low-memory setup (?lowmem=1&geofree=1&farimp=1), is being measured on this Mac now in both browsers (RAY-227). Its points land here when the runs finish.",
+          "ceilings": [
+            {
+              "mb": 8400,
+              "label": "Safari closed the tab at 8.4–8.8 GB (measured on this Mac)",
+              "kind": "measured"
+            },
+            {
+              "mb": 3850,
+              "label": "Target: under 4 GB in a match",
+              "kind": "target"
+            }
+          ],
+          "lines": [
+            {
+              "id": "safari-page",
+              "label": "Safari, page process (WebContent)",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.2.0",
+                  "mb": 8800,
+                  "low": 8600,
+                  "high": 9000,
+                  "kind": "measured",
+                  "killed": true,
+                  "build": "kong-v0.2.0 f000fd1",
+                  "m": "safari-baseline",
+                  "n": 3,
+                  "date": "2026-11-04",
+                  "note": "8.6–9.0 GB at the title; Safari closed the tab about 30 s into the match."
+                },
+                {
+                  "slot": "v0.3",
+                  "mb": 8800,
+                  "low": 8600,
+                  "high": 9000,
+                  "kind": "measured",
+                  "killed": true,
+                  "build": "main 290a32b (after v0.3.0)",
+                  "m": "safari-baseline",
+                  "n": 3,
+                  "date": "2026-11-04",
+                  "note": "8.6–9.0 GB at the title; Safari closed the tab about 3 s after the title was ready."
+                },
+                {
+                  "slot": "v0.4",
+                  "mb": 8370,
+                  "low": 8312,
+                  "high": 8470,
+                  "kind": "measured",
+                  "killed": true,
+                  "build": "main 7917803 (after v0.4.1, with low-memory streaming #107)",
+                  "m": "safari-acceptance",
+                  "n": 3,
+                  "date": "2026-11-05",
+                  "note": "The title halved to about 4.2 GB. Memory then grew as locations streamed in, and Safari closed the tab in 2 of 3 runs."
+                },
+                {
+                  "slot": "v0.5",
+                  "mb": 8779,
+                  "kind": "measured",
+                  "killed": true,
+                  "build": "kong-v0.5.0 d2c89de",
+                  "m": "safari-trace",
+                  "n": 1,
+                  "date": "2026-11-05",
+                  "note": "Closed while gliding in, before landing. main f417032 (after v0.5.0) was closed at 8,489 MB with the kong moving and reached the results screen at 8,049 MB with it standing still."
+                },
+                {
+                  "slot": "v0.6",
+                  "mb": 6763,
+                  "high": 8286,
+                  "kind": "measured",
+                  "build": "kong-v0.6.1 ee43574",
+                  "m": "safari-gate",
+                  "n": 2,
+                  "date": "2026-11-06",
+                  "note": "Run 2 reached the results screen. Run 1's driver dropped about 300 s in; the tab stayed open and peaked at 8,286 MB on a longer glide over the town. kong-v0.6.0 peaked at 7,235 MB and also finished."
+                },
+                {
+                  "slot": "v1.0",
+                  "mb": 7072,
+                  "kind": "measured",
+                  "build": "kong-v1.0.1 9cc83fa",
+                  "m": "safari-gate",
+                  "n": 1,
+                  "date": "2026-11-06",
+                  "note": "Retina pixel ratio 2 forced. Reached the results screen. kong-v1.0.0 peaked at 7,730 MB the same way; with one run each, that gap isn't a measured improvement yet."
+                },
+                {
+                  "slot": "next",
+                  "mb": 6384,
+                  "kind": "planned",
+                  "build": "after A2",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "v1.0.1's 7,072 MB minus the 838 MB of shape copies Safari held in a match (main f417032), plus the 150 MB of copies the plan allows. Texture copies would come off too but aren't counted here.",
+                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, is built and waits on a Mac and Windows check before it turns on for everyone."
+                }
+              ]
+            },
+            {
+              "id": "safari-whole",
+              "label": "Safari, whole browser",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.2.0",
+                  "mb": 10250,
+                  "low": 10200,
+                  "high": 10300,
+                  "kind": "measured",
+                  "killed": true,
+                  "build": "kong-v0.2.0 f000fd1",
+                  "m": "safari-baseline",
+                  "n": 3,
+                  "date": "2026-11-04",
+                  "note": "At the title; Safari closed the tab about 30 s into the match."
+                },
+                {
+                  "slot": "v0.3",
+                  "mb": 10250,
+                  "low": 10200,
+                  "high": 10300,
+                  "kind": "measured",
+                  "killed": true,
+                  "build": "main 290a32b (after v0.3.0)",
+                  "m": "safari-baseline",
+                  "n": 3,
+                  "date": "2026-11-04",
+                  "note": "At the title; Safari closed the tab before Play."
+                },
+                {
+                  "slot": "v0.6",
+                  "mb": 7889,
+                  "high": 9512,
+                  "kind": "measured",
+                  "build": "kong-v0.6.1 ee43574",
+                  "m": "safari-gate",
+                  "n": 2,
+                  "date": "2026-11-06",
+                  "note": "Run 2, which reached the results screen; run 1 reached 9,512 MB on a longer route. kong-v0.6.0 peaked at 8,486 MB."
+                },
+                {
+                  "slot": "v1.0",
+                  "mb": 8354,
+                  "kind": "measured",
+                  "build": "kong-v1.0.1 9cc83fa",
+                  "m": "safari-gate",
+                  "n": 1,
+                  "date": "2026-11-06",
+                  "note": "Retina pixel ratio 2 forced. kong-v1.0.0 peaked at 8,935 MB."
+                },
+                {
+                  "slot": "next",
+                  "mb": 7666,
+                  "kind": "planned",
+                  "build": "after A2",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "v1.0.1's 8,354 MB less the same 688 MB as the page-process line.",
+                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, is built and waits on a Mac and Windows check before it turns on for everyone."
+                },
+                {
+                  "slot": "goal",
+                  "mb": 3850,
+                  "kind": "planned",
+                  "build": "memory plan target",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "The plan's whole-browser target (docs/memory-architecture.md): 3,850 MB, with 150 MB spare under 4 GB.",
+                  "work": "The memory plan's target (#120): the whole browser under 4 GB in a match at 1080p."
+                }
+              ]
+            },
+            {
+              "id": "chrome-whole",
+              "label": "Chrome, whole browser",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.5",
+                  "mb": 10637,
+                  "low": 10531,
+                  "high": 10678,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "metal-chrome-v3",
+                  "n": 6,
+                  "date": "2026-11-05",
+                  "note": "Highest 15 s sample per run, median of 6. macOS already had about 2.5 GB in swap before each run and reported memory pressure as warn, never critical."
+                },
+                {
+                  "slot": "next",
+                  "mb": 8145,
+                  "kind": "planned",
+                  "build": "after A2",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "10,637 MB minus the 2,642 MB of shape and texture copies Chrome held in the match on this build, plus the 150 MB the plan allows.",
+                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, is built and waits on a Mac and Windows check before it turns on for everyone."
+                },
+                {
+                  "slot": "goal",
+                  "mb": 3850,
+                  "kind": "planned",
+                  "build": "memory plan target",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "The plan's whole-browser target: 3,850 MB.",
+                  "work": "The memory plan's target (#120): the whole browser under 4 GB in a match at 1080p."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "gpu",
+          "title": "Graphics memory (WebGL) at the title and in the plane",
+          "measure": "What the game has allocated on the graphics side through WebGL: textures, vertex buffers and render targets. On a Mac this sits in the same memory as everything else.",
+          "caption": "The low-memory setup holds about 1.2 GB less than the defaults at the title and about 2 GB less in the plane, because it builds each location only as the player gets near it. Safari turns low-memory mode on by itself, so its lines are the low-memory setup too. Compressed textures are the next big step down for every line.",
+          "ceilings": [
+            {
+              "mb": 1200,
+              "label": "Target: 1,200 MB of WebGL in a match",
+              "kind": "target"
+            }
+          ],
+          "lines": [
+            {
+              "id": "chrome-title",
+              "label": "Chrome at the title, defaults",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.5",
+                  "mb": 4343,
+                  "low": 3734,
+                  "high": 4343,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "metal-chrome-v3",
+                  "n": 6,
+                  "date": "2026-11-05",
+                  "note": "Locations stream in before the title is ready on Metal, so the title already holds most of the island."
+                },
+                {
+                  "slot": "v0.6",
+                  "mb": 3141,
+                  "kind": "measured",
+                  "build": "main fbe5559 (after v0.6.1)",
+                  "m": "metal-chrome-flight",
+                  "n": 1,
+                  "date": "2026-11-06",
+                  "note": "Different harness from the v0.5 point; same Mac and browser."
+                }
+              ]
+            },
+            {
+              "id": "chrome-plane",
+              "label": "Chrome in the plane, defaults",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.5",
+                  "mb": 4373,
+                  "low": 4345,
+                  "high": 4376,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "metal-chrome-v3",
+                  "n": 6,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.6",
+                  "mb": 4206,
+                  "kind": "measured",
+                  "build": "main fbe5559 (after v0.6.1)",
+                  "m": "metal-chrome-flight",
+                  "n": 1,
+                  "date": "2026-11-06",
+                  "note": "Different harness from the v0.5 point; same Mac and browser."
+                },
+                {
+                  "slot": "next",
+                  "mb": 2961,
+                  "kind": "planned",
+                  "build": "after A1",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "4,206 MB minus 1,245 MB: texture files take about 1,660 MB uncompressed and about 415 MB as KTX2 when every set is loaded (KONG-62's estimate). The real saving depends on how many locations are loaded.",
+                  "work": "Compressed (KTX2) textures for every texture file (memory plan step A1). Three location sets are already built behind a test switch."
+                },
+                {
+                  "slot": "goal",
+                  "mb": 1200,
+                  "kind": "planned",
+                  "build": "memory plan budget",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "The plan's WebGL budget in a match: 1,200 MB.",
+                  "work": "The memory plan's target (#120): the whole browser under 4 GB in a match at 1080p."
+                }
+              ]
+            },
+            {
+              "id": "chrome-low-title",
+              "label": "Chrome at the title, low-memory setup (lowmem + farimp)",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "v0.6",
+                  "mb": 1902,
+                  "low": 1872,
+                  "high": 1902,
+                  "kind": "measured",
+                  "build": "main fbe5559 (after v0.6.1)",
+                  "m": "metal-chrome-flight",
+                  "n": 3,
+                  "date": "2026-11-06",
+                  "note": "?lowmem=1&farimp. lowmem alone was 1,864–1,894 MB; farimp's far-away stand-ins cost about 8 MB."
+                }
+              ]
+            },
+            {
+              "id": "chrome-low-plane",
+              "label": "Chrome in the plane, low-memory setup (lowmem + farimp)",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "v0.6",
+                  "mb": 2234,
+                  "kind": "measured",
+                  "build": "main fbe5559 (after v0.6.1)",
+                  "m": "metal-chrome-flight",
+                  "n": 3,
+                  "date": "2026-11-06",
+                  "note": "?lowmem=1&farimp. lowmem alone was 2,226 MB."
+                }
+              ]
+            },
+            {
+              "id": "safari-title",
+              "label": "Safari at the title (low-memory mode is Safari's default)",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "v0.5",
+                  "mb": 1215,
+                  "kind": "measured",
+                  "build": "main f417032 (after v0.5.0)",
+                  "m": "safari-trace",
+                  "n": 1,
+                  "date": "2026-11-05",
+                  "note": "Textures 1,079 MB plus buffers 136 MB."
+                }
+              ]
+            },
+            {
+              "id": "safari-plane",
+              "label": "Safari in the plane (low-memory mode is Safari's default)",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "v0.5",
+                  "mb": 1927,
+                  "kind": "measured",
+                  "build": "main f417032 (after v0.5.0)",
+                  "m": "safari-trace",
+                  "n": 1,
+                  "date": "2026-11-05",
+                  "note": "Textures 1,642 MB plus buffers 285 MB."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "cpu",
+          "title": "Copies kept after upload (shapes and textures)",
+          "measure": "Copies of shapes (geometry) and pictures (textures) the game keeps in ordinary memory after handing them to the graphics side, read in the match. In Safari they count against the page process, the one Safari closes.",
+          "caption": "Chrome keeps about 1.4 GB of shape copies and 1.2 GB of texture copies in a match on this Mac. The plan keeps only what something still reads, 150 MB in total, and geofree is the first piece of it.",
+          "ceilings": [
+            {
+              "mb": 150,
+              "label": "Target: 150 MB of copies in total",
+              "kind": "target"
+            }
+          ],
+          "lines": [
+            {
+              "id": "chrome-geo",
+              "label": "Chrome, shape copies",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.5",
+                  "mb": 1433,
+                  "low": 1433,
+                  "high": 1446,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "metal-chrome-v3",
+                  "n": 6,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "next",
+                  "mb": 1352,
+                  "kind": "planned",
+                  "build": "geofree on",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "1,433 MB minus the 81 MB geofree removed in a match on the cloud test machine (219 to 138 MB). A Mac and Windows check comes before it turns on.",
+                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2, merged as #255, #262 and #264, off by default for now)."
+                }
+              ]
+            },
+            {
+              "id": "chrome-tex",
+              "label": "Chrome, texture copies",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.5",
+                  "mb": 1210,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "metal-chrome-v3",
+                  "n": 6,
+                  "date": "2026-11-05"
+                }
+              ]
+            },
+            {
+              "id": "safari-geo",
+              "label": "Safari, shape copies",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "v0.5",
+                  "mb": 838,
+                  "kind": "measured",
+                  "build": "main f417032 (after v0.5.0)",
+                  "m": "safari-trace",
+                  "n": 1,
+                  "date": "2026-11-05",
+                  "note": "At the results screen with 21 locations loaded; 174 MB at the title."
+                },
+                {
+                  "slot": "next",
+                  "mb": 757,
+                  "kind": "planned",
+                  "build": "geofree on",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "838 MB minus the same 81 MB.",
+                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2, merged as #255, #262 and #264, off by default for now)."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mac12",
+      "name": "Mac with 12 GB or 10 GB",
+      "supported": true,
+      "plain": "Not measured on a 12 GB or 10 GB Mac yet. The game uses about the same memory whatever the Mac has, so this chart sets the 16 GB Mac's Safari numbers against estimated limits for smaller Macs. The estimates scale the measured 16 GB limit by memory size, and the measurement running now will replace them.",
+      "charts": [
+        {
+          "id": "peak",
+          "title": "Safari peak against estimated limits for 12 GB and 10 GB",
+          "measure": "The 16 GB Mac's Safari numbers from the chart above. Only the limits are estimated.",
+          "caption": "Today's Safari page peak, 7.1 GB, is above both estimated limits. The planned copy cuts bring it near the 12 GB estimate, and the 4 GB target sits under both.",
+          "pending": "RAY-227 is measuring main on the Mac mini now, with and without the low-memory setup, and estimates how much a 12 GB and a 10 GB Mac leave for the browser after macOS. Its result replaces these estimated limits.",
+          "ceilings": [
+            {
+              "mb": 6300,
+              "label": "Estimated limit, 12 GB Mac: 6.3 GB",
+              "kind": "estimate"
+            },
+            {
+              "mb": 5250,
+              "label": "Estimated limit, 10 GB Mac: 5.3 GB",
+              "kind": "estimate"
+            }
+          ],
+          "lines": [
+            {
+              "id": "safari-page",
+              "label": "Safari, page process (measured on 16 GB)",
+              "setup": "defaults",
+              "same": "mac16/peak/safari-page",
+              "points": []
+            },
+            {
+              "id": "safari-whole",
+              "label": "Safari, whole browser (measured on 16 GB)",
+              "setup": "defaults",
+              "same": "mac16/peak/safari-whole",
+              "points": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mac8",
+      "name": "Mac with 8 GB",
+      "supported": true,
+      "plain": "Not measured on an 8 GB Mac. By the same scaling, Safari would allow the page about 4.2 GB, about 2.9 GB below today's peak. The 4 GB target in the memory plan is what brings 8 GB Macs in.",
+      "charts": [
+        {
+          "id": "peak",
+          "title": "Safari peak against the estimated 8 GB limit",
+          "measure": "The 16 GB Mac's Safari numbers. Only the limit is estimated.",
+          "caption": "The estimated limit scales the measured 16 GB limit by memory size: 8.4 GB of 16 GB is about 51%, so about 4.2 GB on an 8 GB Mac. It is an estimate until an 8 GB Mac is measured.",
+          "ceilings": [
+            {
+              "mb": 4200,
+              "label": "Estimated limit, 8 GB Mac: 4.2 GB",
+              "kind": "estimate"
+            }
+          ],
+          "lines": [
+            {
+              "id": "safari-page",
+              "label": "Safari, page process (measured on 16 GB)",
+              "setup": "defaults",
+              "same": "mac16/peak/safari-page",
+              "points": []
+            },
+            {
+              "id": "safari-whole",
+              "label": "Safari, whole browser (measured on 16 GB)",
+              "setup": "defaults",
+              "same": "mac16/peak/safari-whole",
+              "points": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "win",
+      "name": "Windows PC (Chrome on Direct3D 11)",
+      "supported": true,
+      "plain": "Measured on a Windows PC with an NVIDIA RTX Spark N1X and 30 GB, in Chrome. Windows doesn't close the tab at a fixed size, so the line to watch is the plan's target of under 4 GB. The whole browser has come down about 2 GB since v0.2.0. It hasn't been measured this way since v0.5; the release checks for v0.6 and v1.0 timed loading and frames instead.",
+      "charts": [
+        {
+          "id": "peak",
+          "title": "Peak memory in a match, whole browser",
+          "measure": "The highest 15 s sample of every Chrome process together, from launch to the second match.",
+          "caption": "v0.2.0 started at Ultra quality on Auto and later builds start at High on this PC, so about 0.35 GB of the drop to v0.5 is likely the quality change and the rest came from releases (an estimate across two days of runs). The low-memory setup only saves memory early on: before v0.6 it never let go of a location, so after about 4 km of walking it held as much as the defaults.",
+          "ceilings": [
+            {
+              "mb": 3850,
+              "label": "Target: under 4 GB in a match",
+              "kind": "target"
+            }
+          ],
+          "lines": [
+            {
+              "id": "defaults",
+              "label": "Defaults",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.2.0",
+                  "mb": 15717,
+                  "low": 15420,
+                  "high": 15790,
+                  "kind": "measured",
+                  "build": "kong-v0.2.0 f000fd1",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05",
+                  "note": "Auto started at Ultra."
+                },
+                {
+                  "slot": "v0.4",
+                  "mb": 13695,
+                  "low": 13685,
+                  "high": 13695,
+                  "kind": "measured",
+                  "build": "kong-v0.4.1 7d298c3",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05",
+                  "note": "Auto started at Ultra."
+                },
+                {
+                  "slot": "v0.5",
+                  "mb": 13769,
+                  "low": 13689,
+                  "high": 13770,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05",
+                  "note": "Auto started at High. main 8f42339 measured 13,681 MB the same way."
+                },
+                {
+                  "slot": "next",
+                  "mb": 11245,
+                  "kind": "planned",
+                  "build": "after A2",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "13,769 MB minus the 2,674 MB of shape and texture copies held in the match on this build, plus the 150 MB the plan allows.",
+                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, is built and waits on a Mac and Windows check before it turns on for everyone."
+                },
+                {
+                  "slot": "goal",
+                  "mb": 3850,
+                  "kind": "planned",
+                  "build": "memory plan target",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "The plan's whole-browser target: 3,850 MB.",
+                  "work": "The memory plan's target (#120): the whole browser under 4 GB in a match at 1080p."
+                }
+              ]
+            },
+            {
+              "id": "lowmem",
+              "label": "Low-memory setup (?lowmem=1)",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "v0.4",
+                  "mb": 14199,
+                  "kind": "measured",
+                  "build": "main b542346 (after v0.4.1)",
+                  "m": "d3d11-trace",
+                  "n": 1,
+                  "date": "2026-11-05",
+                  "note": "After 4 km of walking. The same trace with lowmem off peaked at about 14.4 GB, and at the title the two were 5.8 and 6.2 GB."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "gpu",
+          "title": "Graphics memory (WebGL) at the title and in the plane",
+          "measure": "What the game has allocated through WebGL. On Windows the graphics process holds about 1.8 times this, because the driver keeps its own copies.",
+          "caption": "The title has come down by about 1 GB since v0.4, mostly from the quality fix that stopped Auto starting every machine at Ultra (#125): v0.4.1 started at Ultra on this PC and v0.5 at High. The plane holds the whole island in the defaults, which compressed textures will shrink.",
+          "ceilings": [
+            {
+              "mb": 1200,
+              "label": "Target: 1,200 MB of WebGL in a match",
+              "kind": "target"
+            }
+          ],
+          "lines": [
+            {
+              "id": "title",
+              "label": "At the title, defaults",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.2.0",
+                  "mb": 2511,
+                  "low": 2496,
+                  "high": 2531,
+                  "kind": "measured",
+                  "build": "kong-v0.2.0 f000fd1",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.4",
+                  "mb": 2701,
+                  "low": 2568,
+                  "high": 2705,
+                  "kind": "measured",
+                  "build": "kong-v0.4.1 7d298c3",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.5",
+                  "mb": 1639,
+                  "low": 1549,
+                  "high": 1717,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                }
+              ]
+            },
+            {
+              "id": "plane",
+              "label": "In the plane, defaults",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.2.0",
+                  "mb": 4986,
+                  "low": 4936,
+                  "high": 4998,
+                  "kind": "measured",
+                  "build": "kong-v0.2.0 f000fd1",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.4",
+                  "mb": 4586,
+                  "low": 4584,
+                  "high": 4586,
+                  "kind": "measured",
+                  "build": "kong-v0.4.1 7d298c3",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.5",
+                  "mb": 4532,
+                  "low": 4506,
+                  "high": 4579,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "next",
+                  "mb": 3287,
+                  "kind": "planned",
+                  "build": "after A1",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "4,532 MB minus 1,245 MB: texture files take about 1,660 MB uncompressed and about 415 MB as KTX2 when every set is loaded (KONG-62's estimate).",
+                  "work": "Compressed (KTX2) textures for every texture file (memory plan step A1). Three location sets are already built behind a test switch."
+                },
+                {
+                  "slot": "goal",
+                  "mb": 1200,
+                  "kind": "planned",
+                  "build": "memory plan budget",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "The plan's WebGL budget in a match: 1,200 MB.",
+                  "work": "The memory plan's target (#120): the whole browser under 4 GB in a match at 1080p."
+                }
+              ]
+            },
+            {
+              "id": "low-title",
+              "label": "At the title, low-memory setup",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "v0.4",
+                  "mb": 1375,
+                  "kind": "measured",
+                  "build": "main b542346 (after v0.4.1)",
+                  "m": "d3d11-trace",
+                  "n": 1,
+                  "date": "2026-11-05",
+                  "note": "The same trace with lowmem off: 1,456 MB."
+                }
+              ]
+            },
+            {
+              "id": "low-plane",
+              "label": "In the plane, low-memory setup",
+              "setup": "lowmem",
+              "points": [
+                {
+                  "slot": "v0.4",
+                  "mb": 2111,
+                  "kind": "measured",
+                  "build": "main b542346 (after v0.4.1)",
+                  "m": "d3d11-trace",
+                  "n": 1,
+                  "date": "2026-11-05",
+                  "note": "The same trace with lowmem off: 4,483 MB."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "cpu",
+          "title": "Copies kept after upload (shapes and textures)",
+          "measure": "Copies of shapes and textures the game keeps in ordinary memory after upload, read 30 s into the first match.",
+          "caption": "Texture copies fell from about 2.1 GB to 1.2 GB, mostly from releasing them after upload (#104) and the quality fix. Shape copies have stayed near 1.5 GB; geofree is the start of that work.",
+          "ceilings": [
+            {
+              "mb": 150,
+              "label": "Target: 150 MB of copies in total",
+              "kind": "target"
+            }
+          ],
+          "lines": [
+            {
+              "id": "geo",
+              "label": "Shape copies",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.2.0",
+                  "mb": 1522,
+                  "kind": "measured",
+                  "build": "kong-v0.2.0 f000fd1",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.4",
+                  "mb": 1448,
+                  "low": 1447,
+                  "high": 1448,
+                  "kind": "measured",
+                  "build": "kong-v0.4.1 7d298c3",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.5",
+                  "mb": 1461,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "next",
+                  "mb": 1380,
+                  "kind": "planned",
+                  "build": "geofree on",
+                  "m": "plan",
+                  "n": 0,
+                  "date": "2026-11-07",
+                  "note": "1,461 MB minus the 81 MB geofree removed in a match on the cloud test machine (219 to 138 MB).",
+                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2, merged as #255, #262 and #264, off by default for now)."
+                }
+              ]
+            },
+            {
+              "id": "tex",
+              "label": "Texture copies",
+              "setup": "defaults",
+              "points": [
+                {
+                  "slot": "v0.2.0",
+                  "mb": 2066,
+                  "kind": "measured",
+                  "build": "kong-v0.2.0 f000fd1",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.4",
+                  "mb": 1316,
+                  "kind": "measured",
+                  "build": "kong-v0.4.1 7d298c3",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                },
+                {
+                  "slot": "v0.5",
+                  "mb": 1213,
+                  "low": 1213,
+                  "high": 1248,
+                  "kind": "measured",
+                  "build": "main 7890f3b (after v0.5.0)",
+                  "m": "d3d11-v3",
+                  "n": 3,
+                  "date": "2026-11-05"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phones",
+      "name": "Phones and tablets",
+      "supported": false,
+      "plain": "Not supported yet. Since v0.6.1, phones and tablets get a \"desktop only for now\" screen with a button to copy the link, shown before the game loads so the tab never runs out of memory (#195). A phone version needs two things: the game under about 1.2 GB at its peak (an estimate from WebKit's limits on iPhone, about a quarter of today's Safari page at the title) and touch controls, which the game doesn't have yet.",
+      "charts": []
+    }
+  ]
+}
