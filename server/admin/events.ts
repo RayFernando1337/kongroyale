@@ -3,7 +3,8 @@
 // last player (only the admin closes it), and its teams are explicit — a player picks one (or the admin moves them),
 // the unassigned are placed at START, and the picks survive END and reconnects (keyed by the player's session token).
 // Kicks block that token and, for tokens this lobby has never seen, the address it came from (salted hash). Wire:
-// shared/net/event.ts. Every admin action lands in adminAction() — server/admin/http.ts calls it only for a live session.
+// shared/net/event.ts. Every admin action lands in adminAction() — server/admin/http.ts calls it only for a live session,
+// through localEvents in a single process, or behind a front through the process that holds the lobby (server/front.ts).
 import crypto from "node:crypto";
 import type { Client, Lobby } from "../lobby";
 import { EVENT_CAP_DEFAULT, EVENT_CAP_MAX, EVENT_CAP_MIN, EVENT_CODE_RE, EVENT_NAME_MAX, EVENT_TEAM_SIZE, PLAYER_TOKEN_RE, eventTeamCount,
@@ -16,7 +17,7 @@ import { ipHash } from "./auth";
 type Mode = "solo" | "trios";
 /** KR_EVENT_MODE (default ON in this build): players can't create lobbies or caster exhibitions — only join by link */
 export const EVENT_MODE = process.env.KR_EVENT_MODE !== "0";
-const MAX_EVENT_LOBBIES = 12;
+export const MAX_EVENT_LOBBIES = 12;
 
 /** Client.ev: a player inside an event lobby */
 export interface EventMember { tok: string; team: number; joinedAt: number; renamed: boolean; teamAt: number }
@@ -162,7 +163,7 @@ export function adminSnapshot(): AdminLobby[] {
   });
 }
 
-type Res = { ok: boolean; msg: string; code?: string };
+export type Res = { ok: boolean; msg: string; code?: string };
 const ok = (msg: string, code?: string): Res => ({ ok: true, msg, code });
 const no = (msg: string): Res => ({ ok: false, msg });
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
@@ -275,6 +276,16 @@ export function adminAction(act: Record<string, unknown>): Res {
     default: return no("UNKNOWN ACTION");
   }
 }
+
+/** the admin area's view of the event lobbies (server/admin/http.ts): this process's own (localEvents), or every match
+ *  process's, over IPC, in the front of a multi-process server (server/front.ts) */
+export interface AdminEvents {
+  snapshot(): Promise<AdminLobby[]>;
+  action(act: Record<string, unknown>): Promise<Res>;
+  info(code: string): Promise<EventPublicInfo>;
+  onDirty(fn: () => void): void;
+}
+export const localEvents: AdminEvents = { snapshot: async () => adminSnapshot(), action: async (act) => adminAction(act), info: async (code) => publicInfo(code), onDirty: onEventsDirty };
 
 /** AUTO-BALANCE (keep friends together, even team sizes) / SHUFFLE (random): the fewest teams that hold everyone
  *  (sizes differ by ≤ 1), numbered from Team 1 */
