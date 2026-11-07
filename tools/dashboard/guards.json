@@ -154,6 +154,10 @@
       "label": "no secrets",
       "catches": "Keys, tokens or environment files committed to the repo (gitleaks)."
     },
+    "formal": {
+      "label": "TLA+ models",
+      "catches": "A TLA+ model that no longer holds its rules, or one whose mutants (a guard taken out on purpose) are no longer caught: TLC runs all six models, which npm test's formal check alone never does."
+    },
     "boot": {
       "label": "no-GPU boot smoke",
       "catches": "A production build that doesn't boot in software-rendered Chromium (smoke only, not frame rate or looks), or holds more memory at the title than its budget.",
