@@ -126,6 +126,9 @@
     "scenegate": {
       "catches": "The visibility gate: a gated object must hide while any gate is active and go back to a plain value once the last one is removed (a leftover gate once made a far stand-in vanish in one frame)."
     },
+    "hlod": {
+      "catches": "A POI's far proxy (engine/hlod.ts) never built because its module hides some of its own roots at range (a near model behind its far proxy, LOD rings), a proxy captured while terrain occlusion hides the POI, or a proxy that keeps drawing after its module hid what it merged."
+    },
     "alloc": {
       "catches": "Bytes allocated per host tick, or garbage collections, over the 7,200 play ticks of the seeded 50-bot match going over the ceiling, or more than the allowed margin under it until the ceiling is lowered.",
       "budget": "tools/alloc-budgets.json"
@@ -166,6 +169,10 @@
     "context-restore": {
       "label": "no-GPU context restore",
       "catches": "A WebGL context lost at the title or in a match warm-up that doesn't restore."
+    },
+    "invariants": {
+      "label": "no-GPU invariants (lowmem, default)",
+      "catches": "A location going invisible while it changes form: in a seeded practice match, low-memory and default setups, any frame where a location in view that was drawn drops under half drawn by its model, far impostor and HLOD proxy together, or a route stop that never shows the location's built model or, in the low-memory setup, its far impostor. The default setup only warns when the far form never shows, until RAY-248 lets HLOD build the plantation's proxy."
     }
   },
   "coming": [
