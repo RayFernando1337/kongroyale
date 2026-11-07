@@ -461,7 +461,7 @@ export class CoastLod {
     const o = this.o, F = o.far ?? LOD.far, Md = o.mid ?? LOD.mid, N = o.near ?? LOD.near;
     const dp = NOCULL ? 0 : Math.hypot(cam.x - o.center[0], cam.y - o.center[1], cam.z - o.center[2]) - o.radius;
     this.far = !!o.proxy && dp > F;
-    if (o.proxy) o.proxy.visible = false;
+    if (o.proxy) o.proxy.visible = this.far;
     for (const it of this.items) {
       if (it.counts) {
         // layered mesh: one draw, the distance class picks how much of the index buffer to draw
