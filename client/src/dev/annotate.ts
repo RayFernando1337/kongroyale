@@ -109,7 +109,7 @@ export function startDevView(kr: Kr) {
   panel.addEventListener("click", (e) => {
     const a = (e.target as HTMLElement).closest("[data-a]")?.getAttribute("data-a"); if (!a) return;
     if (a === "fly") setFly(!fly);
-    else if (a === "wire" && !flag("geofree")) setWire(!wire);
+    else if (a === "wire") setWire(!wire);
     else if (a === "overlap") setOverlap(!overlap);
     else if (a === "hide") setPanel(false);
     else if (a === "save") void save();
@@ -313,7 +313,7 @@ export function startDevView(kr: Kr) {
       for (const m of Array.isArray(mm) ? mm : [mm]) if ("wireframe" in m && !(m as THREE.MeshBasicMaterial).wireframe) { (m as THREE.MeshBasicMaterial).wireframe = true; wired.add(m); }
     });
   }
-  function setWire(on: boolean) { wire = on; btn("wire").classList.toggle("on", on); applyWire(on); }
+  function setWire(on: boolean) { if (on && flag("geofree")) return; wire = on; btn("wire").classList.toggle("on", on); applyWire(on); }
 
   // ---- overlaps (z-fighting finder): after the frame, (1) the scene's linear depth into a float target, (2) every
   // surface again, additively counted where it lies within a hair of that depth (no depth test), (3) a red overlay
