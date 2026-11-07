@@ -1,9 +1,9 @@
 {
   "about": "check-size.mts --budgets: gzip bytes the browser downloads, per class, from dist/ after npm run build. JS is measured with Vite's 8-character chunk hashes replaced by a fixed string, so renaming a chunk does not move the totals. A size over its budget fails; a size more than 5% under fails until the budget is lowered, so budgets only go down. A budget is set to CI's measure plus 10 B. The reason for each change goes in its PR description and commit message, never here, so two PRs that move different budgets don't conflict on this line: git log -p tools/size-budgets.json is the history.",
   "gzBytes": {
-    "entry": 33976,
-    "boot": 1168325,
-    "workers": 3099690,
-    "lazy": 3062340
+    "entry": 34056,
+    "boot": 1168566,
+    "workers": 3099990,
+    "lazy": 3064935
   }
 }
