@@ -1,6 +1,6 @@
 # Resources
 
-Every GPU texture, render target and worker the client creates has one owner: a resource scope. Files load through one asset cache. The `resource-owner` lint rule enforces both.
+Every GPU texture, render target and worker the client creates has one owner: a resource scope. Files load through one asset cache. The `resource-owner` lint rule enforces both. [memory-architecture.md](memory-architecture.md) explains why, what is done and what is not done yet.
 
 ## Scopes
 
