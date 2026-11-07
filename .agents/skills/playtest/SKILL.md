@@ -102,6 +102,14 @@ npx tsx tools/playtest/cli.mts watch [--dir DIR] [--ticker FILE]   # a line per 
 
 `npm test -- --only triage` checks all of this against the hand-written bundles in `tools/playtest/fixtures/`.
 
+## The WebTransport A/B
+
+With `KR_WT=1` and `KR_WT_SHARE` (HOSTING.md "WebTransport"), each online bundle's `ctx.game.net` names the link's arm
+(`wt` or `ws`; `forced-wt` / `forced-ws` under `?wt=1` / `?wt=0`; `off` when the server offered none), the transport it
+settled on, the fallback reason, input→ack percentiles and the hit markers that waited for the server.
+`npx tsx tools/playtest/ab.mts [--dir DIR] [--health FILE|URL] [--json]` splits the bundles by arm and, with a
+`/health` from a server you run, adds the server's input gaps per arm. Compare only `wt` with `ws`.
+
 ## Rules
 
 - A bundle from SwiftShader (`ctx.gpu.renderer` mentions SwiftShader) says nothing about frame rate. Use it for

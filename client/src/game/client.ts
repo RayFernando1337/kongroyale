@@ -422,6 +422,8 @@ export class ClientMatch {
     // inputs at once, and the newest of them may have waited no longer than usual
     const oldest = this.authSeq + 1;
     if (this.pingN >= 5 && ((this.lastSnapAt > 0 && at - this.lastSnapAt > DEFER_SNAP_GAPS * SNAP_EVERY * DT * 1000) || (h.lastSeq >= oldest && (this.inputSeq - oldest >= PRING || at - this.sentAt[oldest % PRING] > this.ping + DEFER_ACK_SLACK_MS)))) this.lastStallAt = at;
+    // input→ack for the KONGBOT and playtest reports (tools/playtest/ab.mts compares it between WebTransport arms)
+    if (h.lastSeq > this.authSeq && this.inputSeq - h.lastSeq < PRING) this.link.noteAck?.(at - this.sentAt[h.lastSeq % PRING]);
     this.lastSnapTick = h.tick; this.lastSnapAt = at; this.netStats.snapshots++;
     const nowT = at / 1000 / DT;
     this.clockSample(h.tick, nowT, performance.now());
@@ -999,7 +1001,7 @@ export class ClientMatch {
    * no sample to judge it by, so the drawn verdict stands. On a slow or stalled link (linkSlow) no hit is predicted.
    */
   private lateVerdict(ox: number, oy: number, oz: number, dir: Float64Array, out: ShotResult) {
-    if (out.victim >= 0 && this.authSeq > 0) { this.predDefer = this.linkSlow(performance.now()); if (this.predDefer) { out.victim = -1; return; } }
+    if (out.victim >= 0 && this.authSeq > 0) { this.predDefer = this.linkSlow(performance.now()); if (this.predDefer) { this.link.noteDeferred?.(); out.victim = -1; return; } }
     const lo = this.authTick + (this.inputSeq - this.authSeq) - MAX_REWIND_TICKS;
     if (out.victim < 0 || this.authSeq <= 0 || lo > this.lastSnapTick || !(this.viewA + this.viewSpan * this.viewF < lo)) return;
     const T = this.viewTargets, L = LATE_TARGETS, bl = this.blend;
