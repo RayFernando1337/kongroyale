@@ -233,11 +233,11 @@ export class DetailCull {
     let c = this.byObj.get(o)?.lc;
     if (!c) { if (!m.geometry) return; if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere(); c = m.geometry.boundingSphere?.center; if (!c) return; }
     const saved = (o.__krCullSaved = new THREE.Matrix4()), lc = c;
-    // a module's own per-object hooks keep running (chained) and come back unchanged after the fade
+    // the object's hooks keep running (chained), inherited ones too (a BatchedMesh rebuilds its per-camera draw list in
+    // onBeforeRender / onBeforeShadow); its own ones come back unchanged after the fade
     const own = (k: string) => (Object.prototype.hasOwnProperty.call(o, k) ? (o as unknown as Record<string, unknown>)[k] : undefined);
-    const pb = own("onBeforeRender") as THREE.Object3D["onBeforeRender"] | undefined, pa = own("onAfterRender") as THREE.Object3D["onAfterRender"] | undefined;
-    const ps = own("onBeforeShadow") as THREE.Object3D["onBeforeShadow"] | undefined;
-    o.__krCullPrev = [pb, pa, ps] as unknown as [unknown, unknown];
+    o.__krCullPrev = [own("onBeforeRender"), own("onAfterRender"), own("onBeforeShadow")] as unknown as [unknown, unknown];
+    const pb = o.onBeforeRender, pa = o.onAfterRender, ps = o.onBeforeShadow;
     const scaled = (out: THREE.Matrix4) => {
       const f = Math.max(1e-3, this.factorOf(o)), e = out.elements, s = o.matrixWorld.elements;
       // M' = M · T(c) · S(f) · T(−c): columns scaled, translation moved so the bounding centre stays put
@@ -248,15 +248,15 @@ export class DetailCull {
     };
     const tmp = new THREE.Matrix4();
     o.onBeforeRender = (...args: Parameters<THREE.Object3D["onBeforeRender"]>) => {
-      pb?.apply(o, args);
+      pb.apply(o, args);
       saved.copy(o.matrixWorld);
       o.matrixWorld.copy(scaled(tmp));
     };
-    o.onAfterRender = (...args: Parameters<THREE.Object3D["onAfterRender"]>) => { o.matrixWorld.copy(saved); pa?.apply(o, args); };
+    o.onAfterRender = (...args: Parameters<THREE.Object3D["onAfterRender"]>) => { o.matrixWorld.copy(saved); pa.apply(o, args); };
     // the shadow pass computed modelViewMatrix before this hook: redo it with the scaled matrix (shadows fade too;
     // with ?visfade only until measured)
     if (VIS_FADE) o.onBeforeShadow = (...args: Parameters<THREE.Object3D["onBeforeShadow"]>) => {
-      ps?.apply(o, args);
+      ps.apply(o, args);
       const sc = args[3] as THREE.Camera;
       o.modelViewMatrix.multiplyMatrices(sc.matrixWorldInverse, scaled(tmp));
     };

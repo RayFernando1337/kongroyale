@@ -1,5 +1,5 @@
 {
-  "about": "Network tail budgets for tools/performance/net-tail.mts. Each row of the matrix (weapon x profile x RTT) is one deterministic tools/netlab.mts run with the game's two sockets (--aux). A budget applies to the rows its rtt range and profiles name. Proposed by RAY-163 from main's own numbers and agreed 2026-11-05; npm test runs net-tail --check against them (check id nettail).",
+  "about": "Network tail budgets for tools/performance/net-tail.mts. Each row of the matrix (weapon x profile x RTT) is one deterministic tools/netlab.mts run with the game's two sockets (--aux). A budget applies to the rows its rtt range and profiles name. Proposed by RAY-163 from main's own numbers and agreed 2026-11-05; npm test runs net-tail --check against them (check id nettail). Rows run on each transport in 'transports': ws is the game's two WebSockets (--aux), wt is WebTransport (--transport wt: input windows and snapshots as datagrams). A budget with 'transports' holds only on those; one without holds on every transport. The wt-only budgets (RAY-184 PR 5) hold what datagrams buy on lossy links, from wt's own numbers at 15bb7af.",
   "rtts": [
     50,
     150,
@@ -9,6 +9,10 @@
     "ar",
     "smg",
     "shotgun"
+  ],
+  "transports": [
+    "ws",
+    "wt"
   ],
   "profiles": {
     "jitter20": {
@@ -68,6 +72,33 @@
         "jitter20"
       ],
       "why": "netlab --check already holds this on a steady link up to 250 ms"
+    },
+    {
+      "id": "ghostHits250",
+      "metric": "ghost",
+      "max": 0,
+      "rtt": [
+        151,
+        250
+      ],
+      "profiles": [
+        "jitter20",
+        "loss1"
+      ],
+      "why": "no hit marker the server rejects on slow links either: while the link stalls, or above about 220 ms of RTT on a rough link, the client shows no predicted hit and the server's verdict draws the marker (ClientMatch.linkSlow, KONG-78 2b)"
+    },
+    {
+      "id": "instantMarkers",
+      "metric": "deferredMarkerPct",
+      "max": 1,
+      "rtt": [
+        0,
+        250
+      ],
+      "profiles": [
+        "jitter20"
+      ],
+      "why": "a steady link keeps its instant hit markers up to 250 ms: at most 1% of hits wait for the server (KONG-78 §4 2b's gate); the wait is for stalled, rough or past-the-rewind-cap links only"
     },
     {
       "id": "snapshotGap",
@@ -137,6 +168,70 @@
         "loss1"
       ],
       "why": "enemies freeze on screen when interpolation runs dry; under 2% of frames"
+    },
+    {
+      "id": "wtInputAckLossy",
+      "metric": "inputAckP99OverRttMs",
+      "max": 50,
+      "rtt": [
+        0,
+        250
+      ],
+      "profiles": [
+        "loss1"
+      ],
+      "transports": [
+        "wt"
+      ],
+      "why": "on datagrams a lost input is carried by the next window instead of waiting for a resend, so 1% loss keeps the steady link's budget up to 250 ms (wt: 40.3-44.4 ms; ws: 65.3-204 ms)"
+    },
+    {
+      "id": "wtInputAckBad",
+      "metric": "inputAckP99OverRttMs",
+      "max": 60,
+      "rtt": [
+        0,
+        250
+      ],
+      "profiles": [
+        "loss2j40"
+      ],
+      "transports": [
+        "wt"
+      ],
+      "why": "a bad connection (2% loss, 40 ms jitter) stays within about 3.5 ticks on datagrams (wt: 48.6-54.2 ms; ws: 54-299 ms)"
+    },
+    {
+      "id": "wtInstantMarkersLossy",
+      "metric": "deferredMarkerPct",
+      "max": 1,
+      "rtt": [
+        0,
+        250
+      ],
+      "profiles": [
+        "loss1"
+      ],
+      "transports": [
+        "wt"
+      ],
+      "why": "with 1% loss the link never stalls on datagrams, so hit markers stay instant up to 250 ms (wt: 0; ws: 24-32% at 250 ms)"
+    },
+    {
+      "id": "wtHitConfirm250Lossy",
+      "metric": "confirmPct",
+      "min": 99,
+      "rtt": [
+        151,
+        250
+      ],
+      "profiles": [
+        "loss1"
+      ],
+      "transports": [
+        "wt"
+      ],
+      "why": "and the instant markers are real: the server confirms them (wt: 100%)"
     }
   ]
 }

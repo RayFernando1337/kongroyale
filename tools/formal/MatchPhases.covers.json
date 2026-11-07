@@ -116,9 +116,9 @@
       "shared/sim/storm.ts#PHASE_REF": "e0a75d3d1b14fd57",
       "shared/sim/storm.ts#stormAt": "5d1b4498bd9062af",
       "shared/net/host.ts#MatchHost.holdForStream": "a48e271bba913cc6",
-      "server/index.ts#onJSON/case \"start\"": "3cb259f2160ec2a4",
+      "server/index.ts#onJSON/case \"start\"": "03394197bfaf965c",
       "server/index.ts#onJSON/case \"stream\"": "2d53e376bbcf7c50",
-      "server/lobby.ts#Lobby.start": "85af5dc311125c13",
+      "server/lobby.ts#Lobby.start": "ee302e2e8ed0ba4a",
       "server/lobby.ts#Lobby.pump": "c2c3268e6d1dd55b",
       "server/lobby.ts#Lobby.endMatch": "d65ba7025ff9eed3"
     }

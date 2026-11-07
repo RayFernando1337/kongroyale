@@ -9,7 +9,8 @@
 //   • what never merges: instanced / skinned / batched meshes, points / lines, transparent or custom-shader materials,
 //     meshes > 40 k triangles (already one draw), meshes whose world matrix changed since the POI was registered
 //     (animated), userData.krDynamic /
-//     userData.noMerge subtrees, multi-material meshes, morph targets. Those keep drawing as the module drew them.
+//     userData.noMerge subtrees, multi-material meshes, morph targets, geometry whose CPU arrays ?geofree released after
+//     upload. Those keep drawing as the module drew them.
 //   • the POI module's own visibility is respected: sources are gated through an accessor on `visible` that ANDs the
 //     module's value with the gate (modules keep toggling `visible` unaware), and the proxy only draws while every
 //     POI root is visible.
@@ -81,9 +82,10 @@ function attrSig(g: THREE.BufferGeometry): string {
   const parts: string[] = [];
   for (const name of Object.keys(g.attributes).sort()) {
     const a = g.attributes[name] as THREE.BufferAttribute;
-    if ((a as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute) return "";
+    if ((a as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute || a.array === null) return "";
     parts.push(`${name}:${a.itemSize}:${a.normalized ? 1 : 0}:${(a.array as unknown as { constructor: { name: string } }).constructor.name}`);
   }
+  if (g.index && g.index.array === null) return "";
   return parts.join(",") + (g.index ? "|i" : "|n");
 }
 
