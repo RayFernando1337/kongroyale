@@ -17,11 +17,11 @@ import type { FromHost, ToHost, OutItem, RecPart } from "./host-worker";
 
 const post = (m: FromHost, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer);
 /** the host's view copy goes to the page at most this often while a tool reads it (ticks) */
-const VIEW_EVERY = 6;
+const VIEW_EVERY_TICKS = 6;
 
 let world: StaticWorld | null = null;
 let session: { sid: number; link: OfflineLink; streamed: boolean; record: boolean; watch: boolean; viewTick: number } | null = null;
-let rec: { src: { rec: ReplayRecorder; match: Match } | null; sent: number; reset: boolean } = { src: null, sent: 0, reset: false };
+let rec: { src: { rec: ReplayRecorder; match: Match } | null; sent: number; tick: number; reset: boolean } = { src: null, sent: 0, tick: -1, reset: false };
 let items: OutItem[] = [], transfer: Transferable[] = [], scheduled = false, busyMs = 0;
 
 function out(item: OutItem, buf?: ArrayBuffer) {
@@ -34,12 +34,13 @@ function flush() {
   const s = session; if (!s) { items = []; transfer = []; return; }
   let part: RecPart | undefined;
   const src = rec.src;
-  if (rec.reset || (src && src.rec.events.length > rec.sent)) {
+  // (the tick goes too when no event is new: the page's log must end where the match it accompanies is)
+  if (rec.reset || (src && (src.rec.events.length > rec.sent || src.match.tick !== rec.tick))) {
     part = src ? { opts: rec.reset ? src.rec.opts : undefined, events: src.rec.events.slice(rec.sent), ticks: src.match.tick, warmupS: src.match.warmupS, endAfterResults: src.match.endAfterResults } : null;
-    rec.reset = false; rec.sent = src ? src.rec.events.length : 0;
+    rec.reset = false; rec.sent = src ? src.rec.events.length : 0; rec.tick = src ? src.match.tick : -1;
   }
   const m = s.link.match;
-  const view = s.watch && m && m.tick - s.viewTick >= VIEW_EVERY ? (s.viewTick = m.tick, copyView(m)) : undefined;
+  const view = s.watch && m && m.tick - s.viewTick >= VIEW_EVERY_TICKS ? (s.viewTick = m.tick, copyView(m)) : undefined;
   post({ k: "out", sid: s.sid, items, rec: part, view, busyMs }, transfer);
   items = []; transfer = [];
 }
@@ -51,7 +52,7 @@ function open(d: Extract<ToHost, { k: "open" }>) {
     seed: () => d.seed,
     recordReplay: () => s.record,
     streamed: () => s.streamed,
-    replay: (src) => { rec = { src, sent: 0, reset: true }; },
+    replay: (src) => { rec = { src, sent: 0, tick: -1, reset: true }; },
   };
   const link = s.link = new OfflineLink(world!, d.name, d.botDamageToHumans, d.botAimRange, d.range, d.difficulty, false, env);
   link.onJSON = (m) => { if (session === s) out([0, m]); };
@@ -88,6 +89,6 @@ self.onmessage = async (ev: MessageEvent<ToHost>) => {
     case "env": s.streamed = d.streamed; s.record = d.record; break;
     case "tool": s.link.hostTool(d.t); break;
     case "watch": s.watch = true; s.viewTick = -1e9; break;
-    case "close": s.link.close(); session = null; rec = { src: null, sent: 0, reset: false }; items = []; transfer = []; break;
+    case "close": s.link.close(); session = null; rec = { src: null, sent: 0, tick: -1, reset: false }; items = []; transfer = []; break;
   }
 };
