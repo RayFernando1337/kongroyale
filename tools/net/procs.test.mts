@@ -5,8 +5,8 @@
 // KR_PROCS=2 both processes come up and /health sums them; a room's code belongs to the process that made it
 // (procOf), a player who dials ?room=CODE lands on that process and joins the room, and its aux socket attaches with
 // ?p= its process but is refused on the other one; rooms made in a burst spread over both processes; the per-address
-// cap (KR_MAX_PER_IP) counts sockets across processes at the front; a match process that dies is started again and its
-// players' sockets are freed.
+// caps hold across processes: sockets (KR_MAX_PER_IP, counted at the front) and rooms (4 per address, each process told
+// what the address owns on the others); a match process that dies is started again and its players' sockets are freed.
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -33,8 +33,8 @@ async function startServer(env: Record<string, string>): Promise<{ port: number;
 }
 
 /** a socket to the server: its JSON messages, and whether and how it closed */
-async function dial(port: number, query = "") {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws${query}`); const json: Record<string, unknown>[] = [];
+async function dial(port: number, query = "", from = "127.0.0.1") {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws${query}`, { localAddress: from }); const json: Record<string, unknown>[] = [];
   let closed: number | null = null, refused = false;
   ws.on("message", (d: Buffer, isBin: boolean) => { if (!isBin) json.push(JSON.parse(String(d))); });
   ws.on("close", (code: number) => { closed = code; });
@@ -44,8 +44,8 @@ async function dial(port: number, query = "") {
   const last = (t: string) => [...json].reverse().find((m) => m.t === t);
   return { ws, json, last, refused: () => refused, closed: () => closed, send: (o: unknown) => ws.send(JSON.stringify(o)) };
 }
-async function player(port: number, query = "") {
-  const c = await dial(port, query);
+async function player(port: number, query = "", from?: string) {
+  const c = await dial(port, query, from);
   await waitFor(() => !!c.last("welcome"), 5000);
   c.send({ t: "hello", name: "PROCS" });
   return c;
@@ -64,7 +64,7 @@ async function player(port: number, query = "") {
 
 // ---- 2. a front and two match processes
 {
-  const s = await startServer({ KR_PROCS: "2", KR_MAX_PER_IP: "12" });
+  const s = await startServer({ KR_PROCS: "2", KR_MAX_PER_IP: "6" });
   try {
     const h0 = await health(s.port);
     check(h0.procs?.length === 2 && h0.procs.every((p) => p.up), `KR_PROCS=2: two match processes up (${JSON.stringify(h0.procs?.map((p) => p.up))})`);
@@ -90,8 +90,8 @@ async function player(port: number, query = "") {
     check(aux.closed() === null && aux.ws.readyState === WebSocket.OPEN, "an aux socket with ?p= its process attaches");
     check(wrong.closed() === 1008, `on the other process its token is unknown: refused (${wrong.closed()})`);
 
-    // rooms made in a burst, before either process reports them: they spread
-    const burst = await Promise.all(Array.from({ length: 6 }, () => player(s.port)));
+    // rooms made in a burst (from six addresses), before either process reports them: they spread
+    const burst = await Promise.all(Array.from({ length: 6 }, (_, i) => player(s.port, "", `127.0.0.${i + 2}`)));
     for (const c of burst) c.send({ t: "create", mode: "solo" });
     await waitFor(() => burst.every((c) => !!c.last("lobby")), 5000);
     const on = [0, 0]; for (const c of burst) on[c.last("welcome")!.proc as number]++;
@@ -100,11 +100,19 @@ async function player(port: number, query = "") {
     const h1 = await health(s.port);
     check(h1.lobbies === 7 && h1.procs!.reduce((n, p) => n + p.lobbies, 0) === 7, `/health sums the processes' lobbies (${h1.lobbies}: ${h1.procs!.map((p) => p.lobbies).join(" + ")})`);
 
-    // 2 players + 1 aux + 6 rooms = 9 sockets from 127.0.0.1 open on the two processes; KR_MAX_PER_IP=12 counts them all
+    // two players and an aux socket from 127.0.0.1 on one process; new sockets spread over both; KR_MAX_PER_IP=6
     const more: Awaited<ReturnType<typeof dial>>[] = [];
     for (let i = 0; i < 6; i++) { const c = await dial(s.port); more.push(c); if (c.refused()) break; }
-    check(more.length === 4 && more[3].refused(), `the per-address cap counts sockets on every process: three more get in, the 13th from 127.0.0.1 is refused (${more.filter((c) => !c.refused()).length} got in)`);
+    check(more.length === 4 && more[3].refused(), `the per-address cap counts sockets on every process: three more get in, the 7th from 127.0.0.1 is refused (${more.filter((c) => !c.refused()).length} got in)`);
     for (const c of more) c.ws.close();
+
+    // one address makes rooms one at a time, spread over both processes: the fifth is refused wherever it lands
+    const maker = await Promise.all(Array.from({ length: 6 }, () => player(s.port, "", "127.0.0.9")));
+    const madeOn = [0, 0];
+    for (const c of maker) { c.send({ t: "create", mode: "solo" }); await waitFor(() => !!c.last("lobby") || !!c.last("error"), 3000); if (c.last("lobby")) madeOn[c.last("welcome")!.proc as number]++; await sleep(1200); }
+    const refusedRooms = maker.filter((c) => /TOO MANY LOBBIES/.test(String(c.last("error")?.msg ?? ""))).length;
+    check(madeOn[0] + madeOn[1] === 4 && madeOn[0] > 0 && madeOn[1] > 0 && refusedRooms === 2, `an address owns at most 4 rooms across both processes (${madeOn.join(" + ")} made, ${refusedRooms} refused)`);
+    for (const c of maker) c.ws.close();
 
     // a match process dies: its sockets close, the front starts it again
     const victim = h1.procs!.find((p) => p.proc === procA)!;

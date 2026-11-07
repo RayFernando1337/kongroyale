@@ -240,7 +240,9 @@ function onBinary(c: Client, u8: Uint8Array, from: Path) {
   if (a) { a.seqs += Math.max(0, m!.lastSeq(pid) - s0); a.lost += m!.netStats.inputsLost - l0; a.recovered += m!.netStats.inputsRecovered - r0; }
 }
 const helloAt = new WeakMap<Client, number>(), helloLater = new WeakMap<Client, NodeJS.Timeout>();
-const ownedLobbies = (ip: string) => { let n = 0; for (const l of lobbies.values()) if (!l.event && l.owner && l.owner.sock?.ip === ip) n++; return n; };
+/** rooms each address owns on this server's other match processes (KR_PROCS), as the front last told this one */
+let ownedElsewhere: Record<string, number> = {};
+const ownedLobbies = (ip: string) => { let n = ownedElsewhere[ip] ?? 0; for (const l of lobbies.values()) if (!l.event && l.owner && l.owner.sock?.ip === ip) n++; return n; };
 function onJSON(c: Client, msg: { t?: unknown; [k: string]: unknown }) {
   switch (msg.t) {
     // (admin lobby) in an event lobby a name is set before joining; afterwards only the admin renames
@@ -419,6 +421,7 @@ else {
   // the admin's requests for this process's lobbies arrive as calls, and the front hears this process's health
   const toFront = (m: ToFront) => { if (process.connected) process.send?.(m); };
   process.on("message", (m: ToProc, handle?: net.Socket) => {
+    if (m.t === "owners") { ownedElsewhere = m.n; return; }
     if (m.t === "conn") {
       if (!handle) return;
       handle.once("close", () => toFront({ t: "gone", ip: m.ip }));
@@ -430,7 +433,8 @@ else {
     catch (e) { log("admin call failed", e); v = m.fn === "snapshot" ? [] : m.fn === "action" ? { ok: false, msg: "SERVER ERROR" } : { ok: false, error: "not-found" }; }
     toFront({ t: "reply", id: m.id, v });
   });
-  const push = () => toFront({ t: "health", h: { ...health(), events: [...lobbies.values()].filter((l) => l.event).length, made: roomsMade } });
+  const ownersHere = () => { const n: Record<string, number> = {}; for (const l of lobbies.values()) { const ip = !l.event && l.owner?.sock?.ip; if (ip) n[ip] = (n[ip] ?? 0) + 1; } return n; };
+  const push = () => toFront({ t: "health", h: { ...health(), events: [...lobbies.values()].filter((l) => l.event).length, made: roomsMade, owners: ownersHere() } });
   setInterval(push, PUSH_MS); push();
   onEventsDirty(() => toFront({ t: "dirty" }));
   // the front is gone: nothing can reach this process any more

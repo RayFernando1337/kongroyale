@@ -32,12 +32,14 @@ interface Proc {
   /** when it was picked for each new room its reports don't hold yet (oldest first), and how many rooms its last report
    *  said players have made there */
   picked: number[]; made: number;
+  /** the rooms by address on the other processes it was last sent (JSON), so an unchanged map isn't sent again */
+  ownersSent: string;
   calls: Map<number, (v: unknown) => void>;
 }
 
 export async function runFront(o: { root: string; port: number; host: string; serve: boolean; log(...a: unknown[]): void }) {
   const { log } = o;
-  const procs: Proc[] = Array.from({ length: PROCS }, (_, i) => ({ i, child: null, pid: 0, health: null, held: new Map(), picked: [], made: 0, calls: new Map() }));
+  const procs: Proc[] = Array.from({ length: PROCS }, (_, i) => ({ i, child: null, pid: 0, health: null, held: new Map(), picked: [], made: 0, ownersSent: "", calls: new Map() }));
   /** game WebSockets held across all processes, in total and by address */
   let open = 0;
   const perIp = new Map<string, number>();
@@ -52,14 +54,14 @@ export async function runFront(o: { root: string; port: number; host: string; se
     const child = fork(process.argv[1], process.argv.slice(2), { env: { ...process.env, KR_PROC: String(p.i) }, execArgv: process.execArgv });
     p.child = child; p.pid = child.pid ?? 0;
     child.on("message", (m: ToFront) => {
-      if (m.t === "health") { p.picked.splice(0, Math.max(0, m.h.made - p.made)); p.made = m.h.made; p.health = m.h; announce(); }
+      if (m.t === "health") { p.picked.splice(0, Math.max(0, m.h.made - p.made)); p.made = m.h.made; p.health = m.h; shareOwners(); announce(); }
       else if (m.t === "gone") count(p, m.ip, -1);
       else if (m.t === "dirty") for (const fn of dirty) fn();
       else if (m.t === "reply") { const done = p.calls.get(m.id); p.calls.delete(m.id); done?.(m.v); }
     });
     child.on("exit", (code, sig) => {
       if (p.child !== child) return;
-      p.child = null; p.health = null; p.picked = []; p.made = 0;
+      p.child = null; p.health = null; p.picked = []; p.made = 0; p.ownersSent = ""; shareOwners();
       for (const [ip, n] of [...p.held]) count(p, ip, -n);
       if (stopping) { if (procs.every((q) => !q.child)) process.exit(0); return; }
       log(`match process ${p.i} exited (${sig ?? code}); starting it again`);
@@ -67,6 +69,18 @@ export async function runFront(o: { root: string; port: number; host: string; se
     });
   }
   for (const p of procs) spawn(p);
+
+  /** each process gets the rooms every address owns on the others, so MAX_LOBBIES_PER_IP holds across processes. It
+   *  lags by one report: rooms one address makes on several processes within PUSH_MS can pass it, once */
+  function shareOwners() {
+    for (const q of procs) {
+      if (!q.child?.connected) continue;
+      const n: Record<string, number> = {};
+      for (const p of procs) if (p !== q && p.health) for (const [ip, k] of Object.entries(p.health.owners)) n[ip] = (n[ip] ?? 0) + k;
+      const s = JSON.stringify(n);
+      if (s !== q.ownersSent) { q.ownersSent = s; q.child.send({ t: "owners", n } satisfies ToProc); }
+    }
+  }
 
   /** a process ready for players with the fewest lobbies, counting the rooms it was picked for that its reports don't
    *  hold yet (a report comes every PUSH_MS, and a loaded process takes a while to make the room, so without them rooms

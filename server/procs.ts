@@ -22,13 +22,17 @@ export interface ProcHealth {
   lobbies: number; clients: number; sockets: number; events: number;
   /** rooms players have made here since it started: the front matches them against the rooms it sent here */
   made: number;
+  /** rooms each address owns here (outside event mode's admin lobbies), for the per-address room cap across processes */
+  owners: Record<string, number>;
   transports: Record<string, unknown>; inputs: unknown[]; performance?: unknown;
 }
 export const PUSH_MS = 500;
 /** front → match process. "conn": a game WebSocket's TCP socket rides along as the handle, with the upgrade request it
- *  already read (base64) and the address the front counted it under. "call": an admin request, answered by "reply" */
+ *  already read (base64) and the address the front counted it under. "owners": the rooms each address owns on the other
+ *  processes, as they last reported. "call": an admin request, answered by "reply" */
 export type ToProc =
   | { t: "conn"; ip: string; raw: string }
+  | { t: "owners"; n: Record<string, number> }
   | { t: "call"; id: number; fn: "snapshot" | "action" | "info"; arg?: unknown };
 /** match process → front. "gone": a socket the front handed over has closed (the front's per-address count drops) */
 export type ToFront =
