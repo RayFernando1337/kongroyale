@@ -14,10 +14,10 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kr-ab-"));
 const FIELDS = ["t", "fps", "p95Ms", "maxMs", "over50", "over100", "gpuMs", "pingMs", "jitterMs", "heapMB", "phase"];
 /** a bundle with `before` seconds of a practice match at 500 ms ping (with lag spikes), then `playS` seconds of play at
  *  `ping` ms on its link, and the link's report (or none) */
-function bundle(id: string, playS: number, ping: number, net: unknown, before = 0, warmup = 0, player = "install-" + id) {
+function bundle(id: string, playS: number, ping: number, net: unknown, before = 0, warmup = 0, player = "install-" + id, at = "2026-11-07T00:00:00Z") {
   const rows = Array.from({ length: before + playS }, (_, i) => [i, 60, 17, 18, 0, 0, 5, i < before ? (i % 2 ? 500 : 40) : ping, 2, 300, 2]);
   for (let i = 0; i < warmup; i++) rows.push([before + playS + i, 60, 17, 18, 0, 0, 5, ping, 40, 300, 0]);
-  const raw = { id, message: "SECRETMESSAGE", receivedAt: "2026-11-07T00:00:00Z", reporter: { name: "SECRETCALLSIGN", clientId: player }, ctx: { game: { net } }, logs: [], bundle: { mark: true, timeline: { fields: FIELDS, rows, dropped: 0 }, flags: {}, build: null, replay: null } };
+  const raw = { id, message: "SECRETMESSAGE", receivedAt: at, reporter: { name: "SECRETCALLSIGN", clientId: player }, ctx: { game: { net } }, logs: [], bundle: { mark: true, timeline: { fields: FIELDS, rows, dropped: 0 }, flags: {}, build: null, replay: null } };
   fs.mkdirSync(path.join(tmp, id)); fs.writeFileSync(path.join(tmp, id, "bundle.json"), JSON.stringify(raw));
 }
 const report = (arm: string, transport: string, fallback: string | null, p50: number, p95: number, deferred: number, playS: number, since = 0) =>
@@ -27,6 +27,10 @@ bundle("A2", 60, 70, report("wt", "ws", "timeout", 60, 120, 4, 60));
 bundle("B0", 30, 60, report("ws", "ws", "flag-off", 70, 200, 6, 30, 5), 0, 0, "install-B1");
 bundle("B1", 60, 60, report("ws", "ws", "flag-off", 70, 200, 6, 60, 5), 0, 20, "install-B1");
 bundle("C1", 30, 40, report("forced-wt", "wt", null, 30, 50, 0, 30));
+// one forced-wt link reported twice at the same play seconds: first on wt, then after a fallback in the room; the
+// earlier report's folder sorts last
+bundle("C3", 30, 40, report("forced-wt", "ws", "closed", 30, 50, 0, 30, 7), 0, 0, "install-C2", "2026-11-07T00:05:00Z");
+bundle("C4", 30, 40, report("forced-wt", "wt", null, 30, 50, 0, 30, 7), 0, 0, "install-C2", "2026-11-07T00:01:00Z");
 bundle("D1", 60, 60, report("off", "ws", "server-off", 70, 90, 10, 600));
 bundle("P1", 60, -1, null);
 
@@ -42,6 +46,7 @@ assert.equal(wt.playMin, 3);
 assert.equal(wt.pingMs, 70, "the practice match's 500 ms seconds before A1's link opened are not in the arm (median of 50 and 70)");
 assert.equal(wt.lagSPer10Min, 0, "nor are its lag spikes");
 assert.equal(by.get("off")!.deferredPerMin, 1, "10 markers over the link's 10 minutes of play, though the timeline kept only 1");
+assert.deepEqual(by.get("forced-wt")!.fallbacks, { closed: 1 }, "the newer report of C2's link wins a tie in play seconds");
 assert.equal(ws.bundles, 2); assert.equal(ws.links, 1, "B0 and B1 are two reports of one link (same player, same since)");
 assert.deepEqual(ws.fallbacks, { "flag-off": 1 }); assert.equal(ws.ackP95Ms, 200);
 assert.equal(ws.deferredPerMin, 6, "the link's 6 markers over its 1 minute, from the later report only");

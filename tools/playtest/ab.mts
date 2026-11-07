@@ -27,7 +27,7 @@ export function linkOf(s: Saved) {
   const own: Saved = !tl ? s : { ...s, bundle: { ...s.bundle, timeline: { ...tl, rows: tl.rows.filter(mine) } } };
   const sr = series(own), a = analyse(own, sr);
   return {
-    arm, player: s.reporter.clientId, since, transport: text(net.transport, 4), fallback: text(net.fallback, 20),
+    arm, player: s.reporter.clientId, since, receivedAt: s.receivedAt, transport: text(net.transport, 4), fallback: text(net.fallback, 20),
     ackP50: finite(dig(net, "ackMs", "p50")), ackP95: finite(dig(net, "ackMs", "p95")), ackN: finite(dig(net, "ackMs", "n")) ?? 0,
     /** deferred markers and the seconds of play they happened in, both counted by the link over its whole life */
     deferred: finite(net.deferred) ?? 0, playS: finite(net.playS) ?? 0,
@@ -38,13 +38,14 @@ export function linkOf(s: Saved) {
 }
 type Link = NonNullable<ReturnType<typeof linkOf>>;
 
-/** the latest report of each link (one player's link that opened at `since`): its counters are cumulative, so two
- *  reports of one link would count its start twice */
+/** the latest report of each link (one player's link that opened at `since`), by when the server received it, then by
+ *  its counters: they are cumulative, so two reports of one link would count its start twice */
 export function latestPerLink(links: Link[]) {
   const by = new Map<string, Link>();
   links.forEach((k, i) => {
     const key = k.since === null ? `bundle ${i}` : `${k.player ?? "?"} ${k.since}`, o = by.get(key);
-    if (!o || k.playS >= o.playS) by.set(key, k);
+    const newer = !o || (k.receivedAt !== o.receivedAt ? k.receivedAt > o.receivedAt : k.playS !== o.playS ? k.playS > o.playS : k.ackN >= o.ackN);
+    if (newer) by.set(key, k);
   });
   return [...by.values()];
 }
