@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Red-team the admin lobby: starts its OWN game server on a spare port with a throwaway
 // admin key (random, in memory, never printed) and proves every attack below FAILS. Exit code 0 = every check held.
-//   node tools/admin-lobby/redteam.mjs [--port 5479] [--md <file>]
+//   node tools/admin-lobby/redteam.mjs [--port 5479] [--md <file>] [--procs N]
+// --procs N runs the server as a front with N match processes (KR_PROCS), so the same attacks cover the multi-process path.
 // Needs no browser and never touches the real key (.admin-key).
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
@@ -14,6 +15,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const argv = process.argv.slice(2);
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const PORT = Number(opt("--port", 5479)), B = `http://127.0.0.1:${PORT}`, WSB = `ws://127.0.0.1:${PORT}`;
+const PROCS = opt("--procs", "");
 const mdOut = opt("--md", "docs/admin-lobby/redteam-results.md");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rnd = () => crypto.randomBytes(16).toString("hex");
@@ -32,7 +34,7 @@ fs.mkdirSync(path.dirname(logFile), { recursive: true });
 const log = fs.openSync(logFile, "w");
 const srv = spawn(process.execPath, [path.join(root, "node_modules/tsx/dist/cli.mjs"), "server/index.ts"], {
   cwd: root, stdio: ["ignore", log, log],
-  env: { ...process.env, KR_PORT: String(PORT), KR_HOST: "127.0.0.1", KR_EVENT_MODE: "1", KR_TRUST_PROXY: "1", KR_ADMIN_KEY_SHA256: HASH, KR_ADMIN_SESSION_S: String(SESSION_S), KR_ADMIN_KEY: "", KR_SERVE: "0" },
+  env: { ...process.env, KR_PORT: String(PORT), KR_HOST: "127.0.0.1", KR_EVENT_MODE: "1", KR_TRUST_PROXY: "1", KR_ADMIN_KEY_SHA256: HASH, KR_ADMIN_SESSION_S: String(SESSION_S), KR_ADMIN_KEY: "", KR_SERVE: "0", KR_PROCS: PROCS },
 });
 const cleanup = () => { try { srv.kill("SIGTERM"); } catch { /* gone */ } };
 process.on("exit", cleanup); process.on("SIGINT", () => { cleanup(); process.exit(130); });
@@ -74,7 +76,7 @@ async function adminSession() {
   return { cookie, from, s, act, state };
 }
 async function player(code, { name = "PLAYER", tok = rnd(), from = addr() } = {}) {
-  const p = await wsTry("/ws", { "x-forwarded-for": from });
+  const p = await wsTry(code ? "/ws?room=" + code : "/ws", { "x-forwarded-for": from });
   p.tok = tok; p.from = from;
   p.ws.send(JSON.stringify({ t: "hello", name }));
   if (code) p.ws.send(JSON.stringify({ t: "join", code, tok }));
