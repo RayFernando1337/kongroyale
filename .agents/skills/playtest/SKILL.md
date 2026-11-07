@@ -40,8 +40,14 @@ side by side both write there. For the dev pair: `KR_EVENT_MODE=0 npm run server
 `npm run dev`, then open <http://localhost:5317/?perfhud>.
 
 Each bundle is a folder `<UTC time>-<report id>/` with `bundle.json` and `shot.jpg`. The server stops writing at
-500 bundles or 1 GB, counted on disk before every write (so two servers sharing a folder share the cap), logs that once, and resumes as soon as the folder is cleared. MongoDB keeps the timeline but never
+500 bundles or 1 GB (`KR_PLAYTEST_BUNDLES_MAX` and `KR_PLAYTEST_BUNDLES_MB` change them), counted on disk before every write (so two servers sharing a folder share the cap), logs that once, and resumes as soon as the folder is cleared. MongoDB keeps the timeline but never
 the replay log.
+
+Automatic performance summaries (`/api/diag/auto`, `KR_DIAG_AUTO`) are not bundles: each is one JSON line in
+`<folder>/<UTC date>.jsonl` (`.kongbot/diag-auto/` under the repo with `npm run server`) holding an install id, a session id, a
+kind (`hitch`, `lowfps`, `ctxlost`, `error`, `crash` or `match`), page seconds, a config key, the build, an optional
+signature and up to 16 numbers. `server/diag-auto.ts` `parseAuto` is the schema. A `match` row per finished match is
+the denominator for rates per config.
 
 ## Read them
 
