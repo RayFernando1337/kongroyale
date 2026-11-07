@@ -12,7 +12,7 @@ import { onStructure, ownVisible, activeGates, type Gate } from "./scene-hooks";
 import { installShaderRecorder } from "./shader-src";
 import { installDitherChunks } from "./dither";
 import { afterPaint } from "./frame";
-import { RefreshEstimate } from "./refresh";
+import { RefreshEstimate, WEBKIT_CEILING_HZ } from "./refresh";
 import { flag } from "../flags";
 import { contextEpoch, watchContext } from "./res/restore";
 import "./geometry-release"; // in boot: the geofree owners in lazy chunks share this copy, fewer bytes than a chunk of its own
@@ -659,7 +659,7 @@ export class Engine implements WorldCtx {
   refreshHz = 0;
   private rafSamples: number[] = [];
   private rafNext = 0;
-  private refreshEst = new RefreshEstimate();
+  private refreshEst = new RefreshEstimate(/^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent) ? WEBKIT_CEILING_HZ : 0);
   private refreshListeners: Array<(hz: number) => void> = [];
   onRefresh(fn: (hz: number) => void) { this.refreshListeners.push(fn); if (this.refreshHz) fn(this.refreshHz); }
   private sampleRefresh(d: number) {

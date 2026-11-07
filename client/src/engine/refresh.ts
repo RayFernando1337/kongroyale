@@ -21,6 +21,10 @@ export const STEADY_RATIO = 1.4;
 export const SKIP_RATIO = 1.5;
 /** a steady reading under this could be a game held at half rate rather than the display, so it sets no ceiling */
 export const CEILING_MIN_HZ = 50;
+/** WebKit renders a page near 60 fps by default ("Prefer Page Rendering Updates near 60fps", on unless turned off under
+ *  Develop > Feature Flags), so in Safari an uneven sample reads at most this until a steady one shows more. No steady
+ *  sample came in a whole Safari practice match at High: the loading and the title are uneven too (RAY-224) */
+export const WEBKIT_CEILING_HZ = 60;
 const SNAP_HZ = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 170, 175, 180, 200, 240, 280, 300, 360, 480, 500];
 
 /** one sample of rAF intervals (ms): the refresh it reads (Hz, snapped to a common display rate when within 4 %, at
@@ -41,16 +45,18 @@ export function refreshFromIntervals(intervalsMs: readonly number[]): number {
   return refreshSample(intervalsMs).hz;
 }
 
-/** the engine's running estimate: a steady sample reads as it is, and an uneven one at most the highest steady reading
- *  of CEILING_MIN_HZ or more on the same screen (its size and position among the screens, so a move to a same-sized
- *  screen starts over). The ceiling only rises on one screen: a faster refresh mode set in place reads low until a
- *  steady sample shows it, and a slower one still reads right on steady samples */
+/** the engine's running estimate: a steady sample reads as it is, and an uneven one at most the ceiling, the highest of
+ *  the base ceiling and the steady readings of CEILING_MIN_HZ or more on the same screen (its size and position among
+ *  the screens, so a move to a same-sized screen starts over). The ceiling only rises on one screen: a faster refresh
+ *  mode set in place reads low until a steady sample shows it, and a slower one still reads right on steady samples */
 export class RefreshEstimate {
-  private ceilHz = 0;
+  private ceilHz: number;
   private screen = "";
+  /** baseCeilHz: the ceiling before any steady sample (WEBKIT_CEILING_HZ in Safari, 0 = none) */
+  constructor(private readonly baseCeilHz = 0) { this.ceilHz = baseCeilHz; }
   /** take a sample of rAF intervals (ms) on the screen with this key (its size and position); the new estimate (Hz) */
   add(intervalsMs: readonly number[], screen: string): number {
-    if (screen !== this.screen) { this.screen = screen; this.ceilHz = 0; }
+    if (screen !== this.screen) { this.screen = screen; this.ceilHz = this.baseCeilHz; }
     const s = refreshSample(intervalsMs);
     if (s.steady && s.hz >= CEILING_MIN_HZ) this.ceilHz = Math.max(this.ceilHz, s.hz);
     return s.steady || !this.ceilHz ? s.hz : Math.min(s.hz, this.ceilHz);

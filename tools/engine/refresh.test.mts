@@ -1,6 +1,6 @@
 // The display refresh estimate (client/src/engine/refresh.ts): a slow, GPU-bound game must not read as a slow display.
 import assert from "node:assert/strict";
-import { RefreshEstimate, refreshFromIntervals, refreshSample } from "../../client/src/engine/refresh";
+import { RefreshEstimate, WEBKIT_CEILING_HZ, refreshFromIntervals, refreshSample } from "../../client/src/engine/refresh";
 
 const vsync = (hz: number, periods: number[]) => periods.map((k, i) => (k * 1000) / hz + (i % 3 === 0 ? 0.05 : i % 3 === 1 ? -0.05 : 0));
 const repeat = (pattern: number[], n: number) => Array.from({ length: n }, (_, i) => pattern[i % pattern.length]);
@@ -53,6 +53,16 @@ const SCREEN = "1920,1080,0,0";
   assert.equal(e.add(vsync(30, repeat([1], 90)), SCREEN), 30, "a steady 30 reads 30");
   assert.equal(e.add(vsync(60, repeat([1, 2, 3, 3, 2, 3, 4, 3, 2, 3], 90)), SCREEN), 60, "and a slow game after it, its tail");
   assert.equal(e.add(vsync(144, repeat([1, 2, 3, 2], 90)), "1920,1080,1920,0"), 144, "a same-sized screen beside it starts over");
+}
+// Safari, where no steady sample may ever come (the A/B on the Mac mini: loading, title and a match at High all uneven):
+// an uneven sample reads at most WebKit's 60 from the start, and a steady 120 (the 60 fps preference turned off) lifts it
+{
+  const e = new RefreshEstimate(WEBKIT_CEILING_HZ);
+  assert.equal(e.add(safariUneven, SCREEN), 60, "Safari uneven from the start");
+  assert.equal(e.add(safariHalf, SCREEN), 60);
+  assert.equal(e.add(vsync(120, repeat([1], 90)), SCREEN), 120);
+  assert.equal(e.add(vsync(120, repeat([1, 2, 3, 2], 90)), SCREEN), 120, "a slow game at 120 Hz once a steady 120 came");
+  assert.equal(e.add(safariUneven, "2560,1440,1920,0"), 60, "another screen starts from WebKit's 60 again");
 }
 // a match held at half rate from the first sample: a steady 30 sets no ceiling, so the later tail still reads 60
 {
