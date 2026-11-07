@@ -57,7 +57,8 @@ async function settle(page: Page): Promise<{ shot: Buffer; settled: boolean }> {
   let last: Buffer | null = null;
   for (let frames = 0; frames < SETTLE_FRAMES; frames++) {
     await page.waitForTimeout(SETTLE_MS);
-    const shot = await page.screenshot({ type: "png", timeout: 120_000 });
+    // the widest lobby view (char-02-lobby-island) takes over 2 minutes per frame on a 4 vCPU runner
+    const shot = await page.screenshot({ type: "png", timeout: 300_000 });
     if (last && await same(last, shot)) return { shot, settled: true };
     last = shot;
   }
