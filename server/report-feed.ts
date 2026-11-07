@@ -8,8 +8,8 @@ import { POIS } from "../shared/world/map";
 import type { Bundle } from "./playtest-bundles";
 
 const MAX_ITEMS = 200;
-/** what a symptom chip may hold on the way to a moderator's screen */
-const LABEL = /[^A-Za-z0-9 '.,:()-]/g;
+/** the send sheet's symptom chips (client/src/playtest/report.ts): the only words a player's report adds to a row */
+const CHIPS = new Set(["Stutter", "Low FPS", "Lag", "Crashed", "Loading", "Looks wrong", "Other"]);
 const SHA = /^[0-9a-f]{7,40}$/;
 
 export interface FeedItem {
@@ -32,8 +32,6 @@ export interface FeedItem {
 }
 
 export interface StoredReport { id: string; at: Date; message: string; ua: string | null; ctx: unknown; bundle: Bundle | null }
-
-const label = (v: unknown, n: number) => (typeof v === "string" ? v.replace(LABEL, "").trim().slice(0, n) || null : null);
 
 /** the browser and OS family from a user-agent string: a coarse label, never the string itself */
 export function family(ua: string | null): { browser: string; os: string } {
@@ -59,7 +57,7 @@ export function reportFeed() {
     const sha = r.bundle?.build?.sha ?? (typeof ctx?.build?.sha === "string" && SHA.test(ctx.build.sha) ? ctx.build.sha : null);
     // a diagnostics send carries the sheet's own words ("Diagnostics from play at 7:42, Banana Temple"), never a player's
     const hasText = kind !== "diagnostics" && r.message.length > 0;
-    const item: FeedItem = { seq: ++seq, at: r.at.toISOString(), id: r.id, kind, chip: label(diag?.chip, 24), poi, ...family(r.ua), build: sha?.slice(0, 7) ?? null, hasText };
+    const item: FeedItem = { seq: ++seq, at: r.at.toISOString(), id: r.id, kind, chip: diag?.chip && CHIPS.has(diag.chip) ? diag.chip : null, poi, ...family(r.ua), build: sha?.slice(0, 7) ?? null, hasText };
     items.push(item);
     if (hasText) texts.set(item.seq, r.message);
     while (items.length > MAX_ITEMS) texts.delete(items.shift()!.seq);
