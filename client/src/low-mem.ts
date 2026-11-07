@@ -178,7 +178,7 @@ function evictionsFor(list: readonly Resident[]): Resident[] {
   return out;
 }
 
-const IMPOSTOR_MAGIC = "KRFI", IMPOSTOR_HEADER_B = 40, INTEGRATED_POLL_MS = 100, INTEGRATED_POLL_MAX_MS = 300_000, IMPOSTOR_HOLD_MS = 0;
+const IMPOSTOR_MAGIC = "KRFI", IMPOSTOR_HEADER_B = 40, INTEGRATED_POLL_MS = 100, INTEGRATED_POLL_MAX_MS = 300_000, IMPOSTOR_HOLD_MS = 1000;
 let impostors: Map<string, THREE.Mesh> | null = null, streamMsRef: Record<string, number> = {}, pendingRef: string[] = [];
 let revealingRef: (id: string) => boolean = () => false;
 const integratedAt = new Map<string, number>(), released = new Set<string>();
@@ -190,7 +190,7 @@ const integratedAt = new Map<string, number>(), released = new Set<string>();
 function held(id: string, now: number): boolean {
   if (released.has(id)) return false;
   const at = integratedAt.get(id);
-  if (at === undefined || now - at < IMPOSTOR_HOLD_MS || (IMPOSTOR_HOLD_MS > 0 && revealingRef(id))) return true;
+  if (at === undefined || now - at < IMPOSTOR_HOLD_MS || revealingRef(id)) return true;
   released.add(id);
   return false;
 }
