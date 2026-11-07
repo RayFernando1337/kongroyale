@@ -4,15 +4,15 @@
 // picture, replay, logs, callsign or note: only a random install id, a config key and up to 16 numbers.
 //
 // The endpoint has its own limits, separate from /api/kongbot's, so automatic traffic never crowds out a player's own
-// report: a 4 KB body, per-address, per-install and server-wide rates, and per-install dedupe of an identical event.
+// report: a 4 KB body, per-address, per-install and server-wide rates, and dedupe of a row sent twice.
 // Accepted rows are appended to <folder>/<UTC date>.jsonl (KR_DIAG_AUTO, off unless set; `npm run server` defaults it
-// on), and the folder stops growing at KR_DIAG_AUTO_MB. Counters are in /health as diagAuto.
+// on, under .kongbot/ which the dev server never serves), and the folder stops growing at KR_DIAG_AUTO_MB. Counters are in /health as diagAuto.
 import type http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 
 /** a row's body; sendBeacon can't retry or read the answer, so a client keeps its rows well under it */
-export const AUTO_MAX_BODY = 4096;
+export const AUTO_MAX_BODY_BYTES = 4096;
 export const AUTO_KINDS = ["hitch", "lowfps", "ctxlost", "error", "crash", "match"] as const;
 export type AutoKind = (typeof AUTO_KINDS)[number];
 const MAX_STATS = 16, MAX_ABS = 1e9, MAX_T_S = 1e6;
@@ -20,7 +20,7 @@ const ID = /^[A-Za-z0-9-]{8,64}$/, CONFIG = /^[A-Za-z0-9:._-]{1,80}$/, BUILD = /
 const SIG = /^[A-Za-z0-9_.:-]{1,40}$/, FIELD = /^[a-zA-Z][a-zA-Z0-9_]{0,23}$/;
 /** rows per address in RATE_WINDOW_MS, per install per hour, and for the whole server per hour */
 const PER_ADDRESS = 60, RATE_WINDOW_MS = 10 * 60_000, HOUR_MS = 3_600_000, PER_INSTALL_HOUR = 30, SERVER_HOUR = 6000;
-/** an identical event from one install inside this window is answered but not stored */
+/** a row seen again inside this window (same install, session, kind, page time and signature) is answered, not stored */
 const DEDUPE_MS = 10 * 60_000, MAX_DEDUPE_KEYS = 50_000;
 /** the folder's default cap; KR_DIAG_AUTO_MB overrides it */
 export const AUTO_CAP_MB = 256;
@@ -54,10 +54,10 @@ export function parseAuto(v: unknown): { ok: true; value: AutoRow } | { ok: fals
   return { ok: true, value: { v: 1, install: r.install, session: r.session, kind: r.kind as AutoKind, t: r.t, config: r.config, build: r.build, sig: typeof r.sig === "string" ? r.sig : null, stats } };
 }
 
-/** the folder rows go to, from KR_DIAG_AUTO: unset or 0 is off, 1 is <root>/diag-auto, anything else is a path */
+/** the folder rows go to, from KR_DIAG_AUTO: unset or 0 is off, 1 is <root>/.kongbot/diag-auto, anything else is a path */
 export function autoDir(root: string, setting: string | undefined): string | null {
   if (!setting || setting === "0") return null;
-  return path.resolve(setting === "1" ? path.join(root, "diag-auto") : setting);
+  return path.resolve(setting === "1" ? path.join(root, ".kongbot", "diag-auto") : setting);
 }
 
 /** the cap from KR_DIAG_AUTO_MB; a value that isn't a whole number above zero keeps the default and says so */
@@ -106,7 +106,7 @@ export function diagAutoApi(dir: string | null, log: (...a: unknown[]) => void, 
     try {
       for await (const c of req) {
         size += (c as Buffer).length;
-        if (size > AUTO_MAX_BODY) { counts.refused++; reply(res, 413, "row too large"); req.destroy(); return; }
+        if (size > AUTO_MAX_BODY_BYTES) { counts.refused++; reply(res, 413, "row too large"); req.destroy(); return; }
         chunks.push(c as Buffer);
       }
     } catch { counts.refused++; reply(res, 400, "bad body"); return; }
@@ -115,10 +115,12 @@ export function diagAutoApi(dir: string | null, log: (...a: unknown[]) => void, 
     const parsed = parseAuto(body);
     if (!parsed.ok) { counts.refused++; reply(res, 400, parsed.error); return; }
     const row = parsed.value;
-    if (!within(byInstall, row.install, now, HOUR_MS, PER_INSTALL_HOUR)) { counts.limited++; reply(res, 429, "too many rows"); return; }
-    const key = row.kind === "match" ? `${row.install}|${row.session}|match|${row.t}` : `${row.install}|${row.kind}|${row.sig ?? ""}|${row.config}`;
+    const key = `${row.install}|${row.session}|${row.kind}|${row.t}|${row.sig ?? ""}`;
     const last = seen.get(key);
     if (last !== undefined && now - last < DEDUPE_MS) { counts.deduped++; reply(res, 204); return; }
+    if (!within(byInstall, row.install, now, HOUR_MS, PER_INSTALL_HOUR)) { counts.limited++; reply(res, 429, "too many rows"); return; }
+    // checked again after the body arrived: other rows may have been stored meanwhile, and nothing below awaits
+    if (hour.length >= SERVER_HOUR) { counts.limited++; reply(res, 429, "too many rows"); return; }
     const at = new Date(now), line = JSON.stringify({ at: at.toISOString(), ...row }) + "\n";
     if (used(dir) + Buffer.byteLength(line) > capBytes) {
       counts.full++;

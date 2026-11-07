@@ -44,7 +44,7 @@ Each bundle is a folder `<UTC time>-<report id>/` with `bundle.json` and `shot.j
 the replay log.
 
 Automatic performance summaries (`/api/diag/auto`, `KR_DIAG_AUTO`) are not bundles: each is one JSON line in
-`<folder>/<UTC date>.jsonl` (`diag-auto/` under the repo with `npm run server`) holding an install id, a session id, a
+`<folder>/<UTC date>.jsonl` (`.kongbot/diag-auto/` under the repo with `npm run server`) holding an install id, a session id, a
 kind (`hitch`, `lowfps`, `ctxlost`, `error`, `crash` or `match`), page seconds, a config key, the build, an optional
 signature and up to 16 numbers. `server/diag-auto.ts` `parseAuto` is the schema. A `match` row per finished match is
 the denominator for rates per config.

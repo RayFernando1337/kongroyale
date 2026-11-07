@@ -31,7 +31,7 @@ const good = { v: 1, install: "3f2a9c1e-77aa-4b1c-9d0e-123456789abc", session: "
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "kr-auto-"));
 assert.equal(autoDir(root, undefined), null);
 assert.equal(autoDir(root, "0"), null);
-assert.equal(autoDir(root, "1"), path.join(root, "diag-auto"));
+assert.equal(autoDir(root, "1"), path.join(root, ".kongbot", "diag-auto"), "the default folder is one the dev server never serves");
 assert.equal(autoDir(root, path.join(root, "x")), path.join(root, "x"));
 {
   const logs: string[] = [], log = (...a: unknown[]) => logs.push(a.join(" "));
@@ -68,21 +68,24 @@ const rows = (dir: string) => (fs.existsSync(dir) ? fs.readdirSync(dir).flatMap(
   assert.equal(saved[0].install, good.install);
   assert.ok(!Number.isNaN(Date.parse(saved[0].at)), "the server stamps its own time");
   assert.equal(await post(good), 204, "a repeat is answered");
-  assert.equal(rows(dir).length, 1, "but an identical event from the same install is stored once");
+  assert.equal(rows(dir).length, 1, "but a row sent twice is stored once");
+  assert.equal(await post({ ...good, t: 900.2, stats: { frameMs: 500 } }), 204);
+  assert.equal(rows(dir).length, 2, "a later hitch with the same signature is its own row");
   assert.equal(await post({ ...good, sig: "shader.jump" }), 204);
   assert.equal(await post({ ...good, kind: "match", t: 900, sig: null, stats: { fpsP50: 58, fpsP5: 31, frameP99Ms: 48, stallS: 2, heapPeakMb: 610, minutes: 14 } }), 204);
   assert.equal(await post({ ...good, kind: "match", t: 1900, sig: null, stats: { fpsP50: 60 } }), 204, "every finished match is a row");
-  assert.equal(rows(dir).length, 4);
+  assert.equal(rows(dir).length, 5);
   assert.equal((await fetch(url)).status, 405);
   assert.equal(await post("{not json"), 400);
   assert.equal(await post({ ...good, install: "<script>" }), 400);
   assert.equal(await post({ ...good, stats: { pad: 1, note: 2 }, note: "x".repeat(5000) }), 413, "a body over 4 KB is refused");
-  assert.equal(rows(dir).length, 4, "refused rows write nothing");
+  assert.equal(rows(dir).length, 5, "refused rows write nothing");
 
   addr++;
   const one = { ...good, install: "install-limit-0001" }, codes: number[] = [];
-  for (let i = 0; i < 32; i++) codes.push(await post({ ...one, sig: "s" + i }));
-  assert.deepEqual([codes.slice(0, 30).every((c) => c === 204), codes.slice(30)], [true, [429, 429]], "30 rows per install per hour");
+  for (let i = 0; i < 20; i++) codes.push(await post(one));
+  for (let i = 0; i < 30; i++) codes.push(await post({ ...one, sig: "s" + i }));
+  assert.deepEqual([codes.slice(0, 49).every((c) => c === 204), codes.slice(49)], [true, [429]], "30 rows per install per hour, and repeats don't use them up");
 
   addr++;
   const many: number[] = [];
@@ -91,7 +94,7 @@ const rows = (dir: string) => (fs.existsSync(dir) ? fs.readdirSync(dir).flatMap(
   const h = api.health();
   assert.equal(h.on, true);
   assert.equal(h.accepted, rows(dir).length);
-  assert.ok(h.deduped >= 1 && h.limited >= 4 && h.refused >= 3);
+  assert.ok(h.deduped >= 20 && h.limited >= 3 && h.refused >= 3);
   server.close(); api.close();
 }
 
