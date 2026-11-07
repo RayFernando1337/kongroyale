@@ -179,14 +179,18 @@ function evictionsFor(list: readonly Resident[]): Resident[] {
 const IMPOSTOR_MAGIC = "KRFI", IMPOSTOR_HEADER_B = 40, INTEGRATED_POLL_MS = 100, INTEGRATED_POLL_MAX_MS = 300_000, IMPOSTOR_HOLD_MS = 1000;
 let impostors: Map<string, THREE.Mesh> | null = null, streamMsRef: Record<string, number> = {}, pendingRef: string[] = [];
 let revealingRef: (id: string) => boolean = () => false;
-const integratedAt = new Map<string, number>();
+const integratedAt = new Map<string, number>(), released = new Set<string>();
 
 /** a built POI keeps its impostor until its model has dissolved in (engine/cull.ts reveal), and for at least
  *  IMPOSTOR_HOLD_MS: the dissolve steps by a frame dt clamped at 0.1 s, so under about 9 fps a wall-clock hold alone
- *  ended at 18-30% reveal and the location blinked (RAY-245); the floor covers a model whose dissolve is unavailable */
+ *  ended at 18-30% reveal and the location blinked (RAY-245); the floor covers a model whose dissolve is unavailable.
+ *  Once released it stays hidden until the POI is evicted: a later HLOD reveal of the near sources is not a new build */
 function held(id: string, now: number): boolean {
+  if (released.has(id)) return false;
   const at = integratedAt.get(id);
-  return at === undefined || now - at < IMPOSTOR_HOLD_MS || revealingRef(id);
+  if (at === undefined || now - at < IMPOSTOR_HOLD_MS || revealingRef(id)) return true;
+  released.add(id);
+  return false;
 }
 
 /** refresh the impostors until `id`'s may hide, its build fails, or INTEGRATED_POLL_MAX_MS passes */
@@ -246,7 +250,7 @@ function refreshImpostors(modOf: ReadonlyMap<string, unknown>) {
   if (!impostors) return;
   const now = performance.now();
   for (const [id, mesh] of impostors) {
-    if (!modOf.has(id)) integratedAt.delete(id);
+    if (!modOf.has(id)) { integratedAt.delete(id); released.delete(id); }
     else if (streamMsRef[id] !== undefined && !integratedAt.has(id)) integratedAt.set(id, now);
     mesh.visible = held(id, now);
   }

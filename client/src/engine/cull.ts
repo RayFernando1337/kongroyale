@@ -331,9 +331,10 @@ export class DetailCull {
   // plane) used to appear in one frame — first the meshes whose materials were already compiled (when its build gate
   // opened), then the rest when its fresh programs were ready. main.ts hands both sets here; they dissolve in.
   private reveals = new Map<THREE.Object3D, number>();
-  /** dissolve every drawable below `roots` in over REVEAL_S (only when the dissolve is available; otherwise nothing) */
+  /** dissolve every drawable below `roots` in over REVEAL_S (only when the dissolve is available and the fade path that
+   *  steps it runs; otherwise nothing, so `revealing` never waits on a reveal that cannot finish) */
   reveal(roots: THREE.Object3D[]) {
-    if (!DITHER || !this.enabled) return;
+    if (!DITHER || !CULL_LODV || !this.enabled) return;
     for (const r of roots) r.traverse((o) => {
       const m = o as THREE.Mesh;
       if ((m.isMesh || (o as THREE.Line).isLine || (o as THREE.Points).isPoints) && m.geometry && !(o as THREE.SkinnedMesh).isSkinnedMesh && ditherable(o)) this.reveals.set(o, 0);
