@@ -14,13 +14,14 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: perf-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   host:
     name: host tick A/B
+    # an unrelated label skips the job before it joins the concurrency group, so it can't cancel a run that measures
+    if: github.event.action != 'labeled' || github.event.label.name == 'perf' || github.event.label.name == 'perf-aa'
+    concurrency:
+      group: perf-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -32,12 +33,9 @@ jobs:
         id: decide
         env:
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
-          ACTION: ${{ github.event.action }}
-          ADDED: ${{ github.event.label.name }}
         run: |
           mode=skip
-          if [ "$ACTION" = labeled ] && [ "$ADDED" != perf ] && [ "$ADDED" != perf-aa ]; then echo "label $ADDED doesn't start a run"
-          elif [[ " $LABELS " == *" perf-aa "* ]]; then mode=aa
+          if [[ " $LABELS " == *" perf-aa "* ]]; then mode=aa
           elif [[ " $LABELS " == *" perf "* ]]; then mode=ab
           elif git diff --name-only HEAD^1 HEAD | grep -qE '^(shared/(sim|net|world|pois)/|server/)'; then mode=ab
           fi
