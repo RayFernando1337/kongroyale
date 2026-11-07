@@ -111,13 +111,20 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npx playwright install --with-deps chromium
+      - name: start the server
+        id: server
+        run: node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs up --prod --port 3140
       # three practice matches entered and left in their warm-up, title modules only: past the warm-up, or with every POI
       # streamed, SwiftShader needs more memory than the runner has
-      - name: three warm-ups back to back, what grows between the last two and what the renderer holds outside a scope
+      - name: three warm-ups back to back, what the first holds, what grows between the last two and what the renderer holds outside a scope
         timeout-minutes: 30
-        run: |
-          node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs up --prod --port 3140
-          npx tsx tools/performance/memory.mts run --url "http://127.0.0.1:3140/?resaudit&modules=atmos,terrain,water,veg,poi:lobby-islet,showcase,weapons-showcase,gameplay-stage" --warmup --matches 3 --max-mb 9000 --budgets tools/memory-leak-budgets.json --out shots/memory/ci
+        run: npx tsx tools/performance/memory.mts run --url "http://127.0.0.1:3140/?resaudit&modules=atmos,terrain,water,veg,poi:lobby-islet,showcase,weapons-showcase,gameplay-stage" --warmup --matches 3 --max-mb 9000 --budgets tools/memory-warmup-budgets.json --budgets tools/memory-leak-budgets.json --out shots/memory/ci
+      # the whole island under the low-memory setup: POIs stream in near the player and past the cap the farthest is
+      # evicted, so this one fits the runner through the plane and on foot; the walk visits two far-apart POIs
+      - name: low-memory setup at the title, in the plane and on foot after a walk past the POI cap
+        if: ${{ !cancelled() && steps.server.outcome == 'success' }}
+        timeout-minutes: 25
+        run: npx tsx tools/performance/memory.mts run --url "http://127.0.0.1:3140/?lowmem=1&geofree=1&farimp=1" --matches 1 --walk --stops the-wreck,stilt-town --max-mb 9000 --budgets tools/memory-lowmem-budgets.json --out shots/memory/ci/lowmem
       - name: stop the server
         if: always()
         run: node .agents/skills/verify-kongroyale/scripts/kr-verify.mjs down

@@ -1,0 +1,20 @@
+{
+  "about": "PROVISIONAL, being calibrated on CI.",
+  "config": {
+    "url": "/?lowmem=1&geofree=1&farimp=1&seed=42&vegsplat=0",
+    "profile": "nogpu",
+    "viewport": "640x360",
+    "dpr": 1,
+    "seed": 42,
+    "matches": 1,
+    "walk": true,
+    "stops": "the-wreck,stilt-town"
+  },
+  "underPct": 5,
+  "headroomPct": 2,
+  "budgets": {
+    "title": { "webglMB": 1350, "textureCount": 249, "geometryCpuMB": 122, "textureCpuMB": 274, "heapUsedMB": 183 },
+    "plane": { "webglMB": 2114, "textureCount": 508, "geometryCpuMB": 260, "textureCpuMB": 400, "heapUsedMB": 228 },
+    "match": { "webglMB": 2056, "textureCount": 389, "geometryCpuMB": 302, "textureCpuMB": 271, "heapUsedMB": 242, "residentPois": 4, "peakResidentPois": 4, "evictions": 7 }
+  }
+}
