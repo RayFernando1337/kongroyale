@@ -3,12 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ALWAYS_FORBIDDEN } from "./scan.mts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../..");
 const BRANCH = "gh-pages";
 const HOSTS = ["github.com", "git.capy.ai"];
-const ALWAYS_FORBIDDEN = "advisory|advisories|ghsa|security|lobby cap|role switch";
 
 function run(cmd: string, args: string[], cwd = ROOT): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });

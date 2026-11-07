@@ -1,0 +1,263 @@
+{
+  "title": "How it's built",
+  "lead": "I wrote this page so anyone can learn the stack from the angle they care about, from the network to how the rules are modelled to what runs in the browser. Each section has a short explanation, a diagram, and the checks that guard it on every PR. The formal-model diagrams and the checks table are generated from the repo's own files every time the dashboard is built, so they can't drift from the code.",
+  "sources": "ARCHITECTURE.md, docs/memory-architecture.md, docs/statecharts/, tools/formal/, tools/run-tests.mjs and .github/workflows/ci.yml",
+  "sections": [
+    {
+      "id": "stack",
+      "head": "The stack at a glance",
+      "plain": [
+        "Kong Royale has three parts: the browser game in client/, a Node server in server/, and shared/, which holds the game rules and the network protocol. The server and the browser both run the same shared/ code, so the browser can predict what the server will decide.",
+        "The server is authoritative. It decides hits, damage, loot, the storm and who wins; the client predicts and asks. In practice mode there is no server: the browser runs the same Match and MatchHost classes itself behind the same link interface, so practice exercises exactly the code an online match does."
+      ],
+      "diagram": {
+        "caption": "A browser and the server run the same simulation, joined by one binary protocol.",
+        "source": "flowchart LR\n  subgraph B[\"Browser: client/\"]\n    direction TB\n    IN[\"Input\"] --> PR[\"Prediction<br/>shared/sim\"]\n    PR --> TH[\"three.js drawing\"]\n    SN[\"Snapshots\"] --> RC[\"Reconcile\"] --> PR\n  end\n  subgraph W[\"Wire: shared/net\"]\n    direction TB\n    P[\"Binary protocol<br/>WebSocket pair or WebTransport\"]\n  end\n  subgraph S[\"Node server: server/\"]\n    direction TB\n    MH[\"MatchHost\"] --> MA[\"Match<br/>shared/sim\"]\n  end\n  IN -- \"inputs, 60 per second\" --> P --> MH\n  MA -- \"snapshots, 30 per second\" --> P --> SN"
+      },
+      "files": [
+        "client/src/game/client.ts",
+        "client/src/game/net.ts",
+        "shared/net/host.ts",
+        "shared/net/proto.ts",
+        "shared/sim/match.ts",
+        "server/index.ts"
+      ],
+      "checks": [
+        [
+          "test",
+          "parity"
+        ],
+        [
+          "test",
+          "sim"
+        ],
+        [
+          "ci",
+          "boot"
+        ]
+      ],
+      "source": "ARCHITECTURE.md, \"The big picture\" and \"The match loop\""
+    },
+    {
+      "id": "networking",
+      "head": "Networking",
+      "plain": [
+        "The fast path (inputs, snapshots, events) is binary and every frame decodes on its own, so a late player can pick up from any frame. Prediction means my kong never waits for the server: the client steps it with the same stepPlayer the server uses, sends the input, and stores the result under its sequence number. Each snapshot carries the server's exact state after the last input it processed. If that matches the prediction nothing happens; if not, the client restores the server's state and replays the inputs the server hasn't seen yet.",
+        "Today's default is two WebSockets per player, first copy wins. WebTransport is optional: a server started with KR_WT=1 can put a share of players (KR_WT_SHARE) on it as an A/B test, a tab keeps its arm, and ?wt=1 or ?wt=0 overrides it. If the session can't be had, or closes later, the player falls back to WebSockets. Over datagrams nothing is resent, so each tick the client sends every input the snapshots haven't acknowledged yet, and a lost packet is repaired by the next one."
+      ],
+      "diagram": {
+        "caption": "Prediction and reconciliation, from one input to the snapshot that confirms it.",
+        "source": "sequenceDiagram\n  participant C as Client\n  participant S as Server\n  C->>C: step my kong with stepPlayer, keep it under its seq\n  C->>S: input with its seq (a window of unacknowledged inputs on WebTransport)\n  S->>S: simulate each seq once, in order\n  S-->>C: snapshot with lastSeq and the exact state\n  C->>C: matches my prediction? carry on. Differs? restore the server state and replay the inputs after lastSeq"
+      },
+      "diagram2": {
+        "caption": "Which transport a player ends up on.",
+        "source": "flowchart TD\n  W[\"welcome: NET_VERSION and the world hash\"] --> Q{\"Server started with KR_WT=1?\"}\n  Q -- no --> WS[\"Two WebSockets, first copy wins\"]\n  Q -- yes --> A{\"Player in the WebTransport arm?<br/>KR_WT_SHARE, ?wt=1 or ?wt=0\"}\n  A -- no --> WS\n  A -- yes --> T[\"Open a WebTransport session\"]\n  T -- \"server answers wt-ok\" --> WT[\"Datagrams carry inputs and snapshots\"]\n  T -- \"can't be had, or closes later\" --> WS"
+      },
+      "table": {
+        "title": "Input delay beyond ping on a lossy link, slowest 1% (ms)",
+        "columns": [
+          "Link",
+          "WebSockets",
+          "WebTransport",
+          "Kind"
+        ],
+        "rows": [
+          [
+            "150 ms ping, 1% loss",
+            "108",
+            "48.8",
+            "measured (emulated network path)"
+          ],
+          [
+            "250 ms ping, 1% loss",
+            "214",
+            "48.2",
+            "measured (emulated network path)"
+          ],
+          [
+            "250 ms ping, 1% loss, netlab",
+            "451.4",
+            "291.7",
+            "model (simulated link)"
+          ]
+        ],
+        "source": "Netpath matrix: real kernel TCP and QUIC over an emulated path, n=10 per arm, main d83729f; project drive handoffs/KONG-wt/netpath/2026-11-06-d83729f/netpath-matrix.md (2026-11-06). Netlab: tools/netlab.mts with the real client and server code over a simulated link; PR #231."
+      },
+      "files": [
+        "shared/net/proto.ts",
+        "shared/net/transport.ts",
+        "client/src/game/client.ts",
+        "client/src/game/wt.ts",
+        "tools/netlab.mts",
+        "tools/performance/netpath-matrix.mts"
+      ],
+      "checks": [
+        [
+          "test",
+          "nettail"
+        ],
+        [
+          "test",
+          "wt"
+        ],
+        [
+          "test",
+          "wtbrowser"
+        ],
+        [
+          "test",
+          "ab"
+        ],
+        [
+          "test",
+          "parity"
+        ]
+      ],
+      "source": "ARCHITECTURE.md, \"Inputs, prediction and reconciliation\" and \"The wire\""
+    },
+    {
+      "id": "determinism",
+      "head": "Determinism",
+      "plain": [
+        "Everything in shared/ has to give the same answer in Node and in every browser, or the client's prediction drifts from the server's truth. So shared/ uses no DOM or Node APIs, no wall-clock time in game logic, and no Math.random: all randomness comes from the seeded Rng. The math functions that differ in the last bit between CPUs (sin, cos, pow and friends) go through dmath.ts, which is checked bit for bit against recorded vectors.",
+        "The proof is a hash. A headless 50-bot match with a fixed seed runs in npm test, and its final state hash must not change unless the rules changed on purpose. Hot paths such as stepPlayer, collision and hit tests also allocate nothing per tick,."
+      ],
+      "diagram": {
+        "caption": "Same seed, same inputs, same math: client prediction and server truth land on the same state.",
+        "source": "flowchart LR\n  SEED[\"Match seed\"] --> RNG[\"Rng<br/>shared/sim/rng.ts\"]\n  INP[\"Same inputs\"] --> STEP[\"stepPlayer and Match.step<br/>shared/sim\"]\n  RNG --> STEP\n  DM[\"dmath.ts<br/>sin, cos, pow, bit-exact\"] --> STEP\n  STEP --> CS[\"Client: prediction\"]\n  STEP --> SS[\"Server: authoritative\"]\n  CS --> H[\"State hash\"]\n  SS --> H\n  H --> T[\"npm test sim step:<br/>headless 50-bot match must keep its hash\"]"
+      },
+      "files": [
+        "shared/sim/rng.ts",
+        "shared/sim/dmath.ts",
+        "shared/sim/player.ts",
+        "tools/sim-smoke.mts",
+        "tools/dmath/test.mts"
+      ],
+      "checks": [
+        [
+          "test",
+          "lint"
+        ],
+        [
+          "test",
+          "dmath"
+        ],
+        [
+          "test",
+          "sim"
+        ],
+        [
+          "test",
+          "parity"
+        ]
+      ],
+      "source": "ARCHITECTURE.md, \"The shared simulation\"; AGENTS.md rule 2"
+    },
+    {
+      "id": "runtime",
+      "head": "Runtime and memory",
+      "plain": [
+        "The browser holds a lot at once, so every GPU texture, render target and worker has an owner: a resource scope with a lifetime, like the match, that frees everything it owns when it closes. Files load through one cache, and texture copies in main memory are released once they are on the graphics card (mesh copies too, behind a flag today). The design is in docs/memory-architecture.md, and CI measures whether a match leaves anything behind.",
+        "On low-memory devices, and in Safari, locations stream in near the player and the farthest ones are freed, with a cheap stand-in drawn in their place. That is what keeps a 16 GB Mac's Safari tab alive, and it's one of the formal models below."
+      ],
+      "diagram": {
+        "caption": "Scopes own resources; leaving a match closes its scope; far locations are freed in low-memory mode.",
+        "source": "flowchart TD\n  ROOT[\"Resource root\"] --> TS[\"Title scope\"]\n  ROOT --> MS[\"Match scope<br/>closed when you leave\"]\n  MS --> OWN[\"Textures, render targets and workers,<br/>each with an owner\"]\n  OWN --> AC[\"One asset cache<br/>client/src/engine/assets.ts\"]\n  MS --> LM[\"Low-memory streaming<br/>free the farthest locations,<br/>draw a stand-in\"]"
+      },
+      "files": [
+        "docs/memory-architecture.md",
+        "client/src/engine/res",
+        "client/src/engine/assets.ts",
+        "client/src/low-mem.ts"
+      ],
+      "checks": [
+        [
+          "test",
+          "res"
+        ],
+        [
+          "test",
+          "lint"
+        ],
+        [
+          "test",
+          "planeview"
+        ],
+        [
+          "ci",
+          "boot"
+        ],
+        [
+          "ci",
+          "memory"
+        ],
+        [
+          "ci",
+          "lowmem-memory"
+        ],
+        [
+          "ci",
+          "context-restore"
+        ]
+      ],
+      "source": "docs/memory-architecture.md; AGENTS.md, \"What enforces each rule\""
+    }
+  ],
+  "formal": {
+    "head": "Formal models (TLA+)",
+    "plain": "Some bugs only show up in an unlucky order of events, which tests rarely find. For the parts where that is most costly, I write a small TLA+ model of the code and let a model checker try every order. Each model below says what it proves, which rules it checks, and which code it covers. The diagrams are drawn from the model files or from the checked-in statecharts at build time. The \"formal\" step of npm test fails when the code a model describes changes after the model last passed, so a model can't keep passing about code that no longer exists.",
+    "models": [
+      {
+        "id": "ClientLifecycle",
+        "title": "Client lifecycle",
+        "doc": {
+          "file": "docs/statecharts/client-lifecycle.md",
+          "block": 0
+        }
+      },
+      {
+        "id": "MatchPhases",
+        "title": "Match phases",
+        "phases": true
+      },
+      {
+        "id": "VehicleSeats",
+        "title": "Vehicle seats",
+        "actions": true
+      },
+      {
+        "id": "PoiResidency",
+        "title": "Low-memory residency",
+        "doc": {
+          "file": "docs/statecharts/poi-residency.md",
+          "block": 0
+        },
+        "doc2": {
+          "file": "docs/statecharts/poi-residency.md",
+          "block": 1
+        }
+      },
+      {
+        "id": "DiagHeartbeat",
+        "title": "Crash heartbeat across tabs",
+        "doc": {
+          "file": "docs/statecharts/diagnostics.md",
+          "block": 0
+        }
+      },
+      {
+        "id": "DiagSend",
+        "title": "Sending a diagnostics report",
+        "doc": {
+          "file": "docs/statecharts/diagnostics.md",
+          "block": 1
+        }
+      }
+    ]
+  },
+  "guards": {
+    "head": "What guards every PR",
+    "plain": "Every PR runs the whole npm test list and these CI jobs before it can land, plus an AI review. This table is generated from tools/run-tests.mjs and .github/workflows/ci.yml, so a new check shows up here the next time the dashboard is built. Where a check enforces numbers, the budget file is named; budgets only go down.",
+    "comingPlain": "Gates on their way. When one lands it joins the table above and drops off this list."
+  }
+}
