@@ -93,8 +93,7 @@ expectItem(ready, "labels", true, /^release:minor, section:performance$/, "#287 
 expectItem(edit((s) => { s.pr.labels = []; }), "labels", false, /exactly one of release:patch.*has none/, "unlabelled");
 expectItem(edit((s) => { s.pr.labels = [{ name: "release:patch" }]; }), "labels", false, /exactly one of section:features.*has none/, "no section");
 expectItem(edit((s) => { s.pr.labels.push({ name: "release:patch" }); }), "labels", false, /has release:minor, release:patch/, "two bumps");
-expectItem(edit((s) => { s.pr.labels = [{ name: "release:major" }, { name: "section:features" }, { name: "bug" }]; }), "labels", false, /needs Ray's go.*--ray-go/, "major");
-expectItem(edit((s) => { s.pr.labels = [{ name: "release:major" }, { name: "section:features" }]; s.rayGo = true; }), "labels", true, /release:major, section:features \(--ray-go/, "major after Ray's go");
+expectItem(edit((s) => { s.pr.labels = [{ name: "release:major" }, { name: "section:features" }, { name: "bug" }]; }), "labels", false, /needs Ray's go/, "major");
 
 expectItem(edit((s) => { s.pr.baseRefName = "next"; }), "base", false, /base is next, not main/, "base");
 

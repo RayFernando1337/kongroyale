@@ -63,8 +63,6 @@ export interface Snapshot {
   threads: ReviewThread[];
   /** null when the PR is not open: there is nothing left to merge, so the drift check is not run */
   budgets: BudgetBlobs | null;
-  /** --ray-go: Ray has said go for this PR, which a release:major label needs; gh has no record of it */
-  rayGo: boolean;
 }
 
 export interface Item { id: "checks" | "capy-review" | "threads" | "mergeable" | "base" | "size-budget-drift" | "labels"; ok: boolean; reason: string }
@@ -161,8 +159,8 @@ function labels(s: Snapshot): Item {
   const no = (reason: string): Item => ({ id: "labels", ok: false, reason });
   if (bumps.length !== 1) return no(`needs exactly one of ${BUMP_LABELS.join(", ")} (has ${bumps.join(", ") || "none"}); release.mts cut refuses unlabelled PRs`);
   if (sections.length !== 1) return no(`needs exactly one of ${SECTION_LABELS.join(", ")} (has ${sections.join(", ") || "none"}); release.mts cut refuses unlabelled PRs`);
-  if (bumps[0] === "release:major" && !s.rayGo) return no("release:major needs Ray's go before it merges; once he gives it, run again with --ray-go");
-  return { id: "labels", ok: true, reason: `${bumps[0]}, ${sections[0]}${bumps[0] === "release:major" ? " (--ray-go: Ray said go)" : ""}` };
+  if (bumps[0] === "release:major") return no("release:major needs Ray's go before it merges, and gh has no record of that: a person makes this merge, not this check");
+  return { id: "labels", ok: true, reason: `${bumps[0]}, ${sections[0]}` };
 }
 
 export function decide(s: Snapshot): Verdict {

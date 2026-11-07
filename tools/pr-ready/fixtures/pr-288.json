@@ -85,6 +85,5 @@
       }
     }
   ],
-  "budgets": null,
-  "rayGo": false
+  "budgets": null
 }

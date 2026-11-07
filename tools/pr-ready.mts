@@ -1,7 +1,6 @@
 // Is a fork pull request ready to merge? Reads the PR with the gh CLI (read-only: it never merges, approves, comments,
 // labels or pushes), hands what it read to tools/pr-ready/decide.mts and prints that verdict as one JSON object.
-//   npx tsx tools/pr-ready.mts 123 [--repo owner/name] [--snapshot out.json] [--ray-go]
-// --ray-go records that Ray said go, which a release:major PR needs before it is ready; pass it only after he has.
+//   npx tsx tools/pr-ready.mts 123 [--repo owner/name] [--snapshot out.json]
 //   exit 0 ready, 1 not ready, 2 usage or gh error
 // --snapshot also writes the gh data the verdict was decided from; tools/pr-ready/fixtures/ holds recorded ones.
 // gh uses its default host and login, so it works wherever `gh auth status` does (a Capy machine talks to a mirror).
@@ -12,12 +11,12 @@ import { BUDGETS_PATH, decide } from "./pr-ready/decide.mts";
 import type { BudgetBlobs, CheckRun, CommitStatus, PrView, ReviewThread, Snapshot } from "./pr-ready/decide.mts";
 
 const FORK = "rayfernando1337/kongroyale";
-const USAGE = "npx tsx tools/pr-ready.mts <number> [--repo owner/name] [--snapshot out.json] [--ray-go]";
+const USAGE = "npx tsx tools/pr-ready.mts <number> [--repo owner/name] [--snapshot out.json]";
 const MERGEABLE_READS = 5;
 const MERGEABLE_WAIT_MS = 3000;
 const GH_TRIES = 3;
 
-const { flags, positional } = orExit("pr-ready", USAGE, () => parseFlags(process.argv.slice(2), { "--repo": "string", "--snapshot": "string", "--ray-go": "bool" }, { positional: true }));
+const { flags, positional } = orExit("pr-ready", USAGE, () => parseFlags(process.argv.slice(2), { "--repo": "string", "--snapshot": "string" }, { positional: true }));
 const number = orExit("pr-ready", USAGE, () => {
   if (positional.length !== 1 || !/^[1-9]\d*$/.test(positional[0])) throw new GateError("give exactly one pull request number");
   return Number(positional[0]);
@@ -90,7 +89,7 @@ async function readSnapshot(): Promise<Snapshot> {
       return { mergeBase: cmp.mergeBase, mergeBaseBlob, baseBlob, headBlob };
     })(),
   ]);
-  return { pr, mergeableReads, checkRuns, statuses, threads, budgets, rayGo: !!flags["--ray-go"] };
+  return { pr, mergeableReads, checkRuns, statuses, threads, budgets };
 }
 
 let snapshot: Snapshot;
