@@ -15,7 +15,8 @@
 // ROUTE), --seed 42, --viewport 640x360, --hold-frames 12 (frames at each stop, after the stop's own POI has finished
 // streaming; at the nearest stop, after it is built; at the far stop, after its impostor or proxy draws it),
 // --hold-max-s 120 (longest wait at one stop), --near-max-s 240 (longest wait for the nearest stop's build), --far-warn
-// <issue> (a far stop that never sees the far form warns, naming the open issue, instead of failing), --out <file> (the
+// <issue> (the far stop holds its frames without waiting for the far form, and warns, naming the open issue, instead of
+// failing when it never came), --out <file> (the
 // JSON verdict), --headed, --gpu (the machine's GPU instead of SwiftShader), --report-only (violations print as GitHub warnings and exit 0; the harness
 // still fails on its own errors). Exit 0 = no violation.
 import fs from "node:fs";
@@ -116,7 +117,7 @@ try {
       if (!(await place(x, z, yaw))) throw Error("no practice host to teleport on");
       const [far, , nearest] = stops(p.r).map(([dd]) => dd === d), f0 = (await status()).frames, h0 = Date.now(), far0 = await farFrames(id);
       const maxS = nearest ? NEAR_MAX_S : HOLD_MAX_S;
-      let state = "", from = nearest || far ? -1 : f0;
+      let state = "", from = nearest || (far && !FAR_WARN) ? -1 : f0;
       for (;;) {
         await sleep(1000);
         await place(x, z, yaw);
@@ -127,8 +128,9 @@ try {
       }
       if (s.frames === f0) harness.push(id + " at " + Math.round(d) + " m: no frame was checked in " + maxS + " s");
       else if (nearest && from < 0) harness.push(id + " at " + Math.round(d) + " m: not built after " + maxS + " s, so its hand-over to the model was not exercised");
-      else if (far && from < 0) {
-        const msg = id + " at " + Math.round(d) + " m: never drawn by its impostor or HLOD proxy in " + maxS + " s, so its far form was not exercised";
+      else if (from >= 0 && s.frames - from < HOLD_FRAMES) harness.push(id + " at " + Math.round(d) + " m: " + (s.frames - from) + " of " + HOLD_FRAMES + " hold frames in " + maxS + " s");
+      if (far && (await farFrames(id)) === far0) {
+        const msg = id + " at " + Math.round(d) + " m: never drawn by its impostor or HLOD proxy at this stop, so its far form was not exercised";
         if (FAR_WARN) { warnings.push(msg + " (" + FAR_WARN + ")"); console.log("::warning title=invariant far form (" + FAR_WARN + ")::" + msg); }
         else harness.push(msg);
       }
