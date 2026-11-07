@@ -339,6 +339,11 @@ export class DetailCull {
       if ((m.isMesh || (o as THREE.Line).isLine || (o as THREE.Points).isPoints) && m.geometry && !(o as THREE.SkinnedMesh).isSkinnedMesh && ditherable(o)) this.reveals.set(o, 0);
     });
   }
+  /** whether anything below `roots` is still dissolving in (low-mem.ts holds a POI's impostor until it is not) */
+  revealing(roots: readonly THREE.Object3D[]): boolean {
+    for (const o of this.reveals.keys()) for (let p: THREE.Object3D | null = o; p; p = p.parent) if (roots.includes(p)) return true;
+    return false;
+  }
   private revealStep(dt: number) {
     for (const [o, f] of this.reveals) { const g = f + dt / REVEAL_S; if (g >= 1 || !o.parent) this.reveals.delete(o); else this.reveals.set(o, g); }
   }
