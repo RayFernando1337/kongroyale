@@ -13,7 +13,7 @@ import type { createAdminHttp } from "./admin/http";
 export function createSite(o: { root: string; serve: boolean; adminHttp: ReturnType<typeof createAdminHttp>; /** what /health adds; `ok: false` (a front with a match process down) answers 503 */ health(): Record<string, unknown> & { ok?: boolean }; log(...a: unknown[]): void }) {
   const dist = path.join(o.root, "dist"), log = o.log;
   // player bug reports (/kongbot in the game's chat bar) → MongoDB
-  const kongbot = kongbotDb(o.root);
+  const kongbot = kongbotDb(o.root, o.adminHttp.feed.add);
   // dev view notes (?dev=annotate) → .kongbot/annotations/*.jsonl (+ Mongo kongbot_annotations)
   const annotations = annotationsApi(o.root);
   // automatic performance summaries from players who opted in (?diag) → <KR_DIAG_AUTO>/<date>.jsonl, own limits

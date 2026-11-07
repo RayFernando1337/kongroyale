@@ -101,6 +101,9 @@ npx tsx tools/playtest/cli.mts watch [--dir DIR] [--ticker FILE]   # a line per 
   message or callsign) and keeps a one-line ticker file (`ticker.txt` in the folder by default), for example
   `37 reports this hour · top: Stall at banana-temple, Safari (6) · latest: Low FPS, Chrome, Windows`. In OBS add a
   Text (read from file) source on that file.
+- During a stream the admin console's **Reports** view (`/admin`, behind the admin login) shows each report as it is
+  stored, with the same structured fields and no callsign; a report's text appears only when a moderator presses
+  **Show text**. It works with or without the bundle folder, from the server's memory (`server/report-feed.ts`).
 - Frame-rate symptoms (stall, low-fps, hitching) are skipped for SwiftShader bundles, as the rules below say. Only POI
   ids from `shared/world/map.ts` reach the output, and attribution text is cut down to plain characters.
 - A crash is placed by the dead session's heartbeat (phase, and the POI and grid cell of its x and z, with the usual 150 m limit), never by the new session.

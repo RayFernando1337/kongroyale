@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import zlib from "node:zlib";
 import { MongoClient, Binary, type Collection, type Document } from "mongodb";
 import { bundleDir, bundleLimits, bundleWriter, parseBundle, type Bundle } from "./playtest-bundles";
+import type { StoredReport } from "./report-feed";
 
 const URI = process.env.KR_MONGO_URI || "mongodb://127.0.0.1:27017";
 const DB = process.env.KR_MONGO_DB || "kong_royale";
@@ -33,7 +34,8 @@ export interface KongbotDoc extends Document {
 }
 
 interface GitInfo { sha: string; branch: string; dirtyFiles: number; subject: string }
-export function kongbotDb(root: string) {
+/** onStored: each report once it is stored (in MongoDB or the server queue), for the admin console's live feed */
+export function kongbotDb(root: string, onStored: (r: StoredReport) => void = () => {}) {
   const spool = path.join(root, ".kongbot", "spool");
   const salt = crypto.randomBytes(16).toString("hex");
   const hits = new Map<string, number[]>();
@@ -213,6 +215,7 @@ export function kongbotDb(root: string) {
         const id = await store(doc, receipt);
         log(`${id} from ${doc.reporter.name ?? "?"} @ ${where}: ${message.slice(0, 120)}`);
         saveBundle(id);
+        onStored({ id, at, message, ua: doc.ua, ctx: doc.ctx, bundle });
         reply(res, 200, { ok: true, id, storage: "database" });
         return;
       } catch { reports = null; lastFail = Date.now(); state("server-queue"); }
@@ -228,6 +231,7 @@ export function kongbotDb(root: string) {
       state("server-queue");
       log(`spooled report from ${doc.reporter.name ?? "?"} @ ${where}: ${message.slice(0, 120)}`);
       saveBundle(`LOCAL-${receipt.slice(0, 8)}`);
+      onStored({ id: `LOCAL-${receipt.slice(0, 8)}`, at, message, ua: doc.ua, ctx: doc.ctx, bundle });
       reply(res, 200, { ok: true, id: `LOCAL-${receipt.slice(0, 8)}`, queued: true, storage: "server-queue" });
     } catch (e) { state("unavailable"); reply(res, 500, { ok: false, error: "could not store the report" }); log("spool failed:", e); }
   }

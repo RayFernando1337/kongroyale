@@ -1,0 +1,223 @@
+{
+  "about": [
+    "The hill-climb tracker on the dashboard's front page (RAY-237, plans/rendering-cpu-roadmap.md in the Captain drive).",
+    "metrics: one chart each. lower is true when smaller is better. budget draws a line (the 16.7 ms 60 fps frame), reference a shaded band (plain three.js). state metrics (thermal) take a text state instead of a value. pending is shown while a metric has no points.",
+    "points: one reading per series per step, in the order they landed. at is the x-axis label: a PR (\"#290\"), a release tag (\"kong-v1.1.0\") or a phase target. kind is measured (read on a real machine, n >= 1), estimate (expected from a profile or model) or target (where a phase aims). low and high give a range. build is the commit or release measured, n the run count, method how it was read, source where the raw data lives.",
+    "Add a point with npx tsx tools/dashboard/hillclimb-add.mts (see its header); it checks the whole file before writing. build.mts refuses to build the page from a bad file."
+  ],
+  "plain": "My hill climb on CPU, power and smoothness. One core runs flat out while I walk through town on my RTX laptop, because the main thread needs more than the 16.7 ms a 60 fps frame allows. Each step below is one merged PR or release, measured on the same route, so you can watch the lines move.",
+  "metrics": {
+    "main-ms": {
+      "label": "Main thread per frame",
+      "unit": "ms",
+      "plain": "Unprofiled main-thread time per frame on the seeded tour route (High, 1080p). Under the line, the core gets idle time every frame.",
+      "lower": true,
+      "budget": {
+        "value": 16.7,
+        "label": "60 fps budget"
+      },
+      "series": {
+        "rtx-walk-town": {
+          "label": "RTX laptop, walk-town",
+          "machine": "RayUltra, RTX N1X, Chrome D3D11"
+        },
+        "mini-tour": {
+          "label": "Mac mini, tour",
+          "machine": "Mac mini M4, Chrome Metal"
+        }
+      }
+    },
+    "us-per-draw": {
+      "label": "JavaScript per draw",
+      "unit": "µs",
+      "plain": "Render submit time divided by draw calls on the tour. The shaded band is what plain three.js r186 spends per draw in a microbenchmark.",
+      "lower": true,
+      "reference": {
+        "low": 0.8,
+        "high": 1.7,
+        "label": "plain three.js",
+        "source": "1,500-mesh microbenchmark, cloud x86, Chrome on SwiftShader, 3 runs; Captain drive reports/KONG-89.md"
+      },
+      "series": {
+        "rtx-walk-town": {
+          "label": "RTX laptop, walk-town",
+          "machine": "RayUltra, RTX N1X, Chrome D3D11"
+        },
+        "mini-tour": {
+          "label": "Mac mini, tour",
+          "machine": "Mac mini M4, Chrome Metal"
+        }
+      }
+    },
+    "power-w": {
+      "label": "Power over a practice match",
+      "unit": "W",
+      "plain": "CPU, GPU and package watts from powermetrics over a full practice match on Honu. Release to release, this should not go up.",
+      "lower": true,
+      "series": {
+        "honu-cpu": {
+          "label": "CPU",
+          "machine": "Honu (Mac), Safari"
+        },
+        "honu-gpu": {
+          "label": "GPU",
+          "machine": "Honu (Mac), Safari"
+        },
+        "honu-package": {
+          "label": "Package",
+          "machine": "Honu (Mac), Safari"
+        }
+      },
+      "pending": "The power baseline on Honu runs now; its first points land from handoffs/power-baseline/."
+    },
+    "thermal": {
+      "label": "Thermal state over a practice match",
+      "unit": "",
+      "plain": "macOS thermal pressure (or fan speed) at the end of a full practice match on Honu.",
+      "lower": true,
+      "state": true,
+      "series": {
+        "honu": {
+          "label": "Honu",
+          "machine": "Honu (Mac), Safari"
+        }
+      },
+      "pending": "Lands with the power baseline."
+    },
+    "fps": {
+      "label": "Frames per second",
+      "unit": "fps",
+      "plain": "Median frame rate on the same scene. The Mac mini in Chrome is held at 60 by its display.",
+      "lower": false,
+      "series": {
+        "rtx-walk-town": {
+          "label": "RTX laptop, walk-town",
+          "machine": "RayUltra, RTX N1X, Chrome D3D11"
+        },
+        "honu-safari-high": {
+          "label": "Safari High, DPR 2",
+          "machine": "Honu (Mac), Safari 27.0.1"
+        }
+      }
+    }
+  },
+  "points": [
+    {
+      "metric": "main-ms",
+      "series": "rtx-walk-town",
+      "at": "baseline",
+      "value": 18.9,
+      "kind": "measured",
+      "build": "main b1eabf4",
+      "date": "2026-11-05",
+      "n": 3,
+      "method": "gpu-match --route tour, walk-town segment, median of measured frames, unprofiled",
+      "source": "Captain drive reports/KONG-89.md; tours in project drive handoffs/KONG-68/{rtx-d3d11,mini-metal}/tour-{1,2,3}.json"
+    },
+    {
+      "metric": "main-ms",
+      "series": "mini-tour",
+      "at": "baseline",
+      "value": 12.4,
+      "low": 11.7,
+      "high": 13,
+      "kind": "measured",
+      "build": "main b1eabf4",
+      "date": "2026-11-05",
+      "n": 3,
+      "method": "gpu-match --route tour, main step across the 4 segments (frame held at about 17 ms by 60 Hz vsync)",
+      "source": "Captain drive reports/KONG-89.md; tours in project drive handoffs/KONG-68/{rtx-d3d11,mini-metal}/tour-{1,2,3}.json"
+    },
+    {
+      "metric": "main-ms",
+      "series": "rtx-walk-town",
+      "at": "phase 1 estimate",
+      "value": 13.5,
+      "low": 12,
+      "high": 15,
+      "kind": "estimate",
+      "build": "roadmap",
+      "date": "2026-11-07",
+      "n": 0,
+      "method": "18.9 ms minus 4–7 ms if per-draw cost falls to about 4–6 µs",
+      "source": "Captain drive plans/rendering-cpu-roadmap.md"
+    },
+    {
+      "metric": "us-per-draw",
+      "series": "rtx-walk-town",
+      "at": "baseline",
+      "value": 16.5,
+      "kind": "measured",
+      "build": "main b1eabf4",
+      "date": "2026-11-05",
+      "n": 3,
+      "method": "render submit 12.6 ms / 765 draws, tour medians",
+      "source": "Captain drive reports/KONG-89.md; tours in project drive handoffs/KONG-68/{rtx-d3d11,mini-metal}/tour-{1,2,3}.json"
+    },
+    {
+      "metric": "us-per-draw",
+      "series": "mini-tour",
+      "at": "baseline",
+      "value": 12.2,
+      "kind": "measured",
+      "build": "main b1eabf4",
+      "date": "2026-11-05",
+      "n": 3,
+      "method": "render submit 9.2 ms / 755 draws, tour medians",
+      "source": "Captain drive reports/KONG-89.md; tours in project drive handoffs/KONG-68/{rtx-d3d11,mini-metal}/tour-{1,2,3}.json"
+    },
+    {
+      "metric": "us-per-draw",
+      "series": "rtx-walk-town",
+      "at": "phase 1 target",
+      "value": 5,
+      "low": 4,
+      "high": 6,
+      "kind": "target",
+      "build": "roadmap",
+      "date": "2026-11-07",
+      "n": 0,
+      "method": "per-draw cost the phase 1 fixes aim for",
+      "source": "Captain drive plans/rendering-cpu-roadmap.md"
+    },
+    {
+      "metric": "fps",
+      "series": "rtx-walk-town",
+      "at": "baseline",
+      "value": 44.8,
+      "kind": "measured",
+      "build": "main b1eabf4",
+      "date": "2026-11-05",
+      "n": 3,
+      "method": "1000 / 22.3 ms median frame interval, walk-town segment",
+      "source": "Captain drive reports/KONG-89.md; tours in project drive handoffs/KONG-68/{rtx-d3d11,mini-metal}/tour-{1,2,3}.json"
+    },
+    {
+      "metric": "fps",
+      "series": "honu-safari-high",
+      "at": "baseline",
+      "value": 36.3,
+      "kind": "measured",
+      "build": "main 9cc83fa",
+      "date": "2026-11-06",
+      "n": 4,
+      "method": "pose hold at Banana Temple, High, DPR 2, 1080p surface",
+      "source": "Captain drive reports/KONG-82.md"
+    },
+    {
+      "metric": "fps",
+      "series": "honu-safari-high",
+      "at": "#265",
+      "value": 46.6,
+      "low": 43.3,
+      "high": 47.9,
+      "kind": "measured",
+      "pr": 265,
+      "build": "6c1c16e",
+      "date": "2026-11-06",
+      "n": 5,
+      "method": "pose hold at Banana Temple, High, DPR 2, 1080p surface, half-rate guard on",
+      "source": "Captain drive reports/KONG-82.md"
+    }
+  ]
+}
