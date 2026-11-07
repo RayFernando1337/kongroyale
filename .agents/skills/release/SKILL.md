@@ -41,7 +41,7 @@ Read-only (gh with its default login; it never merges, approves, comments, label
 - `mergeable`: open, not a draft, no conflicts, not BLOCKED; UNKNOWN is re-read a few times, then says to run again.
 - `base`: the base is `main`.
 - `size-budget-drift`: fails with "merge main first" when main and the PR both changed `tools/size-budgets.json` since their merge base.
-- `labels`: exactly one `release:*` and one `section:*` label; `release:major` fails until Ray says go.
+- `labels`: exactly one `release:*` and one `section:*` label; `release:major` fails until Ray says go, then pass `--ray-go`.
 
 ## Flow
 

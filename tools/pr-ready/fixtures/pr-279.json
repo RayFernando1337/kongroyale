@@ -36,5 +36,6 @@
     "mergeBaseBlob": "f6d6a46d28785e9118802b5a02d40afaa8147bc8",
     "baseBlob": "d32dd5711fec0ddc86affea448f9dad117869597",
     "headBlob": "f3ffeb710f92b0ad0c997a99c47d858ed947bf4c"
-  }
+  },
+  "rayGo": false
 }
