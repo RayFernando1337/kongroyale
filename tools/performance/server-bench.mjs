@@ -1,5 +1,6 @@
 // Isolated, repeatable transport/load test. Works on Linux and macOS; never uses a running public match.
-// --transport wt starts the server with KR_WT=1 and has every player bind a WebTransport session (sockets.mts) instead of
+// The server runs with KR_WT=0 for ws (the WebSocket path alone, comparable with older runs) and KR_WT=1 for
+// --transport wt, which has every player bind a WebTransport session (sockets.mts) instead of
 // the second WebSocket, so the two transports' server CPU, tick and tails compare at the same 50-player load.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -17,7 +18,7 @@ fs.mkdirSync(path.dirname(out),{recursive:true});
 const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
 const log=fs.openSync(out.replace(/\.json$/,'')+'.server.log','w');
 const runner=path.join(root,'node_modules/.bin/tsx');
-const server=spawn(runner,['server/index.ts'],{cwd:root,env:{...process.env,KR_HOST:'127.0.0.1',KR_PORT:String(port),KR_SERVE:'1',KR_PERF_METRICS:'1',KR_EVENT_MODE:'0',KR_WARMUP_S:String(warmupS),...(transport==='wt'?{KR_WT:'1'}:{})},stdio:['ignore',log,log]});
+const server=spawn(runner,['server/index.ts'],{cwd:root,env:{...process.env,KR_HOST:'127.0.0.1',KR_PORT:String(port),KR_SERVE:'1',KR_PERF_METRICS:'1',KR_EVENT_MODE:'0',KR_WARMUP_S:String(warmupS),KR_WT:transport==='wt'?'1':'0'},stdio:['ignore',log,log]});
 let failure;server.on('error',e=>{failure=e;});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const stop=()=>server.kill('SIGTERM');process.on('SIGINT',stop);process.on('SIGTERM',stop);

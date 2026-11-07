@@ -4,7 +4,7 @@
 // Hardening: every frame is size-checked and decoded through the sanitising readers (shared/net/proto.ts); per-socket
 // token-bucket rate limit; ws heartbeat + idle timeouts; connection caps (total / per IP); one misbehaving lobby can never
 // take the process down (tick errors are contained). Each client may attach ONE redundant "aux" socket (see net.ts), and
-// with KR_WT=1 one WebTransport session (server/wt.ts), which then carries its binary frames.
+// unless KR_WT=0 one WebTransport session (server/wt.ts), which then carries its binary frames.
 import { addrKey } from "./addr";
 import http from "node:http";
 import fs from "node:fs";
@@ -82,7 +82,7 @@ const socks = new Set<Sock>();
 const perIp = new Map<string, number>();
 const addIp = (ip: string) => perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
 const dropIp = (ip: string) => { const n = (perIp.get(ip) ?? 1) - 1; if (n > 0) perIp.set(ip, n); else perIp.delete(ip); };
-/** the WebTransport endpoint (null: KR_WT unset, or its module could not load) */
+/** the WebTransport endpoint (null: KR_WT=0, or its module could not load) */
 let wt: WtEndpoint | null = null;
 /** links that settled on WebTransport, and links that stayed on (or went back to) the WebSockets by reason, since the
  *  server started: what the clients said ({ t: "net" }), so fallbacks are counted across real players */
@@ -414,11 +414,11 @@ process.on("uncaughtException", (e) => log("uncaught", e));
 process.on("unhandledRejection", (e) => log("unhandled rejection", e));
 const HOST = process.env.KR_HOST || (serve ? "0.0.0.0" : "127.0.0.1");
 if (serve && !TRUST_PROXY) log("note: KR_TRUST_PROXY is off — behind nginx / Cloudflare every player shares one address (set KR_TRUST_PROXY=1)");
-// ---- WebTransport (KR_WT=1): datagrams for the hot path, the WebSocket pair stays the fallback (server/wt.ts). Behind
+// ---- WebTransport (on unless KR_WT=0): datagrams for the hot path, the WebSocket pair stays the fallback (server/wt.ts). Behind
 // a proxy (KR_TRUST_PROXY=1) on loopback UDP still comes straight from players, so it listens on every address; any
 // other KR_HOST is kept
 const wtOwner = new WeakMap<WtTransport, Client>();
-let wtOff = process.env.KR_WT === "1" ? "" : "off (KR_WT unset)";
+let wtOff = process.env.KR_WT === "0" ? "off (KR_WT=0)" : "";
 if (!wtOff) {
   try {
     wt = await startWt({

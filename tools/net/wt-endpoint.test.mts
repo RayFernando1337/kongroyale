@@ -1,7 +1,7 @@
 // WEBTRANSPORT ENDPOINT — the server's WebTransport path (server/wt.ts) against a real server on loopback, with the
 // Node WebTransport client from the same QUIC module. No browser, no root, about 20 s.
 //   npx tsx tools/net/wt-endpoint.test.mts
-// Checks: off by default (no "wt" in welcome, /health says why); with KR_WT=1 welcome announces the port and the
+// Checks: off with KR_WT=0 (no "wt" in welcome, /health says why); on by default, welcome announces the port and the
 // certificate hash; a session with a wrong token, and a second one for the same client, are refused; an attached session
 // is told so ({ t: "wt-ok" } on its stream); an authenticated
 // session carries inputs, on the stream and as input-window datagrams with lost windows repaired by the next one and
@@ -44,14 +44,14 @@ async function wsClient(port: number) {
   return { ws, json, bin, welcome: json.find((m) => m.t === "welcome") as { aux: string; uid: number; wt?: { port: number; hashes?: string[] } }, send: (o: unknown) => ws.send(JSON.stringify(o)) };
 }
 
-// ---- 1. off by default
+// ---- 1. off with KR_WT=0
 {
-  const s = await startServer({});
+  const s = await startServer({ KR_WT: "0" });
   try {
     const c = await wsClient(s.port), h = await health(s.port);
-    check(!("wt" in c.welcome), "KR_WT unset: welcome has no wt field");
-    check(typeof h.transports.webtransport.off === "string", `KR_WT unset: /health says webtransport is off (${h.transports.webtransport.off})`);
-    check(h.transports.clients.ws === 1, "KR_WT unset: the client is on ws");
+    check(!("wt" in c.welcome), "KR_WT=0: welcome has no wt field");
+    check(typeof h.transports.webtransport.off === "string", `KR_WT=0: /health says webtransport is off (${h.transports.webtransport.off})`);
+    check(h.transports.clients.ws === 1, "KR_WT=0: the client is on ws");
     c.ws.close();
   } finally { s.proc.kill("SIGTERM"); }
 }
@@ -73,10 +73,11 @@ catch (e) {
   process.exit(failed ? 1 : 0);
 }
 // two connections per address: the primary WebSocket and one session (the per-address cap counts both kinds)
-const s = await startServer({ KR_WT: "1", KR_WARMUP_S: "60", KR_MAX_PER_IP: "2" });
+// KR_WT unset: on by default
+const s = await startServer({ KR_WARMUP_S: "60", KR_MAX_PER_IP: "2" });
 try {
   const c = await wsClient(s.port), wtw = c.welcome.wt;
-  check(!!wtw && wtw.port === s.port && wtw.hashes?.length === 1, `KR_WT=1: welcome announces port ${wtw?.port} and one certificate hash`);
+  check(!!wtw && wtw.port === s.port && wtw.hashes?.length === 1, `KR_WT unset (on by default): welcome announces port ${wtw?.port} and one certificate hash`);
   const hashes = (wtw?.hashes ?? []).map((h) => ({ algorithm: "sha-256", value: new Uint8Array(Buffer.from(h, "base64")) }));
   const url = `https://127.0.0.1:${wtw!.port}/wt`;
   const open = async (token: string) => {

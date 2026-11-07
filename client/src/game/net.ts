@@ -7,7 +7,7 @@
 // the first copy (inputs by seq, snapshots/events by tick, inventory by seq, pongs by timestamp). A stall now needs both
 // sockets to lose a packet at the same moment. Disable the aux socket with ?aux=0 on the page URL.
 //
-// WebTransport (?wt=1, and the server offers it in "welcome"): the lazy chunk ./wt.ts dials QUIC; once the session is
+// WebTransport (unless ?wt=0, when the server offers it in "welcome"): the lazy chunk ./wt.ts dials QUIC; once the session is
 // up it carries the binary frames (datagrams for snapshots and pings) and the aux socket is never opened. If it can't
 // be had, or dies later, the link stays on (or goes back to) the WebSocket pair. Either way the link tells the server
 // once which transport it ended up on and why ({ t: "net" }), so /health counts fallbacks across real players.

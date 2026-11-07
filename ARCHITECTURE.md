@@ -90,7 +90,7 @@ Today's transport is **two WebSockets** per player. Binary frames travel on both
 gets. A WebSocket runs over TCP, so one lost packet stalls everything behind it; with two sockets, a stall needs both
 to lose a packet at once.
 
-With `?wt=1`, and a server started with `KR_WT=1` (it offers its endpoint in `welcome`), the client loads a small lazy
+Unless the page has `?wt=0`, and when the server offers its endpoint in `welcome` (it does unless started with `KR_WT=0`), the client loads a small lazy
 chunk (`client/src/game/wt.ts`) and opens a **WebTransport** session instead of the aux socket: unreliable frames ride
 QUIC datagrams, reliable ones the session's one stream. The session authenticates with the aux token and is in use once
 the server answers `{ t: "wt-ok" }`. If it can't be had, or closes later, the link stays on (or goes back to) the

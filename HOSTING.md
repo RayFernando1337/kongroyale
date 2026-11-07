@@ -11,6 +11,7 @@ npm start        # serve dist/ and the game server on port 3020
 
 Open `http://<your machine>:3020/` once the server prints a line starting `KONG ROYALE server on`. Startup takes a
 few seconds while it builds the island's collision world. `GET /health` returns a small JSON status for uptime checks.
+Open port 3020 for both TCP (the page and WebSockets) and UDP (WebTransport, see "WebTransport" below).
 
 `npm start` sets `KR_SERVE=1` with POSIX shell syntax. On Windows, run it from Git Bash or WSL.
 
@@ -70,7 +71,7 @@ The server reads these environment variables. Leave a variable unset to get its 
 | `KR_MONGO_DB` | `kong_royale` | Database name for bug reports. |
 | `KR_PERF_METRICS` | off | Set `1` to add tick times, event-loop delay and memory use to `/health`. |
 | `KR_WARMUP_S` | `25` | Length of the pre-match warm-up in seconds. For test servers. |
-| `KR_WT` | off | Set `1` to open the WebTransport endpoint (QUIC datagrams for inputs and snapshots). See "WebTransport" below. |
+| `KR_WT` | on | The WebTransport endpoint (QUIC datagrams for inputs and snapshots). Set `0` to run WebSocket-only. See "WebTransport" below. |
 | `KR_WT_PORT` | `KR_PORT` | UDP port of the WebTransport endpoint. |
 | `KR_WT_HOST` | `KR_HOST`, or `0.0.0.0` when `KR_TRUST_PROXY=1` and `KR_HOST` is loopback | Address the WebTransport endpoint listens on. Behind a proxy on loopback it listens on every address, because UDP comes straight from players. |
 | `KR_WT_CERT`, `KR_WT_KEY` | unset (self-signed) | PEM certificate and key for the WebTransport endpoint, valid for the page's host name. |
@@ -103,13 +104,18 @@ KONGBOT is the in-game bug reporter (`/kongbot <message>` in the chat bar). With
 
 ## WebTransport
 
-With `KR_WT=1` the server also listens for WebTransport (HTTP/3 over QUIC, so UDP) on `KR_WT_PORT`. Players who
-open the page with `?wt=1` send their inputs and get snapshots and pings as datagrams there, so one lost packet no longer
+The server also listens for WebTransport (HTTP/3 over QUIC, so UDP) on `KR_WT_PORT`, which is the same number as
+`KR_PORT` unless you set it. Players' browsers use it unless the page is opened with `?wt=0`: they send their inputs and
+get snapshots and pings as datagrams there, so one lost packet no longer
 stalls the ones behind it; the other frames ride the session's reliable stream. The WebSocket stays open as the control channel and is the fallback: a player whose network blocks UDP, or
 whose browser has no WebTransport, plays over WebSockets as before.
 
-- **UDP**: open `KR_WT_PORT` for UDP in the firewall. Nothing may sit in front of it: CDNs and the usual reverse proxies
-  don't forward WebTransport.
+- **UDP**: open `KR_WT_PORT` (by default the same number as the HTTP port) for UDP in the firewall. Nothing may sit in
+  front of it: CDNs and the usual reverse proxies don't forward WebTransport. Players who can't reach it still play over
+  WebSockets: their link gives up on WebTransport within about 3 s and opens its second WebSocket instead.
+- **Turning it off**: set `KR_WT=0` to run WebSocket-only. A player can opt out with `?wt=0` in the page address.
+- **Server CPU**: a match on WebTransport costs the server about twice the CPU of the same match on WebSockets (the
+  QUIC library runs on the server's main thread), so one process holds about half as many matches.
 - **Certificate**: either set `KR_WT_CERT` and `KR_WT_KEY` to a real certificate for the page's host name (the
   same one the HTTPS proxy uses works), or leave them unset. The server then makes its own certificate, valid 13 days
   and renewed in place, and tells each player its SHA-256 so the browser can check it (`serverCertificateHashes`).
@@ -128,5 +134,5 @@ Most public servers put a proxy in front for HTTPS. The proxy must forward WebSo
 `/admin/ws`. Then set `KR_TRUST_PROXY=1`, `KR_HOST=127.0.0.1` so only the proxy can reach the port, and `KR_ORIGINS`
 to your site's address.
 
-WebTransport (`KR_WT=1`) can't go through the proxy. It listens for UDP on `KR_WT_PORT` on every address
+WebTransport can't go through the proxy. It listens for UDP on `KR_WT_PORT` on every address
 (`KR_WT_HOST` defaults to `0.0.0.0` with `KR_TRUST_PROXY=1` and a loopback `KR_HOST`), so open that port to players in the firewall.

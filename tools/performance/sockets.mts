@@ -1,7 +1,7 @@
 // Real socket load; launch a PRIVATE test server, then pass --url http://127.0.0.1:5795. Writes a kong-perf-result
 // (schema.ts). No public-server traffic unless the operator explicitly points this command there.
-// --transport wt (server started with KR_WT=1): each player also opens a WebTransport session with the Node client from
-// the server's QUIC module, like a browser on ?wt=1 does: inputs go out as input-window datagrams (M.Inputs, the window
+// --transport wt (a server with WebTransport, which is on unless KR_WT=0): each player also opens a WebTransport session with the Node client from
+// the server's QUIC module, like a browser does by default: inputs go out as input-window datagrams (M.Inputs, the window
 // past the last acknowledged seq, as client.ts sends it) and pings as datagrams, snapshots and pongs come back as
 // datagrams and the reliable frames on the session's stream; JSON stays on the WebSocket. No --aux: the session replaces it.
 // The players drive inputs through the match's real warm-up and plane; the timed window starts when snapshots report
@@ -52,7 +52,7 @@ try{
     await wait(()=>!!p.uid,'welcome');p.ws.send(JSON.stringify({t:'hello',name:'BENCH '+i}));
     if(aux){p.aux=new WebSocket(base.replace(/^http/,'ws')+'/ws?attach=1',wsOpts);p.aux.on('open',()=>p.aux.send(JSON.stringify({t:'aux',token:p.token})));p.aux.on('message',onMessage);p.aux.on('error',(e:Error)=>errors.push(e.message));p.aux.on('close',()=>{if(active)disconnects++;});await wait(()=>p.aux.readyState===WebSocket.OPEN,'aux');}
     if(wt){
-      if(!p.wtw)throw Error('welcome has no wt field: start the server with KR_WT=1');
+      if(!p.wtw)throw Error('welcome has no wt field: start the server without KR_WT=0');
       const hashes=(p.wtw.hashes??[]).map((h:string)=>({algorithm:'sha-256',value:new Uint8Array(Buffer.from(h,'base64'))}));
       const t=new lib!.WebTransport(base.replace(/^http:/,'https:').replace(/:\d+$/,'')+':'+p.wtw.port+'/wt',{serverCertificateHashes:hashes});await t.ready;p.t=t;
       void t.closed.then(()=>{if(active)disconnects++;},(e:Error)=>{if(active){errors.push('session closed: '+e?.message);disconnects++;}});

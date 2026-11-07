@@ -1,4 +1,4 @@
-// The WebTransport endpoint (RAY-184): off unless KR_WT=1. Players' inputs, pings and snapshots ride QUIC datagrams
+// The WebTransport endpoint (RAY-184): on unless KR_WT=0. Players' inputs, pings and snapshots ride QUIC datagrams
 // here, everything else binary rides one reliable stream; the primary WebSocket stays the control channel (JSON) and
 // authenticates the session: its first stream frame is `{ t: "wt", token }` with the token from "welcome", exactly like
 // the aux socket (never in the URL), and the server answers `{ t: "wt-ok" }` on the stream once it is attached. A session counts against the same total and per-address caps as a WebSocket, gets

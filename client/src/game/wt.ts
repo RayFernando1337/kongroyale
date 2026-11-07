@@ -1,4 +1,4 @@
-// The client's WebTransport transport (shared/net/transport.ts), loaded only when ?wt=1 and the server's "welcome"
+// The client's WebTransport transport (shared/net/transport.ts), loaded unless ?wt=0, when the server's "welcome"
 // offers an endpoint (client/src/game/net.ts imports this chunk lazily). Unreliable frames ride QUIC datagrams, reliable
 // ones the session's one bidirectional stream (shared/net/frames.ts); a frame too big for a datagram rides the stream.
 // The session authenticates with the aux token as its first stream frame and is up once the server answers

@@ -1,12 +1,12 @@
 // WEBTRANSPORT IN A BROWSER — the client's real link code (client/src/game/net.ts and its lazy ./wt.ts) in headless
 // Chromium against a real server on loopback. Needs a Chromium or Chrome with WebTransport; no GPU, no root, ~30 s.
 //   npx tsx tools/net/wt-browser.test.mts [--chrome PATH]     (also KR_CHROME; default: Playwright's own Chromium)
-// Checks: with ?wt=1 and a server that offers WebTransport, the link settles on "wt", a ping sent through the link comes
+// Checks: by default, against a server that offers WebTransport (it does unless KR_WT=0), the link settles on "wt", a ping sent through the link comes
 // back as a pong, /health counts the client on wt and one link settled on wt; the session outlives a lobby that sends
 // nothing for longer than the server's heartbeat timeout (the link's keepalive pings); a page on "localhost" reaches
 // the IPv4 endpoint too; when the server closes the session (a
-// flood past its rate limit) the link goes back to the WebSockets ("closed") and keeps working; without ?wt=1 it stays on the
-// WebSockets with "flag-off"; with ?wt=1 against a server without KR_WT it stays there with "server-off", and /health
+// flood past its rate limit) the link goes back to the WebSockets ("closed") and keeps working; with ?wt=0 it stays on the
+// WebSockets with "flag-off"; against a server started with KR_WT=0 it stays there with "server-off", and /health
 // counts each reason. With no browser to launch, or no QUIC module build for this platform, it prints SKIP and passes.
 import { spawn, type ChildProcess } from "node:child_process";
 import http from "node:http";
@@ -115,13 +115,13 @@ try {
   // ---- 1. the server offers WebTransport
   const wtPort = await freePort();
   // a short heartbeat timeout, so a session nobody keeps alive would be ended inside the idle lobby below
-  const s = await startServer({ KR_WT: "1", KR_WT_PORT: String(wtPort), KR_WARMUP_S: "60", KR_HEARTBEAT_TIMEOUT_S: "15" });
+  const s = await startServer({ KR_WT_PORT: String(wtPort), KR_WARMUP_S: "60", KR_HEARTBEAT_TIMEOUT_S: "15" });
   try {
     const h0 = await health(s.port);
-    if (h0.transports.webtransport.off) console.log(`SKIP  KR_WT=1 checks: the endpoint is off (${h0.transports.webtransport.off})`);
+    if (h0.transports.webtransport.off) console.log(`SKIP  WebTransport checks: the endpoint is off (${h0.transports.webtransport.off})`);
     else {
-      const on = await run("?wt=1", s.port, true, 25_000);
-      check(on.kind === "wt" && on.fallback === null, `?wt=1: the link settles on WebTransport (${on.kind}, ${on.fallback})`);
+      const on = await run("", s.port, true, 25_000);
+      check(on.kind === "wt" && on.fallback === null, `by default: the link settles on WebTransport (${on.kind}, ${on.fallback})`);
       check(on.idle?.kind === "wt" && on.idle.fallback === null && (on.keepalives ?? 0) > 0, `25 s in a lobby with nothing to send (heartbeat timeout 15 s), then a match's first frames just after a keepalive: still on WebTransport (${on.idle?.kind}, ${on.idle?.fallback}, ${on.keepalives} keepalive)`);
       check(on.pong, "a ping through the WebTransport link is answered");
       check((on.stats.recv ?? 0) > 0 && (on.stats.sent?.[1] ?? 0) > 0, `the wt transport counts what it sends and receives (sent ${on.stats.sent}, recv ${on.stats.recv})`);
@@ -131,20 +131,20 @@ try {
       check(h1.transports.settled.wt === 1, `/health counts one link settled on wt (${h1.transports.settled.wt})`);
       check(on.after?.kind === "ws" && on.after.fallback === "closed" && on.after.pong, `after the server closes the session the link is back on the WebSockets, "closed", and pings work (${on.after?.kind}, ${on.after?.fallback}, pong ${on.after?.pong})`);
       check(h1.transports.settled.ws.closed === 1, `/health counts one closed fallback (${h1.transports.settled.ws.closed})`);
-      const off = await run("", s.port);
-      check(off.kind === "ws" && off.fallback === "flag-off" && off.pong, `no ?wt: the link stays on the WebSockets, "flag-off", and pings work (${off.kind}, ${off.fallback})`);
+      const off = await run("?wt=0", s.port);
+      check(off.kind === "ws" && off.fallback === "flag-off" && off.pong, `?wt=0: the link stays on the WebSockets, "flag-off", and pings work (${off.kind}, ${off.fallback})`);
       await sleep(100);
       check((await health(s.port)).transports.settled.ws["flag-off"] === 1, "/health counts one flag-off fallback");
-      const lh = await run("?wt=1", s.port, false, 0, "localhost");
+      const lh = await run("", s.port, false, 0, "localhost");
       check(lh.kind === "wt" && lh.fallback === null && lh.pong, `a page on localhost reaches the IPv4 endpoint: the link settles on WebTransport (${lh.kind}, ${lh.fallback})`);
     }
   } finally { s.proc.kill("SIGTERM"); }
 
   // ---- 2. the server does not offer it
-  const s2 = await startServer({ KR_WARMUP_S: "60" });
+  const s2 = await startServer({ KR_WT: "0", KR_WARMUP_S: "60" });
   try {
-    const r = await run("?wt=1", s2.port);
-    check(r.kind === "ws" && r.fallback === "server-off" && r.pong, `?wt=1, KR_WT unset: the link stays on the WebSockets, "server-off" (${r.kind}, ${r.fallback})`);
+    const r = await run("", s2.port);
+    check(r.kind === "ws" && r.fallback === "server-off" && r.pong, `KR_WT=0: the link stays on the WebSockets, "server-off" (${r.kind}, ${r.fallback})`);
     await sleep(100);
     check((await health(s2.port)).transports.settled.ws["server-off"] === 1, "/health counts one server-off fallback");
   } finally { s2.proc.kill("SIGTERM"); }
