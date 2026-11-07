@@ -312,3 +312,4 @@ table.play td[data-label]::before{content:attr(data-label);color:var(--muted);fo
 .morelist{list-style:none;padding:0;margin:0}
 .morelist li{border-top:1px solid var(--line);padding:14px 0;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline}
 .morelist a{font-weight:500;min-width:12rem}
+.gate.in-progress{color:var(--warn)}

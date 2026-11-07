@@ -1,5 +1,5 @@
 {
-  "about": "Release gate results per kong-v tag, from the gate notes. Safari survival comes from tools/dashboard/devices.json (mac16, peak, safari-page), so it isn't repeated here. A tag with no entry for a gate shows \"no record\".",
+  "about": "Release gate results per kong-v tag, from the gate notes. Safari survival comes from tools/dashboard/devices.json (mac16, peak, safari-page) unless a tag lists its own safari entry. A tag with no entry for a gate shows \"no record\".",
   "releases": {
     "kong-v0.3.0": {
       "d3d11": {
@@ -53,7 +53,29 @@
       },
       "metal": {
         "verdict": "pass",
-        "source": "carried over from kong-v1.0.1, an identical game build; Captain drive NOTES.md 2026-11-07"
+        "note": "same build as v1.0.1",
+        "source": "carried over from kong-v1.0.1, the identical shipped build (only tools/ changed); Captain drive NOTES.md 2026-11-07"
+      },
+      "safari": {
+        "verdict": "pass",
+        "note": "finished, 7.1 GB, same build as v1.0.1",
+        "source": "carried over from kong-v1.0.1 (tools/dashboard/devices.json), the identical shipped build"
+      }
+    },
+    "kong-v1.1.0": {
+      "d3d11": {
+        "verdict": "pass",
+        "source": "project drive handoffs/release-kong-v1.1.0-d3d11/README.md"
+      },
+      "metal": {
+        "verdict": "in progress",
+        "note": "parts 1–4 pass, the two-player smoke is pending",
+        "source": "Kong Mini renders/v110/, logged on RAY-235"
+      },
+      "safari": {
+        "verdict": "pass",
+        "note": "finished, 7.4 GB peak",
+        "source": "Mac mini M4 16 GB, Safari full match; Kong Mini renders/v110/, logged on RAY-235"
       }
     }
   }

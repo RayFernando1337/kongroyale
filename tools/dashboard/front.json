@@ -82,17 +82,39 @@
     {
       "id": "wt-lossy",
       "head": "Inputs keep flowing on a lossy connection",
-      "before": 451,
-      "after": 292,
-      "unit": "ms, slowest 1% of input replies",
-      "beforeText": "451 ms on WebSockets at 250 ms ping and 1% loss",
-      "afterText": "292 ms on WebTransport, about the same as a clean line (289 ms)",
-      "plain": "On WebSockets one lost packet holds up every input behind it. The new optional WebTransport path sends every unacknowledged input in each packet, so the next packet repairs a lost one.",
-      "kind": "model",
-      "source": "npx tsx tools/netlab.mts 250 --jitter 20 --loss 1, the real client and server code over a simulated link; Captain drive handoffs/upstream/batch14/wt/bodies/wt-input-window.md",
+      "before": 214,
+      "after": 48.2,
+      "unit": "ms of input delay beyond ping, slowest 1%",
+      "beforeText": "214 ms on WebSockets at 250 ms ping and 1% loss (108 ms at 150 ms ping)",
+      "afterText": "48.2 ms on WebTransport (48.8 ms at 150 ms ping)",
+      "plain": "On WebSockets one lost packet holds up every input behind it. The new optional WebTransport path sends every unacknowledged input in each packet, so the next packet repairs a lost one. These runs used real network stacks over an emulated path; next is the real-player A/B.",
+      "kind": "measured",
+      "kindNote": "emulated network path",
+      "source": "Netpath matrix: real kernel TCP and QUIC over an emulated path, n=10 per arm (9 or 10 completed), main d83729f, ack minus RTT p99; project drive handoffs/KONG-wt/netpath/2026-11-06-d83729f/netpath-matrix.md",
       "date": "2026-11-06",
       "prs": [
-        231
+        227,
+        228,
+        231,
+        254
+      ]
+    },
+    {
+      "id": "lowmem-title",
+      "head": "Low-memory mode uses 40% less graphics memory",
+      "before": 3141,
+      "after": 1894,
+      "unit": "MB of graphics memory at the title",
+      "beforeText": "3,141 MB by default (4,206 MB in the plane)",
+      "afterText": "1,894 MB in low-memory mode (2,226 MB in the plane)",
+      "plain": "Low-memory mode at first only waited to load far-away areas. It now frees them and draws a cheap stand-in, so Safari keeps at most 4 far-away locations loaded instead of 10.",
+      "kind": "measured",
+      "source": "Mac mini M4, Metal, WebGL MB, farimp re-gate 2 (KONG-54), main fbe5559; project drive handoffs/farimp-regate2-metal/",
+      "date": "2026-11-06",
+      "prs": [
+        107,
+        149,
+        160
       ]
     },
     {

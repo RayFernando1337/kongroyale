@@ -7,7 +7,7 @@ import { renderHillChart } from "./hillclimb.mts";
 import type { Hill, HillMetric } from "./hillclimb.mts";
 
 export type Kind = "measured" | "model" | "estimate";
-type Win = { id: string; head: string; before: number; after: number; changeText?: string; approx?: boolean; higherIsBetter?: boolean; unit: string; beforeText: string; afterText: string; plain: string; kind: Kind; source: string; date: string; prs: number[] };
+type Win = { id: string; kindNote?: string; head: string; before: number; after: number; changeText?: string; approx?: boolean; higherIsBetter?: boolean; unit: string; beforeText: string; afterText: string; plain: string; kind: Kind; source: string; date: string; prs: number[] };
 type Row = { label: string; value: number; low?: number; high?: number; kind: Kind };
 type Chart =
   | { type: "bars"; unit: string; line?: { value: number; label: string }; rows: Row[] }
@@ -84,8 +84,8 @@ function pct(n: number): string {
   return n.toFixed(1) + "%";
 }
 
-function kindPill(f: Front, k: Kind): string {
-  return '<span class="pill k-' + k + '" title="' + esc(f.kinds[k]) + '">' + k + "</span>";
+function kindPill(f: Front, k: Kind, note?: string): string {
+  return '<span class="pill k-' + k + '" title="' + esc(f.kinds[k] + (note ? ", " + note : "")) + '">' + k + (note ? " (" + esc(note) + ")" : "") + "</span>";
 }
 
 function source(f: Front, x: { kind: Kind; source: string; date: string }, prs: number[], live: Live, label: string): string {
@@ -209,7 +209,7 @@ export function renderFront(f: Front, live: Live, goalBars: string): string {
     const better = w.higherIsBetter ? w.after > w.before : w.after < w.before;
     const ratio = w.higherIsBetter ? w.after / w.before : w.before / w.after;
     const change = ratio >= 2 ? (w.approx ? "about " : "") + fmt(ratio) + "× " + (w.higherIsBetter ? "more" : "fewer") : (w.higherIsBetter ? "+" : "−") + fmt(Math.abs((w.after - w.before) / w.before) * 100) + "%";
-    return '<div class="card fwin"><div class="fwin-top"><h3>' + esc(w.head) + "</h3>" + kindPill(f, w.kind) + "</div>" +
+    return '<div class="card fwin"><div class="fwin-top"><h3>' + esc(w.head) + "</h3>" + kindPill(f, w.kind, w.kindNote) + "</div>" +
       '<div class="fwin-nums"><span class="fwin-before">' + (w.approx ? "~" : "") + fmt(w.before) + '</span><span class="fwin-arrow" aria-hidden="true">→</span><span class="fwin-after' + (better ? "" : " worse") + '">' + (w.approx ? "~" : "") + fmt(w.after) + '</span><span class="fwin-unit">' + esc(w.unit) + "</span></div>" +
       '<p class="fwin-change">' + esc(w.changeText ?? change) + "</p>" +
       '<div class="fwin-bars"><div class="bar-track"><div class="bar before" style="width:' + ((w.before / max) * 100).toFixed(1) + '%"></div></div><div class="bar-track"><div class="bar after k-' + w.kind + '" style="width:' + ((w.after / max) * 100).toFixed(1) + '%"></div></div></div>' +
@@ -230,7 +230,7 @@ export function renderFront(f: Front, live: Live, goalBars: string): string {
     '<div class="card"><h3>Before a release goes stable</h3><ol class="fsteps">' + f.gates.map((g) => "<li>" + esc(g) + "</li>").join("") + "</ol>" +
     '<p class="tech-line"><a href="#releases">Every release and its check results →</a></p></div>' +
     '<h2>Why so many PRs</h2><p class="lead">' + esc(f.prsWhy) + "</p>" +
-    '<div class="stats">' + stat(String(live.merged.length), "PRs merged", "since " + live.baseTag + ", live from GitHub") + stat(fmt(median), "lines changed, median PR", small + " of " + sizes.length + " change 200 lines or fewer") + stat(String(live.checks), "checks in npm test", "run on every PR, plus " + live.ciJobs.length + " CI jobs") + stat(live.upMerged + " of " + live.upTotal, "accepted upstream", live.upOpen + " waiting for review on Max's game") + "</div>" +
+    '<div class="stats">' + stat(String(live.merged.length), "PRs merged", "since " + live.baseTag + ", live from GitHub") + stat(fmt(median), "lines changed, median PR", small + " of " + sizes.length + " change 200 lines or fewer") + stat(String(live.checks), "checks in npm test", "run on every PR, plus " + live.ciJobs.length + " CI jobs") + stat(String(live.upMerged), "merged upstream", live.upOpen + " open on Max's game") + "</div>" +
     '<div class="card"><h3>PRs merged per day (UTC)</h3>' + perDay(live) + '<p class="muted">CI jobs on every PR: ' + live.ciJobs.map(esc).join(", ") + ".</p></div>" +
     '<p class="muted fnav">Numbers as of ' + esc(f.asOf) + '; counts are live as of the build time in the footer. The full pages are under <a href="#more">More</a>.</p>';
 }

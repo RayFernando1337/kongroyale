@@ -321,7 +321,7 @@ function main(): void {
   const ciJobs = [...fs.readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8").matchAll(/^  [\w-]+:\n    name: (.+)$/gm)].map((m) => m[1].trim());
   const hill = readHill(path.join(HERE, "hillclimb.json"));
   const goals = readGoals(path.join(HERE, "goals.json"));
-  const goalCtx = { prs, devices, hill, upMerged: upMerged.length, upTotal: upstream.length, now: now.getTime(), shown, plainOf: (n: number) => data.prs[String(n)]?.plain, prLink };
+  const goalCtx = { prs, devices, hill, upMerged: upMerged.length, upOpen: upOpen.length, upTotal: upstream.length, now: now.getTime(), shown, plainOf: (n: number) => data.prs[String(n)]?.plain, prLink };
   const scored = scoreGoals(goals, goalCtx);
   const front = renderFront(readFront(path.join(HERE, "front.json")), {
     merged: merged.map((p) => ({ mergedAt: p.mergedAt as string, additions: p.additions ?? 0, deletions: p.deletions ?? 0 })),

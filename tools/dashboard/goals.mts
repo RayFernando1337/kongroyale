@@ -11,8 +11,8 @@ type Step = { label: string; pr?: number; done?: boolean; evidence?: string; hil
 type Progress = { type: "steps" } | { type: "device"; sku: string; chart: string; line: string } | { type: "hill"; metric: string; series: string; target: number } | { type: "upstream" };
 type Goal = { id: string; name: string; issue?: string; tentpole?: boolean; plain: string; full: string; page?: string; progress: Progress; match: string; steps: Step[] };
 export type Goals = { about: string[]; waiting: Record<string, string>; goals: Goal[] };
-type Verdict = { verdict: "pass" | "fail"; note?: string; source: string };
-export type Gates = { about: string; releases: Record<string, { d3d11?: Verdict; metal?: Verdict }> };
+type Verdict = { verdict: "pass" | "fail" | "in progress"; note?: string; source: string };
+export type Gates = { about: string; releases: Record<string, { d3d11?: Verdict; metal?: Verdict; safari?: Verdict }> };
 export type GhPr = { number: number; title: string; state: string; isDraft?: boolean; mergedAt: string | null; createdAt: string };
 export type GhRelease = { tagName: string; isPrerelease: boolean; publishedAt: string; url: string; body: string };
 export type GoalCtx = {
@@ -20,6 +20,7 @@ export type GoalCtx = {
   devices: Devices;
   hill: Hill;
   upMerged: number;
+  upOpen: number;
   upTotal: number;
   now: number;
   shown: (title: string) => boolean;
@@ -81,7 +82,7 @@ export function scoreGoals(g: Goals, ctx: GoalCtx): Scored[] {
       const done = steps.filter((s) => s.done).length;
       return { goal, steps, pct: steps.length ? (done / steps.length) * 100 : 0, headline: done + " of " + steps.length + " steps done" };
     }
-    if (p.type === "upstream") return { goal, steps, pct: ctx.upTotal ? (ctx.upMerged / ctx.upTotal) * 100 : 0, headline: ctx.upMerged + " of " + ctx.upTotal + " PRs accepted upstream" };
+    if (p.type === "upstream") return { goal, steps, pct: ctx.upTotal ? (ctx.upMerged / ctx.upTotal) * 100 : 0, headline: ctx.upMerged + " merged upstream, " + ctx.upOpen + " open" };
     if (p.type === "hill") {
       const pts = measured(ctx.hill, p.metric, p.series);
       if (!pts.length) return { goal, steps, pct: 0, headline: "not measured yet" };
@@ -139,8 +140,10 @@ export function renderGoalsPage(g: Goals, scored: Scored[], ctx: GoalCtx): strin
 export function renderTimeline(releases: GhRelease[], g: Goals, gates: Gates, ctx: GoalCtx & { baseTag: string; baseDate: string; nextTag?: string; stableTag?: string }): string {
   const safari = ctx.devices.skus.find((s) => s.id === "mac16")?.charts.find((c) => c.id === "peak")?.lines.find((l) => l.id === "safari-page")?.points ?? [];
   const safariFor = (tag: string) => safari.find((p) => p.kind === "measured" && p.build.startsWith(tag + " "));
-  const cell = (name: string, v?: Verdict) => '<span class="gate ' + (v ? v.verdict : "none") + '" title="' + esc(v ? v.source : "no record on the dashboard") + '">' + esc(name) + ": " + (v ? v.verdict + (v.note ? ", " + esc(v.note) : "") : "no record") + "</span>";
+  const cell = (name: string, v?: Verdict) => '<span class="gate ' + (v ? v.verdict.replace(" ", "-") : "none") + '" title="' + esc(v ? v.source : "no record on the dashboard") + '">' + esc(name) + ": " + (v ? v.verdict + (v.note ? ", " + esc(v.note) : "") : "no record") + "</span>";
   const safariCell = (tag: string) => {
+    const own = gates.releases[tag]?.safari;
+    if (own) return cell("Safari 16 GB", own);
     const p = safariFor(tag);
     if (!p) return '<span class="gate none" title="no Safari match on record for this tag">Safari 16 GB: no record</span>';
     return '<span class="gate ' + (p.killed ? "fail" : "pass") + '" title="' + esc(p.build + ", " + p.date + ". " + (p.note ?? "")) + '">Safari 16 GB: ' + (p.killed ? "reached the limit" : "finished, " + gb(p.mb)) + "</span>";

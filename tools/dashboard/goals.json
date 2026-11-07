@@ -295,7 +295,7 @@
       "id": "upstream",
       "name": "Sharing with Max's game",
       "plain": "Every fix offered back to the original Kong Royale as a small, tested PR.",
-      "full": "Every PR offered upstream accepted or closed by Max.",
+      "full": "Every PR offered upstream has been reviewed there.",
       "progress": {
         "type": "upstream"
       },
