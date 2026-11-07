@@ -93,8 +93,17 @@ async function capture() {
   // one boot for every view (__kr.setView moves the camera, stages the scene and freezes its time): a boot on
   // SwiftShader takes about 1.5 minutes on 4 vCPUs, a view change under one
   const t0 = Date.now();
-  await page.goto(`${url.origin}/?view=${encodeURIComponent(views[0])}&shot=1&seed=42&vegsplat=0&atmos=notaa&modules=${encodeURIComponent(opt("--modules", MODULES))}`, { waitUntil: "load", timeout: 300_000 });
-  await page.waitForFunction(() => (window as any).__kr?.ready === true, null, { timeout: 300_000, polling: 250 });
+  try {
+    await page.goto(`${url.origin}/?view=${encodeURIComponent(views[0])}&shot=1&seed=42&vegsplat=0&atmos=notaa&modules=${encodeURIComponent(opt("--modules", MODULES))}`, { waitUntil: "load", timeout: 300_000 });
+    await page.waitForFunction(() => (window as any).__kr?.ready === true, null, { timeout: 300_000, polling: 250 });
+  } catch (e) {
+    // a boot that never gets ready still leaves a manifest, so the diff has a row for every view it was asked for
+    for (const view of views) { fs.rmSync(path.join(out, `${view}.png`), { force: true }); result[view] = { ms: Date.now() - t0, errors: [`boot: ${String(e).split("\n")[0]}`, ...errors] }; }
+    await browser.close();
+    fs.writeFileSync(path.join(out, "capture.json"), JSON.stringify(result, null, 2) + "\n");
+    process.exitCode = 1;
+    return;
+  }
   console.log(`booted in ${Date.now() - t0} ms`);
   // __kr.errors holds what the game caught itself (a module that failed to build still reaches ready): the boot's go
   // to the first view, each later one to the view it happened in
