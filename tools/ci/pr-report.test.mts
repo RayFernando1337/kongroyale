@@ -14,7 +14,7 @@ const ok = (value: unknown) => ({ status: "ok", unit: "bytes", better: "lower", 
 const side = (dir: string, size: { boot: number; lazy: number }, alloc: unknown, title: Record<string, unknown> | string) => {
   write(dir, "ci-metrics-test/budgets/size-budgets.json", { gzBytes: { entry: 100, boot: 1000, workers: 500, lazy: 2000 } });
   write(dir, "ci-metrics-test/budgets/alloc-budgets.json", { underPct: 12, budgets: { "host/real-play": { allocBytesPerTick: 1000, gcCount: 80 } } });
-  write(dir, "ci-metrics-test/budgets/memory-budgets.json", { underPct: 5, budgets: { title: { webglMB: 100, textureCount: 10 } } });
+  write(dir, "ci-metrics-test/budgets/memory-budgets.json", { underPct: 5, budgets: { title: { webglMB: 100, textureCount: 10, "x | [click](https://e.vil) @someone": 1 }, "**bold**": { webglMB: 1 } } });
   write(dir, "ci-metrics-test/size.json", { entry: { gz: 99 }, boot: { total: { gz: size.boot } }, classes: { "js: workers": { gz: 480 }, "js: lazy": { gz: size.lazy } } });
   write(dir, "ci-metrics-test/alloc.json", { cases: [{ scenario: { id: "host/real-play" }, metrics: { allocBytesPerTick: ok(alloc), gcCount: ok(76) } }] });
   write(dir, "ci-metrics-boot/result.json", typeof title === "string" ? title : { cases: [{ scenario: { id: "memory/title" }, metrics: title }] });
@@ -28,6 +28,7 @@ assert.equal(get(head, "boot")?.value, 1003);
 assert.equal(get(head, "host/real-play.allocBytesPerTick")?.value, null, "a string where a number belongs reads as not measured");
 assert.equal(get(head, "title.webglMB"), undefined, "an unparseable report drops its group");
 assert.equal(get(base, "title.webglMB")?.value, 98);
+assert.ok(base.every((m) => /^[\w./-]+$/.test(m.name)), "a budget key with markdown never reaches the comment");
 
 const md = render(head, base, { headSha: "abcdef1234567", baseSha: "0123456789" });
 const row = (name: string) => md.split("\n").find((l) => l.startsWith(`| ${name} |`)) ?? "";

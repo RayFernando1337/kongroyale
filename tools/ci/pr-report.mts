@@ -35,6 +35,9 @@ export interface Metric { source: string; name: string; value: number | null; bu
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+// names come from a PR's own budget files, and the comment is posted as github-actions[bot]: keep only plain identifiers so
+// a budget key can't carry markdown, links or mentions into it
+const safeName = (k: string) => /^[A-Za-z0-9_.\/-]{1,64}$/.test(k);
 const readJson = (file: string): unknown => { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return undefined; } };
 
 /** Reads every source's budgets and report under dir; a budget without a measured value comes back with value null. */
@@ -56,11 +59,11 @@ export function extract(dir: string): Metric[] {
     const underPct = num(budgets.underPct) ?? 0, groups = budgets.budgets;
     if (!isObj(groups)) continue;
     for (const [key, metrics] of Object.entries(groups)) {
-      if (!isObj(metrics)) continue;
+      if (!isObj(metrics) || !safeName(key)) continue;
       const c = cases.find((x) => isObj(x.scenario) && x.scenario.id === (s.casePrefix ?? "") + key);
       const ms = c && isObj(c.metrics) ? c.metrics : {};
       for (const [name, budget] of Object.entries(metrics)) {
-        if (num(budget) === null) continue;
+        if (num(budget) === null || !safeName(name)) continue;
         const m = ms[name];
         out.push({ source: s.id, name: `${key}.${name}`, value: isObj(m) && m.status === "ok" ? num(m.value) : null, budget: budget as number, underPct });
       }

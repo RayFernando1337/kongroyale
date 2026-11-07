@@ -144,7 +144,7 @@ jobs:
         with:
           name: memory-result
           path: shots/memory/ci/
-          retention-days: 7
+          retention-days: 30
 
   context-restore:
     name: no-GPU context restore
