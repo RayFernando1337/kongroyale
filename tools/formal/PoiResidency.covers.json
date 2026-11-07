@@ -4,7 +4,6 @@
   "regions": [
     "client/src/low-mem.ts#nearModule",
     "client/src/low-mem.ts#descending",
-    "client/src/low-mem.ts#distM",
     "client/src/low-mem.ts#nextNearModule",
     "client/src/low-mem.ts#evictStreamed",
     "client/src/low-mem.ts#over",

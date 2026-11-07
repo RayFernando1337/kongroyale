@@ -17,8 +17,8 @@ for four locations and a cap of 2.
 | AtMostCapPlusOne | At most the cap + 1 streamed locations hold memory, counting the one being built. | Memory grows without bound as you move; Safari kills the tab. |
 | NoEvictWhileBuilding | A location is never evicted while it is building or fading in. | A half-built location's resources are freed under it; errors or a leak. |
 | NothingPickedOutsideMatch | Nothing new is picked to build at the title, in the room or on the results lobby. | Memory spent where no one plays. |
-| GlideTargetFirst | While the player falls or glides, the location the glide lands on is picked before any queued one behind or to the side. | From the parachute, what you fly toward stays an impostor (RAY-272). |
-| GlideTargetKept | Making room never evicts the location the glide lands on while one behind or to the side stays. | The location ahead is thrown away for one you have left behind. |
+| GlideTargetFirst | While the player falls or glides, the location the glide heads for is picked before any queued one behind or to the side. | From the parachute, what you fly toward stays an impostor (RAY-272). |
+| GlideTargetKept | Making room never evicts the location the glide heads for while one behind or to the side stays. | The location ahead is thrown away for one you have left behind. |
 | AtMostCap | At most the cap, counting the one being built. | Today: one over while every resident is protected (the one you stand in, one fading in). |
 | NothingBuiltOutsideMatch | No build starts outside a match. | Today: a location picked just before you leave is still built. |
 
@@ -57,7 +57,7 @@ To see the AtMostCap path or redraw the chart, give the pstack `/statechart` ski
 | low-mem.ts `trimStreamed` (and its `residents()`: locations in `modOf` only), `evictionsFor`, `over`, `evictStreamed` | Counted, TrimEvict, TrimDone |
 | main.ts `buildStreamed`, `buildOne`, the back-pressure in `stream` | Built, Integrated |
 | main.ts `stream`'s 2 s timer (`trim(null)`) | Timer |
-| low-mem.ts `distM` (the rank: inside, where the glide lands, near, far) and `descending` (cm.pred.st Freefall or Glide) | Rank, Move's "ahead" class, Jump, Land |
+| low-mem.ts `distM` (the rank: inside, ahead of the 5 s lookahead, near, far) and `descending` (cm.pred.st Freefall or Glide: the build range stops counting height) | Rank, Move's "ahead" class, Jump, Land |
 | the camera; `enterMatch` / leaving | Move, EnterMatch, LeaveMatch |
 
 main.ts fills the queue (`streamList`, which low-mem.ts calls `pending`) in top-level boot code that no region can
@@ -78,8 +78,7 @@ node tools/formal/tlc.mjs PoiResidency --mutants --record
 
 ## What it does not cover
 
-Distances are four classes (inside, ahead of the glide, near, far) and the camera jumps between them at any time; how
-far ahead the landing point is (sink rate, LANDING_MAX_S) is not modelled. Picks are by distance only: the plane's overview builds (`lowmemview` locations in view during the plane) and the caster's admission
+Distances are four classes (inside, ahead of the glide, near, far) and the camera jumps between them at any time. Picks are by distance only: the plane's overview builds (`lowmemview` locations in view during the plane) and the caster's admission
 (`nearModule` also picks while casting) are left out. Memory is a count of
 locations, not bytes, so the `lowmembudget` path and how much memory an eviction actually frees are out of scope; the
 `verify-memory` skill measures that. Desktop mode (no eviction) is not modelled.

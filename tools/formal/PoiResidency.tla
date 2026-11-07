@@ -5,8 +5,8 @@
    keeps it (no eviction), so it is not modelled.
 
    Abstracted: distances are four classes per POI, in the order the code ranks them (low-mem.ts distM): the camera
-   is inside it; it is "ahead", where the glide lands (only while the player falls or glides, RAY-272); near enough to
-   build; far. The camera moves arbitrarily between ticks, and memory cost is a count (lowmemcap) rather than MB (lowmembudget,
+   is inside it; it is "ahead", the glide heads for it (within lowmemr of the 5 s lookahead while the player falls or
+   glides; before RAY-272 the plane's slant range kept it out while the player was high); near enough to build; far. The camera moves arbitrarily between ticks, and memory cost is a count (lowmemcap) rather than MB (lowmembudget,
    whose estimate starts at 400 MB a POI). Evicted is "queued again" (low-mem.ts:257). *)
 EXTENDS Naturals, FiniteSets
 
@@ -15,19 +15,19 @@ CONSTANTS Pois, Cap,
 
 VARIABLES
   st,       \* per POI: queued | trimming (picked, eviction pass running) | building | integrating | live
-  dist,     \* per POI: "inside" (camera inside it: d <= 0) | "ahead" (the glide lands on it) | "near" | "far"
+  dist,     \* per POI: "inside" (camera inside it: d <= 0) | "ahead" (the glide heads for it) | "near" | "far"
   glide,    \* the local player is falling or gliding (low-mem.ts descending(): cm.pred.st Freefall or Glide)
   inMatch,  \* kr.game.inMatch (nextNearModule picks only in a match)
   loop,     \* the stream loop: "pick" (nextNearModule) | "trim" | "build" | "wait" (inflight back-pressure)
   thrown,   \* (for the rules) a POI was evicted while still building or fading in
   outside,  \* (for the rules) a POI was picked to build outside a match
   late,     \* (for the rules) a build started outside a match (picked in one, left before its trim finished)
-  skipped,  \* (for the rules) a pick took a POI behind or to the side while one the glide lands on was queued
-  dropped   \* (for the rules) the POI the glide lands on was evicted while one behind or to the side stayed
+  skipped,  \* (for the rules) a pick took a POI behind or to the side while one the glide heads for was queued
+  dropped   \* (for the rules) the POI the glide heads for was evicted while one behind or to the side stayed
 vars == <<st, dist, glide, inMatch, loop, thrown, outside, late, skipped, dropped>>
 
 Classes == {"inside", "ahead", "near", "far"}
-\* distM's order: inside (d <= 0) < where the glide lands < near < far; evictionsFor pops the highest rank first
+\* distM's order: inside (d <= 0) < ahead of the glide (the 5 s lookahead puts it nearest) < near < far; evictionsFor pops the highest rank first
 Rank(p) == CASE dist[p] = "inside" -> 0 [] dist[p] = "ahead" -> 1 [] dist[p] = "near" -> 2 [] OTHER -> 3
 
 Held == {p \in Pois : st[p] \in {"building", "integrating", "live"}}   \* hold GPU/CPU memory
@@ -68,8 +68,8 @@ EnterMatch == ~inMatch /\ inMatch' = TRUE /\ UNCHANGED <<st, dist, glide, loop, 
 LeaveMatch == inMatch /\ inMatch' = FALSE /\ glide' = FALSE /\ dist' = [p \in Pois |-> IF dist[p] = "ahead" THEN "near" ELSE dist[p]]
   /\ UNCHANGED <<st, loop, thrown, outside, late, skipped, dropped>>
 
-(* nextNearModule: in a match, a queued POI within lowmemr; while gliding that is measured where the glide lands, so the
-   POI ahead qualifies however high the player is. The admission test skips one that, counted lowmemhyst farther,
+(* nextNearModule: in a match, a queued POI within lowmemr; while falling or gliding that is the horizontal 5 s lookahead,
+   so the POI ahead qualifies however high the player is. The admission test skips one that, counted lowmemhyst farther,
    would itself be evicted: in this abstraction, one that is not nearer than an evictable resident while the list is
    full. Of the admissible ones it picks the lowest distM (bestD) *)
 Admissible(p) ==
@@ -91,7 +91,7 @@ Incoming == CHOOSE p \in Pois : st[p] = "trimming"
    farthest evictable resident (evictionsFor sorts by distance and pops the farthest); then building.add(incoming).
    stream() does not check the match again after the trim *)
 Farthest(v) == \A q \in Evictable : Rank(q) <= Rank(v)
-\* evicting v drops the POI the glide lands on while a resident behind it or to the side stays
+\* evicting v drops the POI the glide heads for while a resident behind it or to the side stays
 Drops(v) == dist[v] = "ahead" /\ \E q \in Evictable \ {v} : Rank(q) > Rank(v)
 TrimEvict ==
   /\ loop = "trim"
@@ -143,8 +143,8 @@ NoEvictWhileBuilding == ~thrown
 NothingPickedOutsideMatch == ~outside
 \* No build starts outside a match.
 NothingBuiltOutsideMatch == ~late
-\* While gliding, the POI the glide lands on builds before any queued POI behind it or to the side (RAY-272).
+\* While gliding, the POI the glide heads for builds before any queued POI behind it or to the side (RAY-272).
 GlideTargetFirst == ~skipped
-\* Making room never throws away the POI the glide lands on while one behind it or to the side stays.
+\* Making room never throws away the POI the glide heads for while one behind it or to the side stays.
 GlideTargetKept == ~dropped
 =============================================================================

@@ -2,17 +2,16 @@
 
 In low-memory mode (on by default in Safari and on devices that report under 8 GB, `client/src/low-mem-device.ts`) the
 client does not build every location at boot. During a match it builds the nearest queued location, and before each
-build it evicts the farthest live one. While the player falls or glides, "nearest" and "farthest" are measured from
-where the glide will land (the camera's velocity carried down to each location's pad, `distM`), so the location ahead
-builds first and the ones behind or to the side are the first evicted (RAY-272). Before RAY-272 the plane and the
-descent counted height above the pad too, so nothing ahead built until the player was about 450 m from it in a
-straight line while the list would go over `lowmemcap` (3) or the `lowmembudget` estimate
+build it evicts the farthest live one. Distance is horizontal, from where the camera will be 5 s ahead (`distM`), so
+the location ahead builds first and the ones behind are the first evicted. On the plane the build range also counts
+height above the pad. Before RAY-272 that held for the whole descent too, so from the parachute nothing ahead built until
+the player was about 450 m from it in a straight line; now it stops counting height once the player falls or glides while the list would go over `lowmemcap` (3) or the `lowmembudget` estimate
 (1500 MB). This is what keeps a 16 GB Mac's Safari tab alive. Desktop Chrome builds every location once and keeps it,
 so none of this runs there.
 
 The TLA+ model `tools/formal/PoiResidency.tla` checks every order of camera moves, jumps and landings, builds, fade-ins,
 evictions and match starts and ends for four locations with a cap of 2. Each location's distance is one of four
-classes in the order the code ranks them: you are in it, the glide lands on it ("ahead", only while gliding), near,
+classes in the order the code ranks them: you are in it, the glide heads for it ("ahead", only while falling or gliding), near,
 far. `MaxInside` says how many location circles the camera can stand in
 at once: 1, or 2, because some circles overlap on the map. The `verify-poi-residency` skill
 (`.agents/skills/verify-poi-residency/`) says how to run it.
@@ -31,7 +30,7 @@ stateDiagram-v2
   integrating: Fading in
   live: Live
   [*] --> queued
-  queued --> trimming: in a match, it is the nearest queued location (while gliding, nearest to where you land)
+  queued --> trimming: in a match, it is the nearest queued location (while gliding, height no longer counts)
   trimming --> building: the list is under the cap, or nothing more can be evicted
   building --> integrating: build() returns
   integrating --> live: the fade-in finishes
@@ -122,8 +121,8 @@ Three things put more than `lowmemcap` locations in memory, or start a build whe
 |---|---|---|
 | NoEvictWhileBuilding | A location is never thrown away while it is still building or fading in. | Yes |
 | NothingPickedOutsideMatch | Nothing new is picked to build outside a match (title, room, results lobby). | Yes |
-| GlideTargetFirst | While you fall or glide, the location you will land on builds before any queued one behind you or to the side. | Yes (RAY-272) |
-| GlideTargetKept | Making room never throws away the location you will land on while one behind you or to the side stays. | Yes (RAY-272) |
+| GlideTargetFirst | While you fall or glide, the location you glide toward builds before any queued one behind you or to the side. | Yes (RAY-272) |
+| GlideTargetKept | Making room never throws away the location you glide toward while one behind you or to the side stays. | Yes (RAY-272) |
 | AtMostCapPlusOne | At most `lowmemcap` + 1 streamed locations hold memory, counting the one being built. | Only when you stand in one location at a time |
 | AtMostCap | At most `lowmemcap` streamed locations hold memory, counting the one being built. | No: one over during a fade-in |
 | NothingBuiltOutsideMatch | No build starts outside a match. | No: leaving during a trim |
