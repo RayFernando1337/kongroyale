@@ -166,6 +166,10 @@
     "context-restore": {
       "label": "no-GPU context restore",
       "catches": "A WebGL context lost at the title or in a match warm-up that doesn't restore."
+    },
+    "invariants": {
+      "label": "no-GPU invariants (lowmem, default)",
+      "catches": "A location going invisible while it changes form: in a seeded practice match, low-memory and default setups, any frame where a location in view that was drawn drops under half drawn by its model, far impostor and HLOD proxy together, or a route stop that never shows the location's built model or, in the low-memory setup, its far impostor. The default setup only warns when the far form never shows, until RAY-248 lets HLOD build the plantation's proxy."
     }
   },
   "coming": [

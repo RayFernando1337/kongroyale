@@ -21,9 +21,15 @@ const expectItem = (s: Snapshot, id: Item["id"], ok: boolean, reason: RegExp, wh
   assert.match(i.reason, reason, what);
 };
 const okMap = (s: Snapshot) => Object.fromEntries(decide(s).items.map((i) => [i.id, i.ok]));
+// jobs ci.yml gained after the snapshots were recorded: a recorded head whose CI finished green gets them, green
+const LATER_JOBS = ["no-GPU invariants (lowmem)", "no-GPU invariants (default)"];
+const finished = (s: Snapshot): Snapshot => {
+  for (const name of LATER_JOBS) s.checkRuns.push({ conclusion: "success", id: 0, name, status: "completed" });
+  return s;
+};
 
 // recorded snapshots
-const ready = load(287);
+const ready = finished(load(287));
 const v = decide(ready);
 assert.deepEqual(Object.keys(v), ["pr", "head", "ready", "items"]);
 assert.deepEqual(v.items.map((i) => i.id), ["checks", "capy-review", "threads", "mergeable", "base", "size-budget-drift", "labels"]);
@@ -33,10 +39,10 @@ assert.equal(v.ready, true, JSON.stringify(v, null, 2));
 for (const i of v.items) assert.ok(i.reason.length > 0, i.id);
 expectItem(ready, "size-budget-drift", true, /this PR changes tools\/size-budgets\.json; main has not/, "#287 budgets");
 
-assert.deepEqual(okMap(load(288)), { checks: true, "capy-review": true, threads: true, mergeable: false, base: true, "size-budget-drift": false, labels: true }, "#288 merged");
+assert.deepEqual(okMap(finished(load(288))), { checks: true, "capy-review": true, threads: true, mergeable: false, base: true, "size-budget-drift": false, labels: true }, "#288 merged");
 expectItem(load(288), "mergeable", false, /MERGED/, "#288");
 
-const withFinding = load(285);
+const withFinding = finished(load(285));
 assert.equal(decide(withFinding).ready, false);
 expectItem(withFinding, "capy-review", false, /1 potential issue \(1 medium\)/, "#285 open Capy finding");
 expectItem(withFinding, "threads", false, /^2 unresolved of 2 review threads: \.github\/workflows\/perf\.yml by devin-ai-integration/, "#285 threads");
@@ -68,7 +74,7 @@ expectItem(edit((s) => { run(s, "no-GPU boot smoke").conclusion = "skipped"; }),
 expectItem(edit((s) => { run(s, "build and test").conclusion = "failure"; }), "checks", false, /failed: build and test \(failure\)/, "failure");
 expectItem(edit((s) => { s.checkRuns.push({ id: 1, name: "labeler", status: "completed", conclusion: "skipped" }); }), "checks", true, /plus labeler/, "an optional skipped run");
 expectItem(edit((s) => { s.checkRuns.push({ id: 1, name: "labeler", status: "completed", conclusion: "cancelled" }); }), "checks", false, /failed: labeler \(cancelled\)/, "an optional cancelled run");
-expectItem(edit((s) => { s.checkRuns.push({ ...run(s, "build and test"), id: 1, conclusion: "cancelled" }); }), "checks", true, /all 6 required/, "an older cancelled attempt under a newer pass");
+expectItem(edit((s) => { s.checkRuns.push({ ...run(s, "build and test"), id: 1, conclusion: "cancelled" }); }), "checks", true, new RegExp(`all ${REQUIRED_CHECKS.length} required`), "an older cancelled attempt under a newer pass");
 expectItem(edit((s) => { s.checkRuns.push({ ...run(s, "build and test"), id: Number.MAX_SAFE_INTEGER, conclusion: "failure" }); }), "checks", false, /failed: build and test \(failure\)/, "a newer failing attempt");
 expectItem(edit((s) => { s.statuses.push({ context: "Devin Review", state: "pending", description: null }); s.statuses = s.statuses.slice(1); }), "checks", false, /pending: Devin Review/, "pending status");
 
@@ -104,9 +110,15 @@ expectItem(budgets("a", "b", "a"), "size-budget-drift", true, /does not change/,
 expectItem(budgets("a", "a", "c"), "size-budget-drift", true, /main has not/, "only the PR changed");
 expectItem(budgets(null, "a", "b"), "size-budget-drift", false, /merge main first/, "both added the file");
 
-// REQUIRED_CHECKS is every ci.yml job name: a job's name sits at four spaces under jobs:, a step's deeper
+// REQUIRED_CHECKS is every ci.yml check-run name: a job's name sits at four spaces under jobs:, a step's deeper, and a
+// matrix job whose name holds ${{ matrix.arm }} runs once per `- arm:` entry under it
 const ci = fs.readFileSync(path.join(here, "../../.github/workflows/ci.yml"), "utf8");
-const jobs = [...ci.slice(ci.indexOf("\njobs:")).matchAll(/^ {4}name: (.+)$/gm)].map((m) => m[1].trim());
+const jobs = ci.slice(ci.indexOf("\njobs:")).split(/^ {2}(?=\S)/m).flatMap((job) => {
+  const name = /^ {4}name: (.+)$/m.exec(job)?.[1].trim();
+  if (!name) return [];
+  if (!name.includes("${{ matrix.arm }}")) return [name];
+  return [...job.matchAll(/^ +- arm: (.+)$/gm)].map((m) => name.replace("${{ matrix.arm }}", m[1].trim()));
+});
 assert.deepEqual([...jobs].sort(), [...REQUIRED_CHECKS].sort(), "REQUIRED_CHECKS in tools/pr-ready/decide.mts must list every job in .github/workflows/ci.yml");
 
 console.log("pr-ready: decisions match the recorded and edited snapshots");
