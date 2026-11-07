@@ -95,6 +95,7 @@ const engine = (() => {
   catch (e) { bootFail("engine", e); throw e; }
 })();
 kr.engine = engine;
+kr.sliceLog = engine.sliceLog;
 if (flag("texprof")) await import("./engine/dev-probes").then((m) => m.installTexProf(engine), (e) => report("texprof", e));
 if (flag("drawcensus")) await import("./engine/draw-census").then((m) => { kr.drawCensus = m.installDrawCensus(engine); }, (e) => report("drawcensus", e));
 // the video settings (engine/display.ts): frame cap / 3D resolution now, the rest once atmos + veg exist
@@ -310,7 +311,11 @@ const atmos = () => engine.shared.get("atmos") as { sweep?: () => number } | und
 
 let buildQueue: Promise<unknown> = Promise.resolve();
 function streamBuild(id: string, fast: boolean): Promise<{ integrated: Promise<void> }> {
-  const built = buildQueue.then(() => buildStreamed(id, fast));
+  // (engine.streamJobs: from the build's start until its integration ends, every frame interval is a stream frame)
+  const built = buildQueue.then(() => {
+    engine.streamJobs++;
+    return buildStreamed(id, fast).then((b) => ({ integrated: b.integrated.finally(() => { engine.streamJobs--; }) }), (e) => { engine.streamJobs--; throw e; });
+  });
   buildQueue = built.catch(() => {});
   return built;
 }
