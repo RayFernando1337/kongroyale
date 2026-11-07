@@ -124,8 +124,10 @@ export function createAdminHttp(o: { root: string; ipOf(req: http.IncomingMessag
     }
     if (url === "/admin/api/reports/text") {
       if (!goodPost(req)) { json(res, 403, { ok: false, error: "refused" }); req.resume(); return true; }
-      if (!auth.sessionOf(req)) { json(res, 401, { ok: false }); req.resume(); return true; }
+      const sid = auth.sessionOf(req);
+      if (!sid) { json(res, 401, { ok: false }); req.resume(); return true; }
       void readBody(req).then((b) => {
+        if (!auth.sessionLive(sid)) { json(res, 401, { ok: false }); return; }
         const n = b?.seq;
         if (typeof n !== "number" || !Number.isInteger(n)) { json(res, 400, { ok: false, error: "seq must be a report's number" }); return; }
         const t = feed.text(n);

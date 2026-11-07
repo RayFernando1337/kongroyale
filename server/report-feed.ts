@@ -4,11 +4,13 @@
 // a screen only when a moderator asks for it. A feed item holds structured fields only: the report id, its kind and
 // symptom chip, where it was sent from, the browser and OS family, and the client build. No callsign, no install or
 // session id, no address. The feed lives in memory and keeps the newest MAX_ITEMS; a restart starts it empty.
+import { POIS } from "../shared/world/map";
 import type { Bundle } from "./playtest-bundles";
 
 const MAX_ITEMS = 200;
-/** what a POI or chip name may hold on the way to a moderator's screen */
+/** what a symptom chip may hold on the way to a moderator's screen */
 const LABEL = /[^A-Za-z0-9 '.,:()-]/g;
+const SHA = /^[0-9a-f]{7,40}$/;
 
 export interface FeedItem {
   /** a number the feed gives each report, for asking for its text */
@@ -50,10 +52,14 @@ export function reportFeed() {
   function add(r: StoredReport): FeedItem {
     const diag = r.bundle?.diag ?? null;
     const kind = (diag?.kind ?? "kongbot") as FeedItem["kind"];
-    const poi = (r.ctx as { game?: { player?: { poi?: { name?: unknown } } } } | null)?.game?.player?.poi?.name;
+    // a place is only ever a name from the map (a crash is placed by the dead session's heartbeat), never a player's words
+    const ctx = r.ctx as { build?: { sha?: unknown }; game?: { player?: { poi?: { name?: unknown; id?: unknown } } } } | null;
+    const placed = kind === "crash" ? diag?.prev?.poi?.replace(/^poi:/, "") : ctx?.game?.player?.poi?.id ?? ctx?.game?.player?.poi?.name;
+    const poi = POIS.find((p) => p.id === placed || p.name === placed)?.name ?? null;
+    const sha = r.bundle?.build?.sha ?? (typeof ctx?.build?.sha === "string" && SHA.test(ctx.build.sha) ? ctx.build.sha : null);
     // a diagnostics send carries the sheet's own words ("Diagnostics from play at 7:42, Banana Temple"), never a player's
     const hasText = kind !== "diagnostics" && r.message.length > 0;
-    const item: FeedItem = { seq: ++seq, at: r.at.toISOString(), id: r.id, kind, chip: label(diag?.chip, 24), poi: label(poi, 40), ...family(r.ua), build: r.bundle?.build?.sha.slice(0, 7) ?? null, hasText };
+    const item: FeedItem = { seq: ++seq, at: r.at.toISOString(), id: r.id, kind, chip: label(diag?.chip, 24), poi, ...family(r.ua), build: sha?.slice(0, 7) ?? null, hasText };
     items.push(item);
     if (hasText) texts.set(item.seq, r.message);
     while (items.length > MAX_ITEMS) texts.delete(items.shift()!.seq);
