@@ -313,3 +313,17 @@ table.play td[data-label]::before{content:attr(data-label);color:var(--muted);fo
 .morelist li{border-top:1px solid var(--line);padding:14px 0;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline}
 .morelist a{font-weight:500;min-width:12rem}
 .gate.in-progress{color:var(--warn)}
+.dia{margin:20px 0 8px}
+.dia-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;padding:8px}
+.dia svg{display:block;width:100%;min-width:min(var(--dw),760px);max-width:var(--dw);height:auto;margin:0 auto}
+.dia-dark{display:none}
+:root[data-theme=dark] .dia-light{display:none}
+:root[data-theme=dark] .dia-dark{display:block}
+.dia figcaption{color:var(--muted);font-size:.88rem;margin-top:8px}
+.bsec h4{font-size:.95rem;font-weight:600;margin:20px 0 6px}
+.bsec .list li{padding:8px 0}
+.bsec code,.guards code{font-family:var(--mono);font-size:.82rem;color:var(--muted)}
+.bsec .tech-line code{font-size:.78rem}
+.guards td:first-child{min-width:12rem}
+.guards td:nth-child(2){min-width:16rem}
+.bsec caption{text-align:left;padding:0 0 8px}
