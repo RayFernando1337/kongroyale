@@ -64,6 +64,12 @@ const SCREEN = "1920,1080,0,0";
   assert.equal(e.add(vsync(120, repeat([1, 2, 3, 2], 90)), SCREEN), 120, "a slow game at 120 Hz once a steady 120 came");
   assert.equal(e.add(safariUneven, "2560,1440,1920,0"), 60, "another screen starts from WebKit's 60 again");
 }
+// Safari on a 50 Hz screen: once a steady 50 comes, it is the ceiling, not WebKit's 60
+{
+  const e = new RefreshEstimate(WEBKIT_CEILING_HZ);
+  assert.equal(e.add(vsync(50, repeat([1], 90)), SCREEN), 50);
+  assert.equal(e.add(repeat([16, 24, 20, 20, 40], 90), SCREEN), 50, "an uneven sample after it reads at most 50");
+}
 // a match held at half rate from the first sample: a steady 30 sets no ceiling, so the later tail still reads 60
 {
   const e = new RefreshEstimate();

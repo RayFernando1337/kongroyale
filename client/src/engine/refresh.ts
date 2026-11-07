@@ -45,20 +45,22 @@ export function refreshFromIntervals(intervalsMs: readonly number[]): number {
   return refreshSample(intervalsMs).hz;
 }
 
-/** the engine's running estimate: a steady sample reads as it is, and an uneven one at most the ceiling, the highest of
- *  the base ceiling and the steady readings of CEILING_MIN_HZ or more on the same screen (its size and position among
- *  the screens, so a move to a same-sized screen starts over). The ceiling only rises on one screen: a faster refresh
- *  mode set in place reads low until a steady sample shows it, and a slower one still reads right on steady samples */
+/** the engine's running estimate: a steady sample reads as it is, and an uneven one at most the ceiling, the highest
+ *  steady reading of CEILING_MIN_HZ or more on the same screen (its size and position among the screens, so a move to a
+ *  same-sized screen starts over), or the base ceiling before one. The ceiling only rises on one screen: a faster
+ *  refresh mode set in place reads low until a steady sample shows it, and a slower one still reads right on steady
+ *  samples */
 export class RefreshEstimate {
-  private ceilHz: number;
+  private ceilHz = 0;
   private screen = "";
   /** baseCeilHz: the ceiling before any steady sample (WEBKIT_CEILING_HZ in Safari, 0 = none) */
-  constructor(private readonly baseCeilHz = 0) { this.ceilHz = baseCeilHz; }
+  constructor(private readonly baseCeilHz = 0) {}
   /** take a sample of rAF intervals (ms) on the screen with this key (its size and position); the new estimate (Hz) */
   add(intervalsMs: readonly number[], screen: string): number {
-    if (screen !== this.screen) { this.screen = screen; this.ceilHz = this.baseCeilHz; }
+    if (screen !== this.screen) { this.screen = screen; this.ceilHz = 0; }
     const s = refreshSample(intervalsMs);
     if (s.steady && s.hz >= CEILING_MIN_HZ) this.ceilHz = Math.max(this.ceilHz, s.hz);
-    return s.steady || !this.ceilHz ? s.hz : Math.min(s.hz, this.ceilHz);
+    const ceil = this.ceilHz || this.baseCeilHz;
+    return s.steady || !ceil ? s.hz : Math.min(s.hz, ceil);
   }
 }
