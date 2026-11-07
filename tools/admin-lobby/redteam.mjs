@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Red-team the admin lobby: starts its OWN game server on a spare port with a throwaway
 // admin key (random, in memory, never printed) and proves every attack below FAILS. Exit code 0 = every check held.
-//   node tools/admin-lobby/redteam.mjs [--port 5479] [--md <file>]
+//   node tools/admin-lobby/redteam.mjs [--port 5479] [--md <file>] [--procs N]
+// --procs N runs the server as a front with N match processes (KR_PROCS), so the same attacks cover the multi-process path.
 // Needs no browser and never touches the real key (.admin-key).
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
@@ -14,6 +15,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const argv = process.argv.slice(2);
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const PORT = Number(opt("--port", 5479)), B = `http://127.0.0.1:${PORT}`, WSB = `ws://127.0.0.1:${PORT}`;
+const PROCS = opt("--procs", "");
 const mdOut = opt("--md", "docs/admin-lobby/redteam-results.md");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rnd = () => crypto.randomBytes(16).toString("hex");
@@ -32,7 +34,7 @@ fs.mkdirSync(path.dirname(logFile), { recursive: true });
 const log = fs.openSync(logFile, "w");
 const srv = spawn(process.execPath, [path.join(root, "node_modules/tsx/dist/cli.mjs"), "server/index.ts"], {
   cwd: root, stdio: ["ignore", log, log],
-  env: { ...process.env, KR_PORT: String(PORT), KR_HOST: "127.0.0.1", KR_EVENT_MODE: "1", KR_TRUST_PROXY: "1", KR_ADMIN_KEY_SHA256: HASH, KR_ADMIN_SESSION_S: String(SESSION_S), KR_ADMIN_KEY: "", KR_SERVE: "0" },
+  env: { ...process.env, KR_PORT: String(PORT), KR_HOST: "127.0.0.1", KR_EVENT_MODE: "1", KR_TRUST_PROXY: "1", KR_ADMIN_KEY_SHA256: HASH, KR_ADMIN_SESSION_S: String(SESSION_S), KR_ADMIN_KEY: "", KR_SERVE: "0", KR_PROCS: PROCS, KR_MONGO_URI: "mongodb://127.0.0.1:9", KR_PLAYTEST_BUNDLES: "0" },
 });
 const cleanup = () => { try { srv.kill("SIGTERM"); } catch { /* gone */ } };
 process.on("exit", cleanup); process.on("SIGINT", () => { cleanup(); process.exit(130); });
@@ -73,8 +75,8 @@ async function adminSession() {
   const state = async (until) => { await sleep(250); for (let i = 0; i < 45; i++) { const st = s.msgs.filter((m) => m.t === "state").pop(); if (!until || (st && until(st))) return st; await sleep(50); } return s.msgs.filter((m) => m.t === "state").pop(); };
   return { cookie, from, s, act, state };
 }
-async function player(code, { name = "PLAYER", tok = rnd(), from = addr() } = {}) {
-  const p = await wsTry("/ws", { "x-forwarded-for": from });
+async function player(code, { name = "PLAYER", tok = rnd(), from = addr(), dial = code } = {}) {
+  const p = await wsTry(dial ? "/ws?room=" + dial : "/ws", { "x-forwarded-for": from });
   p.tok = tok; p.from = from;
   p.ws.send(JSON.stringify({ t: "hello", name }));
   if (code) p.ws.send(JSON.stringify({ t: "join", code, tok }));
@@ -197,7 +199,7 @@ await check("RT-08", "A KICKED player rejoins (same token, fresh token, same add
 await check("RT-09", "A player CREATES a lobby / exhibition / caster seat in event mode", async () => {
   const A = await adm();
   const before = (await http("/health")).json.lobbies;
-  const p = await player(null, { name: "MAKER" });
+  const p = await player(null, { name: "MAKER", dial: CODE });
   p.ws.send(JSON.stringify({ t: "create", mode: "trios" })); p.ws.send(JSON.stringify({ t: "exhibit", mode: "solo", auto: true })); p.ws.send(JSON.stringify({ t: "cast", code: CODE }));
   await sleep(400);
   const after = (await http("/health")).json.lobbies, errs = p.msgs.filter((m) => m.t === "error").map((m) => m.msg);
@@ -218,7 +220,7 @@ await check("RT-10", "OVERSIZED and MALFORMED payloads", async () => {
   const p3 = await player(CODE, { name: "BADTEAM" });
   for (let k = 0; k < 2; k++) for (const team of ["1", 1.5, 999, -2, null, NaN]) p3.ws.send(JSON.stringify({ t: "team", team }));
   out.push(["12 bad team indices", await Promise.race([p3.closed(), sleep(2000).then(() => "open")]), 1008]);
-  const p4 = await player(null); p4.ws.send(JSON.stringify({ t: "join", code: CODE, tok: "../../etc/passwd" })); p4.ws.send(JSON.stringify({ t: "join", code: { $gt: "" }, tok: rnd() }));
+  const p4 = await player(null, { dial: CODE }); p4.ws.send(JSON.stringify({ t: "join", code: CODE, tok: "../../etc/passwd" })); p4.ws.send(JSON.stringify({ t: "join", code: { $gt: "" }, tok: rnd() }));
   await sleep(300); out.push(["bad token / object code", p4.msgs.filter((m) => m.t === "error").length, 2]);
   const ev = await http("/api/event/..%2F..%2Fetc%2Fpasswd"); out.push(["/api/event path junk", ev.status, 404]);
   const aux = await wsTry("/ws?aux=deadbeef"); out.push(["?aux= token in URL", await Promise.race([aux.closed(), sleep(1500).then(() => "open")]), 1008]);
@@ -255,6 +257,37 @@ await check("RT-12", "Secrets hygiene: cookie flags, headers, no key / IP / toke
   const leaks = [st, pub, logText].filter((t) => t.includes(norm) || t.includes(KEY) || /198\.51\.100\./.test(t) || (t !== logText && /127\.0\.0\.1/.test(t)) || t.includes(HASH)).length;
   const tokLeak = st.includes(cookieOf(r).split("=")[1]);
   return { ok: flags && hdr && leaks === 0 && !tokLeak, detail: `cookie HttpOnly+SameSite=Strict+Path=/admin+Secure(https): ${flags}; page CSP/XFO/no-store: ${hdr}; key/IP/hash in admin state, public info or server log: ${leaks}; session token in state: ${tokLeak}` };
+});
+await check("RT-14", "REPORT FEED: the stream and a report's text need a live session; the stream never carries what a player typed", async () => {
+  const A = await adm();
+  const note = "SECRET-NOTE-" + rnd(), callsign = "CALLSIGN-" + rnd().slice(0, 6);
+  const sent = await http("/api/kongbot", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ v: 1, message: note, reporter: { name: callsign }, ctx: { game: { player: { poi: { name: "<b>Banana</b> Temple" } } } } }) });
+  const none = await http("/admin/api/reports"), forged = await http("/admin/api/reports", { headers: { cookie: "kr_admin=" + rnd() } });
+  const crossSite = await http("/admin/api/reports", { headers: { cookie: A.cookie, "sec-fetch-site": "cross-site" } });
+  /** reads a report stream for up to ms, or until it ends */
+  async function stream(cookie, from, ms, during) {
+    const ctl = new AbortController(), r = await fetch(B + "/admin/api/reports", { headers: { cookie, "x-forwarded-for": from }, signal: ctl.signal });
+    const reader = r.body.getReader(), dec = new TextDecoder(); let text = "", ended = false;
+    const stop = setTimeout(() => ctl.abort(), ms);
+    const read = (async () => { try { for (;;) { const { done, value } = await reader.read(); if (done) { ended = true; return; } text += dec.decode(value, { stream: true }); } } catch { /* aborted */ } })();
+    await sleep(300); if (during) await during(); await read; clearTimeout(stop);
+    return { status: r.status, type: r.headers.get("content-type") || "", text, ended };
+  }
+  const st = await stream(A.cookie, A.from, 1200);
+  const items = st.text.split("\n").filter((l) => l.startsWith("data: ")).map((l) => JSON.parse(l.slice(6)));
+  const mine = items.find((i) => i.id === sent.json?.id);
+  const ask = (headers, body) => http("/admin/api/reports/text", { method: "POST", from: A.from, headers: { "content-type": "application/json", ...headers }, body });
+  const noSession = await ask({ origin: ORIGIN }, JSON.stringify({ seq: mine?.seq }));
+  const evil = await ask({ origin: "https://evil.example", cookie: A.cookie }, JSON.stringify({ seq: mine?.seq }));
+  const plain = await ask({ origin: ORIGIN, cookie: A.cookie, "content-type": "text/plain" }, JSON.stringify({ seq: mine?.seq }));
+  const shown = await ask({ origin: ORIGIN, cookie: A.cookie }, JSON.stringify({ seq: mine?.seq }));
+  // logging out ends an open stream
+  const from = addr(), L = await login(KEY, from), cookie = cookieOf(L);
+  const out = await stream(cookie, from, 4000, () => http("/admin/api/logout", { method: "POST", from, headers: { origin: ORIGIN, cookie, "content-type": "application/json" }, body: "{}" }));
+  const leak = [note, callsign, "<b>"].filter((t) => st.text.includes(t)).length;
+  const ok = sent.status === 200 && none.status === 401 && forged.status === 401 && crossSite.status === 401 && st.status === 200 && /^text\/event-stream/.test(st.type) && !!mine && mine.hasText && leak === 0
+    && noSession.status === 401 && evil.status === 403 && plain.status === 403 && shown.status === 200 && shown.json?.text === note && out.ended;
+  return { ok, detail: `stream no session/forged/cross-site: ${none.status}/${forged.status}/${crossSite.status}; with a session ${st.status} ${st.type.split(";")[0]}, report in it: ${!!mine}; note, callsign or markup in the stream: ${leak}; text no session/cross-site/text-plain: ${noSession.status}/${evil.status}/${plain.status}; with a session ${shown.status}, the note: ${shown.json?.text === note}; logout ends an open stream: ${out.ended}` };
 });
 await check("RT-13", "KEY BRUTE FORCE: per-address lockout, no oracle while locked, address rotation hits the global limit", async () => {
   const A = await adm();
