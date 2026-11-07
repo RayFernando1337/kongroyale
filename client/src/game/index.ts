@@ -902,7 +902,7 @@ const MATCH_ONLY_ROOTS = new Set(["storm", "weapons-fx", "loot-system", "fx-fall
  *  batches marked krMatchOnly (lo / min tiers, dither twins, hats and tops), the chest glows and crate impostors. They
  *  compile after ready in prewarmMatch, a few programs per frame, instead of in the boot compile */
 const DEFER_KONG_PER_FRAME = 3;
-const CHEST_MATCH_ONLY = /^(chest-aura|chest-halo|chest-burst|chest-lod2:|chest-seam-glow:)/;
+const CHEST_MATCH_ONLY = /^(chest-aura|chest-halo|chest-lod2:|chest-seam-glow:)/;
 function matchOnlyPart(o: THREE.Object3D): boolean {
   return o.userData.krMatchOnly === true || (o.parent?.name === "chest-system" && CHEST_MATCH_ONLY.test(o.name));
 }
@@ -1003,8 +1003,9 @@ async function prewarmMatch(engine: Engine, kits: Kits, title: TitleScene, isBus
   if (DEFER_KONG) {
     kr.matchWarm = "match-only parts";
     const parts: THREE.Object3D[] = [];
-    engine.scene.traverse((o) => { if (matchOnlyPart(o)) parts.push(o); });
-    for (let i = 0; i < parts.length; i += DEFER_KONG_PER_FRAME) { if (isBusy()) return; await engine.compileObjects(parts.slice(i, i + DEFER_KONG_PER_FRAME), false); await idle(); }
+    const collect = (o: THREE.Object3D) => { if (matchOnlyPart(o)) parts.push(o); else for (const c of o.children) collect(c); };
+    collect(engine.scene);
+    for (let i = 0; i < parts.length; i += DEFER_KONG_PER_FRAME) { if (isBusy()) return; await engine.compileObjects(parts.slice(i, i + DEFER_KONG_PER_FRAME)); await idle(); }
   }
   kr.matchWarm = "viewmodel";
   for (const it of vmItems) { if (isBusy()) return; vm.equip(it, (CONSUMABLES as readonly string[]).includes(it) ? "rare" : "epic"); await idle(); }
