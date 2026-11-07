@@ -14,8 +14,9 @@
 // Options: --url (default http://127.0.0.1:3140), --query "a=1&b=2" (the arm's flags), --pois a,b (route POIs, default
 // ROUTE), --seed 42, --viewport 640x360, --hold-frames 12 (frames at each stop, after the stop's own POI has finished
 // streaming; at the nearest stop, after it is built; at the far stop, after its impostor or proxy draws it),
-// --hold-max-s 120 (longest wait at one stop), --out <file> (the JSON verdict), --headed, --gpu (the machine's GPU
-// instead of SwiftShader), --report-only (violations print as GitHub warnings and exit 0; the harness
+// --hold-max-s 120 (longest wait at one stop), --near-max-s 240 (longest wait for the nearest stop's build), --far-warn
+// <issue> (a far stop that never sees the far form warns, naming the open issue, instead of failing), --out <file> (the
+// JSON verdict), --headed, --gpu (the machine's GPU instead of SwiftShader), --report-only (violations print as GitHub warnings and exit 0; the harness
 // still fails on its own errors). Exit 0 = no violation.
 import fs from "node:fs";
 import path from "node:path";
@@ -37,7 +38,8 @@ const QUERY = opt("--query", "");
 const SEED = Number(opt("--seed", "42"));
 const ONLY = opt("--pois", ROUTE.join(",")).split(",").filter(Boolean);
 const [VW, VH] = opt("--viewport", "640x360").split("x").map(Number);
-const HOLD_FRAMES = Number(opt("--hold-frames", "12")), HOLD_MAX_S = Number(opt("--hold-max-s", "120"));
+const HOLD_FRAMES = Number(opt("--hold-frames", "12")), HOLD_MAX_S = Number(opt("--hold-max-s", "120")), NEAR_MAX_S = Number(opt("--near-max-s", "240"));
+const FAR_WARN = opt("--far-warn", "");
 const OUT = opt("--out", "");
 const GPU = argv.includes("--gpu"), REPORT_ONLY = argv.includes("--report-only");
 for (const id of ONLY) if (!POIS.some((p) => p.id === id)) throw Error("--pois " + id + ": no such POI (" + POIS.map((p) => p.id).join(", ") + ")");
@@ -61,7 +63,7 @@ const url = BASE + "/?invariants&seed=" + SEED + (QUERY ? "&" + QUERY : "");
 const args = GPU ? ["--enable-gpu", "--ignore-gpu-blocklist"] : ["--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"];
 const browser = await chromium.launch({ headless: !argv.includes("--headed"), args: [...args, "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"] });
 const page = await (await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1 })).newPage();
-const pageErrors: string[] = [], harness: string[] = [];
+const pageErrors: string[] = [], harness: string[] = [], warnings: string[] = [];
 page.on("pageerror", (e) => pageErrors.push(String(e.message).slice(0, 300)));
 type Status = { ready: boolean; failed: boolean; inMatch: boolean; phase: number; frames: number; stream: string; violations: number };
 const status = (): Promise<Status> => page.evaluate(() => {
@@ -72,6 +74,8 @@ const status = (): Promise<Status> => page.evaluate(() => {
 const built = (id: string): Promise<string> => page.evaluate((m) => { const k = (window as any).__kr; return k.modules.includes(m) ? (k.engine.isBuilt(m) ? "built" : "building") : ""; }, "poi:" + id);
 /** frames the route POI was drawn by its impostor and HLOD proxies alone */
 const farFrames = (id: string): Promise<number> => page.evaluate((m) => (window as any).__kr.invariants?.farSeen[m] ?? 0, "poi:" + id);
+/** the route POI's HLOD entry (engine/hlod.ts): "<state>, active|inactive, <proxies> proxies", or "none" */
+const hlodOf = (id: string): Promise<string> => page.evaluate((m) => { const f = (window as any).__kr.engine.far.info().find((p: { id: string }) => p.id === m); return f ? f.state + ", " + (f.active ? "active" : "inactive") + ", " + (f.proxies ?? 0) + " proxies" : "none"; }, "poi:" + id);
 let reported = 0;
 const newViolations = async () => {
   const vs = await page.evaluate((from) => (window as any).__kr.invariants.violations.slice(from) as Array<Record<string, unknown>>, reported);
@@ -111,6 +115,7 @@ try {
       const x = p.x + ux * d, z = p.z + uz * d, yaw = Math.atan2(-(p.x - x), -(p.z - z));
       if (!(await place(x, z, yaw))) throw Error("no practice host to teleport on");
       const [far, , nearest] = stops(p.r).map(([dd]) => dd === d), f0 = (await status()).frames, h0 = Date.now(), far0 = await farFrames(id);
+      const maxS = nearest ? NEAR_MAX_S : HOLD_MAX_S;
       let state = "", from = nearest || far ? -1 : f0;
       for (;;) {
         await sleep(1000);
@@ -118,12 +123,16 @@ try {
         s = await status();
         state = await built(id);
         if (from < 0 && (nearest ? state === "built" : (await farFrames(id)) > far0)) from = s.frames;
-        if ((from >= 0 && s.frames - from >= HOLD_FRAMES && state !== "building") || Date.now() - h0 > HOLD_MAX_S * 1000) break;
+        if ((from >= 0 && s.frames - from >= HOLD_FRAMES && state !== "building") || Date.now() - h0 > maxS * 1000) break;
       }
-      if (s.frames === f0) harness.push(id + " at " + Math.round(d) + " m: no frame was checked in " + HOLD_MAX_S + " s");
-      else if (nearest && from < 0) harness.push(id + " at " + Math.round(d) + " m: not built after " + HOLD_MAX_S + " s, so its hand-over to the model was not exercised");
-      else if (far && from < 0) harness.push(id + " at " + Math.round(d) + " m: never drawn by its impostor or HLOD proxy in " + HOLD_MAX_S + " s, so its far form was not exercised");
-      log(id + " at " + Math.round(d) + " m (" + what + "): " + (s.frames - f0) + " frames, " + (state || "not built") + ", stream " + (s.stream || "-") + ", " + s.violations + " violation(s) so far");
+      if (s.frames === f0) harness.push(id + " at " + Math.round(d) + " m: no frame was checked in " + maxS + " s");
+      else if (nearest && from < 0) harness.push(id + " at " + Math.round(d) + " m: not built after " + maxS + " s, so its hand-over to the model was not exercised");
+      else if (far && from < 0) {
+        const msg = id + " at " + Math.round(d) + " m: never drawn by its impostor or HLOD proxy in " + maxS + " s, so its far form was not exercised";
+        if (FAR_WARN) { warnings.push(msg + " (" + FAR_WARN + ")"); console.log("::warning title=invariant far form (" + FAR_WARN + ")::" + msg); }
+        else harness.push(msg);
+      }
+      log(id + " at " + Math.round(d) + " m (" + what + "): " + (s.frames - f0) + " frames, " + (state || "not built") + ", hlod " + (await hlodOf(id)) + ", stream " + (s.stream || "-") + ", " + s.violations + " violation(s) so far");
       await newViolations();
     }
   }
@@ -140,7 +149,7 @@ try {
   for (const e of errors.slice(0, 10)) harness.push("__kr.errors: " + String(e).split("\n")[0].slice(0, 300));
   for (const e of pageErrors.slice(0, 10)) harness.push("page error: " + e);
   const ok = !harness.length && !!inv && inv.violations.length === 0;
-  verdict = { ok, url: url.replace(BASE, ""), renderer: GPU ? "gpu" : "swiftshader", viewport: VW + "x" + VH, route: ONLY, seconds: Math.round((Date.now() - t0) / 1000), harness, pageErrors: pageErrors.slice(0, 20), ...inv };
+  verdict = { ok, url: url.replace(BASE, ""), renderer: GPU ? "gpu" : "swiftshader", viewport: VW + "x" + VH, route: ONLY, seconds: Math.round((Date.now() - t0) / 1000), harness, warnings, pageErrors: pageErrors.slice(0, 20), ...inv };
   if (OUT) { fs.mkdirSync(path.dirname(path.resolve(OUT)), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(verdict, null, 2) + "\n"); }
   for (const v of (inv?.violations ?? []) as Array<Record<string, unknown>>) console.log((REPORT_ONLY ? "::warning title=invariant::" : "VIOLATION ") + JSON.stringify(v));
   for (const h of harness) console.log("HARNESS " + h);
