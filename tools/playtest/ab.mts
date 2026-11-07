@@ -1,11 +1,12 @@
-// The WebTransport A/B in real play (KR_WT_SHARE, HOSTING.md "WebTransport"): playtest and diagnostics bundles split by
-// the arm their link was in (ctx.game.net, client/src/game/net.ts LinkReport), with the network measures that tell the
-// arms apart: input→ack and the hit markers that waited for the server (the link's report), ping and lag-spike seconds
-// (the timeline), and where the arm's links settled and why they fell back. --health FILE|URL adds the server's own
-// count from /health (transports.arms): links, fallbacks and input gaps per 1000 inputs, which only the server sees.
-// Only "wt" and "ws" are the experiment; forced (?wt=1 / ?wt=0) and off links get their own rows. Deterministic, reads
-// the bundle folder and the one /health you point it at (a server you run); no callsign, message or screenshot reaches
-// the output.
+// The WebTransport A/B in real play (KR_WT_SHARE, HOSTING.md "WebTransport"): playtest and diagnostics bundles split
+// by the arm their link was in (ctx.game.net, client/src/game/net.ts LinkReport), with the network measures that tell
+// the arms apart: input→ack and the hit markers that waited for the server (the link's report), ping and lag-spike
+// seconds (the timeline, from the seconds after the link opened only, so a practice match or an earlier link before
+// it is not counted to the arm), and where the arm's links settled and why they fell back. --health FILE|URL adds the
+// server's own count from /health (transports.arms): links, fallbacks and input gaps per 1000 inputs, which only the
+// server sees. Only "wt" and "ws" are the experiment; forced (?wt=1 / ?wt=0) and off links get their own rows.
+// Deterministic, reads the bundle folder and the one /health you point it at (a server you run); no callsign, message
+// or screenshot reaches the output.
 //   npx tsx tools/playtest/ab.mts [--dir DIR] [--health FILE|URL] [--json]
 import fs from "node:fs";
 import path from "node:path";
@@ -20,13 +21,16 @@ export function linkOf(s: Saved) {
   const net = dig(s.ctx, "game", "net");
   const arm = text(dig(net, "arm"), 12) as Arm | null;
   if (!isRec(net) || !arm || !ARMS.includes(arm)) return null;
-  const sr = series(s), a = analyse(s, sr);
+  const since = finite(net.since), tl = s.bundle.timeline, ti = tl?.fields.indexOf("t") ?? -1;
+  const own: Saved = since === null || !tl || ti < 0 ? s : { ...s, bundle: { ...s.bundle, timeline: { ...tl, rows: tl.rows.filter((r) => r[ti] >= since) } } };
+  const sr = series(own), a = analyse(own, sr);
   return {
     arm, player: s.reporter.clientId, transport: text(net.transport, 4), fallback: text(net.fallback, 20),
     ackP50: finite(dig(net, "ackMs", "p50")), ackP95: finite(dig(net, "ackMs", "p95")), ackN: finite(dig(net, "ackMs", "n")) ?? 0,
-    deferred: finite(net.deferred) ?? 0,
-    /** seconds of the timeline spent in a match's play phase */
-    playS: sr.phase.filter((p) => p === PHASE_PLAY).length,
+    /** deferred markers and the seconds of play they happened in, both counted by the link over its whole life */
+    deferred: finite(net.deferred) ?? 0, playS: finite(net.playS) ?? 0,
+    /** seconds of the link's part of the timeline spent in a match's play phase (the lag-spike rate's denominator) */
+    timelinePlayS: sr.phase.filter((p) => p === PHASE_PLAY).length,
     pingMs: a.network.pingMedianMs, lagS: a.network.lagSpikeSeconds,
   };
 }
@@ -38,7 +42,7 @@ export function summarise(links: Link[]) {
     const l = links.filter((k) => k.arm === arm);
     if (!l.length) return null;
     const med = (xs: (number | null)[]) => r1(q(sorted(xs.filter((x): x is number => x !== null)), 0.5));
-    const playMin = l.reduce((n, k) => n + k.playS, 0) / 60;
+    const playMin = l.reduce((n, k) => n + k.playS, 0) / 60, timelineMin = l.reduce((n, k) => n + k.timelinePlayS, 0) / 60;
     const fallbacks: Record<string, number> = {};
     for (const k of l) if (k.fallback) fallbacks[k.fallback] = (fallbacks[k.fallback] ?? 0) + 1;
     return {
@@ -46,7 +50,7 @@ export function summarise(links: Link[]) {
       onWt: l.filter((k) => k.transport === "wt").length, fallbacks,
       ackP50Ms: med(l.filter((k) => k.ackN > 0).map((k) => k.ackP50)), ackP95Ms: med(l.filter((k) => k.ackN > 0).map((k) => k.ackP95)),
       deferredPerMin: playMin > 0 ? r1(l.reduce((n, k) => n + k.deferred, 0) / playMin) : null,
-      pingMs: med(l.map((k) => k.pingMs)), lagSPer10Min: playMin > 0 ? r1((l.reduce((n, k) => n + k.lagS, 0) / playMin) * 10) : null,
+      pingMs: med(l.map((k) => k.pingMs)), lagSPer10Min: timelineMin > 0 ? r1((l.reduce((n, k) => n + k.lagS, 0) / timelineMin) * 10) : null,
       playMin: r1(playMin),
     };
   }).filter((r) => r !== null);

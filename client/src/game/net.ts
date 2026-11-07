@@ -35,8 +35,10 @@ export interface Link {
   report?(): LinkReport;
   /** (ClientMatch) an input's first acknowledgement arrived this long after it was sent (ms) */
   noteAck?(ms: number): void;
-  /** (ClientMatch) a predicted hit's marker was left to the server's verdict because the link was slow (linkSlow) */
+  /** (ClientMatch) in play, a predicted hit's marker was left to the server's verdict because the link was slow */
   noteDeferred?(): void;
+  /** (ClientMatch) a snapshot carried this many seconds of a match's play phase */
+  notePlay?(s: number): void;
   onJSON: (m: Record<string, unknown>) => void;
   /** `at` = arrival time (MessageEvent.timeStamp on the performance.now() clock), when the transport knows it */
   onBinary: (u8: Uint8Array, at?: number) => void;
@@ -52,8 +54,12 @@ export interface LinkReport {
   transport: Transport["kind"]; fallback: FallbackReason | null; arm: WtArm; stats: Transport["stats"];
   /** input→ack over the link's life, from ACK_BIN_MS bins (null: no input acknowledged yet) */
   ackMs: { n: number; p50: number | null; p95: number | null; p99: number | null };
-  /** hit markers that waited for the server's verdict */
-  deferred: number;
+  /** hit markers that waited for the server's verdict during play, and the seconds of play they happened in: both
+   *  over the link's life, so their rate doesn't depend on how much of the timeline a report kept */
+  deferred: number; playS: number;
+  /** when the link opened, on the playtest timeline's clock (performance.now() in seconds): rows before it belong to an
+   *  earlier link or a practice match */
+  since: number;
 }
 
 const auxWanted = () => flag("aux");
@@ -98,7 +104,8 @@ export function connectWs(url: string, timeoutMs = 4000): Promise<Link> {
     };
     const bin: Transport = { kind: "ws", stats, sendReliable: (u8) => send(u8, 0), sendUnreliable: (u8) => send(u8, 1), onMessage: () => {}, close: () => aux?.close() };
     const receive = (e: MessageEvent) => { const u8 = new Uint8Array(e.data as ArrayBuffer); stats.recv++; stats.recvBytes += u8.length; bin.onMessage(u8, e.timeStamp, SERVER_PATH); };
-    let active: Transport = bin, fallback: FallbackReason | null = null, arm: WtArm = "off", deferred = 0;
+    let active: Transport = bin, fallback: FallbackReason | null = null, arm: WtArm = "off", deferred = 0, playS = 0;
+    const since = performance.now() / 1000;
     const ack = new Uint32Array(ACK_BINS);
     const ackAt = (p: number, n: number) => { let k = 0, i = 0; for (; i < ACK_BINS - 1; i++) { k += ack[i]; if (k >= p * n) break; } return i * ACK_BIN_MS + ACK_BIN_MS / 2; };
     const link: Link = {
@@ -106,10 +113,11 @@ export function connectWs(url: string, timeoutMs = 4000): Promise<Link> {
       get transport() { return active; }, get fallback() { return fallback; },
       report: () => {
         let n = 0; for (const c of ack) n += c;
-        return { transport: active.kind, fallback, arm, stats: structuredClone(active.stats), ackMs: { n, p50: n ? ackAt(0.5, n) : null, p95: n ? ackAt(0.95, n) : null, p99: n ? ackAt(0.99, n) : null }, deferred };
+        return { transport: active.kind, fallback, arm, stats: structuredClone(active.stats), ackMs: { n, p50: n ? ackAt(0.5, n) : null, p95: n ? ackAt(0.95, n) : null, p99: n ? ackAt(0.99, n) : null }, deferred, playS: Math.round(playS), since };
       },
       noteAck: (ms) => { ack[Math.max(0, Math.min(ACK_BINS - 1, Math.floor(ms / ACK_BIN_MS)))]++; },
       noteDeferred: () => { deferred++; },
+      notePlay: (s) => { playS += s; },
       sendJSON: (o) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o)); },
       sendBinary: (u8) => sendFrame(active, u8),
       close: () => { closed = true; active.close(); bin.close(); ws.close(); },
