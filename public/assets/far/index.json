@@ -32,16 +32,16 @@
       "bytes": 206668
     },
     "ripe-peak": {
-      "hash": "bee4d219da22aea5",
-      "bin": "ae84b667eaaae34b",
-      "tris": 11994,
-      "bytes": 275776
+      "hash": "75dc6bfe23fc2881",
+      "bin": "ca2a945217f648e6",
+      "tris": 11999,
+      "bytes": 266614
     },
     "mist-falls": {
-      "hash": "bec3ee6880a2702a",
-      "bin": "94e8045c6fa43d47",
-      "tris": 11998,
-      "bytes": 156840
+      "hash": "5de7fd2997135538",
+      "bin": "e378893ad5564c25",
+      "tris": 11997,
+      "bytes": 157774
     },
     "cnvs-lab": {
       "hash": "8bbae979b947a241",
@@ -92,10 +92,10 @@
       "bytes": 32086
     },
     "the-murk": {
-      "hash": "a148c2240bcaad7b",
-      "bin": "b38618c482a750cf",
-      "tris": 12245,
-      "bytes": 281270
+      "hash": "5e92133e41741a04",
+      "bin": "41ba13e640f4640f",
+      "tris": 12343,
+      "bytes": 282030
     }
   }
 }
