@@ -739,7 +739,6 @@ export class SunShadows {
       if (!m) return;
       if (this.lod1Shadows && o.name.endsWith(":lod1")) this.adoptLod1(o);
       if (o.castShadow) {
-        if (!Array.isArray(m) && (o as THREE.Mesh).isMesh) depthByKind(o as THREE.Mesh, m);
         if (!(o as THREE.SkinnedMesh).isSkinnedMesh) casters++;
         // (the beach's dressing palms are planted into the veg impostor set after the first bake and need a
         // far-map shadow too): instanced far-map casters count by their instance number — a replant re-bakes
@@ -956,31 +955,6 @@ const EMPTY: THREE.Object3D[] = [];
 
 /** objects whose cascade-1 membership was decided (small static casters are not re-measured every sweep) */
 const c1Checked = new WeakSet<THREE.Object3D>();
-
-// Shadow depth materials per caster kind. three draws every caster that has no customDepthMaterial with ONE shared
-// MeshDepthMaterial (one clone per source material when it alpha-tests a map, displaces or clips), so each switch between
-// a plain, instanced, instance-coloured, batched or skinned caster in a cascade makes three look the program up again
-// (WebGLRenderer.setProgram's needsProgramChange: ~11 of ~108 shadow draws a frame in a town, draw census RAY-232). Each
-// non-plain kind gets its own depth material here, per source material where three would clone; plain casters keep
-// three's. three copies the same per-draw settings (side, map, alphaTest, clipping, displacement) onto a custom depth
-// material as onto its own, so the shadow is unchanged; only the program lookups go.
-const depthKinds = new Map<number, THREE.MeshDepthMaterial>();
-const depthPerMaterial = new WeakMap<THREE.Material, Map<number, THREE.MeshDepthMaterial>>();
-const ownDepth = new WeakSet<THREE.Material>();
-function depthByKind(o: THREE.Mesh, m: THREE.Material) {
-  const cur = o.customDepthMaterial;
-  if (cur && !ownDepth.has(cur)) return;
-  const x = o as THREE.Mesh & { isBatchedMesh?: boolean; _colorsTexture?: unknown; isInstancedMesh?: boolean; instanceColor?: unknown; morphTexture?: unknown; isSkinnedMesh?: boolean };
-  const kind = x.isBatchedMesh ? 1 | (x._colorsTexture ? 2 : 0) : x.isInstancedMesh ? 4 | (x.instanceColor ? 8 : 0) | (x.morphTexture ? 16 : 0) : x.isSkinnedMesh ? 32 : 0;
-  if (!kind) { if (cur) o.customDepthMaterial = undefined; return; }
-  const s = m as THREE.Material & { map?: unknown; alphaMap?: unknown; displacementMap?: unknown; displacementScale?: number };
-  const unique = (m.clipShadows && Array.isArray(m.clippingPlanes) && m.clippingPlanes.length !== 0) || (s.displacementMap && s.displacementScale !== 0) || ((s.alphaMap || s.map) && m.alphaTest > 0) || m.alphaToCoverage;
-  let byKind = depthKinds;
-  if (unique) { let t = depthPerMaterial.get(m); if (!t) depthPerMaterial.set(m, (t = new Map())); byKind = t; }
-  let d = byKind.get(kind);
-  if (!d) { byKind.set(kind, (d = new THREE.MeshDepthMaterial())); ownDepth.add(d); }
-  if (cur !== d) o.customDepthMaterial = d;
-}
 /** cascade-1 casters: skinned (kongs), instanced / batched (their per-instance size is unknown), and plain meshes with a
  *  world radius ≥ 0.5 m; `userData.c1Shadow` true / false overrides */
 function c1Caster(o: THREE.Object3D): boolean {
