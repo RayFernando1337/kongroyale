@@ -34,24 +34,21 @@ const CSS = `
 
 type Kind = "hitch" | "lowfps" | "ctxlost" | "error" | "crash" | "match";
 interface Row { v: 1; install: string; session: string; kind: Kind; t: number; config: string; build: string; sig: string | null; stats: Record<string, number> }
-interface Kr { ready?: boolean; game?: { inMatch?: boolean }; kongbot?: { context(): unknown } }
+interface Kr { ready?: boolean; game?: { inMatch?: boolean; cm?: { time?: number } | null }; display?: { gpu?: string | null; gpuLevel?: string | null; settings?: { preset?: string } }; videoMenu?: { show(cat: string, sec?: number): void } }
 const kr = () => (window as unknown as { __kr: Kr }).__kr;
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const finite = (v: unknown, fallback = -1) => (typeof v === "number" && Number.isFinite(v) ? r2(v) : fallback);
 const word = (v: unknown) => (typeof v === "string" ? v.toLowerCase().replace(/[^a-z0-9]+/g, "") : "") || "x";
 
-function configKey(): string | null {
-  let got: unknown = null;
-  try { got = kr().kongbot?.context() ?? null; } catch { got = null; }
-  if (!got) return null;
-  const ctx = got as { env?: { ua?: string; dpr?: number; memoryGB?: number | null }; gpu?: { renderer?: string | null; level?: string | null }; video?: { preset?: string } };
-  const ua = ctx.env?.ua ?? "", gpu = (ctx.gpu?.renderer ?? "").toLowerCase();
+/** the coarse config key, read from the display settings and the browser each time so a preset changed mid-visit is seen */
+function configKey(): string {
+  const K = kr(), ua = navigator.userAgent, gpu = (K.display?.gpu ?? "").toLowerCase();
   const browser = /Edg\//.test(ua) ? "edge" : /OPR\//.test(ua) ? "opera" : /Firefox\//.test(ua) ? "firefox" : /Chrom(e|ium)\//.test(ua) ? "chrome" : /Safari\//.test(ua) ? "safari" : "other";
   const os = /Android/.test(ua) ? "android" : /iPhone|iPad/.test(ua) ? "ios" : /Windows/.test(ua) ? "win" : /Mac OS/.test(ua) ? "mac" : /Linux/.test(ua) ? "linux" : "other";
   const vendor = /swiftshader|llvmpipe|software/.test(gpu) ? "software" : /nvidia|geforce/.test(gpu) ? "nvidia" : /amd|radeon/.test(gpu) ? "amd" : /intel/.test(gpu) ? "intel" : /apple/.test(gpu) ? "apple" : gpu ? "other" : "unknown";
-  const dpr = finite(ctx.env?.dpr, 1), mem = ctx.env?.memoryGB;
-  return [browser, os, vendor, word(ctx.gpu?.level), word(ctx.video?.preset), dpr <= 1.25 ? "d1" : dpr <= 2.25 ? "d2" : "d3", typeof mem !== "number" ? "m0" : mem <= 4 ? "m4" : mem <= 8 ? "m8" : "m16"].join(":");
+  const dpr = devicePixelRatio, mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory;
+  return [browser, os, vendor, word(K.display?.gpuLevel), word(K.display?.settings?.preset), dpr <= 1.25 ? "d1" : dpr <= 2.25 ? "d2" : "d3", typeof mem !== "number" ? "m0" : mem <= 4 ? "m4" : mem <= 8 ? "m8" : "m16"].join(":");
 }
 
 function hashOf(text: string): string {
@@ -61,9 +58,9 @@ function hashOf(text: string): string {
 }
 
 const base = () => (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
-const build = BUILD.sha.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 40) || "unknown";
+const idOf = (sha: string) => sha.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 40) || "unknown";
+const build = idOf(BUILD.sha);
 const pending: Row[] = [];
-let cachedConfig: string | null = null;
 
 function beacon(row: Row): void {
   const json = JSON.stringify(row);
@@ -72,9 +69,8 @@ function beacon(row: Row): void {
 }
 
 /** send now when the player was told and the setting is on; hold it until then while that can still happen; else drop it */
-function emit(kind: Kind, stats: Record<string, number>, sig: string | null = null): void {
-  cachedConfig ??= configKey();
-  const row: Row = { v: 1, install: sid, session: sid, kind, t: Math.round((performance.now() / 1000) * 10) / 10, config: cachedConfig ?? "unknown", build, sig, stats };
+function emit(kind: Kind, stats: Record<string, number>, sig: string | null = null, rowBuild = build): void {
+  const row: Row = { v: 1, install: sid, session: sid, kind, t: Math.round((performance.now() / 1000) * 10) / 10, config: configKey(), build: rowBuild, sig, stats };
   if (autoMaySend()) beacon(row);
   else if (!autoTold() && autoOn() && pending.length < MAX_PENDING) pending.push(row);
 }
@@ -88,7 +84,7 @@ function showNotice(): HTMLElement {
   link.type = close.type = "button"; link.className = "ka-settings"; link.textContent = "Settings";
   close.className = "ka-close"; close.textContent = "×"; close.setAttribute("aria-label", "Close");
   text.append(NOTICE_TEXT, link, ".");
-  link.addEventListener("click", () => { card.remove(); document.querySelector<HTMLButtonElement>(".kr-video-gear")?.click(); });
+  link.addEventListener("click", () => { card.remove(); kr().videoMenu?.show("video", 2); });
   close.addEventListener("click", () => card.remove());
   card.append(text, close);
   document.body.appendChild(card);
@@ -102,6 +98,7 @@ export function installAuto(engine: Engine, ring: Float32Array): (at: number) =>
   const counts = { perf: 0, ctx: 0, err: 0 }, seen = new Map<string, number>();
   const perf = { last: -Infinity, low: 0 };
   const match = { on: false, sent: false, fps: [] as number[], p95: [] as number[], gpu: [] as number[], max: 0, stallS: 0, over50: 0, heap: -1, scale: 1 };
+  const last = { phase: -1, clock: -1 };
   let notice: HTMLElement | null = null, noticed = false;
 
   engine.renderer.domElement.addEventListener("webglcontextlost", () => { if (counts.ctx++ < MAX_CTX) emit("ctxlost", { upS: finite(performance.now() / 1000) }); });
@@ -116,7 +113,7 @@ export function installAuto(engine: Engine, ring: Float32Array): (at: number) =>
   void deadChecked.done.then(() => {
     const prev = (snapshot() as { prev: Beat | null }).prev;
     if (!prev) return;
-    emit("crash", { ageS: Math.round((Date.now() - prev.at) / 1000), upS: finite(prev.upS), phase: finite(prev.phase), heapMB: finite(prev.heapMB), textures: finite(prev.textures), geometries: finite(prev.geometries), fps: finite(prev.fps), hidden: prev.hidden ? 1 : 0 });
+    emit("crash", { ageS: Math.round((Date.now() - prev.at) / 1000), upS: finite(prev.upS), phase: finite(prev.phase), heapMB: finite(prev.heapMB), textures: finite(prev.textures), geometries: finite(prev.geometries), fps: finite(prev.fps), hidden: prev.hidden ? 1 : 0 }, null, idOf(prev.sha));
   });
 
   const median = (v: number[], p: number) => (v.length ? v.slice().sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(p * v.length))] : -1);
@@ -129,12 +126,15 @@ export function installAuto(engine: Engine, ring: Float32Array): (at: number) =>
 
   return (at) => {
     const K = kr(), t = ring[at], fps = ring[at + 1], phase = ring[at + 15], maxMs = ring[at + 4], inMatch = phase >= 0;
-    if (!noticed && K.ready && !K.game?.inMatch && !privacySignal() && !autoTold()) { noticed = true; notice = showNotice(); }
+    if (!noticed && K.ready && !K.game?.inMatch && document.visibilityState === "visible" && !privacySignal() && !autoTold()) { noticed = true; notice = showNotice(); }
     if (notice && K.game?.inMatch) { notice.remove(); notice = null; }
     if (pending.length) {
       if (autoMaySend()) for (const row of pending.splice(0)) beacon(row);
       else if (!autoOn()) pending.length = 0;
     }
+    const clock = K.game?.cm?.time ?? -1, restarted = match.on && inMatch && (phase < last.phase || clock < last.clock - 1);
+    last.phase = phase; last.clock = clock;
+    if (restarted) { endMatch(); match.on = false; }
     if (inMatch && !match.on) Object.assign(match, { on: true, sent: false, fps: [], p95: [], gpu: [], max: 0, stallS: 0, over50: 0, heap: -1, scale: 1 });
     if (!inMatch && match.on) { endMatch(); match.on = false; }
     if (!inMatch || fps <= 0) { perf.low = 0; return; }
