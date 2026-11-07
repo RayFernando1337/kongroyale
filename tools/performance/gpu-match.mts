@@ -115,7 +115,7 @@ const CENSUS = arg("--census", "");
 // --cpuprofile <dir>: a sampled V8 CPU profile of each route segment's run phase, <dir>/cpu-<segment>.cpuprofile (the
 // profiler slows the page: read its shares, never its milliseconds against an unprofiled run)
 const CPUPROF = arg("--cpuprofile", "");
-if (CPUPROF && ROUTE === "pan") throw Error("--cpuprofile profiles route segments: use it with --route tour or survey");
+if ((CPUPROF || CENSUS) && ROUTE === "pan") throw Error("--cpuprofile and --census work per route segment: use them with --route tour or survey");
 const QUERY = "seed=" + SEED + "&dynres=0&dpr=1" + (CENSUS ? "&drawcensus" : "") + (EXTRA ? "&" + EXTRA : "");
 
 // ---- server: the measured checkout's production entry point, loopback only

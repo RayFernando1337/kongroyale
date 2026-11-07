@@ -45,7 +45,8 @@ const add = (to: Bucket, b: Bucket) => {
 };
 /** uniqProgs / uniqMats: distinct programs and materials drawn per call of the pass (the fewest switches any order could give) */
 interface Pass { calls: number; inclMs: number; exclMs: number; uniqProgs: number; uniqMats: number; b: Bucket }
-interface Label { frames: number; stepMs: number; submitMs: number; passes: Map<string, Pass>; classes: Map<string, Bucket>; objects: Map<THREE.Object3D, Bucket>; outside: Bucket }
+/** objects: by Object3D.id with the name taken at the first draw, so objects a match removes are never kept alive */
+interface Label { frames: number; stepMs: number; submitMs: number; passes: Map<string, Pass>; classes: Map<string, Bucket>; objects: Map<number, Bucket & { name: string }>; outside: Bucket }
 interface Frame { key: string; t0: number; child: number; lastEnd: number; hooks: number; pass: Pass; progs: Set<unknown>; mats: Set<THREE.Material> }
 
 export interface DrawCensus {
@@ -90,11 +91,15 @@ export function installDrawCensus(e: Engine): DrawCensus {
     return key;
   }
   const classBucket = (key: string) => { let b = cur.classes.get(key); if (!b) cur.classes.set(key, (b = bucket())); return b; };
-  const objBucket = (o: THREE.Object3D) => { let b = cur.objects.get(o); if (!b) cur.objects.set(o, (b = bucket())); return b; };
+  const pathOf = (o: THREE.Object3D) => { const p: string[] = []; for (let x: THREE.Object3D | null = o; x && x !== e.scene && p.length < 4; x = x.parent) p.push(x.name || x.type); return p.reverse().join("/"); };
+  const objBucket = (o: THREE.Object3D) => { let b = cur.objects.get(o.id); if (!b) cur.objects.set(o.id, (b = { ...bucket(), name: moduleName(o) + " / " + pathOf(o) })); return b; };
 
   // ---- passes
   const stack: Frame[] = [];
-  let inShadow = 0, hookDepth = 0;
+  let inShadow = 0;
+  /** objects inside one of their own hooks: a chained wrapper (cull.ts) or a hook calling another (BatchedMesh's
+   * onBeforeShadow runs onBeforeRender) is not timed twice, while other objects' hooks in a pass a hook runs are */
+  const inHook = new Set<THREE.Object3D>();
   const passOf = (k: string) => { let p = cur.passes.get(k); if (!p) cur.passes.set(k, (p = { calls: 0, inclMs: 0, exclMs: 0, uniqProgs: 0, uniqMats: 0, b: bucket() })); return p; };
   const enter = (key: string) => { stack.push({ key, t0: now(), child: 0, lastEnd: 0, hooks: 0, pass: passOf(key), progs: new Set(), mats: new Set() }); };
   const leave = () => {
@@ -159,11 +164,11 @@ export function installDrawCensus(e: Engine): DrawCensus {
       const fn = oo[h];
       if (fn === NOOP[h] || fn.census) continue;
       const w: Hook = function (this: unknown, ...a: unknown[]) {
-        if (!census.on || hookDepth) return fn.apply(this, a);
-        hookDepth++;
+        if (!census.on || inHook.has(o)) return fn.apply(this, a);
+        inHook.add(o);
         const f = stack[stack.length - 1], child0 = f ? f.child : 0, t0 = now();
         try { return fn.apply(this, a); } finally {
-          hookDepth--;
+          inHook.delete(o);
           // a hook that renders (the far shadow bake) runs passes of its own: they are child passes, not hook time
           const incl = now() - t0, ms = incl - (f ? f.child - child0 : 0), m = (o as THREE.Mesh).material;
           if (f) f.hooks += ms;
@@ -242,8 +247,7 @@ export function installDrawCensus(e: Engine): DrawCensus {
       progSwitch: pc(b.progSwitch), matSwitch: pc(b.matSwitch), matVersion: pc(b.matVersion), syncN: pc(b.syncN), syncMs: pf(b.syncMs), gl, hooks,
     };
   }
-  const ranked = <K>(m: Map<K, Bucket>, n: number) => [...m].sort((a, b) => total(b[1]) - total(a[1])).slice(0, n);
-  const pathOf = (o: THREE.Object3D) => { const p: string[] = []; for (let x: THREE.Object3D | null = o; x && x !== e.scene && p.length < 4; x = x.parent) p.push(x.name || x.type); return p.reverse().join("/"); };
+  const ranked = <K, B extends Bucket>(m: Map<K, B>, n: number) => [...m].sort((a, b) => total(b[1]) - total(a[1])).slice(0, n);
   function report() {
     const out: Record<string, unknown> = { isolated: globalThis.crossOriginIsolated === true, three: THREE.REVISION };
     for (const [k, l] of labels) {
@@ -259,7 +263,7 @@ export function installDrawCensus(e: Engine): DrawCensus {
         passes: [...l.passes].sort((a, b) => b[1].inclMs - a[1].inclMs).map(([key, p]) => ({ key, calls: +(p.calls / fr).toFixed(2), inclMs: +(p.inclMs / fr).toFixed(3), exclMs: +(p.exclMs / fr).toFixed(3), walkMs: +((p.exclMs - total(p.b)) / fr).toFixed(3), uniqProgs: +(p.uniqProgs / fr).toFixed(1), uniqMats: +(p.uniqMats / fr).toFixed(1), ...fmt(p.b, fr) })),
         byModule: byDim(0), byKind: byDim(1), byMaterial: byDim(2),
         classes: ranked(l.classes, 80).map(([key, b]) => ({ key, ...fmt(b, fr) })),
-        objects: ranked(l.objects, 40).map(([o, b]) => ({ key: moduleName(o) + " / " + pathOf(o), ...fmt(b, fr) })),
+        objects: ranked(l.objects, 40).map(([, b]) => ({ key: b.name, ...fmt(b, fr) })),
       };
     }
     return out;
