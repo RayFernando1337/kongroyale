@@ -944,12 +944,66 @@ ${WET_UP}
         if (at >= 0) fs = fs.slice(0, at) + SKYVIS + fs.slice(at);
       }
       shader.fragmentShader = fs;
+      const ubo = atmosBlock(u);
+      if (!ubo) return;
+      const vs = moveToBlock(shader.vertexShader, ubo.types), fsb = moveToBlock(shader.fragmentShader, ubo.types);
+      if (vs === null || fsb === null) return;
+      shader.vertexShader = ubo.decl + vs;
+      shader.fragmentShader = ubo.decl + fsb;
+      // three lists a block's members among a program's active uniforms (with no location): left in the material's
+      // uniforms they would still be walked, and uploaded to nowhere, on every material switch
+      for (const n of ubo.types.keys()) delete shader.uniforms[n];
+      (this as THREE.Material & { uniformsGroups?: THREE.UniformsGroup[] }).uniformsGroups = [ubo.group];
     };
-    m.customProgramCacheKey = function () { return (hadKey ? prevKey.call(this) : prevHookSrc) + "|atmos21"; };
+    m.customProgramCacheKey = function () { return (hadKey ? prevKey.call(this) : prevHookSrc) + (ATMOS_UBO ? "|atmos22" : "|atmos21"); };
     m.needsUpdate = true;
   }
 }
 const protoHook = THREE.Material.prototype.onBeforeCompile;
+
+// The shared atmos uniforms of every patched material, in ONE uniform buffer (RAY-232 fix 4). three re-uploads a
+// material's whole uniform list each time the draw order switches material (~220 times a frame in a town), and the ~45
+// non-texture atmos uniforms every patched material carries were most of that list (profile: three's uniform upload
+// ~6 % of busy JS). In a uniform group they are written once per render call, only where a value changed, and the
+// per-material upload skips them (they leave the material's uniform list). The shader math is unchanged: their
+// declarations move into one std140 block in both stages; textures stay plain uniforms. Members are ordered by alignment (mat4, vec4, vec3 + float pairs, vec2,
+// float) so the block has no padding three's std140 packer could place differently from the GPU. A declaration whose
+// type disagrees with its uniform's value leaves that material on plain uniforms. Off switch: ?atmos=noubo.
+const ATMOS_UBO = !atmosFlags().has("noubo");
+let uboOf: { u: AtmosUniforms; group: THREE.UniformsGroup; decl: string; types: Map<string, string> } | null = null;
+function atmosBlock(u: AtmosUniforms) {
+  if (!ATMOS_UBO) return null;
+  if (uboOf && uboOf.u === u) return uboOf;
+  const by: Record<string, string[]> = { mat4: [], vec4: [], vec3: [], vec2: [], float: [] };
+  for (const k of Object.keys(u) as Array<keyof AtmosUniforms>) {
+    const v = u[k].value as unknown as { isMatrix4?: boolean; isVector4?: boolean; isVector3?: boolean; isColor?: boolean; isVector2?: boolean } | number | null;
+    const t = typeof v === "number" ? "float" : !v ? null : v.isMatrix4 ? "mat4" : v.isVector4 ? "vec4" : v.isVector3 || v.isColor ? "vec3" : v.isVector2 ? "vec2" : null;
+    if (t) by[t].push(k);
+  }
+  const types = new Map<string, string>();
+  for (const t of Object.keys(by)) for (const n of by[t]) types.set(n, t);
+  const floats = by.float.slice(), order: string[] = [...by.mat4, ...by.vec4];
+  for (const n of by.vec3) { order.push(n); const f = floats.shift(); if (f !== undefined) order.push(f); }
+  order.push(...by.vec2, ...floats);
+  const group = new THREE.UniformsGroup();
+  group.setName("AtmosBlock");
+  for (const n of order) group.add(u[n as keyof AtmosUniforms] as unknown as THREE.Uniform);
+  const decl = "layout(std140) uniform AtmosBlock {\n" + order.map((n) => "  highp " + types.get(n) + " " + n + ";\n").join("") + "};\n";
+  return (uboOf = { u, group, decl, types });
+}
+const UNIFORM_DECL = /\buniform\s+((?:highp\s+|mediump\s+|lowp\s+)?)(\w+)\s+([\w\s,]+);/g;
+/** the shader without its plain declarations of block members; null when one is declared with another type */
+function moveToBlock(src: string, types: Map<string, string>): string | null {
+  let bad = false;
+  const out = src.replace(UNIFORM_DECL, (all, prec: string, type: string, names: string) => {
+    const list = names.split(",").map((s) => s.trim());
+    const keep = list.filter((n) => !types.has(n));
+    if (keep.length === list.length) return all;
+    for (const n of list) if (types.has(n) && types.get(n) !== type) bad = true;
+    return keep.length ? "uniform " + prec + type + " " + keep.join(", ") + ";" : "";
+  });
+  return bad ? null : out;
+}
 const ATMOS_MARK = "// atmos-patched\n";
 const EMPTY: THREE.Object3D[] = [];
 
