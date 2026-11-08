@@ -19,7 +19,7 @@
 // in-session switch report #7 made); --frames 8 (measured frames per pose; even, so a half-rate shadow refresh counts
 // fairly); --settle-s 25 --settle-frames 30 (after a teleport: these seconds, then these frames, before measuring; a
 // jump of the camera makes the water's obstacle bake, water/obstacles.ts, re-check every frame for 12 frames); --plane-r 450 (the
-// plane pose is measured once the plane is within this many metres of the island centre); --stream-timeout-s 1200
+// plane pose is measured once the camera is over 300 m up and within this many metres of the island centre); --stream-timeout-s 1200
 // (the practice starts once the island has streamed in, __kr.streamed, as for a player who has been on the title a while);
 // --software (SwiftShader); --angle vulkan|metal|d3d11 (a hardware GPU instead); --query "a=1" (extra URL flags);
 // --root <checkout> (serve its dist/, build first); --port 3033; --seed 42; --ready-timeout-s 600.
@@ -58,7 +58,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // ---- page scripts
 const STATUS = `(() => { const k = window.__kr; if (!k) return { ready: false, stage: "" }; const g = k.game, cm = g && g.cm;
   return { ready: !!k.ready, stage: String(k.stage || ""), inMatch: !!(g && g.inMatch), phase: cm ? cm.phase : -1, st: cm && cm.pred ? cm.pred.st : -1,
-    x: cm && cm.pred ? cm.pred.x : 0, z: cm && cm.pred ? cm.pred.z : 0, frames: k.censusC ? k.censusC.frame : 0, streamed: !!k.streamed }; })()`;
+    x: cm && cm.pred ? cm.pred.x : 0, z: cm && cm.pred ? cm.pred.z : 0, frames: k.censusC ? k.censusC.frame : 0, streamed: !!k.streamed,
+    cam: k.engine ? [k.engine.camera.position.x, k.engine.camera.position.y, k.engine.camera.position.z] : [0, 0, 0] }; })()`;
 const INSTALL = `(() => {
   const k = window.__kr, e = k.engine, r = e.renderer, info = r.info, gl = r.getContext();
   const c = { on: false, frames: 0, frame: 0, passes: {}, mods: {}, objs: new Map(), stack: [], tot: { calls: 0, tris: 0, points: 0 } };
@@ -223,7 +224,7 @@ async function run() {
           if (p.at === "plane") {
             for (let s = await status(); !(s.inMatch && s.phase >= 1); s = await status()) { if (Date.now() - play0 > 900_000) throw Error("no plane phase 900 s after the practice started"); await sleep(500); }
             if ((await status()).phase !== 1) { errors.push("plane: the match was past phase 1"); continue; }
-            for (let s = await status(); Math.hypot(s.x, s.z) > PLANE_R; s = await status()) { if (s.phase !== 1) throw Error("the plane never came within " + PLANE_R + " m of the centre"); await sleep(250); }
+            for (let s = await status(); Math.hypot(s.cam[0], s.cam[2]) > PLANE_R || s.cam[1] < 300; s = await status()) { if (s.phase !== 1) throw Error("the plane never came within " + PLANE_R + " m of the centre"); await sleep(250); }
             await measure(p.name);
             continue;
           }
