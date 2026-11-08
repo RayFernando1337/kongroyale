@@ -11,16 +11,21 @@ export const MAX_AGE_H = 48;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const FIELDS: (keyof Lane)[] = ["lane", "thread", "issue", "what", "status", "next"];
 
-/** Reads lanes.json and throws on a missing date, plan or lane field, so the block never renders half-filled. */
-export function readNow(file: string): Now {
-  const n = JSON.parse(fs.readFileSync(file, "utf8")) as Now;
-  if (!DATE.test(n.updated)) throw new Error("lanes.json: updated must be YYYY-MM-DD");
+/** Throws on a missing or impossible date, a missing plan, no lanes, or an empty lane field, so the block never renders half-filled. */
+export function checkNow(n: Now): Now {
+  const day = new Date(n.updated + "T00:00:00Z");
+  if (!DATE.test(n.updated) || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== n.updated) throw new Error("lanes.json: updated must be a real day written YYYY-MM-DD");
   if (!n.updatedBy || !n.source || !n.landed) throw new Error("lanes.json: needs updatedBy, source and landed");
   if (!Array.isArray(n.plan) || n.plan.length < 1 || n.plan.length > 5) throw new Error("lanes.json: plan is one to five lines");
+  if (!Array.isArray(n.lanes) || n.lanes.length < 1) throw new Error("lanes.json: needs at least one lane");
   n.lanes.forEach((l, i) => {
     for (const k of FIELDS) if (!l[k]) throw new Error("lanes.json: lanes[" + i + "] needs " + k);
   });
   return n;
+}
+
+export function readNow(file: string): Now {
+  return checkNow(JSON.parse(fs.readFileSync(file, "utf8")) as Now);
 }
 
 /** Hours since the start of the Updated day (UTC). A date has no time, so this counts from the earliest the update could have been written. */

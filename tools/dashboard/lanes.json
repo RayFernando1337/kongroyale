@@ -5,7 +5,7 @@
   "plan": [
     "Stable is kong-v1.2.0. kong-v1.3.1 (25ecfe7) is on next; it passed the D3D11 gate and is held on the Safari memory check.",
     "I am finding out whether v1.3.0's +514 MB Safari peak is real or test-harness state (a double load). The verdict decides promotion.",
-    "Frame rate: the draw-list lab is merged (#323) and an RTX n=8 run is queued. Under about 8 µs a draw, I build step 2 behind ?drawlab; otherwise that step is a null.",
+    "Frame rate: the draw-list gate passed on the RTX laptop, 4.79 µs per replayed draw against 15.3 µs in three.js (n=8), worth about 2.1 to 2.6 ms. Step 2 is the first module behind ?drawlist=1 with identical stills.",
     "The practice host in a worker and ?deferkong wait on the Metal A/B, and no default flips until Metal is clean.",
     "The Mac power baseline (#324) is partial: Safari High is still to come."
   ],
@@ -31,8 +31,8 @@
       "thread": "KONG-93",
       "issue": "RAY-237",
       "what": "Static draw-list replay: can a draw cost 4–6 µs instead of 16–22?",
-      "status": "Lab merged (#323); RTX n=8 run queued on KONG-16",
-      "next": "Under ~8 µs: step 2 behind ?drawlab; otherwise null"
+      "status": "Gate PASS on RTX: 4.79 µs per replayed draw vs 15.3 µs in three (n=8), worth ~2.1–2.6 ms",
+      "next": "Step 2: first module behind ?drawlist=1, identical stills"
     },
     {
       "lane": "Live play reports",
