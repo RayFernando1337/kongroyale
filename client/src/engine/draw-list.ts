@@ -43,7 +43,8 @@ export interface DrawList {
   readonly modules: readonly string[];
   /** why it is not running ("" while it is) */
   readonly off: string;
-  /** draws served by the lean path, and pinned draws three drew instead, since the last reset */
+  /** GL draws the lean path issued (an entry with nothing to draw is not one), and pinned draws three drew instead, since
+   *  the last reset. The same object every call: read it before the next */
   counts(): { lean: number; fallback: number };
   reset(): void;
 }
@@ -74,7 +75,8 @@ export function installDrawList(host: Record<string, unknown>): void {
     epoch: 0, fog: null, env: null, glVao: null, threeVao: null, dirty: false, material: null, lean: 0, fallback: 0,
   };
   const why = r.capabilities.logarithmicDepthBuffer ? "logarithmic depth" : (r.state.buffers.depth as unknown as { getReversed?: () => boolean }).getReversed?.() ? "reversed depth" : "";
-  const list: DrawList = { on: !why, modules: all ? ["all"] : modules, off: why, counts: () => ({ lean: s.lean, fallback: s.fallback }), reset: () => { s.lean = 0; s.fallback = 0; } };
+  const n = { lean: 0, fallback: 0 };
+  const list: DrawList = { on: !why, modules: all ? ["all"] : modules, off: why, counts: () => { n.lean = s.lean; n.fallback = s.fallback; return n; }, reset: () => { s.lean = 0; s.fallback = 0; } };
   kr.drawList = list;
   if (why) return;
 
