@@ -27,8 +27,15 @@ import { stageCrowd } from "./crowd";
 import { createPlane } from "../../../actors/plane";
 import { releaseGeometryAfterUpload } from "../../../engine/geometry-release";
 import { onRestore } from "../../../engine/res/restore";
+import { poiById } from "../../../../../shared/world/map";
 
 const LAYOUT_SEED = 20260923;
+/** the Low view distance (engine/display.ts publishes it as "display:viewDist"): beyond this many metres from the
+ *  islet's centre its props (every merge but the rock and the runway, and the parked plane) stop drawing. They are
+ *  merged per material into meshes as big as the islet, so the screen-size cull never cuts them: from Banana Temple,
+ *  1.25 km away, they were 0.39 M triangles in 30 draws (RAY-288). The rock, the runway, the island's terrain and its
+ *  palms (the veg area's) stay. */
+const LOW_PROPS_M = 600;
 
 // ------------------------------------------------------------------------------------------------ views
 const fp = (lx: number, d: number, y: number): [number, number, number] => { const [x, z] = toWorld(lx, d); return [+x.toFixed(2), y, +z.toFixed(2)]; };
@@ -76,7 +83,15 @@ const mod: WorldModule = {
     await ctx.yield();
 
     const meshes = await k.b.meshesAsync(mats, "lobby", () => ctx.yield());
-    for (const m of meshes) group.add(m);
+    const props = new THREE.Group();
+    props.name = "lobby:props";
+    group.add(props);
+    for (const m of meshes) (m.name === "lobby:rock" || m.name === "lobby:tarmac" ? group : props).add(m);
+    const { x: cx, z: cz } = poiById("lobby-islet");
+    ctx.onUpdate(() => {
+      const c = ctx.camera.position;
+      props.visible = ctx.shared.get("display:viewDist") !== "low" || Math.hypot(c.x - cx, c.z - cz) < LOW_PROPS_M;
+    });
     // ?geofree: the merges drop their CPU arrays after upload; a context restore refills them from one replay of the
     // seeded build (no water: the dock's foam is registered once), shared by every merge in that restore
     let fresh: Map<string, THREE.BufferGeometry> | null = null;
@@ -104,7 +119,7 @@ const mod: WorldModule = {
         p.object.rotation.set(0, worldYaw(pl.a) + Math.PI / 2, 0);
         p.setGear(1); p.setRamp(1); p.setEngines(false);
         p.update(0, 12);
-        group.add(p.object);
+        props.add(p.object);
       }
     }).finally(release);
     console.info(`[lobby-islet] ${meshes.length} merged meshes, ${Math.round(tris / 1000)}k tris, atlases ${at.ms} ms (overlapped), plane ${planeMs} ms, build ${Math.round(performance.now() - t0)} ms`);
