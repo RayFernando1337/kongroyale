@@ -403,9 +403,10 @@ class HotelBuilder {
     }
   }
 
-  walls() {
+  async walls(y: () => Promise<void>) {
     const { lay, b, C } = this;
     for (const w of lay.walls) {
+      await y();
       switch (w.kind) {
         case "arcade": this.arcadeWall(w); break;
         case "loggia": this.loggiaWall(w); break;
@@ -1128,19 +1129,19 @@ function piecesOf(len: number, w: HWall) {
 }
 
 /** Build the serpentine hotel into the town bins (+ one grime decal mesh into o.extra). */
-export function addHotel(bins: TownBins, mats: TownMats, spec: HotelSpec = HOTEL, o: HotelOpts): void {
+export async function addHotel(bins: TownBins, mats: TownMats, spec: HotelSpec = HOTEL, o: HotelOpts, y: () => Promise<void>): Promise<void> {
   const t0 = typeof performance !== "undefined" ? performance.now() : 0;
   const lay = hotelLayout(spec);
   const H = new HotelBuilder(bins, mats, spec, lay, o);
-  H.walls();
-  H.facadeFrame();
-  H.slabs();
-  H.stairs();
-  H.columns();
-  H.props();
-  H.roof();
-  H.roofVines();
-  H.apron();
+  await H.walls(y); await y();
+  H.facadeFrame(); await y();
+  H.slabs(); await y();
+  H.stairs(); await y();
+  H.columns(); await y();
+  H.props(); await y();
+  H.roof(); await y();
+  H.roofVines(); await y();
+  H.apron(); await y();
   H.finish();
   void o.rng; void t0;
 }
