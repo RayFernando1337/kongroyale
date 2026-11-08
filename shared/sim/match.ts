@@ -5,7 +5,7 @@
 import { POIS, WEAPONS } from "../world/map";
 import type { Terrain } from "../world/terrain";
 import {
-  CHEST_OPEN_DIST, CONSUMABLE_DEFS, DT, HISTORY_TICKS, INPUT_CREDIT_MAX, INPUT_MAX_PER_TICK, INPUT_QUEUE_MAX, INPUT_STARVE_TICKS,
+  CHEST_OPEN_DIST, CONSUMABLE_DEFS, DT, HISTORY_TICKS, INPUT_BACKLOG_KEEP_TICKS, INPUT_BACKLOG_MIN_TICKS, INPUT_CREDIT_MAX, INPUT_MAX_PER_TICK, INPUT_QUEUE_MAX, INPUT_STARVE_TICKS,
   MAX_HP, MAX_PLAYERS, MAX_REWIND_TICKS, PICKUP_DIST, PLANE_ALT, PLANE_BAY_S, PLANE_CHORD_R, PLANE_SPEED, PLAYER_H, PLAYER_R,
   REDEPLOY_ALT, RESULTS_S, RESURGENCE_WARN_S, resurgenceDelay, SOLO_REDEPLOYS, SQUAD_SIZE, matchSeats, WARMUP_S, WEAPON_DEFS, AMMO_PICKUP, AMMO_CAP, BOMB, ECON,
   START_PISTOL_AMMO,
@@ -354,7 +354,14 @@ export class Match {
     this.inputProbe?.(id, n, this.starve[id], this.lastQueued[id]);
     // clock drift: a queue that never drains below 2 for 0.5 s earns one extra step (≤ 3 % speed, far below any exploit)
     const len = this.qLen[id]; if (len < this.qMin[id]) this.qMin[id] = len;
-    if (++this.qWin[id] >= 30) { if (this.qMin[id] >= 2) { this.credit[id] += 1; this.netStats.driftCredits++; } this.qMin[id] = 1 << 30; this.qWin[id] = 0; }
+    if (++this.qWin[id] >= 30) {
+      const floor = this.qMin[id];
+      if (floor >= INPUT_BACKLOG_MIN_TICKS) {
+        const drop = floor - INPUT_BACKLOG_KEEP_TICKS;
+        this.qHead[id] = (this.qHead[id] + drop) % INPUT_QUEUE_MAX; this.qLen[id] -= drop; this.netStats.inputsDropped += drop;
+      } else if (floor >= 2) { this.credit[id] += 1; this.netStats.driftCredits++; }
+      this.qMin[id] = 1 << 30; this.qWin[id] = 0;
+    }
   }
   private resetInputs(id: number) {
     this.qHead[id] = 0; this.qLen[id] = 0; this.lastQueued[id] = 0; this.credit[id] = 0; this.starve[id] = 0; this.qMin[id] = 1 << 30; this.qWin[id] = 0;

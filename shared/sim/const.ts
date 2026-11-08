@@ -164,6 +164,12 @@ export const INPUT_MAX_PER_TICK = 4;         // catch-up speed after a stall
 // The server waits instead; the stalled body just holds still (what a lagging player looks like anyway).
 export const INPUT_STARVE_TICKS = 150;
 export const INPUT_QUEUE_MAX = 64;
+/** a queue that stayed at or above INPUT_BACKLOG_MIN_TICKS for a whole 0.5 s window is a stale backlog (an uplink stall that
+ * outlasted INPUT_CREDIT_MAX; the drift credit would drain it at ~2 ticks/s): the oldest inputs are dropped down to
+ * INPUT_BACKLOG_KEEP_TICKS, so the player is simulated near the present again instead of up to 1 s behind. Never adds
+ * simulation, so it gives no speed advantage */
+export const INPUT_BACKLOG_MIN_TICKS = 8;
+export const INPUT_BACKLOG_KEEP_TICKS = 2;
 
 export type AmmoType = "light" | "heavy" | "shells" | "rockets";
 export const AMMO_CAP: Record<AmmoType, number> = { light: 300, heavy: 40, shells: 48, rockets: 8 };
