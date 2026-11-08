@@ -90,7 +90,7 @@ const SCREEN = "1920,1080,0,0";
 {
   const e = new RefreshEstimate();
   assert.equal(e.add(vsync(30, repeat([1, 1, 2], 90)), SCREEN), 30, "30 Hz pacing still reads 30");
-  assert.equal(e.add(vsync(40, repeat([1], 90)), SCREEN), 40, "a steady 40 Hz screen reads 40");
+  assert.equal(e.add(vsync(120, repeat([3], 90)), SCREEN), 30, "a game at 3 periods of 120 Hz is no 40 Hz display: the last estimate");
 }
 // a move to another screen forgets the last screen's rate: a slow game there reads unknown, not the old 144
 {

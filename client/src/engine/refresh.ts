@@ -45,10 +45,11 @@ export function refreshFromIntervals(intervalsMs: readonly number[]): number {
   return refreshSample(intervalsMs).hz;
 }
 
-/** the display rates under CEILING_MIN_HZ the running estimate accepts: 30 (Low Power Mode, a 30 Hz panel), 40 (a
- *  40 Hz mode) and 48. Each also reads when a game holds a whole number of periods of a faster screen (30 on 60, 40 on
- *  120): rAF timing cannot tell them apart */
-export const LOW_DISPLAY_HZ = [30, 40, 48];
+/** the display rates under CEILING_MIN_HZ the running estimate accepts: 30 (Low Power Mode, a 30 Hz panel) and 48.
+ *  30 also reads when a game holds 2 periods of a 60 Hz screen: rAF timing cannot tell them apart. 40 is left out: a
+ *  game at 3 periods of a 120 Hz laptop panel (the iGPU class of RAY-288) reads 40 too, and a 40 Hz display is rarer;
+ *  it reads unknown (a 60 Hz budget) */
+export const LOW_DISPLAY_HZ = [30, 48];
 
 /** the engine's running estimate: a steady sample reads as it is, and an uneven one at most the ceiling, the highest
  *  steady reading of CEILING_MIN_HZ or more on the same screen (its size and position among the screens, so a move to a
