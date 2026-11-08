@@ -22,6 +22,7 @@
 // plane pose is measured once the camera is over 300 m up and within this many metres of the island centre, or at its
 // closest approach to the centre when the plane's line passes farther out); --stream-timeout-s 1200
 // (the practice starts once the island has streamed in, __kr.streamed, as for a player who has been on the title a while);
+// --frames-timeout-s 900 (a wait for frames that do not come fails the run instead of hanging);
 // --software (SwiftShader); --angle vulkan|metal|d3d11 (a hardware GPU instead); --query "a=1" (extra URL flags);
 // --root <checkout> (serve its dist/, build first); --port 3033; --seed 42; --ready-timeout-s 600.
 // Writes <out>/<preset>[-to-<live>].json (a kong-perf-result, one case per pose) and <out>/<name>-<pose>.png.
@@ -33,6 +34,8 @@
 // "scene" is the main view; "scene:override:cam" and "scene:cam" are the same scene through another camera (the water's
 // obstacle bake, probes), counted apart in otherScene*.
 // A pass's Mpx is the size of the target it writes times its calls (a fill proxy: overdraw and blending not counted).
+// A shadow pass is one cascade or face three actually rendered (one viewport each, its area as Mpx), so a frame where
+// the sun's scheduler skips the render counts none. Each object row is one object in one pass.
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -85,9 +88,17 @@ const INSTALL = `(() => {
     for (const l of lights) if (l.castShadow && l.shadow && (l.shadow.autoUpdate !== false || l.shadow.needsUpdate)) names.push((l.name || l.type) + " " + l.shadow.mapSize.x + "x" + l.shadow.mapSize.y);
     if (!names.length) return smRender(lights, scene, camera);
     const key = "shadow:" + names.join("+");
-    pass(key).n += names.length;
+    pass(key);
     c.stack.push(key);
     try { return smRender(lights, scene, camera); } finally { c.stack.pop(); }
+  };
+  // a shadow pass is a cascade or face three actually renders (one viewport each): the sun's own scheduler may skip the
+  // whole render or refresh one cascade of two after this wrapper ran
+  const st = r.state, vpf = st.viewport.bind(st);
+  st.viewport = function (v) {
+    const key = c.stack[c.stack.length - 1];
+    if (c.on && key && key.startsWith("shadow:")) { const p = pass(key); p.n++; p.mpx += (v.z * v.w) / 1e6; }
+    return vpf(v);
   };
   const rbd = r.renderBufferDirect.bind(r);
   r.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
@@ -98,7 +109,8 @@ const INSTALL = `(() => {
       const dc = info.render.calls - a0, dt = info.render.triangles - a1, dp = info.render.points - a2;
       p.calls += dc; p.tris += dt; p.points += dp;
       if (!key.startsWith("aux")) { const mk = key.replace(/^shadow:.*/, "shadow") + " | " + modOf(object), m = c.mods[mk] || (c.mods[mk] = { calls: 0, tris: 0, points: 0 }); m.calls += dc; m.tris += dt; m.points += dp;
-        let ob = c.objs.get(object); if (!ob) c.objs.set(object, (ob = { key: mk + " / " + (object.name || object.type) + (object.isInstancedMesh ? " [inst " + object.count + "]" : ""), calls: 0, tris: 0, points: 0 })); ob.calls += dc; ob.tris += dt; ob.points += dp; }
+        const ok = object.id + " " + mk;
+        let ob = c.objs.get(ok); if (!ob) c.objs.set(ok, (ob = { key: mk + " / " + (object.name || object.type) + (object.isInstancedMesh ? " [inst " + object.count + "]" : ""), calls: 0, tris: 0, points: 0 })); ob.calls += dc; ob.tris += dt; ob.points += dp; }
     }
   };
   const step = e.step;
@@ -150,7 +162,8 @@ async function run() {
     if (!POSES[name]) throw Error("--poses " + name + ": one of " + Object.keys(POSES).join(", ") + ", or name=x,z,yawDeg,pitchDeg");
     return { name, at: POSES[name] };
   });
-  const FRAMES = Number(arg("--frames", "8")), SETTLE_S = Number(arg("--settle-s", "25")), PLANE_R = Number(arg("--plane-r", "450")), STREAM_S = Number(arg("--stream-timeout-s", "1200")), SETTLE_FRAMES = Number(arg("--settle-frames", "30"));
+  const FRAMES = Number(arg("--frames", "8")), SETTLE_S = Number(arg("--settle-s", "25")), PLANE_R = Number(arg("--plane-r", "450")), STREAM_S = Number(arg("--stream-timeout-s", "1200")), SETTLE_FRAMES = Number(arg("--settle-frames", "30")), FRAMES_S = Number(arg("--frames-timeout-s", "900"));
+  if (poses.some((p, i) => p.at === "plane" && i > 0)) throw Error("--poses: plane must come first (the plane flies before the ground poses)");
   const SOFTWARE = process.argv.includes("--software");
   const ANGLE = arg("--angle", SOFTWARE ? "swiftshader" : process.platform === "darwin" ? "metal" : process.platform === "win32" ? "d3d11" : "vulkan");
   const GPU = arg("--gpu", GPU_740M), EXTRA = arg("--query", ""), SEED = Number(arg("--seed", "42")), READY_S = Number(arg("--ready-timeout-s", "600"));
@@ -189,7 +202,8 @@ async function run() {
         if (LIVE) { await ev("(() => { window.__kr.display.set({ preset: " + JSON.stringify(LIVE) + " }); return 'ok'; })()"); log("switched to " + LIVE + " the menu's way"); }
         await ev("(() => { window.__kr.game.practice('solo'); return 'ok'; })()");
         const play0 = Date.now();
-        const frames = async (n: number, keep?: () => Promise<unknown>) => { const f0 = (await status()).frames; for (let s = await status(); s.frames - f0 < n; s = await status()) { if (keep) await keep(); await sleep(500); } };
+        // (bounded: a lost frame hook, e.g. Auto's first-visit bench restoring Engine.step over this wrapper, fails the run)
+        const frames = async (n: number, keep?: () => Promise<unknown>) => { const f0 = (await status()).frames, w0 = Date.now(); for (let s = await status(); s.frames - f0 < n; s = await status()) { if (Date.now() - w0 > FRAMES_S * 1000) throw Error(n + " frames did not come in " + FRAMES_S + " s (frame hook lost?)"); if (keep) await keep(); await sleep(500); } };
         const measure = async (pose: string, keep?: () => Promise<unknown>) => {
           await ev(ARM); await frames(FRAMES, keep); await ev(DISARM);
           const r = await ev<any>(READ);
@@ -217,7 +231,7 @@ async function run() {
               { id: "noErrors", pass: !r.errors.length, detail: r.errors.slice(0, 3).join(" | ") || "none" },
               { id: "phase", pass: pose === "plane" ? r.phase === 1 : r.phase === 2, detail: "phase " + r.phase + ", st " + r.st },
             ],
-            detail: { cam: r.cam, passes: r.passes, mods: r.mods, objects: r.objects, video: r.video, veg: r.veg, cull: r.cull, quality: r.quality, canvas: r.canvas, dynamicRes: r.dynamicRes },
+            detail: { streamedAtS: marks.streamedS ?? null, cam: r.cam, passes: r.passes, mods: r.mods, objects: r.objects, video: r.video, veg: r.veg, cull: r.cull, quality: r.quality, canvas: r.canvas, dynamicRes: r.dynamicRes },
           } as CaseResult);
           log(pose + ": " + Math.round(r.calls) + " calls, " + (r.tris / 1e6).toFixed(2) + " M tris, " + (r.points / 1e6).toFixed(2) + " M points, " + r.programs + " programs, " + r.textures + " textures, scale " + r.renderScale + " at " + r.cam.join(","));
         };
@@ -250,7 +264,7 @@ async function run() {
       const result: RunResult = {
         schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "tools/performance/preset-census.mts", startedAt: new Date(t0).toISOString(), durationMs: Date.now() - t0,
         source: source(root), environment: { ...env(), gpu: SOFTWARE ? "swiftshader" : ANGLE },
-        config: { browser: "chromium " + b.version(), viewport: VW + "x" + VH, dpr: DPR, preset, live: LIVE || "none", gpuSpoof: GPU, query, frames: FRAMES, settleS: SETTLE_S, planeR: PLANE_R, streamedAtS: marks.streamedS ?? null, software: SOFTWARE, quality: first?.quality ?? null, video: first?.video ?? null },
+        config: { browser: "chromium " + b.version(), viewport: VW + "x" + VH, dpr: DPR, preset, live: LIVE || "none", gpuSpoof: GPU, query, frames: FRAMES, settleS: SETTLE_S, planeR: PLANE_R, software: SOFTWARE, quality: first?.quality ?? null, video: first?.video ?? null },
         cases, errors, artifacts,
       };
       save(path.join(outDir, name + ".json"), result);
@@ -281,7 +295,7 @@ function table(files: string[]) {
     const keys = new Set<string>();
     for (const r of runs) { const c = at(r); if (c) for (const [k, v] of Object.entries(c.detail.mods as Record<string, { tris: number }>)) if (v.tris > 30_000 && !k.startsWith("scene:")) keys.add(k); }
     out.push("| Module (pass): M tris / calls | " + runs.map(label).join(" | ") + " |", "|---|" + runs.map(() => "---|").join(""));
-    for (const k of [...keys].sort()) out.push("| " + k + " | " + runs.map((r) => { const v = at(r)?.detail.mods[k]; return v ? M(v.tris) + " / " + I(v.calls) : "-"; }).join(" | ") + " |");
+    for (const k of [...keys].sort()) out.push("| " + k.replace(/\|/g, "\\|") + " | " + runs.map((r) => { const v = at(r)?.detail.mods[k]; return v ? M(v.tris) + " / " + I(v.calls) : "-"; }).join(" | ") + " |");
     out.push("");
   }
   console.log(out.join("\n"));
