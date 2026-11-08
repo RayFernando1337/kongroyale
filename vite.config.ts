@@ -9,6 +9,7 @@ const at = (tag: string) => head !== "" && git("rev-parse", "--verify", "--quiet
 process.env.VITE_KR_SHA ??= head.slice(0, 7);
 process.env.VITE_KR_TAG ??= git("describe", "--tags", "--match", "kong-v*");
 process.env.VITE_KR_CHANNEL ??= process.env.KR_CHANNEL ?? (at("stable") ? "stable" : at("next") || git("tag", "--points-at", "HEAD", "--list", "kong-v*") ? "next" : "dev");
+import { agentBridge } from "./tools/agent-bridge";
 
 // (admin lobby) `vite build` also builds the admin console bundles into dist-admin/ (vite.admin.config.ts) — never into
 // dist/, which is served to everyone
@@ -32,7 +33,7 @@ const https = process.env.KR_HTTPS_KEY && process.env.KR_HTTPS_CERT ? { key: fs.
 // mid-screenshot because some other file was saved. Every navigation loads fresh modules instead.
 export default defineConfig({
   base: process.env.DEPLOY_BASE || "/",
-  plugins: [adminBundles()],
+  plugins: [adminBundles(), agentBridge()],
   server: {
     port: 5317,
     strictPort: true,
