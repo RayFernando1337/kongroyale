@@ -163,6 +163,7 @@ export function installDrawList(host: Record<string, unknown>): void {
     entries.set(object, en);
     let gs = byGeometry.get(geometry);
     if (!gs) { byGeometry.set(geometry, (gs = [])); geometry.addEventListener("dispose", onGeometryDispose); }
+    for (let i = gs.length - 1; i >= 0; i--) if (gs[i].dead) gs.splice(i, 1);
     gs.push(en);
     hook(program);
   };

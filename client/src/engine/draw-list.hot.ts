@@ -99,7 +99,7 @@ function sameLights(u: MatProps["uniforms"], a: Int32Array): boolean {
 
 /** the entry still describes this draw: nothing three's needsProgramChange would react to has moved (else three draws it) */
 export function valid(s: LeanState, e: Entry, geometry: THREE.BufferGeometry, material: THREE.Material, object: THREE.Object3D, group: object | null): boolean {
-  if (e.dead || e.material !== material || e.geometry !== geometry || e.group !== group || s.textures === null) return false;
+  if (e.dead || (material as THREE.MeshStandardMaterial).wireframe === true || e.material !== material || e.geometry !== geometry || e.group !== group || s.textures === null) return false;
   const mp = e.mp, r = s.renderer;
   if (r.properties.get(material) !== mp || material.version !== e.matVersion || mp.__version !== e.matVersion || mp.currentProgram !== e.program) return false;
   if (e.rtNull !== (r.getRenderTarget() === null) || e.fog !== s.fog || e.env !== s.env) return false;

@@ -79,7 +79,7 @@ const FLAGS = {
   dither: { kind: on, owner: "engine" },
   /** __kr.drawCensus: per-draw main-thread cost by pass and class */
   drawcensus: { kind: present, owner: "engine" },
-  /** draw list: these modules' static draws skip setProgram; =1 Mango, =all */
+  /** draw list: these modules' static draws skip setProgram; =1 Mango, =all. A listed module's materials must be frozen (no property change without a version bump): audit one before listing it */
   drawlist: { kind: list, owner: "engine" },
   /** device pixel ratio instead of the screen's (capped at 2); 0 = the screen's */
   dpr: { kind: num(0), owner: "engine" },
