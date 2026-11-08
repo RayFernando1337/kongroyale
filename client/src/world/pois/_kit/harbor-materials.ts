@@ -553,7 +553,18 @@ const PRE = new Map<string, ImageBitmap>(), LIVE = new Map<string, Cv>();
 const groupOf = (name: string) => name.split(".")[0];
 /** a named harbor texture: the worker's ImageBitmap (pre-flipped) when it arrived, else painted live */
 export function harborTex(name: string, o: TexOpts = {}): THREE.Texture { return T(name, o); }
+const BASE = new Map<string, THREE.Texture>();
+/** every call gets its own Texture (callers set their own repeat), but calls with the same name and options share one
+ *  source, so the GPU holds one copy: paint() alone asked for the 512² neutral tile once per colour, 21 uploads */
 function T(name: string, o: TexOpts = {}): THREE.Texture {
+  const key = `${name}|${o.srgb ?? true}|${o.repeat ?? true}|${o.aniso ?? 8}|${o.flipY ?? true}|${o.mipmaps ?? true}`;
+  let base = BASE.get(key);
+  if (!base) BASE.set(key, (base = paintedTex(name, o)));
+  const version = base.source.version, t = base.clone();
+  t.source.version = version;
+  return t;
+}
+function paintedTex(name: string, o: TexOpts): THREE.Texture {
   const bm = PRE.get(name);
   if (bm) {
     const t = new THREE.Texture(bm as unknown as HTMLImageElement);
