@@ -29,6 +29,7 @@ found its bugs (docs/statecharts/diagnostics.md), and now checks the code that f
 | DiagSend | AutoRespectsOff | And never after the Settings row is turned off, or while Global Privacy Control or Do Not Track is on. |
 | DiagSend | AutoNeverInAutomation | A page under automation (`navigator.webdriver`) sends no summary unless the URL or build asked for diagnostics (`?diag`, `VITE_KR_DIAG=1`). The default is on for every player of a production build, so this keeps harnesses, benches and CI jobs from sending. |
 | DiagSend | NoBeatUnderSignal | The default writes no heartbeat record while Global Privacy Control or Do Not Track is on; only an explicit `?diag` does. |
+| DiagSend | NoBeatAfterOff | Once the player turns the summaries off in Settings, the default's heartbeat record is deleted at the next write (`writeBeat`) and not written again. |
 | DiagSend | EverySendAnswered | Every send ends with the thank-you and report id, or a message that it did not go. |
 | DiagSend | SendEnds | A send never hangs: one of the two shows in the end. |
 

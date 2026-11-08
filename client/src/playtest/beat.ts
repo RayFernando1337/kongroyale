@@ -39,7 +39,10 @@ export const summariesOn = (): boolean => diagOn() || (summariesDefault() && aut
 
 export function writeBeat(b: Beat): void {
   if (!locks) return;
-  try { localStorage.setItem(BEAT_KEY + b.sid, JSON.stringify(b)); } catch { /* storage full or blocked: no crash evidence */ }
+  try {
+    if (!diagOn() && !autoOn()) { localStorage.removeItem(BEAT_KEY + b.sid); return; }
+    localStorage.setItem(BEAT_KEY + b.sid, JSON.stringify(b));
+  } catch { /* storage full or blocked: no crash evidence */ }
 }
 
 /** hold this session's Web Lock for the page's whole life, then write its first beat: a session whose page holds no

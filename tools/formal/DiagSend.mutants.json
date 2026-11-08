@@ -75,5 +75,12 @@
     "find": "(flagged \\/ (~gpc /\\ autoSet /= \"off\"))",
     "replace": "(flagged \\/ autoSet /= \"off\")",
     "expect": "Invariant NoBeatUnderSignal is violated"
+  },
+  {
+    "name": "Settings off leaves the heartbeat running",
+    "why": "writeBeat keeps writing the record after the player turned the summaries off",
+    "find": "beat' = IF ~flagged /\\ v = \"off\" THEN FALSE ELSE beat",
+    "replace": "beat' = beat",
+    "expect": "Invariant NoBeatAfterOff is violated"
   }
 ]
