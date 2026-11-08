@@ -305,7 +305,7 @@ export class Engine implements WorldCtx {
     const ms = now - Math.max(this.sliceT0, this.rafEnd);
     if (ms < this.sliceLogMs || !this.started) return;
     const kr = (globalThis as { __kr?: { streamStage?: string; stage?: string } }).__kr;
-    const where = (new Error().stack ?? "").split("\n").filter((l) => l !== "Error").slice(2, 6).join(" <").slice(0, 400);
+    const where = (new Error().stack ?? "").split("\n").slice(2, 7).join(" <").slice(0, 400);
     this.sliceLog.push({ at: Math.round(now), ms: Math.round(ms), stage: String(kr?.streamStage || kr?.stage || ""), where });
     if (this.sliceLog.length > 500) this.sliceLog.shift();
   }
