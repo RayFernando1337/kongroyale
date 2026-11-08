@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkFresh, readNow } from "./now.mts";
 import { ALWAYS_FORBIDDEN } from "./scan.mts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,7 @@ function main(): void {
   const sha = run("git", ["rev-parse", "HEAD"]).trim();
   if (!dryRun && sha !== run("git", ["rev-parse", "origin/main"]).trim()) throw new Error("refusing to publish: HEAD " + sha.slice(0, 7) + " is not origin/main; the page is built from the data in this checkout, so check out main at its tip first");
   if (!dryRun && run("git", ["status", "--porcelain", "--", "tools/dashboard"]).trim()) throw new Error("refusing to publish: tools/dashboard has uncommitted changes, so the page would show values the stamped commit does not contain");
+  checkFresh(readNow(path.join(HERE, "lanes.json")), Date.now());
   const forbidden = new RegExp(ALWAYS_FORBIDDEN + "|" + data.hide, "gi");
   const site = fs.mkdtempSync(path.join(os.tmpdir(), "kr-dash-site-"));
   const work = path.join(os.tmpdir(), "kr-dash-pages-" + process.pid);
