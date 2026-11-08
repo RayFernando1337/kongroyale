@@ -9,7 +9,7 @@
 //   npx tsx tools/performance/pose-hold.mts --browser safari --query dpr=1 --out reports/performance/hold-dpr1-1.json
 //
 // Options: --browser safari|firefox|chrome|chromium (firefox = stock Firefox through geckodriver, headed, the display's own DPR like
-// Safari; it has no GPU timer, so --gpu does nothing there; chromium = Playwright's own build; on a machine without a GPU add
+// Safari; it has no GPU timer, so --gpu is refused there; chromium = Playwright's own build; on a machine without a GPU add
 // --software, which checks the route and the counts, never the timing), --root <checkout> (serve its dist/; build
 // first), --port 3032, --viewport 1592x960 (CSS px; Safari renders at the display's own DPR, Chrome at --dpr 2),
 // --preset low|medium|high|epic|auto|auto-high|auto-medium (default high; auto leaves the game's own pick and its
@@ -63,6 +63,7 @@ const AT_PHASE = Number(arg("--at-phase", "2"));
 const ORIGIN = "http://127.0.0.1:" + PORT;
 if (!["safari", "firefox", "chrome", "chromium"].includes(BROWSER)) throw Error("--browser " + BROWSER + ": one of safari, firefox, chrome, chromium");
 if (!["low", "medium", "high", "epic", "auto", "auto-high", "auto-medium"].includes(PRESET)) throw Error("--preset " + PRESET + ": one of low, medium, high, epic, auto, auto-high, auto-medium");
+if (BROWSER === "firefox" && GPU) throw Error("--gpu: Firefox has no GPU timer query");
 if (![PX, PZ, YAW_DEG, PITCH_DEG].every(Number.isFinite)) throw Error("--pose x,z,yawDeg,pitchDeg");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const t0 = Date.now();
@@ -153,7 +154,7 @@ async function webdriver(bin: string, args: string[], port: number, caps: Record
     return j.value as any;
   };
   for (let i = 0; i < 40; i++) { try { await wd("GET", "/status"); break; } catch { await sleep(250); } }
-  const s = await wd("POST", "/session", { capabilities: { alwaysMatch: caps } });
+  const s = await wd("POST", "/session", { capabilities: { alwaysMatch: caps } }).catch((e) => { proc.kill(); throw e; });
   const sid = "/session/" + s.sessionId;
   try {
     await wd("POST", sid + "/timeouts", { script: 120_000, pageLoad: 300_000, implicit: 0 });
