@@ -1,7 +1,8 @@
 // THE AUTHORITATIVE MATCH. One instance per lobby on the server; the same class runs in-browser for offline practice.
 // Owns players, inputs, shots (with lag compensation), loot, projectiles, storm, phases, resurgence, bots.
-// Input pacing: every input a client sends is simulated exactly once, in order (1:1 with the client's prediction), paced by
+// Input pacing: every input a client sends is simulated at most once, in order (1:1 with the client's prediction), paced by
 // a per-player credit (1 per tick, capped) so a link stall is caught up afterwards but nobody can move faster than 60 Hz.
+// A backlog that outlasts the credit (INPUT_BACKLOG_MIN_TICKS for 0.5 s) is shed: its oldest inputs are never simulated.
 import { POIS, WEAPONS } from "../world/map";
 import type { Terrain } from "../world/terrain";
 import {
@@ -357,7 +358,7 @@ export class Match {
     if (++this.qWin[id] >= 30) {
       const floor = this.qMin[id];
       if (floor >= INPUT_BACKLOG_MIN_TICKS) {
-        const drop = floor - INPUT_BACKLOG_KEEP_TICKS;
+        const drop = this.qLen[id] - INPUT_BACKLOG_KEEP_TICKS;
         this.qHead[id] = (this.qHead[id] + drop) % INPUT_QUEUE_MAX; this.qLen[id] -= drop; this.netStats.inputsDropped += drop;
       } else if (floor >= 2) { this.credit[id] += 1; this.netStats.driftCredits++; }
       this.qMin[id] = 1 << 30; this.qWin[id] = 0;
