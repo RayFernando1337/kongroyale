@@ -2,8 +2,8 @@
 // lingering sniper beam, per-surface impacts (decal + debris + dust), shell / hull ejection, explosions (flash,
 // fireballs, smoke column, shock rings, sparks, debris, peel confetti, scorch), landing puffs, hit sparkles and the
 // in-flight banana rocket with its trail. Everything is pooled: three GPU quad families (glow / smoke / decal —
-// stateless GPU simulation, one draw each, fx-gpu.ts) + one instanced debris mesh (fx-chunks.ts) = 4 draw calls for all
-// FX in the match, zero allocation per shot.
+// stateless GPU simulation, one draw each, fx-gpu.ts) + one instanced debris mesh per debris shape with live chunks
+// (fx-chunks.ts) = 3 to 10 draw calls for all FX in the match, zero allocation per shot.
 import * as THREE from "three";
 import type { WorldCtx } from "../engine/engine";
 import type { WeaponId } from "../../../shared/world/map";
@@ -65,7 +65,7 @@ export function createFx(ctx: WorldCtx): FxSystem {
   object.add(decal.mesh, smoke.mesh, glow.mesh, chunks.mesh);
   ctx.scene.add(object);
   const atmos = ctx.shared.get("atmos") as { patch?(m: THREE.Material): void; state?: { sunColorLin: THREE.Color; preset: { sunIntensity: number } } } | undefined;
-  try { atmos?.patch?.(chunks.mesh.material as THREE.Material); } catch { /* ok */ }
+  try { atmos?.patch?.(chunks.material); } catch { /* ok */ }
   const floorAt = (x: number, z: number) => { try { return Math.max(ctx.terrain.height(x, z), 0); } catch { return 0; } };
   const camPos = new THREE.Vector3();
   const refreshLight = () => {
