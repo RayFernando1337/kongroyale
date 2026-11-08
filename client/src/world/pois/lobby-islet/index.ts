@@ -6,6 +6,8 @@
 //   (actors/plane.ts), and the screenshot crowd of kongs (crowd.ts, stage "lobby-crowd").
 // Static meshes are merged per material by a Batch (≈8 draw calls) using two procedurally painted 2K atlases (atlas.ts).
 // Under ?geofree the merges drop their CPU arrays after upload, and a context restore replays the seeded build to refill them.
+// On the Low view distance the props (every merge but the rock and the runway, and the plane) stop drawing beyond 600 m
+// (props-gate.hot.ts).
 import * as THREE from "three";
 import type { WorldModule } from "../../module";
 import type { WorldCtx } from "../../../engine/engine";
@@ -27,8 +29,12 @@ import { stageCrowd } from "./crowd";
 import { createPlane } from "../../../actors/plane";
 import { releaseGeometryAfterUpload } from "../../../engine/geometry-release";
 import { onRestore } from "../../../engine/res/restore";
+import { poiById } from "../../../../../shared/world/map";
+import { gateIsletProps } from "./props-gate.hot";
 
 const LAYOUT_SEED = 20260923;
+/** the merges that stay at any distance (the rest, and the parked plane, are props: props-gate.hot.ts) */
+const KEEP_FAR = new Set(["lobby:rock", "lobby:tarmac", "lobby:decal"]);
 
 // ------------------------------------------------------------------------------------------------ views
 const fp = (lx: number, d: number, y: number): [number, number, number] => { const [x, z] = toWorld(lx, d); return [+x.toFixed(2), y, +z.toFixed(2)]; };
@@ -76,7 +82,14 @@ const mod: WorldModule = {
     await ctx.yield();
 
     const meshes = await k.b.meshesAsync(mats, "lobby", () => ctx.yield());
-    for (const m of meshes) group.add(m);
+    const props = new THREE.Group();
+    props.name = "lobby:props";
+    // (far-merge must not capture them: its proxies follow the POI root, not this gate)
+    props.userData.noMerge = true;
+    group.add(props);
+    for (const m of meshes) (KEEP_FAR.has(m.name) ? group : props).add(m);
+    const { x: cx, z: cz } = poiById("lobby-islet");
+    ctx.onUpdate(() => gateIsletProps(props, ctx.camera.position, cx, cz, ctx.shared.get("display:viewDist")));
     // ?geofree: the merges drop their CPU arrays after upload; a context restore refills them from one replay of the
     // seeded build (no water: the dock's foam is registered once), shared by every merge in that restore
     let fresh: Map<string, THREE.BufferGeometry> | null = null;
@@ -104,7 +117,7 @@ const mod: WorldModule = {
         p.object.rotation.set(0, worldYaw(pl.a) + Math.PI / 2, 0);
         p.setGear(1); p.setRamp(1); p.setEngines(false);
         p.update(0, 12);
-        group.add(p.object);
+        props.add(p.object);
       }
     }).finally(release);
     console.info(`[lobby-islet] ${meshes.length} merged meshes, ${Math.round(tris / 1000)}k tris, atlases ${at.ms} ms (overlapped), plane ${planeMs} ms, build ${Math.round(performance.now() - t0)} ms`);
