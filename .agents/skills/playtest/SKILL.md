@@ -43,7 +43,7 @@ Each bundle is a folder `<UTC time>-<report id>/` with `bundle.json` and `shot.j
 500 bundles or 1 GB (`KR_PLAYTEST_BUNDLES_MAX` and `KR_PLAYTEST_BUNDLES_MB` change them), counted on disk before every write (so two servers sharing a folder share the cap), logs that once, and resumes as soon as the folder is cleared. MongoDB keeps the timeline but never
 the replay log.
 
-Automatic performance summaries (`/api/diag/auto`, `KR_DIAG_AUTO`) are not bundles: each is one JSON line in
+Automatic performance summaries (`/api/diag/auto`, `KR_DIAG_AUTO`; on by default in a production build outside automation, `?diag=0` off) are not bundles: each is one JSON line in
 `<folder>/<UTC date>.jsonl` (`.kongbot/diag-auto/` under the repo with `npm run server`) holding an install id, a session id, a
 kind (`hitch`, `lowfps`, `ctxlost`, `error`, `crash` or `match`), page seconds, a config key, the build, an optional
 signature and up to 16 numbers. `server/diag-auto.ts` `parseAuto` is the schema. A `match` row per finished match is
