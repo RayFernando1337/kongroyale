@@ -87,7 +87,9 @@ const transport = opt("--transport", "ws") === "wt" ? "wt" : "ws";
  *  does. --stall up|down|both:MS:EVERY_S: every EVERY_S seconds (first at EVERY_S / 2) that direction's link (or both)
  *  holds everything for MS, then delivers it in order (a mobile radio stall) */
 const fps = Number(opt("--fps", "144")), deferRx = fps < 144;
+if (!(fps > 0)) { console.error("netlab: --fps must be a positive number"); process.exit(1); }
 const stallOpt = opt("--stall", "").split(":"), stallDir = ["up", "down", "both"].includes(stallOpt[0]) ? stallOpt[0] : "", stallMs = Number(stallOpt[1] ?? 0), stallEveryMs = Number(stallOpt[2] ?? 0) * 1000;
+if (stallOpt[0] && (!stallDir || !(stallMs > 0) || !(stallEveryMs > stallMs))) { console.error("netlab: --stall wants up|down|both:MS:EVERY_S, with EVERY_S longer than MS"); process.exit(1); }
 const loss = Number(opt("--loss", "0")) / 100, aux = transport === "ws" && argv.includes("--aux"), servePort = Number(opt("--serve", "0")), connectUrl = opt("--connect", ""), token = opt("--token", "");
 /** how much later a lost TCP message arrives: the sender resends it once a later segment's SACK shows the gap (RACK-TLP).
  *  netpath.py, 1% loss, 20 ms jitter, Linux cubic + SACK + RACK: stall peaks 68-100 ms at 50 ms RTT, 167-201 ms at 150 ms,
@@ -127,9 +129,9 @@ const sendOn = (p: Pipe, s: Sock, u8: Uint8Array | null, json?: unknown) => {
   const lost = loss > 0 && s.rnd() < loss;
   if (lost) lostMsgs++;
   const msg = { at: now + d, u8: u8 ? u8.slice() : new Uint8Array(0), json };
-  msg.at = Math.max(msg.at, stallEnd(p, msg.at));
-  if (s.dgram) { if (lost) return; let i = s.q.length; while (i > 0 && s.q[i - 1].at > msg.at) i--; s.q.splice(i, 0, msg); return; }
+  if (s.dgram) { if (lost) return; msg.at = Math.max(msg.at, stallEnd(p, msg.at)); let i = s.q.length; while (i > 0 && s.q[i - 1].at > msg.at) i--; s.q.splice(i, 0, msg); return; }
   if (lost) msg.at += RESEND_MS(p.oneWay * 2);
+  msg.at = Math.max(msg.at, stallEnd(p, msg.at));
   msg.at = Math.max(s.q.length ? s.q[s.q.length - 1].at : 0, msg.at);   // FIFO (TCP never reorders)
   s.q.push(msg);
 };
@@ -324,7 +326,7 @@ async function run(rtt: number) {
   }
   // ---- loop: server at 60 Hz, clients at --fps (144 Hz)
   let nextTick = 0, nextFrame = 0;
-  while (now < secs * 1000 + rtt + 500) {
+  while (now < secs * 1000 + rtt + 500 + stallMs) {
     const step = Math.min(nextTick, nextFrame); now = step;
     for (let pid = 0; pid < 2; pid++) {
       const peer = H.host.peers[pid];
@@ -333,7 +335,7 @@ async function run(rtt: number) {
         while (up.q.length && up.q[0].at <= now) { const u8 = up.q.shift()!.u8; stageRecv(pid, u8); H.host.receive(peer, u8, (r) => sendOn(downs[pid], down, r)); }
         while (down.q.length && down.q[0].at <= now) {
           const msg = down.q.shift()!;
-          if (deferRx) pending.push({ pid, u8: msg.json ? null : msg.u8, json: msg.json, at: now }); else C.receive(pid, msg.json ? null : msg.u8, msg.json);
+          if (deferRx) pending.push({ pid, u8: msg.json ? null : msg.u8, json: msg.json, at: msg.at }); else C.receive(pid, msg.json ? null : msg.u8, msg.json);
         }
       }
     }
@@ -418,11 +420,11 @@ async function connect(url: string, token: string) {
       ws.on("error", reject);
     }, k * 300);
   }))));
-  // client loop: 144 frames a second on the wall clock; a late frame takes the real elapsed time as its dt
+  // client loop: --fps frames a second (144) on the wall clock; a late frame takes the real elapsed time as its dt
   let nextFrame = now, last = now;
   while (!C.done(1500)) {
     realTime();
-    if (now >= nextFrame) { C.frame(Math.max(1e-4, (now - last) / 1000)); last = now; nextFrame = Math.max(nextFrame + 1000 / 144, now - 50); }
+    if (now >= nextFrame) { C.frame(Math.max(1e-4, (now - last) / 1000)); last = now; nextFrame = Math.max(nextFrame + 1000 / fps, now - 50); }
     await new Promise((r) => setTimeout(r, Math.max(0, nextFrame - now - 1)));
   }
   sockets[0][0].send(JSON.stringify({ t: "done" }));
@@ -450,7 +452,7 @@ for (const go of runs) {
   if (r.predMissing !== 0) problems.push(`${r.predMissing} predicted pellets have no server verdict`);
   if (r.predHits > 0 && r.confirmPct < CHECK_MIN_CONFIRM_PCT) problems.push(`confirm ${r.confirmPct}% < ${CHECK_MIN_CONFIRM_PCT}%`);
   // a steady link must keep its instant markers: the deferral is for slow and stalled links only
-  if (!connectUrl && rtt <= CHECK_STEADY_RTT_MS && jitter <= 20 && loss === 0 && r.deferredMarkerPct > CHECK_MAX_DEFERRED_PCT) problems.push(`${r.deferredMarkerPct}% of hits waited for the server > ${CHECK_MAX_DEFERRED_PCT}%`);
+  if (!connectUrl && rtt <= CHECK_STEADY_RTT_MS && jitter <= 20 && loss === 0 && !stallMs && r.deferredMarkerPct > CHECK_MAX_DEFERRED_PCT) problems.push(`${r.deferredMarkerPct}% of hits waited for the server > ${CHECK_MAX_DEFERRED_PCT}%`);
   if (r.ghost > 0) problems.push(`${r.ghost} ghost hits`);
   if (!problems.length) continue;
   const label = `${weapon} rtt=${rtt}ms jitter=${r.jitter}${killable ? " kill" : ""}: ${problems.join(", ")}`;
