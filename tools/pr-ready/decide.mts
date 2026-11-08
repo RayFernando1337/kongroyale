@@ -7,6 +7,7 @@
 export const REQUIRED_CHECKS: readonly string[] = [
   "build and test",
   "no secrets",
+  "TLA+ models",
   "no-GPU boot smoke",
   "no-GPU match-to-match memory",
   "no-GPU low-memory memory",
