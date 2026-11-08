@@ -8,8 +8,8 @@ import { PLAYER_H, PLAYER_R } from "../../../shared/sim/const";
 import { SK, alive, type Player } from "../../../shared/sim/player";
 
 export type HostTool =
-  /** the player stood on the ground at (x, z) facing yaw, on foot */
-  | { op: "place"; pid: number; x: number; z: number; yaw: number }
+  /** the player stood at (x, z) facing yaw, on foot: on the ground, or at height y (a roof, a deck, a crane) when given */
+  | { op: "place"; pid: number; x: number; z: number; yaw: number; y?: number }
   | { op: "heal"; pid: number; hp: number; shield?: number }
   /** slot 0 holds weapon `weapon` (rarity 2) with a full magazine, `reserve` rounds of ammo type `ammo`, in hand */
   | { op: "arm"; pid: number; weapon: number; mag: number; ammo: number; reserve: number }
@@ -23,9 +23,9 @@ export interface HostView {
   vehs: ReadonlyArray<{ kind: number; x: number; y: number; z: number; st: number; seats: readonly number[] }>;
 }
 
-function place(m: Match, q: Player, x: number, z: number) {
+function place(m: Match, q: Player, x: number, z: number, y?: number) {
   const w = m.world;
-  w.velY = 0; w.resolveCapsule(x, Math.max(w.ground(x, z), 0) + 0.05, z, PLAYER_R, PLAYER_H, false);
+  w.velY = 0; w.resolveCapsule(x, (y ?? Math.max(w.ground(x, z), 0)) + 0.05, z, PLAYER_R, PLAYER_H, false);
   q.x = w.P[0]; q.y = w.P[1]; q.z = w.P[2]; q.vx = q.vy = q.vz = 0; q.grounded = true;
 }
 
@@ -34,7 +34,7 @@ export function applyHostTool(m: Match, t: HostTool): number {
   const p = m.players[t.pid];
   if (!p) return 0;
   switch (t.op) {
-    case "place": place(m, p, t.x, t.z); p.yaw = t.yaw; p.st = 0; return 1;
+    case "place": place(m, p, t.x, t.z, t.y); p.yaw = t.yaw; p.st = 0; return 1;
     case "heal": p.hp = t.hp; if (t.shield !== undefined) p.shield = t.shield; return 1;
     case "arm": {
       const s = p.slots[0];
