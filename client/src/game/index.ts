@@ -394,6 +394,9 @@ export async function startGame(engine: Engine, boot: GameBoot) {
     inMatch = true; input.inMatch = true; resultsOpen = false; paused = false; input.clearHeld();
     // a focused menu field (the callsign) must not keep the keyboard once the lobby is gone
     if (lobby.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    // Settings opened on the title or in the room (Esc) must not stay up over the match: its keys are the game's (E / Q
+    // change category, Tab section, Space activates, ← steps), so a player who tried to play drove the preset (RAY-286)
+    krw.__kr?.videoMenu?.close();
     lobby.setVisible(false); hud.setVisible(true); results.hide(); title.setVisible(false);
     void audio.unlock(); input.fsRestore = false; input.autoFullscreen(); void input.lock(true);
     r.phase(c.phase);
@@ -622,7 +625,7 @@ export async function startGame(engine: Engine, boot: GameBoot) {
   }
   // the in-match menu: a left sidebar over the still-running game (ui/match-menu.ts). Nothing pauses:
   // online or offline the match keeps running ("MATCH CONTINUES"); `paused` only means the menu is up (no gameplay input)
-  const krw = window as unknown as { __kr?: { videoMenu?: { open(): void }; kongbot?: { open(): void } } };
+  const krw = window as unknown as { __kr?: { videoMenu?: { open(): void; close(): void }; kongbot?: { open(): void } } };
   const menu = createMatchMenu(ui, {
     context: () => ({
       eyebrow: render?.range ? "FIRING RANGE" : `${link?.offline ? "PRACTICE · " : ""}${cm?.mode === "trios" ? "TRIOS" : "SOLO"}${spectating() ? " · SPECTATING" : ""}`,

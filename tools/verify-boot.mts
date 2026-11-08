@@ -21,6 +21,8 @@
 //   --query "a=1&b=2" extra URL flags (e.g. hostworker=1: the practice host in its worker, which must then be the one
 //                     playing: __kr.hostWorker set, a fall back to the in-tab host fails the run)
 //
+// Before the match it opens Settings with Esc on the title: the match start must close it, and the game keys pressed in
+// the match must leave the video preset alone (RAY-286).
 // Fails on: any entry in window.__kr.errors, any uncaught page error, the boot reaching stage "failed" or not reaching
 // ready in time, and a match that never starts, whose tick never advances, or with one player or fewer alive.
 // Console warnings, and console.error lines that never reach __kr.errors, are printed or counted but don't fail the run.
@@ -148,11 +150,25 @@ try {
   if (state?.ready && !failures.length && MATCH_S > 0) {
     log(`practice ${MODE}, seed 42, watching for ${MATCH_S} s`);
     // (practice() resolves only after the island prepare: fire it without waiting so the deadline below covers that too)
+    // RAY-286: Settings opened on the title or in a room (Esc) must close when the match starts, or the keys a player
+    // presses to play drive it (E / Q category, Tab section, Space activates): E E E Tab Space×4 walked Auto to Epic
+    await page.waitForFunction(() => !!(window as unknown as { __kr: { videoMenu?: unknown } }).__kr.videoMenu, null, { timeout: 60_000 });
+    const video = () => page.evaluate(() => ({ open: !!document.querySelector(".kr-video.on"), preset: (window as unknown as { __kr: { display?: { settings: { preset: string } } } }).__kr.display?.settings.preset }));
+    await page.keyboard.press("Escape");
+    if (!(await video()).open) fail("Esc on the title did not open Settings");
     const startT0 = Date.now();
     await page.evaluate((mode) => { void (window as unknown as { __kr: { game: { practice: (m: string) => unknown } } }).__kr.game.practice(mode); }, MODE);
     let first: MatchState | null = null;
     while (!(first = await readMatch()) && Date.now() - startT0 < BOOT_TIMEOUT_MS && !pageErrors.length) await sleep(1000);
-    if (first) log(`match started ${((Date.now() - startT0) / 1000).toFixed(1)} s after Play`);
+    if (first) {
+      log(`match started ${((Date.now() - startT0) / 1000).toFixed(1)} s after Play`);
+      const atStart = await video();
+      if (atStart.open) fail("Settings opened on the title stayed open over the match");
+      for (const key of ["KeyE", "KeyE", "KeyE", "Tab", "Space", "Space", "Space", "Space"]) await page.keyboard.press(key);
+      const after = await video();
+      log(`Settings at the match start: ${atStart.open ? "open" : "closed"}; preset after E E E Tab Space×4: ${after.preset}`);
+      if (after.preset !== atStart.preset) fail(`game keys in the match changed the video preset (${atStart.preset} → ${after.preset})`);
+    }
     const matchT0 = Date.now();
     let last = first, lastPhase = -1;
     while (first && Date.now() - matchT0 < MATCH_S * 1000 && !pageErrors.length) {

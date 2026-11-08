@@ -79,6 +79,9 @@
     "refresh": {
       "catches": "The display refresh estimate: a slow game must still read as the screen's real rate (60, 120, 144 Hz), and real 30 Hz pacing must read 30."
     },
+    "display": {
+      "catches": "A player who never chose a preset getting anything but the detected GPU tier (fresh profile, v1 migration, a saved Auto from another GPU, a stale bench step-down), a preset the player chose being overwritten, or stepping back from Auto in the preset row landing on Epic."
+    },
     "resguard": {
       "catches": "The half-rate guard lowering 3D resolution when it shouldn't, going below Auto's floor, not stepping back up after full-rate seconds, or oscillating."
     },

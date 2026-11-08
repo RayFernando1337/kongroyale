@@ -59,6 +59,11 @@ export interface VideoSettings {
 const AUTO_MPX: Record<Level, number> = { low: 2.7, medium: 3.9, high: Infinity, epic: Infinity };
 /** the lowest 3D resolution Auto picks; the half-rate guard (res-guard.ts) never steps below it either */
 export const AUTO_RES_FLOOR = 0.67;
+/** a saved Auto that no longer matches this machine: the detected tier changed, or a bench step-down sits above it
+ *  (a step-down below the detected tier is a measurement on this machine and stays) */
+function staleAuto(s: VideoSettings, level: Level) {
+  return s.preset === "auto" && (s.stepped ? LEVELS.indexOf(s.auto) > LEVELS.indexOf(level) : s.auto !== level);
+}
 export function presetRes(level: Level, backingPx: number) {
   const r = Math.sqrt((AUTO_MPX[level] * 1e6) / Math.max(1, backingPx));
   return Math.min(1, Math.max(AUTO_RES_FLOOR, Math.floor(r * 100) / 100));
@@ -154,7 +159,8 @@ function legacyPauseFov() {
 /** the world-module build tier for this boot (?q= wins): Low / Medium presets build the lighter water / clouds / AO */
 export function bootQuality(): Quality | null {
   const s = store.get();
-  const lvl = !s || (s.preset === "auto" && !s.stepped) ? detectLevel() ?? s?.auto : s.preset === "custom" || s.preset === "auto" ? (s.post ?? s.auto) : s.preset;
+  const detected = !s || s.preset === "auto" ? detectLevel() : null;
+  const lvl = !s || (detected && staleAuto(s, detected)) ? detected ?? s?.auto : s.preset === "custom" || s.preset === "auto" ? (s.post ?? s.auto) : s.preset;
   return ({ low: "low", medium: "medium", high: "high", epic: "ultra" } as const)[lvl as Level] ?? null;
 }
 
@@ -195,10 +201,10 @@ export class Display {
     const spoof = flag("gpu"); // tools: ?gpu=<renderer string>
     this.gpuLevel = deviceLevel(spoof || this.gpu);
     const saved = store.get();
-    const reclassified = !!saved && saved.preset === "auto" && !saved.stepped && saved.auto !== this.gpuLevel;
+    const reclassified = !!saved && staleAuto(saved, this.gpuLevel);
     this.firstVisit = !saved || reclassified;
     this.recalibrating = reclassified;
-    this.settings = saved && !reclassified ? saved : { ...presetSettings(this.gpuLevel, this.backingPx(), { ...saved, auto: this.gpuLevel }, true), dynres: saved?.dynres ?? false };
+    this.settings = saved && !reclassified ? saved : { ...presetSettings(this.gpuLevel, this.backingPx(), { ...saved, auto: this.gpuLevel, stepped: undefined }, true), dynres: saved?.dynres ?? false };
     if (!saved || reclassified) this.settings.preset = "auto";
     // the FOV used to live on the pause card too (kr-settings.fov, re-synced to this store at every boot and then moved by
     // that slider): it holds the FOV last in effect — adopt it once; the first write of this store retires it

@@ -47,6 +47,7 @@ const checks = [
   { id: "raycast", name: "raycast ties", cmd: "npx", args: ["tsx", "tools/world/raycast-test.mts"] },
   { id: "res", name: "resource scopes", cmd: "npx", args: ["tsx", "tools/res/test.mts"] },
   { id: "refresh", name: "display refresh estimate", cmd: "npx", args: ["tsx", "tools/engine/refresh.test.mts"] },
+  { id: "display", name: "video settings: Auto follows the detected GPU, chosen presets stay, the preset row never steps back to Epic", cmd: "npx", args: ["tsx", "tools/engine/display.test.mts"] },
   { id: "resguard", name: "half-rate guard decisions", cmd: "npx", args: ["tsx", "tools/engine/res-guard.test.mts"] },
   { id: "scenegate", name: "visibility gate lifecycle", cmd: "npx", args: ["tsx", "tools/engine/scene-gate.test.mts"] },
   { id: "hlod", name: "HLOD captures a POI's far state", cmd: "npx", args: ["tsx", "tools/engine/hlod-far-state.test.mts"] },

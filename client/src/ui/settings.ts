@@ -102,17 +102,18 @@ export function mountVideoUi(engine: Engine, display: Display, menu: VideoMenu) 
   const toast = document.createElement("div"); toast.className = "kr-vtoast"; toast.setAttribute("role", "status"); document.body.appendChild(toast);
   let toastTimer = 0;
   const show = (html: string, ms: number) => { toast.innerHTML = html; toast.classList.add("on"); clearTimeout(toastTimer); if (ms) toastTimer = window.setTimeout(() => toast.classList.remove("on"), ms); };
-  // with the pointer locked a notice's buttons are out of reach (Ray, in full screen: the mouse aims), so the player gets
-  // a passive line that never takes input, and the notice itself waits until the pointer is free: Esc's pause card, the
-  // results screen or the title. There it stays up, with no timer, and an unanswered suggestion goes back in the queue
-  // when the player returns to aiming (the guard offers each level once a session, so it must not be lost).
+  // with the pointer locked a notice's buttons are out of reach (Ray, in full screen: the mouse aims), so the notice waits
+  // until the pointer is free: Esc's pause card, the map, the results screen or the title. There it stays up, with no
+  // timer, and an unanswered suggestion goes back in the queue when the player returns to aiming (the guard offers each
+  // level once a session, so it must not be lost). A suggestion shows nothing while the player aims: a line they could
+  // not act on mid-fight only distracted them (RAY-286). The step-down and Auto notices still get a passive line.
   // The game never releases the pointer for a notice; only the player's own Esc does.
   const line = document.createElement("div"); line.className = "kr-vtoast kr-vline"; line.setAttribute("role", "status"); document.body.appendChild(line);
   let lineTimer = 0;
   let held: (() => void) | null = null;
   const locked = () => !!document.pointerLockElement;
   const passive = (html: string) => { line.innerHTML = html; line.classList.add("on"); clearTimeout(lineTimer); lineTimer = window.setTimeout(() => line.classList.remove("on"), 6000); };
-  const offer = (html: string, ms: number, hint: string) => { if (!locked()) { show(html, ms); return; } held = () => show(html, 0); passive(hint); };
+  const offer = (html: string, ms: number) => { if (!locked()) { show(html, ms); return; } held = () => show(html, 0); };
   toast.addEventListener("click", (ev) => {
     const a = (ev.target as HTMLElement).dataset.a;
     if (!a) return;
@@ -150,8 +151,7 @@ export function mountVideoUi(engine: Engine, display: Display, menu: VideoMenu) 
 
   display.onSuggest = (level, f) => {
     toast.dataset.level = level;
-    offer(`<span>Frame rate is low (${f} FPS): switch to <b>${esc(cap(level))}</b>?</span><button type="button" class="y" data-a="apply">Switch</button><button type="button" data-a="x">Keep</button>`, 12000,
-      `<span>Frame rate is low (${f} FPS) · Esc to switch to <b>${esc(cap(level))}</b></span>`);
+    offer(`<span>Frame rate is low (${f} FPS): switch to <b>${esc(cap(level))}</b>?</span><button type="button" class="y" data-a="apply">Switch</button><button type="button" data-a="x">Keep</button>`, 12000);
   };
   return {
     /** first visit: say what Auto picked */

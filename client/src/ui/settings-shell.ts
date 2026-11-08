@@ -18,7 +18,7 @@ import { PB, glyph, type PadAction } from "../settings/pad";
 import type { BindAction } from "../settings/bindings";
 import { accessibilityCategory, audioCategory, controlsCategory, kbmBind, kbmClear, kbmSlot } from "../settings/panel";
 import { cancelPadCapture, clearPadCapture, controllerCategory, curveSvg, padCapturing, padDiagram, padLegend, padLive, padSlot, padStatus, startPadCapture } from "../settings/controller-panel";
-import { videoCategory, type BindRow, type Category, type ChoiceRow, type Row, type SliderRow } from "./settings-model";
+import { nextChoice, videoCategory, type BindRow, type Category, type ChoiceRow, type Row, type SliderRow } from "./settings-model";
 import { bindViz, esc, fitHudPreview, fovViz, gfxViz, hudPreview, hwRows, mouseViz, speakerViz } from "./settings-viz";
 import { TOON_LOGO } from "./toon";
 import type { PadOwner } from "./padnav";
@@ -276,10 +276,8 @@ export function createSettingsShell(engine: Engine, display: Display): SettingsS
     else if (r.kind === "bind") { const s = clamp(slot + dir, 0, r.count - 1); if (s !== slot) { slot = s; paintRow(row); } }
   }
   function step(r: ChoiceRow, dir: number, wrap: boolean) {
-    const opts = r.options(), n = opts.length; let j = opts.findIndex((o) => o.v === r.get());
-    if (j < 0) j = dir > 0 ? -1 : n;                         // a state (Custom): step onto the first / last real choice
-    j = wrap ? (j + dir + n) % n : clamp(j + dir, 0, n - 1);
-    if (opts[j] && opts[j].v !== r.get()) { r.set(opts[j].v); afterChange(); }
+    const next = nextChoice(r, dir, wrap);
+    if (next) { r.set(next.v); afterChange(); }
   }
   function activate(r: Row) {
     if (r.disabled?.()) return;
