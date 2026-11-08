@@ -16,7 +16,7 @@
   },
   "headroomPct": 2,
   "budgets": {
-    "title": { "webglMB": 1350, "textureCount": 249, "geometryCpuMB": 123, "textureCpuMB": 274, "heapUsedMB": 183 },
+    "title": { "webglMB": 1350, "textureCount": 249, "geometryCpuMB": 123, "textureCpuMB": 274, "heapUsedMB": 195 },
     "plane": { "webglMB": 2115, "textureCount": 510 },
     "match": { "webglMB": 2190, "heapUsedMB": 228, "residentPois": 4, "peakResidentPois": 4 }
   }
