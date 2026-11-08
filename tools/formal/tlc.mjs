@@ -17,7 +17,15 @@ import { fileURLToPath } from "node:url";
 
 const TLA_VERSION = "1.7.4";
 const TLA_SHA256 = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88";
-const TLA_URL = `https://github.com/tlaplus/tlaplus/releases/download/v${TLA_VERSION}/tla2tools.jar`;
+// Same release asset, two hosts: the browser URL (github.com) and the API's asset endpoint (api.github.com, asset 184694200 of
+// v1.7.4), which have failed independently. Whatever a source serves must still match TLA_SHA256.
+const TLA_URLS = [
+  `https://github.com/tlaplus/tlaplus/releases/download/v${TLA_VERSION}/tla2tools.jar`,
+  "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200",
+];
+const DOWNLOAD_ROUNDS = 4;
+const DOWNLOAD_BACKOFF_MS = [15_000, 30_000, 60_000];
+const DOWNLOAD_TIMEOUT_MS = 30_000;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 const jar = path.join(root, "node_modules", ".cache", "tla2tools", TLA_VERSION, "tla2tools.jar");
@@ -26,18 +34,38 @@ const OK_LINE = "Model checking completed. No error has been found.";
 const fail = (msg) => { console.error(`tlc: ${msg}`); process.exit(2); };
 const sha256 = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 
+/** one try at one URL: the jar's bytes, or a reason it failed (HTTP status, network error, checksum) */
+async function fetchJar(url) {
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/octet-stream" }, signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    const bytes = Buffer.from(await res.arrayBuffer());
+    const got = createHash("sha256").update(bytes).digest("hex");
+    if (got !== TLA_SHA256) return { error: `checksum mismatch: got ${got}, want ${TLA_SHA256}` };
+    return { bytes };
+  } catch (e) { return { error: String(e?.cause?.message ?? e?.message ?? e) }; }
+}
+
 async function ensureJar() {
   if (fs.existsSync(jar) && sha256(jar) === TLA_SHA256) return;
   fs.mkdirSync(path.dirname(jar), { recursive: true });
   console.log(`tlc: downloading TLA+ tools ${TLA_VERSION}`);
-  const res = await fetch(TLA_URL);
-  if (!res.ok) fail(`download failed: HTTP ${res.status} for ${TLA_URL}`);
+  const failures = [];
+  let bytes;
+  for (let round = 0; round < DOWNLOAD_ROUNDS && !bytes; round++) {
+    if (round > 0) await new Promise((r) => setTimeout(r, DOWNLOAD_BACKOFF_MS[round - 1]));
+    for (const url of TLA_URLS) {
+      const r = await fetchJar(url);
+      if (r.bytes) { bytes = r.bytes; break; }
+      failures.push(`  try ${round + 1}: ${url}: ${r.error}`);
+      console.log(`tlc: ${url} failed (${r.error})${round + 1 < DOWNLOAD_ROUNDS ? ", retrying" : ""}`);
+    }
+  }
+  if (!bytes) fail(`download failed after ${DOWNLOAD_ROUNDS} tries of ${TLA_URLS.join(" and ")}:\n${failures.join("\n")}`);
   // a name of its own, so two checks downloading at once never touch each other's file
   const tmp = `${jar}.${process.pid}.${Date.now()}.part`;
   try {
-    fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
-    const got = sha256(tmp);
-    if (got !== TLA_SHA256) { fs.rmSync(tmp, { force: true }); fail(`checksum mismatch for tla2tools.jar: got ${got}, want ${TLA_SHA256}`); }
+    fs.writeFileSync(tmp, bytes);
     try { fs.renameSync(tmp, jar); }
     catch (e) { if (!(fs.existsSync(jar) && sha256(jar) === TLA_SHA256)) throw e; }   // (another check got there first)
   } finally { fs.rmSync(tmp, { force: true }); }
