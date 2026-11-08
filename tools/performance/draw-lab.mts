@@ -18,6 +18,10 @@
 //   +texture core plus activeTexture / bindTexture / bindSampler
 //   +uniform plus every uniform* call and uniform-buffer binds
 //   full     plus fixed-function state (enable/disable, blend, depth, cull, stencil, polygon offset): every replayable call
+// The recorded calls are three's state DELTAS (its cache skips what is already bound), so a retained draw can rely on state an
+// excluded draw (a kong, a transparent mesh) set before it. Each retained draw therefore also replays the non-draw calls of the
+// excluded draws since the previous retained one (reported as calls.perDraw.bridge): a replay that stands on its own, at
+// the price of counting some state calls a stand-alone static list might not need, so full is an upper bound on its cost.
 // Calls a replay leaves out (framebuffer, viewport, uploads, read-backs) are counted under skipped. renderer.resetState()
 // runs before every variant, untimed, so each starts from the same GL state and three's state cache matches it. Each
 // variant's time is performance.now() around its reps (the page is cross-origin isolated: 5 us resolution), divided by
@@ -27,6 +31,8 @@
 //
 // The gate (RAY-237): full's us per draw on the RTX, median over runs. Summarise saved runs with
 //   npx tsx tools/performance/draw-lab.mts lab-1.json lab-2.json ...
+// The summary refuses files from different renderers, segments, presets, viewports or sampling, and only prints the gate for
+// a real GPU with the island streamed in (a software or still-loading run is informational).
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -78,25 +84,30 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
     return "skip";
   };
   type Call = { f: Function; t: object; a: unknown[]; n: string; c: string };
-  type Draw = { geometry: unknown; material: any; object: any; group: unknown; calls: Call[] };
+  type Draw = { geometry: unknown; material: any; object: any; group: unknown; calls: Call[]; lead: Call[] };
 
   // ---- capture: wrap the context's and WEBGL_multi_draw's methods on the instances, and renderBufferDirect
   const md = gl.getExtension("WEBGL_multi_draw") as object | null;
+  const methodNames = (proto: any) => {
+    const names = new Set<string>();
+    for (let p = proto; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) for (const k of Object.getOwnPropertyNames(p)) if (k !== "constructor" && typeof Object.getOwnPropertyDescriptor(p, k)?.value === "function") names.add(k);
+    return names;
+  };
   const targets: Array<[any, any]> = [[gl, P]];
   if (md) targets.push([md, Object.getPrototypeOf(md)]);
   let seg: Call[] | null = null;
   const copy = (x: unknown) => ArrayBuffer.isView(x) && !(x instanceof DataView) ? (x as unknown as Float32Array).slice() : x;
   for (const [t, proto] of targets) {
-    for (const k of Object.getOwnPropertyNames(proto)) {
-      const f = Object.getOwnPropertyDescriptor(proto, k)?.value;
-      if (typeof f !== "function" || k === "constructor") continue;
+    for (const k of methodNames(proto)) {
+      const f = t[k];
+      if (typeof f !== "function") continue;
       t[k] = function (this: unknown, ...a: unknown[]) {
         if (seg) seg.push({ f, t, a: a.map(copy), n: k, c: classOf(k, a) });
         return f.apply(this, a);
       };
     }
   }
-  const unwrapGl = () => { for (const [t, proto] of targets) for (const k of Object.getOwnPropertyNames(proto)) if (Object.prototype.hasOwnProperty.call(t, k) && k !== "constructor") delete t[k]; };
+  const unwrapGl = () => { for (const [t, proto] of targets) for (const k of methodNames(proto)) if (Object.prototype.hasOwnProperty.call(t, k)) delete t[k]; };
   const rbd = r.renderBufferDirect;
   const draws: Draw[] = [];
   let capturing = false;
@@ -104,7 +115,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
     if (!capturing || camera !== cam || sc !== scene) return rbd.call(this, camera, sc, geometry, material, object, group);
     seg = [];
     try { return rbd.call(this, camera, sc, geometry, material, object, group); }
-    finally { draws.push({ geometry, material, object, group, calls: seg }); seg = null; }
+    finally { draws.push({ geometry, material, object, group, calls: seg, lead: [] }); seg = null; }
   };
 
   const own = (k: string) => Object.prototype.hasOwnProperty.call(scene, k) ? scene[k] : undefined;
@@ -123,7 +134,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
   type Variant = { name: string; run: () => void; calls: number; errors: number; t: number[] };
   const layer = (name: string, set: Draw[], keep: string[]): Variant => {
     const fns: Function[] = [], ts: object[] = [], as: unknown[][] = [];
-    for (const d of set) for (const c of d.calls) if (keep.includes(c.c)) { fns.push(c.f); ts.push(c.t); as.push(c.a); }
+    for (const d of set) for (const c of [...d.lead, ...d.calls]) if (keep.includes(c.c)) { fns.push(c.f); ts.push(c.t); as.push(c.a); }
     const n = fns.length;
     return { name, calls: n / set.length, errors: 0, t: [], run: () => { for (let i = 0; i < n; i++) fns[i].apply(ts[i], as[i]); } };
   };
@@ -137,15 +148,19 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
     const timer = setInterval(() => { if (performance.now() - lastRender > 60_000) fail(Error("drawLab: no render of the scene from the camera for 60 s (stage " + stage + ")")); }, 5_000);
     const prepare = () => {
       unwrapGl(); r.renderBufferDirect = rbd;
+      let bridge: Call[] = [];
       for (const d of draws) {
         const m = moduleName(d.object);
         if (!m) { noModule++; const t = topName(d.object); other[t] = (other[t] ?? 0) + 1; }
-        if (!m && !o.all) continue;
-        if (d.material.transparent) { transparent++; continue; }
+        const left = (!m && !o.all) || d.material.transparent;
+        if (d.material.transparent) transparent++;
+        if (left) { for (const c of d.calls) if (c.c !== "draw" && c.c !== "skip") bridge.push(c); continue; }
+        d.lead = bridge; bridge = [];
         byModule[m || "(none)"] = (byModule[m || "(none)"] ?? 0) + 1; set.push(d);
         for (const c of d.calls) if (c.c === "skip") skipped[c.n] = (skipped[c.n] ?? 0) + 1; else perDraw[c.c] = (perDraw[c.c] ?? 0) + 1;
       }
       if (!set.length) throw Error("drawLab: the captured frame has no " + (o.all ? "" : "static ") + "opaque draws to replay (" + draws.length + " main draws)");
+      for (const d of set) for (const c of d.lead) perDraw.bridge = (perDraw.bridge ?? 0) + 1;
       for (const k in perDraw) perDraw[k] = +(perDraw[k] / set.length).toFixed(2);
       const s = set;
       variants = [
@@ -215,7 +230,9 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const files = process.argv.slice(2);
   if (!files.length) { console.error("usage: npx tsx tools/performance/draw-lab.mts lab-1.json [lab-2.json ...]"); process.exit(2); }
-  const runs = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")) as LabResult & { renderer?: string });
+  const runs = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")) as LabResult & { renderer?: string; segments?: string; preset?: string; viewport?: string });
+  const sig = (x: (typeof runs)[number]) => [x.renderer, x.segments, x.preset, x.viewport, x.frames, x.reps, x.all].join(" | ");
+  if (runs.some((x) => sig(x) !== sig(runs[0]))) { console.error("the lab files differ in renderer, segments, preset, viewport, frames, reps or all; summarise one kind at a time:\n" + files.map((f, i) => "  " + f + ": " + sig(runs[i])).join("\n")); process.exit(1); }
   const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
   console.log(runs.length + " run(s) on " + [...new Set(runs.map((x) => x.renderer ?? "?"))].join(", ") + "; set " + runs.map((x) => x.draws.set).join("/") + " draws of " + runs.map((x) => x.draws.main).join("/") + (runs.every((x) => x.streamed) ? "" : "; NOT streamed in every run"));
   console.log("variant    us/draw p50 (median of runs)  min..max of runs   calls/draw  glErrors");
@@ -225,5 +242,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
   for (const k of Object.keys(runs[0].layers)) console.log("layer " + k.padEnd(14) + med(runs.map((x) => x.layers[k])).toFixed(2) + " us/draw");
   const full = med(runs.map((x) => x.variants.full.usPerDraw.p50));
-  console.log("gate (full replay < ~8 us/draw): " + (full < 8 ? "PASS" : "FAIL") + " at " + full.toFixed(2) + " us/draw");
+  const soft = /swiftshader|llvmpipe|softpipe|software|microsoft basic/i.test(runs[0].renderer ?? ""), complete = runs.every((x) => x.streamed) && !runs[0].all;
+  console.log(soft || !complete ? "gate not applied (" + (soft ? "software renderer" : "island not streamed in every run, or --all") + "): full " + full.toFixed(2) + " us/draw, informational" : "gate (full replay < ~8 us/draw): " + (full < 8 ? "PASS" : "FAIL") + " at " + full.toFixed(2) + " us/draw");
 }
