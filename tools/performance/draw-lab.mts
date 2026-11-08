@@ -50,7 +50,10 @@ export interface DrawLabOptions {
 }
 
 /** one variant's times over the measured frames */
-export interface LabVariant { usPerDraw: { p10: number; p50: number; p90: number }; msPerPass: number; callsPerDraw: number; glErrors: number }
+export interface LabVariant { usPerDraw: { p10: number; p50: number; p90: number }; msPerPass: number; callsPerDraw: number; glErrors: number; errorsAt: LabError[] }
+
+/** a replayed call that raised a GL error in the warm-up's call-by-call check */
+export interface LabError { code: number; call: string; cls: string; bridged: boolean; draw: number; module: string; object: string; material: string; args: string[] }
 
 /** what drawLab returns (gpu-match adds the run's config around it) */
 export interface LabResult {
@@ -88,7 +91,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
     return "skip";
   };
   type Call = { f: Function; t: object; a: unknown[]; n: string; c: string };
-  type Draw = { geometry: unknown; material: any; object: any; group: unknown; calls: Call[]; lead: Call[] };
+  type Draw = { geometry: unknown; material: any; object: any; group: unknown; calls: Call[]; lead: Call[]; module: string };
 
   // ---- capture: wrap the context's and WEBGL_multi_draw's methods on the instances, and renderBufferDirect
   const md = gl.getExtension("WEBGL_multi_draw") as object | null;
@@ -121,7 +124,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
     if (!capturing || camera !== cam || sc !== scene) return rbd.call(this, camera, sc, geometry, material, object, group);
     seg = []; drawn = true;
     try { return rbd.call(this, camera, sc, geometry, material, object, group); }
-    finally { draws.push({ geometry, material, object, group, calls: seg, lead: [] }); seg = null; }
+    finally { draws.push({ geometry, material, object, group, calls: seg, lead: [], module: "" }); seg = null; }
   };
 
   const own = (k: string) => Object.prototype.hasOwnProperty.call(scene, k) ? scene[k] : undefined;
@@ -137,12 +140,41 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
   for (const id of kr.moduleIds?.() ?? []) for (const root of kr.moduleRoots?.(id) ?? []) moduleOf.set(root, id);
   const moduleName = (x: any) => { for (let p = x; p && p !== scene; p = p.parent) { const m = moduleOf.get(p); if (m) return m; } return ""; };
   const topName = (x: any) => { let p = x; while (p.parent && p.parent !== scene) p = p.parent; return p.parent === scene ? "~" + (p.name || p.type) : "(detached)"; };
-  type Variant = { name: string; run: () => void; calls: number; errors: number; t: number[] };
+  type Variant = { name: string; run: () => void; check?: () => LabError[]; calls: number; errors: number; errorsAt: LabError[]; t: number[] };
+  // what a call's WebGL object arguments are now: deleted (isX false), or a texture attached to the bound framebuffer
+  const argInfo = (a: unknown[]) => a.map((x) => {
+    if (x === null || typeof x !== "object" || ArrayBuffer.isView(x)) return typeof x === "number" ? String(x) : x === null ? "null" : "data";
+    const kind = (x as object).constructor?.name ?? "object";
+    const live = kind === "WebGLTexture" ? gl.isTexture(x as WebGLTexture) : kind === "WebGLBuffer" ? gl.isBuffer(x as WebGLBuffer) : kind === "WebGLProgram" ? gl.isProgram(x as WebGLProgram)
+      : kind === "WebGLVertexArrayObject" ? gl.isVertexArray(x as WebGLVertexArrayObject) : kind === "WebGLSampler" ? gl.isSampler(x as WebGLSampler) : true;
+    let attached = false;
+    if (kind === "WebGLTexture" && gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING)) {
+      for (const at of [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.DEPTH_ATTACHMENT, gl.DEPTH_STENCIL_ATTACHMENT]) {
+        if (gl.getFramebufferAttachmentParameter(gl.DRAW_FRAMEBUFFER, at, gl.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) === gl.TEXTURE && gl.getFramebufferAttachmentParameter(gl.DRAW_FRAMEBUFFER, at, gl.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME) === x) attached = true;
+      }
+    }
+    return kind + (live ? "" : " (deleted)") + (attached ? " (attached to the bound framebuffer)" : "");
+  });
   const layer = (name: string, set: Draw[], keep: string[]): Variant => {
-    const fns: Function[] = [], ts: object[] = [], as: unknown[][] = [];
-    for (const d of set) for (const c of [...d.lead, ...d.calls]) if (keep.includes(c.c)) { fns.push(c.f); ts.push(c.t); as.push(c.a); }
+    const fns: Function[] = [], ts: object[] = [], as: unknown[][] = [], meta: Array<[Call, number, boolean]> = [];
+    set.forEach((d, i) => { for (const c of [...d.lead, ...d.calls]) if (keep.includes(c.c)) { fns.push(c.f); ts.push(c.t); as.push(c.a); meta.push([c, i, d.lead.includes(c)]); } });
     const n = fns.length;
-    return { name, calls: n / set.length, errors: 0, t: [], run: () => { for (let i = 0; i < n; i++) fns[i].apply(ts[i], as[i]); } };
+    return {
+      name, calls: n / set.length, errors: 0, errorsAt: [], t: [],
+      run: () => { for (let i = 0; i < n; i++) fns[i].apply(ts[i], as[i]); },
+      // call by call with a read-back after each: which call fails, and what its object arguments are now
+      check: () => {
+        const out: LabError[] = [];
+        for (let i = 0; i < n && out.length < 4; i++) {
+          fns[i].apply(ts[i], as[i]);
+          const e = gl.getError();
+          if (e === gl.NO_ERROR) continue;
+          const [c, di, bridged] = meta[i], d = set[di];
+          out.push({ code: e, call: c.n, cls: c.c, bridged, draw: di, module: d.module, object: String(d.object.name || d.object.type), material: String(d.material.name || d.material.type), args: argInfo(c.a) });
+        }
+        return out;
+      },
+    };
   };
 
   return new Promise<LabResult>((resolve, reject) => {
@@ -162,7 +194,8 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
         if (d.material.transparent && (m || o.all)) transparent++;
         if (left) { for (const c of d.calls) if (c.c !== "draw" && c.c !== "skip") bridge.push(c); continue; }
         d.lead = set.length ? bridge : [...prelude.values(), ...bridge]; bridge = [];
-        byModule[m || "(none)"] = (byModule[m || "(none)"] ?? 0) + 1; set.push(d);
+        d.module = m || "(none)";
+        byModule[d.module] = (byModule[d.module] ?? 0) + 1; set.push(d);
         for (const c of d.calls) if (c.c === "skip") skipped[c.n] = (skipped[c.n] ?? 0) + 1; else perDraw[c.c] = (perDraw[c.c] ?? 0) + 1;
       }
       if (!set.length) throw Error("drawLab: the captured frame has no " + (o.all ? "" : "static ") + "opaque draws to replay (" + draws.length + " main draws)");
@@ -170,7 +203,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       for (const k in perDraw) perDraw[k] = +(perDraw[k] / set.length).toFixed(2);
       const s = set;
       variants = [
-        { name: "three", calls: 0, errors: 0, t: [], run: () => {
+        { name: "three", calls: 0, errors: 0, errorsAt: [], t: [], run: () => {
           for (let i = 0; i < s.length; i++) {
             const d = s[i], ob = d.object;
             ob.modelViewMatrix.multiplyMatrices(cam.matrixWorldInverse, ob.matrixWorld);
@@ -190,6 +223,12 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       if (warm) while (gl.getError() !== gl.NO_ERROR) { /* drain errors from before */ }
       for (let j = 0; j < variants.length; j++) {
         const v = variants[(frame + j) % variants.length];
+        if (warm && v.check) {
+          r.resetState(); r.setRenderTarget(rt); gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
+          while (gl.getError() !== gl.NO_ERROR) { /* the setup's own */ }
+          v.errorsAt = v.check();
+          while (gl.getError() !== gl.NO_ERROR) { /* counted above */ }
+        }
         r.resetState();
         r.setRenderTarget(rt);
         gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
@@ -207,7 +246,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       const out: Record<string, LabVariant> = {};
       for (const v of variants) {
         const us = v.t.map((x) => (x * 1000) / set.length);
-        out[v.name] = { usPerDraw: { p10: +q(us, 0.1).toFixed(3), p50: +q(us, 0.5).toFixed(3), p90: +q(us, 0.9).toFixed(3) }, msPerPass: +q(v.t, 0.5).toFixed(4), callsPerDraw: +v.calls.toFixed(2), glErrors: v.errors };
+        out[v.name] = { usPerDraw: { p10: +q(us, 0.1).toFixed(3), p50: +q(us, 0.5).toFixed(3), p90: +q(us, 0.9).toFixed(3) }, msPerPass: +q(v.t, 0.5).toFixed(4), callsPerDraw: +v.calls.toFixed(2), glErrors: v.errors, errorsAt: v.errorsAt };
       }
       const p = (k: string) => out[k].usPerDraw.p50;
       const layers = { core: p("core"), texture: +(p("+texture") - p("core")).toFixed(3), uniform: +(p("+uniform") - p("+texture")).toFixed(3), state: +(p("full") - p("+uniform")).toFixed(3), threeOverFull: +(p("three") - p("full")).toFixed(3) };
