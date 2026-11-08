@@ -230,7 +230,7 @@ const mod: WorldModule = {
     await Y(":masses");
     // the props are the swamp's HARD COVER (crates, barrels, traps — with colliders): drawn with the main tier
     // (to the far switch), not the near tier — a crate you can be shot from behind never vanishes at 90–170 m
-    for (const p of LAYOUT.props) addProp(OLD_LOD ? Nr(p.x, p.z) : Mn(p.x, p.z), Mn(p.x, p.z), p, rng, extra, signMat);
+    for (const p of LAYOUT.props) { addProp(OLD_LOD ? Nr(p.x, p.z) : Mn(p.x, p.z), Mn(p.x, p.z), p, rng, extra, signMat); await ctx.yield(); }
     await Y(":props");
     for (const r of LAYOUT.ropes) Nr(r.a[0], r.a[2]).rope.add(tubeGeo(catenary(new THREE.Vector3(...r.a), new THREE.Vector3(...r.b), r.sag, 8), 0.022, 4, false, 10), null, col(ROPE));
     // ---- vegetation through the veg area's API (mangroves carry the SAME colliders as veg-scatter gives them)

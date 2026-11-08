@@ -161,6 +161,7 @@ const mod: WorldModule = {
       const rm = new THREE.Mesh(ring, fm); rm.name = "cove:sand-feather"; rm.receiveShadow = true; rm.renderOrder = 1; rm.userData.castShadow = false; rm.userData.farShadow = false;
       group.add(rm);
     }
+    await ctx.yield();
     // CRAZY-PAVING terraces — a continuous irregular flagstone band (4–6 m wide,
     // ragged edge, feathered into the sand) along each path: camera-terrace stair → tiki → pool deck, deck → beach hut
     // → pier head; + mossy GRASS PATCHES scattered over the open sand (green mats between the umbrellas)
@@ -219,11 +220,14 @@ const mod: WorldModule = {
       const gmesh = new THREE.Mesh(gg, gm); gmesh.name = "cove:grass-mats"; gmesh.receiveShadow = true; gmesh.renderOrder = 1; gmesh.userData.castShadow = false; gmesh.userData.farShadow = false;
       group.add(gmesh);
     }
+    await ctx.yield();
 
     // ---- hotel + terraces
-    addHotel(Mn(88, 470), mats, HOTEL, { extra, rng, near: Nr(88, 470), sculptureFace: [VIEW.pos[0], VIEW.pos[2]] });
+    await addHotel(Mn(88, 470), mats, HOTEL, { extra, rng, near: Nr(88, 470), sculptureFace: [VIEW.pos[0], VIEW.pos[2]] }, () => ctx.yield());
+    await ctx.yield();
     addTerrace(Mn(EAST_TERRACE.cx - 10, EAST_TERRACE.cz + 18), EAST_TERRACE, Y, rng);
     addTerrace(Mn(WEST_TERRACE.cx, WEST_TERRACE.cz), WEST_TERRACE, Math.min(ctx.terrain.height(WEST_TERRACE.cx, WEST_TERRACE.cz), Y), rng);
+    await ctx.yield();
 
     // ---- the raised pool: limestone plinth skirt, flagstone deck ring, cream coping, mosaic basin + caustics, water
     {
@@ -287,6 +291,7 @@ const mod: WorldModule = {
       for (const s of [-1, 1]) Nr(POOL_C[0], POOL_C[1]).metal.add(cylGeo(0.025, 0.025, 1.6, 8), M(ladE[0] - 0.25, POOL_WATER_Y + 0.2, ladE[1] + s * 0.25, 0, 0, 0.25), col("#d8dde2"));
       for (const f of DECK_FLIGHTS) addFlightVis(b, f);
     }
+    await ctx.yield();
 
     // ---- tiki bar + sign
     {
@@ -298,17 +303,20 @@ const mod: WorldModule = {
       sign.rotation.y = -a + Math.PI / 2; sign.castShadow = true; sign.name = "cove:sign";
       extra.push(sign);
     }
+    await ctx.yield();
 
     // ---- buildings (annex, beach hut, bungalows) + decks + pier
     // each building its own LOD unit (full shell ≤ 90 m, LOD1 box beyond + as its shadow proxy), furniture ≤ 25 m
-    LAYOUT.parts.forEach((parts, i) => {
+    for (const [i, parts] of LAYOUT.parts.entries()) {
       const it = lod.item(`b${i}`, parts.b.x, parts.b.z, { mid: 90, near: 70, fine: 25 });
       addBuildingLod1(it.lod1, parts);
       addBuilding(it.main, mats, parts, { extra, dressing: parts.b.id === "annex", lod: 2, near: it.near, fine: it.fine, kitFurniture: true });
-    });
+      await ctx.yield();
+    }
     for (const d of LAYOUT.bungalowDecks) P.addDeck(Mn(d.x, d.z), d, seabed, rng, {});
     for (const w of LAYOUT.pier) { P.addDeck(Mn(w.x, w.z), w, (x, z) => Math.min(ctx.terrain.height(x, z), w.y - 0.3), rng, { planksAlongX: true }); water?.registerFoamRect(w.x, w.z, w.w / 2 + 0.6, w.d / 2, w.yaw, 1.2, 0.5); }
     for (const d of LAYOUT.bungalowDecks) water?.registerFoamRect(d.x, d.z, d.w / 2 + 0.5, d.d / 2 + 0.5, d.yaw, 1.4, 0.6);
+    await ctx.yield();
     // the pier's timber stairs (beach + swim-out) — chunky treads on two stringers, lashed posts, rope rails (the
     // stilt-town stairs' look; the server collides with the same steps)
     for (const f of LAYOUT.stairs) {
@@ -329,6 +337,7 @@ const mod: WorldModule = {
         P.addRope(Nr(f.x, f.z), pa.clone().setY(pa.y + 0.98), pb.clone().setY(pb.y + 0.98), 0.08, 0.028);
       }
     }
+    await ctx.yield();
     // bungalow chimneys (stone chimney stacks)
     for (const pb of LAYOUT.parts) if (pb.b.id?.startsWith("bungalow")) {
       const b = pb.b, c = Math.cos(b.yaw), s = Math.sin(b.yaw), lx = b.w / 2 - 1.2, lz = -b.d / 2 + 1.4;
@@ -399,6 +408,7 @@ const mod: WorldModule = {
       st.bbox(2.5, 0.5, 0.9, M(HILL.x - 0.35, top + 3.05, HILL.z - 0.6, 0, 0, 0.03), col("#d3c5a1"), 0.07, (x, y, z, _b, o) => { if (noise3(x * 2.5, y * 2.5, z * 2.5) > 0.6) o.lerp(col("#6f8f3a"), 0.55); });
       for (const [dx, dz, s0] of [[1.9, 0.6, 0.45], [2.3, -0.4, 0.35], [-2.0, 0.9, 0.4]] as Array<[number, number, number]>) st.bbox(s0 * 1.6, s0, s0, M(HILL.x + dx, top + s0 / 2, HILL.z + dz, dx * 1.7), col("#c9bb98"), 0.05);
     }
+    await ctx.yield();
     // pool island planting
     veg.plant("palm-leaning", ISLAND.x, ISLAND.z, 1.2, 0.8, Y + 1.5);
     veg.plant("monstera", ISLAND.x + 0.3, ISLAND.z - 0.2, 2.1, 0.9, Y + 1.5);
@@ -429,9 +439,12 @@ const mod: WorldModule = {
       veg.plant("palm-leaning", t.cx + Math.cos(t.a1 - 0.05) * 9, t.cz + Math.sin(t.a1 - 0.05) * 9, 1.9, 1.05, t.y);
       veg.plant("palm", t.cx + Math.cos(t.a1 - 0.1) * 7, t.cz + Math.sin(t.a1 - 0.1) * 7 - 3, 0.3, 1.05, t.y);
     }
+    await ctx.yield();
     // east terrace planters
     for (let i = 0; i < 5; i++) { const a = EAST_TERRACE.a0 + 0.1 + i * (EAST_TERRACE.a1 - EAST_TERRACE.a0 - 0.2) / 4; addPlanter(Nr(EAST_TERRACE.cx - 10, EAST_TERRACE.cz + 18), M(EAST_TERRACE.cx + Math.cos(a) * 25.2, EAST_TERRACE.y, EAST_TERRACE.cz + Math.sin(a) * 25.2), rng, 0.5); }
+    await ctx.yield();
     veg.flush();
+    await ctx.yield();
 
     // ---- far proxy: hotel (per-bay boxes along the serpentine), annex, huts, pier as flat slabs
     {
@@ -465,10 +478,13 @@ const mod: WorldModule = {
       lod.proxyGeo(polyGeo(DECK, DECK_TOP, 1), null, "#dac9a8");
       lod.proxyGeo(polyGeo(POOL, DECK_TOP + 0.02, 1), null, "#39c3cf");
     }
+    await ctx.yield();
 
     endFruit();
     fruit.build(ctx, group);
+    await ctx.yield();
     const n = await lod.buildAsync(ctx, group);
+    await ctx.yield();
     townInteriors(ctx, group, INTERIOR_ROOMS, { name: "cove", cell: 24 });
     for (const e of extra) { e.userData.farShadow = false; group.add(e); }
     void hotelFootprint;
