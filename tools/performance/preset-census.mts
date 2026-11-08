@@ -94,10 +94,13 @@ const INSTALL = `(() => {
   };
   // a shadow pass is a cascade or face three actually renders (one viewport each): the sun's own scheduler may skip the
   // whole render or refresh one cascade of two after this wrapper ran
-  const st = r.state, vpf = st.viewport.bind(st);
+  // (setRenderTarget sets the viewport too, binding the map and restoring the target after: those are not faces)
+  const st = r.state, vpf = st.viewport.bind(st), srt = r.setRenderTarget.bind(r);
+  let inSrt = false;
+  r.setRenderTarget = function (...a) { inSrt = true; try { return srt(...a); } finally { inSrt = false; } };
   st.viewport = function (v) {
     const key = c.stack[c.stack.length - 1];
-    if (c.on && key && key.startsWith("shadow:")) { const p = pass(key); p.n++; p.mpx += (v.z * v.w) / 1e6; }
+    if (c.on && !inSrt && key && key.startsWith("shadow:")) { const p = pass(key); p.n++; p.mpx += (v.z * v.w) / 1e6; }
     return vpf(v);
   };
   const rbd = r.renderBufferDirect.bind(r);
