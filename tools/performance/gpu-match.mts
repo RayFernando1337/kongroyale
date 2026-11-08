@@ -122,6 +122,9 @@ if ((CPUPROF || CENSUS) && ROUTE === "pan") throw Error("--cpuprofile and --cens
 // and times three against a raw replay of their GL calls (--lab-frames 120 measured frames, --lab-reps 3 passes a frame).
 // The page is cross-origin isolated as for --census; the census would wrap the same calls, so the two never mix.
 const DRAWLAB = arg("--drawlab", "");
+// With the draw list on (?drawlist in --query, or a build whose flag default turns it on), each route segment records the
+// draws it served lean and the pinned draws three drew instead, per frame (drawListLeanDraws, drawListFallbackDraws, and
+// drawListLeanShare, the lean share of all draw calls), and its drawListServed gate fails when the list served none.
 const LAB_FRAMES = Number(arg("--lab-frames", "120")), LAB_REPS = Number(arg("--lab-reps", "3"));
 if (DRAWLAB && CENSUS) throw Error("--drawlab and --census both wrap the GL context: run them separately");
 if (DRAWLAB && ROUTE === "pan") throw Error("--drawlab runs where the route ends: use it with --route tour (--segments walk-town)");
@@ -161,6 +164,8 @@ function install(cfg: { maxFrames: number; panRate: number; panPitch: number; pl
   const c = { arm: false, lineSeen: false, on: false, pan: false, panT0: 0, landed: false, n: 0, invalid: 0, disjoints: 0, timer: !!ext, jumping: false, jumpAt: null as null | Record<string, number>, T: new Float64Array(N), CPU: new Float32Array(N), GPU: new Float32Array(N).fill(-1), PH: new Int8Array(N).fill(-1), ST: new Int8Array(N).fill(-1), SR: new Int8Array(N), PN: new Int8Array(N),
     // the route: segment index and measured flag per frame, then the frame's attribution (ms unless named)
     SEG: new Int8Array(AN).fill(-1), MEAS: new Int8Array(AN), SIMIN: f32(), SIMOUT: f32(), ACK: f32(), PRED: f32(), RUPD: f32(), ACT: f32(), VEHU: f32(), HOOKS: f32(), IDLE: f32(), CULL: f32(), SUBMIT: f32(), CALLS: f32(), TRIS: f32(), PROGN: f32(), HEAP: f32(),
+    // ?drawlist (engine/draw-list.ts): draws the list served lean and pinned draws three drew instead, -1 = no list
+    DLLEAN: f32().fill(-1), DLFB: f32().fill(-1),
     loaf: [] as Array<Record<string, unknown>> };
   // attribution: the objects that do a frame's work are wrapped where they live (no game code changes). simOut is the
   // practice host's simulation run by its 8 ms timer between frames, charged to the next frame it delays; with the host
@@ -245,6 +250,7 @@ function install(cfg: { maxFrames: number; panRate: number; panPitch: number; pl
       const dc = kr.drawCensus; if (dc) { dc.label = String(c.SEG[i]); dc.on = c.MEAS[i] === 1; }
       A.simIn = A.pred = A.rupd = A.act = A.vehu = A.idle = A.occ0 = A.cull1 = 0; A.inStep = true;
       info.reset(); progs0 = info.programs?.length ?? 0;
+      kr.drawList?.reset();
     }
     let q: WebGLQuery | null = null;
     if (ext && pq.length < 8) { q = free.pop() ?? gl.createQuery(); if (q) gl.beginQuery(ext.TIME_ELAPSED_EXT, q); }
@@ -259,6 +265,7 @@ function install(cfg: { maxFrames: number; panRate: number; panPitch: number; pl
         const seq = cm ? cm.authSeq : -1; c.ACK[i] = cm && seq !== A.ackSeq && A.ackSeq >= 0 ? cm.ackMs : -1; A.ackSeq = seq; c.PRED[i] = A.pred; c.RUPD[i] = A.rupd; c.ACT[i] = A.act; c.VEHU[i] = A.vehu;
         c.IDLE[i] = A.idle; c.HOOKS[i] = A.occ0 ? A.occ0 - s0 - A.idle : 0; c.CULL[i] = A.occ0 && A.cull1 ? A.cull1 - A.occ0 : 0; c.SUBMIT[i] = A.cull1 ? s1 - A.cull1 : 0;
         c.CALLS[i] = info.render.calls; c.TRIS[i] = info.render.triangles; c.PROGN[i] = (info.programs?.length ?? 0) - progs0;
+        const dl = kr.drawList; if (dl) { const n = dl.counts(); c.DLLEAN[i] = n.lean; c.DLFB[i] = n.fallback; }
         c.HEAP[i] = ((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1048576;
       }
       // armed, not yet in the match: keep this frame only if the match began during it, else give its slot back
@@ -362,7 +369,7 @@ let exitCode = 0;
 const marks: Record<string, number> = {};
 const route: Record<string, unknown> = {};
 let pageInfo: Record<string, unknown> = {};
-const ATTRIB = ["SEG", "MEAS", "SIMIN", "SIMOUT", "ACK", "PRED", "RUPD", "ACT", "VEHU", "HOOKS", "IDLE", "CULL", "SUBMIT", "CALLS", "TRIS", "PROGN", "HEAP"] as const;
+const ATTRIB = ["SEG", "MEAS", "SIMIN", "SIMOUT", "ACK", "PRED", "RUPD", "ACT", "VEHU", "HOOKS", "IDLE", "CULL", "SUBMIT", "CALLS", "TRIS", "PROGN", "HEAP", "DLLEAN", "DLFB"] as const;
 type Series = Record<(typeof ATTRIB)[number], number[]>;
 let data: ({ panT0: number; PN: number[]; n: number; invalid: number; disjoints: number; timer: boolean; T: number[]; CPU: number[]; GPU: number[]; PH: number[]; ST: number[]; SR: number[]; loaf: Array<{ t: number; dur: number; block: number; scripts: Array<Record<string, unknown>> }> } & Series) | null = null;
 let tour: { results: Array<{ id: string; ok: boolean; stuck: number; skipped: number; waypoints: number; of: number; runS: number; note: string }>; log: string[] } | null = null;
@@ -474,6 +481,7 @@ try {
   pageInfo.krErrors = await page.evaluate(() => (window as any).__kr.errors.slice(0, 20));
   pageInfo.renderScale = await page.evaluate(() => (window as any).__kr.engine.renderScale);
   pageInfo.streamedAt = await page.evaluate(() => (window as any).__kr.streamedAt ?? null);
+  pageInfo.drawList = await page.evaluate(() => { const dl = (window as any).__kr.drawList; return dl ? { on: dl.on, modules: dl.modules, off: dl.off } : null; });
   pageInfo.refreshHzEnd = await page.evaluate(() => (window as any).__kr.engine.refreshHz);
 } catch (e) {
   errors.push("harness: " + (e instanceof Error ? e.message.split("\n")[0] : String(e)));
@@ -556,6 +564,17 @@ function routeCase(seg: Segment, k: number, idx: number[]): CaseResult {
     longAnimationFrames: { status: "ok", unit: "count", better: "lower", value: longN },
   };
   Object.assign(c.metrics, attribution);
+  // ?drawlist asked for the list: record what it served, and fail the segment when it served nothing (the list never
+  // installed, switched itself off, or pinned none of this segment's draws), so an A/B arm can't pass with it idle
+  const dlInfo = pageInfo.drawList as { off: string } | null | undefined;
+  if (new URLSearchParams(QUERY).has("drawlist") || dlInfo) {
+    const lean = idx.filter((i) => d.DLLEAN[i] >= 0);
+    c.metrics.drawListLeanDraws = dist(lean.map((i) => d.DLLEAN[i]), "count");
+    c.metrics.drawListFallbackDraws = dist(lean.map((i) => d.DLFB[i]), "count");
+    const served = lean.reduce((s, i) => s + d.DLLEAN[i], 0);
+    c.metrics.drawListLeanShare = { status: "ok", unit: "%", better: "higher", value: +((100 * served) / Math.max(1, idx.reduce((s, i) => s + d.CALLS[i], 0))).toFixed(2) };
+    c.gates.push({ id: "drawListServed", pass: served > 0, detail: served + " lean draws over " + lean.length + " of " + idx.length + " frames" + (dlInfo?.off ? "; the list is off: " + dlInfo.off : dlInfo ? "" : "; the list never installed") });
+  }
   const r = tour?.results[k];
   c.gates.push({ id: "routeFollowed", pass: !!r && r.ok, detail: r ? (r.ok ? "ok" : "not finished cleanly") + ": " + r.runS.toFixed(1) + " s, waypoints " + r.waypoints + "/" + r.of + ", stuck " + r.stuck + ", skipped " + r.skipped + (r.note ? ", " + r.note : "") : "the segment never ran" });
   if (ROUTE === "survey" && SOFTWARE) c.gates = c.gates.filter((g) => g.id !== "windowLongEnough");
