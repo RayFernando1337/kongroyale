@@ -19,7 +19,8 @@
 // in-session switch report #7 made); --frames 8 (measured frames per pose; even, so a half-rate shadow refresh counts
 // fairly); --settle-s 25 --settle-frames 30 (after a teleport: these seconds, then these frames, before measuring; a
 // jump of the camera makes the water's obstacle bake, water/obstacles.ts, re-check every frame for 12 frames); --plane-r 450 (the
-// plane pose is measured once the camera is over 300 m up and within this many metres of the island centre); --stream-timeout-s 1200
+// plane pose is measured once the camera is over 300 m up and within this many metres of the island centre, or at its
+// closest approach to the centre when the plane's line passes farther out); --stream-timeout-s 1200
 // (the practice starts once the island has streamed in, __kr.streamed, as for a player who has been on the title a while);
 // --software (SwiftShader); --angle vulkan|metal|d3d11 (a hardware GPU instead); --query "a=1" (extra URL flags);
 // --root <checkout> (serve its dist/, build first); --port 3033; --seed 42; --ready-timeout-s 600.
@@ -224,7 +225,15 @@ async function run() {
           if (p.at === "plane") {
             for (let s = await status(); !(s.inMatch && s.phase >= 1); s = await status()) { if (Date.now() - play0 > 900_000) throw Error("no plane phase 900 s after the practice started"); await sleep(500); }
             if ((await status()).phase !== 1) { errors.push("plane: the match was past phase 1"); continue; }
-            for (let s = await status(); Math.hypot(s.cam[0], s.cam[2]) > PLANE_R || s.cam[1] < 300; s = await status()) { if (s.phase !== 1) throw Error("the plane never came within " + PLANE_R + " m of the centre"); await sleep(250); }
+            // the plane's line is a chord that may miss the centre: measure within PLANE_R of it, or at the closest approach
+            let dMin = Infinity;
+            for (let s = await status(); ; s = await status()) {
+              if (s.phase !== 1) throw Error("the plane left phase 1 before its closest approach (" + Math.round(dMin) + " m)");
+              const dd = Math.hypot(s.cam[0], s.cam[2]);
+              if (s.cam[1] > 300 && (dd < PLANE_R || (dMin < 1200 && dd > dMin + 40))) break;
+              if (s.cam[1] > 300) dMin = Math.min(dMin, dd);
+              await sleep(250);
+            }
             await measure(p.name);
             continue;
           }
