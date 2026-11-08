@@ -567,13 +567,15 @@ function routeCase(seg: Segment, k: number, idx: number[]): CaseResult {
   // ?drawlist asked for the list: record what it served, and fail the segment when it served nothing (the list never
   // installed, switched itself off, or pinned none of this segment's draws), so an A/B arm can't pass with it idle
   const dlInfo = pageInfo.drawList as { off: string } | null | undefined;
-  if (new URLSearchParams(QUERY).has("drawlist") || dlInfo) {
+  const dlAsked = (new URLSearchParams(QUERY).get("drawlist") ?? "").split(",").some((x) => x.trim() !== "");
+  const dlFailed = ((pageInfo.krErrors as unknown[] | undefined) ?? []).some((x) => String(x).startsWith("[drawlist]"));
+  if (dlAsked || dlInfo || dlFailed) {
     const lean = idx.filter((i) => d.DLLEAN[i] >= 0);
-    c.metrics.drawListLeanDraws = dist(lean.map((i) => d.DLLEAN[i]), "count");
+    c.metrics.drawListLeanDraws = lean.length ? { status: "ok", unit: "count", better: "higher", summary: stats(lean.map((i) => d.DLLEAN[i])) } : { status: "invalid", unit: "count", reason: "no frames with the list" };
     c.metrics.drawListFallbackDraws = dist(lean.map((i) => d.DLFB[i]), "count");
     const served = lean.reduce((s, i) => s + d.DLLEAN[i], 0);
-    c.metrics.drawListLeanShare = { status: "ok", unit: "%", better: "higher", value: +((100 * served) / Math.max(1, idx.reduce((s, i) => s + d.CALLS[i], 0))).toFixed(2) };
-    c.gates.push({ id: "drawListServed", pass: served > 0, detail: served + " lean draws over " + lean.length + " of " + idx.length + " frames" + (dlInfo?.off ? "; the list is off: " + dlInfo.off : dlInfo ? "" : "; the list never installed") });
+    c.metrics.drawListLeanShare = !idx.length ? { status: "invalid", unit: "%", reason: "no frames" } : { status: "ok", unit: "%", better: "higher", value: +((100 * served) / Math.max(1, idx.reduce((s, i) => s + d.CALLS[i], 0))).toFixed(2) };
+    c.gates.push({ id: "drawListServed", pass: served > 0, detail: served + " lean draws over " + lean.length + " of " + idx.length + " frames" + (dlInfo?.off ? "; the list is off: " + dlInfo.off : dlInfo ? "" : dlFailed ? "; the list failed to load (see page.krErrors)" : "; the list never installed") });
   }
   const r = tour?.results[k];
   c.gates.push({ id: "routeFollowed", pass: !!r && r.ok, detail: r ? (r.ok ? "ok" : "not finished cleanly") + ": " + r.runS.toFixed(1) + " s, waypoints " + r.waypoints + "/" + r.of + ", stuck " + r.stuck + ", skipped " + r.skipped + (r.note ? ", " + r.note : "") : "the segment never ran" });

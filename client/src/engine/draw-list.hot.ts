@@ -174,7 +174,6 @@ export function leanDraw(s: LeanState, e: Entry, geometry: THREE.BufferGeometry,
   (state as unknown as { setMaterial(m: THREE.Material, frontFaceCW: boolean): void }).setMaterial(material, (object as THREE.Mesh).isMesh === true && object.matrixWorld.determinantAffine() < 0);
   if (s.glVao !== e.vao) { s.bindVao.call(gl, e.vao); s.glVao = e.vao; }
   s.dirty = true;
-  s.lean++;
 
   // three's draw-range arithmetic and buffer renderers (renderBufferDirect, WebGL(Indexed)BufferRenderer)
   const index = geometry.index, dr = geometry.drawRange;
@@ -194,16 +193,19 @@ export function leanDraw(s: LeanState, e: Entry, geometry: THREE.BufferGeometry,
     let elements = 0;
     for (let i = 0; i < n; i++) elements += bm._multiDrawCounts[i];
     info.update(elements, TRI, 1);
+    s.lean++;
   } else if (e.kind === 1) {
     const k = (object as THREE.InstancedMesh).count;
     if (k === 0) return;
     if (index !== null) gl.drawElementsInstanced(TRI, count, e.type, start * e.bytes, k);
     else gl.drawArraysInstanced(TRI, start, count, k);
     info.update(count, TRI, k);
+    s.lean++;
   } else {
     if (index !== null) gl.drawElements(TRI, count, e.type, start * e.bytes);
     else gl.drawArrays(TRI, start, count);
     info.update(count, TRI, 1);
+    s.lean++;
   }
 }
 
