@@ -60,7 +60,7 @@
     }
   ],
   "verified": {
-    "model": "503b31f5a95c9a47",
+    "model": "8d69cca04a1b454a",
     "regions": {
       "client/src/playtest/report.ts#CONSENT_KEY": "b9b9ab7fc86d2ce8",
       "client/src/playtest/report.ts#CONSENT_V": "ad446d36a602eb80",

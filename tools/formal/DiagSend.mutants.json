@@ -61,5 +61,19 @@
     "find": "autoSet' = v /\\ wish' = v /\\ told' = TRUE",
     "replace": "autoSet' = \"on\" /\\ wish' = v /\\ told' = TRUE",
     "expect": "Invariant AutoRespectsOff is violated"
+  },
+  {
+    "name": "automation sends too",
+    "why": "the default does not check navigator.webdriver, so a harness, bench or CI job sends summaries",
+    "find": "/\\ Runs /\\ told /\\ autoSet /= \"off\" /\\ ~gpc",
+    "replace": "/\\ told /\\ autoSet /= \"off\" /\\ ~gpc",
+    "expect": "Invariant AutoNeverInAutomation is violated"
+  },
+  {
+    "name": "the default heartbeat ignores the privacy signal",
+    "why": "startBeat runs by default under Global Privacy Control or Do Not Track and stores a record",
+    "find": "(flagged \\/ (~gpc /\\ autoSet /= \"off\"))",
+    "replace": "(flagged \\/ autoSet /= \"off\")",
+    "expect": "Invariant NoBeatUnderSignal is violated"
   }
 ]
