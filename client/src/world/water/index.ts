@@ -48,6 +48,9 @@ function causticZone(T: Terrain): (x: number, z: number) => boolean {
   };
 }
 const SNAP = 2; // metres — the clipmap origin follows the camera in steps of the L1 cell so L0 stays lattice-aligned
+/** a camera that moved faster than this (m/s) since the last frame, and at least 40 m, jumped (a respawn, a teleport, a
+ *  view camera): nothing flies near it (the plane 62 m/s, a dive 78 m/s) */
+const JUMP_MPS = 300;
 
 const mod: WorldModule & { views: Record<string, CamSpec> } = {
   id: "water",
@@ -247,6 +250,7 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
     let frame = 0, lastSeen = 0, tileAcc = 1, causAcc = 1, farNow = false, midNow = false, jumpFrames = 0, occUseful = true;
     const occDir = new THREE.Vector3();
     const lastCam = new THREE.Vector3(1e9, 0, 0);
+    let lastCamMs = Infinity; // (the first frame is a jump, as before: 40 m)
     let disabled = false, wasOff = false; // profiling: an A/B harness switches the whole module off (__krWater.setOff)
     // profiling switches: hide single passes / skip single jobs without touching the rest
     const prof = { updMs: 0, paused: false, noPre: false, noMul: false, noMain: false, noFoam: false, noOcc: false, noTile: false };
@@ -343,8 +347,12 @@ const mod: WorldModule & { views: Record<string, CamSpec> } = {
       // accumulates, so each prop costs one bake, ever)
       // (after a camera jump — a respawn, a landing, a view camera — check every frame for a moment: props that were
       // LOD-switched or culled where the camera came from get their rings before anyone looks)
-      if (lastCam.distanceToSquared(c) > 40 * 40) jumpFrames = 12;
-      lastCam.copy(c);
+      // (a jump is a camera move faster than anything flies, not a long frame: on SwiftShader the plane covered 40 m
+      // between frames and re-baked the whole island, 4 scene renders, nearly every frame; on a GPU any stall over
+      // 0.65 s in the plane would start 12 of them in a row, RAY-288)
+      const camMs = performance.now(), d2 = lastCam.distanceToSquared(c), jumpM = Math.max(40, (JUMP_MPS * (camMs - lastCamMs)) / 1000);
+      if (d2 > jumpM * jumpM) jumpFrames = 12;
+      lastCam.copy(c); lastCamMs = camMs;
       if (jumpFrames > 0) jumpFrames--;
       if (jumpFrames > 0 || (frame < 240 ? frame % 8 === 4 : frame % 60 === 30)) obstacles.maybeBake();
       frame++;
