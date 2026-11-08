@@ -120,7 +120,7 @@ export function gatherContext(engine: Engine) {
     video: K.display?.settings ?? ls("kr-video"),
     gameSettings: ls("kr-preferences-v1") ?? ls("kr-settings"),
     perf: {
-      fps: safe(() => Math.round(engine.liveFps())), gpuMs: r2(engine.gpuMs), frameCap: engine.frameCap, refreshHz: engine.refreshHz, dynamicRes: engine.dynamicRes, renderScale: engine.renderScale,
+      fps: safe(() => Math.round(engine.liveFps())), gpuMs: r2(engine.gpuMs), cpuMs: r2(engine.stepEma), frameCap: engine.frameCap, refreshHz: engine.refreshHz, dynamicRes: engine.dynamicRes, renderScale: engine.renderScale,
       dprBase: engine.dprBase, pixelRatio: ren.getPixelRatio(), canvas: { w: canvas.width, h: canvas.height, cssW: canvas.clientWidth, cssH: canvas.clientHeight },
       resSteps: Array.isArray(K.resLog) ? K.resLog.slice() : null,
       buildSlices: Array.isArray(K.sliceLog) ? K.sliceLog.slice(-40) : null,
