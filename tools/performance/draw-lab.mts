@@ -50,10 +50,10 @@ export interface DrawLabOptions {
 }
 
 /** one variant's times over the measured frames */
-export interface LabVariant { usPerDraw: { p10: number; p50: number; p90: number }; msPerPass: number; callsPerDraw: number; glErrors: number; errorsAt: LabError[] }
+export interface LabVariant { usPerDraw: { p10: number; p50: number; p90: number }; msPerPass: number; callsPerDraw: number; glErrors: number; glErrorsByRep: number[]; errorsAt: LabError[] }
 
 /** a replayed call that raised a GL error in the warm-up's call-by-call check */
-export interface LabError { code: number; call: string; cls: string; bridged: boolean; draw: number; module: string; object: string; material: string; args: string[] }
+export interface LabError { code: number; pass: number; call: string; cls: string; bridged: boolean; draw: number; module: string; object: string; material: string; args: string[]; samplers?: string[] }
 
 /** what drawLab returns (gpu-match adds the run's config around it) */
 export interface LabResult {
@@ -140,7 +140,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
   for (const id of kr.moduleIds?.() ?? []) for (const root of kr.moduleRoots?.(id) ?? []) moduleOf.set(root, id);
   const moduleName = (x: any) => { for (let p = x; p && p !== scene; p = p.parent) { const m = moduleOf.get(p); if (m) return m; } return ""; };
   const topName = (x: any) => { let p = x; while (p.parent && p.parent !== scene) p = p.parent; return p.parent === scene ? "~" + (p.name || p.type) : "(detached)"; };
-  type Variant = { name: string; run: () => void; check?: () => LabError[]; calls: number; errors: number; errorsAt: LabError[]; t: number[] };
+  type Variant = { name: string; run: () => void; check?: () => LabError[]; calls: number; errors: number; byRep: number[]; errorsAt: LabError[]; t: number[] };
   // what a call's WebGL object arguments are now: deleted (isX false), or a texture attached to the bound framebuffer
   const argInfo = (a: unknown[]) => a.map((x) => {
     if (x === null || typeof x !== "object" || ArrayBuffer.isView(x)) return typeof x === "number" ? String(x) : x === null ? "null" : "data";
@@ -155,22 +155,80 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
     }
     return kind + (live ? "" : " (deleted)") + (attached ? " (attached to the bound framebuffer)" : "");
   });
+  // the bound program's samplers at a failing draw: unit, sampler type, and what that unit holds for the sampler's target
+  const SAMPLERS: Record<number, [string, number, number]> = {
+    0x8b5e: ["2D", 0x0de1, 0x8069], 0x8b62: ["2DShadow", 0x0de1, 0x8069], 0x8dca: ["i2D", 0x0de1, 0x8069], 0x8dd2: ["u2D", 0x0de1, 0x8069],
+    0x8b60: ["Cube", 0x8513, 0x8514], 0x8dc5: ["CubeShadow", 0x8513, 0x8514], 0x8b5f: ["3D", 0x806f, 0x806a],
+    0x8dc1: ["2DArray", 0x8c1a, 0x8c1d], 0x8dc4: ["2DArrayShadow", 0x8c1a, 0x8c1d], 0x8dcf: ["i2DArray", 0x8c1a, 0x8c1d], 0x8dd7: ["u2DArray", 0x8c1a, 0x8c1d],
+  };
+  const texLabel = (): Map<unknown, string> => {
+    const m = new Map<unknown, string>();
+    const add = (t: any, where: string) => {
+      if (!t || !t.isTexture) return;
+      const w = r.properties.get(t)?.__webglTexture;
+      if (w && !m.has(w)) m.set(w, (t.name || t.constructor?.name || "Texture") + " fmt " + t.format + " type " + t.type + (t.isDepthTexture ? " depth" : "") + (t.compareFunction ? " compare" : "") + " (" + where + ")");
+    };
+    scene.traverse((ob: any) => {
+      if (ob.isLight && ob.shadow?.map) { add(ob.shadow.map.texture, "shadow map"); add(ob.shadow.map.depthTexture, "shadow depth"); }
+      for (const mat of Array.isArray(ob.material) ? ob.material : ob.material ? [ob.material] : []) {
+        const u = r.properties.get(mat)?.uniforms ?? {};
+        for (const k in u) { const v = u[k]?.value; if (Array.isArray(v)) v.forEach((x: unknown) => add(x, k)); else add(v, k); }
+      }
+    });
+    const rt = r.getRenderTarget();
+    if (rt) { add(rt.texture, "render target"); add(rt.depthTexture, "render target depth"); }
+    return m;
+  };
+  const samplerInfo = (): string[] => {
+    const prog = gl.getParameter(gl.CURRENT_PROGRAM) as WebGLProgram | null;
+    if (!prog) return ["no program bound"];
+    const labels = texLabel(), active = gl.getParameter(gl.ACTIVE_TEXTURE), out: string[] = [], units = new Map<number, string>();
+    const fbTex = new Set<unknown>();
+    if (gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING)) for (const at of [gl.COLOR_ATTACHMENT0, gl.DEPTH_ATTACHMENT, gl.DEPTH_STENCIL_ATTACHMENT])
+      if (gl.getFramebufferAttachmentParameter(gl.DRAW_FRAMEBUFFER, at, gl.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) === gl.TEXTURE) fbTex.add(gl.getFramebufferAttachmentParameter(gl.DRAW_FRAMEBUFFER, at, gl.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME));
+    const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS) as number;
+    for (let i = 0; i < n; i++) {
+      const info = gl.getActiveUniform(prog, i);
+      const sm = info && SAMPLERS[info.type];
+      if (!info || !sm) continue;
+      for (let j = 0; j < info.size; j++) {
+        const name = info.size > 1 ? info.name.slice(0, -3) + "[" + j + "]" : info.name;
+        const unit = gl.getUniform(prog, gl.getUniformLocation(prog, name)!) as number;
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        const t = gl.getParameter(sm[2]);
+        const cmp = t ? gl.getTexParameter(sm[1], gl.TEXTURE_COMPARE_MODE) : 0;
+        const clash = units.has(unit) && units.get(unit) !== sm[0] ? " CLASH with " + units.get(unit) : "";
+        units.set(unit, sm[0]);
+        out.push(name + " " + sm[0] + " unit " + unit + ": " + (t ? (labels.get(t) ?? "unknown texture") + (cmp ? " compareMode on" : "") + (fbTex.has(t) ? " ATTACHED to the bound framebuffer" : "") : "nothing bound") + clash);
+      }
+    }
+    gl.activeTexture(active);
+    return out;
+  };
   const layer = (name: string, set: Draw[], keep: string[]): Variant => {
     const fns: Function[] = [], ts: object[] = [], as: unknown[][] = [], meta: Array<[Call, number, boolean]> = [];
     set.forEach((d, i) => { for (const c of [...d.lead, ...d.calls]) if (keep.includes(c.c)) { fns.push(c.f); ts.push(c.t); as.push(c.a); meta.push([c, i, d.lead.includes(c)]); } });
     const n = fns.length;
     return {
-      name, calls: n / set.length, errors: 0, errorsAt: [], t: [],
+      name, calls: n / set.length, errors: 0, byRep: [], errorsAt: [], t: [],
       run: () => { for (let i = 0; i < n; i++) fns[i].apply(ts[i], as[i]); },
-      // call by call with a read-back after each: which call fails, and what its object arguments are now
+      // call by call with a read-back after each, twice: pass 0 from the state the previous variant left, pass 1 from this
+      // replay's own end state (what a timed run's second rep starts from)
       check: () => {
         const out: LabError[] = [];
-        for (let i = 0; i < n && out.length < 4; i++) {
-          fns[i].apply(ts[i], as[i]);
-          const e = gl.getError();
-          if (e === gl.NO_ERROR) continue;
-          const [c, di, bridged] = meta[i], d = set[di];
-          out.push({ code: e, call: c.n, cls: c.c, bridged, draw: di, module: d.module, object: String(d.object.name || d.object.type), material: String(d.material.name || d.material.type), args: argInfo(c.a) });
+        for (let pass = 0; pass < 2; pass++) {
+          let found = 0;
+          for (let i = 0; i < n; i++) {
+            fns[i].apply(ts[i], as[i]);
+            if (found >= 4) continue;
+            const e = gl.getError();
+            if (e === gl.NO_ERROR) continue;
+            found++;
+            const c = meta[i][0], di = meta[i][1], d = set[di];
+            out.push({ code: e, pass, call: c.n, cls: c.c, bridged: meta[i][2], draw: di, module: d.module, object: String(d.object.name || d.object.type), material: String(d.material.name || d.material.type), args: argInfo(c.a), samplers: c.c === "draw" ? samplerInfo() : undefined });
+            while (gl.getError() !== gl.NO_ERROR) { /* the diagnosis's own, if any */ }
+          }
+          while (gl.getError() !== gl.NO_ERROR) { /* after the first four */ }
         }
         return out;
       },
@@ -203,7 +261,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       for (const k in perDraw) perDraw[k] = +(perDraw[k] / set.length).toFixed(2);
       const s = set;
       variants = [
-        { name: "three", calls: 0, errors: 0, errorsAt: [], t: [], run: () => {
+        { name: "three", calls: 0, errors: 0, byRep: [], errorsAt: [], t: [], run: () => {
           for (let i = 0; i < s.length; i++) {
             const d = s[i], ob = d.object;
             ob.modelViewMatrix.multiplyMatrices(cam.matrixWorldInverse, ob.matrixWorld);
@@ -232,11 +290,18 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
         r.resetState();
         r.setRenderTarget(rt);
         gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
+        if (warm) {
+          for (let k = 0; k < o.reps; k++) {
+            v.run();
+            const e = gl.getError();
+            v.byRep.push(e);
+            if (e !== gl.NO_ERROR) { v.errors++; for (let g = 0; g < 16 && gl.getError() !== gl.NO_ERROR; g++) v.errors++; }
+          }
+          continue;
+        }
         const t0 = performance.now();
         for (let k = 0; k < o.reps; k++) v.run();
-        const dt = (performance.now() - t0) / o.reps;
-        if (warm) { for (let g = 0; g < 16 && gl.getError() !== gl.NO_ERROR; g++) v.errors++; }
-        else v.t.push(dt);
+        v.t.push((performance.now() - t0) / o.reps);
       }
       r.resetState();
     };
@@ -246,7 +311,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       const out: Record<string, LabVariant> = {};
       for (const v of variants) {
         const us = v.t.map((x) => (x * 1000) / set.length);
-        out[v.name] = { usPerDraw: { p10: +q(us, 0.1).toFixed(3), p50: +q(us, 0.5).toFixed(3), p90: +q(us, 0.9).toFixed(3) }, msPerPass: +q(v.t, 0.5).toFixed(4), callsPerDraw: +v.calls.toFixed(2), glErrors: v.errors, errorsAt: v.errorsAt };
+        out[v.name] = { usPerDraw: { p10: +q(us, 0.1).toFixed(3), p50: +q(us, 0.5).toFixed(3), p90: +q(us, 0.9).toFixed(3) }, msPerPass: +q(v.t, 0.5).toFixed(4), callsPerDraw: +v.calls.toFixed(2), glErrors: v.errors, glErrorsByRep: v.byRep, errorsAt: v.errorsAt };
       }
       const p = (k: string) => out[k].usPerDraw.p50;
       const layers = { core: p("core"), texture: +(p("+texture") - p("core")).toFixed(3), uniform: +(p("+uniform") - p("+texture")).toFixed(3), state: +(p("full") - p("+uniform")).toFixed(3), threeOverFull: +(p("three") - p("full")).toFixed(3) };
