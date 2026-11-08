@@ -122,16 +122,16 @@ export function connectWs(url: string, timeoutMs = 4000): Promise<Link> {
     const receive = (e: MessageEvent) => { const u8 = new Uint8Array(e.data as ArrayBuffer); stats.recv++; stats.recvBytes += u8.length; bin.onMessage(u8, e.timeStamp, SERVER_PATH); };
     let active: Transport = bin, fallback: FallbackReason | null = null, arm: WtArm = "off", deferred = 0, playS = 0, proc: number | undefined;
     const since = performance.now() / 1000;
-    const ack = new Uint32Array(ACK_BINS);
+    const ack = new Uint32Array(ACK_BINS); let over = 0;
     const ackAt = (p: number, n: number) => { let k = 0, i = 0; for (; i < ACK_BINS - 1; i++) { k += ack[i]; if (k >= p * n) break; } return i * ACK_BIN_MS + ACK_BIN_MS / 2; };
     const link: Link = {
       offline: false, onJSON: () => {}, onBinary: () => {}, onClose: () => {},
       get transport() { return active; }, get fallback() { return fallback; }, get proc() { return proc; },
       report: () => {
         let n = 0; for (const c of ack) n += c;
-        return { transport: active.kind, fallback, arm, stats: structuredClone(active.stats), ackMs: { n, p50: n ? ackAt(0.5, n) : null, p95: n ? ackAt(0.95, n) : null, p99: n ? ackAt(0.99, n) : null, over: ack[ACK_BINS - 1] }, deferred, playS: Math.round(playS), since };
+        return { transport: active.kind, fallback, arm, stats: structuredClone(active.stats), ackMs: { n, p50: n ? ackAt(0.5, n) : null, p95: n ? ackAt(0.95, n) : null, p99: n ? ackAt(0.99, n) : null, over }, deferred, playS: Math.round(playS), since };
       },
-      noteAck: (ms) => { ack[Math.max(0, Math.min(ACK_BINS - 1, Math.floor(ms / ACK_BIN_MS)))]++; },
+      noteAck: (ms) => { if (ms >= ACK_BINS * ACK_BIN_MS) over++; ack[Math.max(0, Math.min(ACK_BINS - 1, Math.floor(ms / ACK_BIN_MS)))]++; },
       noteDeferred: () => { deferred++; },
       notePlay: (s) => { playS += s; },
       sendJSON: (o) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o)); },
