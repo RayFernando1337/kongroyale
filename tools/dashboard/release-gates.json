@@ -1,5 +1,5 @@
 {
-  "about": "Release gate results per kong-v tag, from the gate notes. Safari survival comes from tools/dashboard/devices.json (mac16, peak, safari-page) unless a tag lists its own safari entry. A tag with no entry for a gate shows \"no record\".",
+  "about": "Release gate results per kong-v tag, from the gate notes. Safari survival comes from tools/dashboard/devices.json (mac16, peak, safari-page) unless a tag lists its own safari entry. A tag with no entry for a gate shows \"no record\". The dashboard's gate cells for kong-v1.2.0 to kong-v1.3.1 were added on 2026-11-08 from the gate notes.",
   "releases": {
     "kong-v0.3.0": {
       "d3d11": {
@@ -77,6 +77,47 @@
         "verdict": "pass",
         "note": "finished, 7.4 GB peak",
         "source": "Mac mini M4 16 GB, Safari full match; Kong Mini renders/v110/, logged on RAY-235"
+      }
+    },
+    "kong-v1.2.0": {
+      "d3d11": {
+        "verdict": "pass",
+        "note": "verify, teardown, two-player smoke, flight check and load A/B all clean",
+        "source": "project drive handoffs/release-kong-v1.2.0-d3d11/README.md"
+      }
+    },
+    "kong-v1.3.0": {
+      "d3d11": {
+        "verdict": "pass",
+        "note": "every part, including the #315 consent check",
+        "source": "project drive handoffs/release-kong-v1.3.0-d3d11/README.md"
+      },
+      "metal": {
+        "verdict": "pass",
+        "note": "all 5 parts",
+        "source": "Mac mini M4; Captain drive NOTES.md 2026-11-07"
+      },
+      "safari": {
+        "verdict": "in progress",
+        "note": "held: the n=4 A/B put the median Safari peak 514 MB over v1.2.0, driven by two runs that were already 1.6 to 2.3 GB high at the title; whether that is the game or the harness (it loads the page twice) is the open question",
+        "source": "Captain drive renders/v130/4-safari-ab and NOTES.md 2026-11-07; project drive handoffs/v130-safari-rca/RUNBOOK.md (RAY-278)"
+      }
+    },
+    "kong-v1.3.1": {
+      "d3d11": {
+        "verdict": "pass",
+        "note": "verify, teardown, two-player smoke, flight check and load A/B all clean",
+        "source": "project drive handoffs/release-kong-v1.3.1-d3d11/README.md"
+      },
+      "metal": {
+        "verdict": "in progress",
+        "note": "the Mac mini runs gate parts 1 to 3 and 5",
+        "source": "Captain drive NOTES.md 2026-11-08"
+      },
+      "safari": {
+        "verdict": "in progress",
+        "note": "held on the same Safari memory question as v1.3.0",
+        "source": "project drive handoffs/v130-safari-rca/RUNBOOK.md (RAY-278)"
       }
     }
   }
