@@ -144,7 +144,7 @@ async function run() {
   const DPR = Number(arg("--dpr", "1.25"));
   const presets = arg("--presets", "auto,low,medium,high,epic").split(",");
   const LIVE = arg("--live", "");
-  const poses = arg("--poses", "plane,plantation,temple").split(",").map((p) => {
+  const poses = (arg("--poses", "plane,plantation,temple").match(/[^,=]+(=[^,]+(,[^,=]+){3})?/g) ?? []).map((p) => {
     const [name, spec] = p.split("=");
     if (spec) { const v = spec.split(",").map(Number); if (v.length !== 4 || !v.every(Number.isFinite)) throw Error("--poses " + p + ": name=x,z,yawDeg,pitchDeg"); return { name, at: v as [number, number, number, number] }; }
     if (!POSES[name]) throw Error("--poses " + name + ": one of " + Object.keys(POSES).join(", ") + ", or name=x,z,yawDeg,pitchDeg");
@@ -195,7 +195,7 @@ async function run() {
           const r = await ev<any>(READ);
           const shot = path.join(outDir, name + "-" + pose + ".png");
           fs.mkdirSync(outDir, { recursive: true });
-          await page.screenshot({ path: shot }).then(() => artifacts.push(shot), () => { /* best effort */ });
+          await page.screenshot({ path: shot, timeout: 300_000 }).then(() => artifacts.push(shot), (e) => log("screenshot failed: " + String(e).split("\n")[0]));
           first ??= r;
           const v = (value: number, unit = "count"): Metric => ({ status: "ok", unit, better: "lower", value });
           const sum = (f: (k: string) => boolean, field: "n" | "calls" | "tris" | "points" | "mpx") => Object.entries(r.passes as Record<string, Record<string, number>>).filter(([k]) => f(k)).reduce((a, [, p]) => a + p[field], 0);
