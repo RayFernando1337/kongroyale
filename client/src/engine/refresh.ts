@@ -45,14 +45,19 @@ export function refreshFromIntervals(intervalsMs: readonly number[]): number {
   return refreshSample(intervalsMs).hz;
 }
 
+/** the display rates under CEILING_MIN_HZ the running estimate accepts: 30 (Low Power Mode, a 30 Hz panel), 40 (a
+ *  40 Hz mode) and 48. Each also reads when a game holds a whole number of periods of a faster screen (30 on 60, 40 on
+ *  120): rAF timing cannot tell them apart */
+export const LOW_DISPLAY_HZ = [30, 40, 48];
+
 /** the engine's running estimate: a steady sample reads as it is, and an uneven one at most the ceiling, the highest
  *  steady reading of CEILING_MIN_HZ or more on the same screen (its size and position among the screens, so a move to a
  *  same-sized screen starts over), or the base ceiling before one. The ceiling only rises on one screen: a faster
  *  refresh mode set in place reads low until a steady sample shows it, and a slower one still reads right on steady
- *  samples. A reading under CEILING_MIN_HZ that is no common display rate keeps the previous estimate (0 = unknown
- *  before any): it is a game slower than the display, its frames a few whole periods each, not a display. A Radeon 740M
- *  running Low at 16-23 fps read 21, 24, 35 and 36 Hz (RAY-288), and dynamic resolution took that frame time as its
- *  budget. A 30 still reads 30 (Low Power Mode, a 30 Hz panel and a game held at half rate look alike) */
+ *  samples. A reading under CEILING_MIN_HZ that is not in LOW_DISPLAY_HZ keeps the screen's previous estimate (0 =
+ *  unknown before any): it is a game slower than the display, its frames a few whole periods each, not a display. A
+ *  Radeon 740M running Low at 16-23 fps read 21, 24, 35 and 36 Hz (RAY-288), and dynamic resolution took that frame
+ *  time as its budget */
 export class RefreshEstimate {
   private ceilHz = 0;
   private screen = "";
@@ -61,11 +66,11 @@ export class RefreshEstimate {
   constructor(private readonly baseCeilHz = 0) {}
   /** take a sample of rAF intervals (ms) on the screen with this key (its size and position); the new estimate (Hz) */
   add(intervalsMs: readonly number[], screen: string): number {
-    if (screen !== this.screen) { this.screen = screen; this.ceilHz = 0; }
+    if (screen !== this.screen) { this.screen = screen; this.ceilHz = 0; this.lastHz = 0; }
     const s = refreshSample(intervalsMs);
     if (s.steady && s.hz >= CEILING_MIN_HZ) this.ceilHz = Math.max(this.ceilHz, s.hz);
     const ceil = this.ceilHz || this.baseCeilHz;
-    if (s.hz < CEILING_MIN_HZ && !SNAP_HZ.includes(s.hz)) return this.lastHz;
+    if (s.hz < CEILING_MIN_HZ && !LOW_DISPLAY_HZ.includes(s.hz)) return this.lastHz;
     return (this.lastHz = s.steady || !ceil ? s.hz : Math.min(s.hz, ceil));
   }
 }
