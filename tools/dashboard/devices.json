@@ -224,7 +224,7 @@
                   "n": 0,
                   "date": "2026-11-07",
                   "note": "v1.0.1's 7,072 MB minus the 838 MB of shape copies Safari held in a match (main f417032), plus the 150 MB of copies the plan allows. Texture copies would come off too but aren't counted here.",
-                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, is built and waits on a Mac and Windows check before it turns on for everyone."
+                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, has been on by default since #268 (?geofree=0 turns it off); no Mac or Windows measurement with it on is on this page yet."
                 }
               ]
             },
@@ -301,7 +301,7 @@
                   "n": 0,
                   "date": "2026-11-07",
                   "note": "v1.0.1's 8,354 MB less the same 688 MB as the page-process line.",
-                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, is built and waits on a Mac and Windows check before it turns on for everyone."
+                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, has been on by default since #268 (?geofree=0 turns it off); no Mac or Windows measurement with it on is on this page yet."
                 },
                 {
                   "slot": "goal",
@@ -354,7 +354,7 @@
                   "n": 0,
                   "date": "2026-11-07",
                   "note": "10,637 MB minus the 2,642 MB of shape and texture copies Chrome held in the match on this build, plus the 150 MB the plan allows.",
-                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, is built and waits on a Mac and Windows check before it turns on for everyone."
+                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, has been on by default since #268 (?geofree=0 turns it off); no Mac or Windows measurement with it on is on this page yet."
                 },
                 {
                   "slot": "goal",
@@ -629,8 +629,8 @@
                   "m": "plan",
                   "n": 0,
                   "date": "2026-11-07",
-                  "note": "1,433 MB minus the 81 MB geofree removed in a match on the cloud test machine (219 to 138 MB). A Mac and Windows check comes before it turns on.",
-                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2, merged as #255, #262 and #264, off by default for now)."
+                  "note": "1,433 MB minus the 81 MB geofree removed in a match on the cloud test machine (219 to 138 MB). geofree has been on by default since #268, but no Mac or Windows measurement with it on is on this page yet, so this is an estimate.",
+                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2: #255, #262 and #264, then #268 turned it on by default; no Mac or Windows measurement with it on is on this page yet)."
                 }
               ]
             },
@@ -674,7 +674,7 @@
                   "n": 0,
                   "date": "2026-11-07",
                   "note": "838 MB minus the same 81 MB.",
-                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2, merged as #255, #262 and #264, off by default for now)."
+                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2: #255, #262 and #264, then #268 turned it on by default; no Mac or Windows measurement with it on is on this page yet)."
                 }
               ]
             }
@@ -851,7 +851,7 @@
                   "n": 0,
                   "date": "2026-11-07",
                   "note": "13,769 MB minus the 2,674 MB of shape and texture copies held in the match on this build, plus the 150 MB the plan allows.",
-                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, is built and waits on a Mac and Windows check before it turns on for everyone."
+                  "work": "Drop the copies the game keeps after upload (memory plan step A2). The first part, geofree, has been on by default since #268 (?geofree=0 turns it off); no Mac or Windows measurement with it on is on this page yet."
                 },
                 {
                   "slot": "goal",
@@ -1092,7 +1092,7 @@
                   "n": 0,
                   "date": "2026-11-07",
                   "note": "1,461 MB minus the 81 MB geofree removed in a match on the cloud test machine (219 to 138 MB).",
-                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2, merged as #255, #262 and #264, off by default for now)."
+                  "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2: #255, #262 and #264, then #268 turned it on by default; no Mac or Windows measurement with it on is on this page yet)."
                 }
               ]
             },

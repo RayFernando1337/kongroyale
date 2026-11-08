@@ -27,8 +27,12 @@
           "pr": 281
         },
         {
-          "label": "Practice host in a worker (phase 2, behind a flag)",
+          "label": "Practice host in a worker (phase 2, behind a flag; not turned on: input-to-ack p95 is 10 to 16 ms worse on the RTX laptop)",
           "pr": 277
+        },
+        {
+          "label": "Draw-list lab: a replayed draw costs 4.79 µs against 15.3 µs in three.js (n=8, RTX laptop)",
+          "pr": 323
         },
         {
           "label": "Relative energy-impact baseline on a Mac (partial: Safari High still to come)",
@@ -95,6 +99,10 @@
         {
           "label": "Memory in a match and in low-memory mode",
           "pr": 272
+        },
+        {
+          "label": "TLA+ models and their mutants on every PR",
+          "pr": 321
         },
         {
           "label": "Per-draw cost budget",
@@ -174,6 +182,18 @@
         {
           "label": "Half-rate guard lowers 3D resolution while frames miss",
           "pr": 265
+        },
+        {
+          "label": "Build the places the glide heads for once the player falls or glides",
+          "pr": 320
+        },
+        {
+          "label": "Split heavy place builds across frames",
+          "pr": 317
+        },
+        {
+          "label": "Leave place-build frames out of the half-rate check",
+          "pr": 318
         }
       ]
     },
@@ -284,6 +304,10 @@
         {
           "label": "Automatic performance summaries",
           "pr": 280
+        },
+        {
+          "label": "Automatic performance summaries on by default after a one-time toast",
+          "pr": 315
         },
         {
           "label": "Agent triage pipeline",

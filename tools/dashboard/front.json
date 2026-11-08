@@ -1,7 +1,7 @@
 {
   "title": "What I've been working on, and what I learned",
   "byline": "Ray's update, with the numbers behind it",
-  "asOf": "2026-11-07",
+  "asOf": "2026-11-08",
   "why": "I want Kong Royale to run smoothly for everyone, on any laptop and in any browser, Safari too, without crashing mid-match. So every change has to be proven on real machines before it ships, and every number on this page says where it came from.",
   "kinds": {
     "measured": "measured on a real machine",
@@ -125,9 +125,9 @@
       "unit": "MB of shape copies in a match",
       "beforeText": "219 MB kept in main memory after upload",
       "afterText": "138 MB with ?geofree=1",
-      "plain": "Meshes kept a copy of their shape in main memory after the graphics card had it. They now drop it and rebuild it only if the browser resets the graphics. It is behind a flag today; turning it on for everyone waits on a real-GPU check.",
+      "plain": "Meshes kept a copy of their shape in main memory after the graphics card had it. They now drop it and rebuild it only if the browser resets the graphics. It has been on by default since #268, and ?geofree=0 turns it off. The 138 MB figure was measured before that, on a cloud machine with no graphics card; a real-GPU number with it on is still to come.",
       "kind": "measured",
-      "source": "SwiftShader on a cloud machine, tools/performance/memory.mts; project drive handoffs/geofree-default/README.md (PR #268, open)",
+      "source": "SwiftShader on a cloud machine, tools/performance/memory.mts; project drive handoffs/geofree-default/README.md (PR #268, merged)",
       "date": "2026-11-06",
       "prs": [
         241,
