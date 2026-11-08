@@ -49,10 +49,14 @@ export function refreshFromIntervals(intervalsMs: readonly number[]): number {
  *  steady reading of CEILING_MIN_HZ or more on the same screen (its size and position among the screens, so a move to a
  *  same-sized screen starts over), or the base ceiling before one. The ceiling only rises on one screen: a faster
  *  refresh mode set in place reads low until a steady sample shows it, and a slower one still reads right on steady
- *  samples */
+ *  samples. A reading under CEILING_MIN_HZ that is no common display rate keeps the previous estimate (0 = unknown
+ *  before any): it is a game slower than the display, its frames a few whole periods each, not a display. A Radeon 740M
+ *  running Low at 16-23 fps read 21, 24, 35 and 36 Hz (RAY-288), and dynamic resolution took that frame time as its
+ *  budget. A 30 still reads 30 (Low Power Mode, a 30 Hz panel and a game held at half rate look alike) */
 export class RefreshEstimate {
   private ceilHz = 0;
   private screen = "";
+  private lastHz = 0;
   /** baseCeilHz: the ceiling before any steady sample (WEBKIT_CEILING_HZ in Safari, 0 = none) */
   constructor(private readonly baseCeilHz = 0) {}
   /** take a sample of rAF intervals (ms) on the screen with this key (its size and position); the new estimate (Hz) */
@@ -61,6 +65,7 @@ export class RefreshEstimate {
     const s = refreshSample(intervalsMs);
     if (s.steady && s.hz >= CEILING_MIN_HZ) this.ceilHz = Math.max(this.ceilHz, s.hz);
     const ceil = this.ceilHz || this.baseCeilHz;
-    return s.steady || !ceil ? s.hz : Math.min(s.hz, ceil);
+    if (s.hz < CEILING_MIN_HZ && !SNAP_HZ.includes(s.hz)) return this.lastHz;
+    return (this.lastHz = s.steady || !ceil ? s.hz : Math.min(s.hz, ceil));
   }
 }
