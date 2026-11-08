@@ -18,6 +18,9 @@
 //   +texture core plus activeTexture / bindTexture / bindSampler
 //   +uniform plus every uniform* call and uniform-buffer binds
 //   full     plus fixed-function state (enable/disable, blend, depth, cull, stencil, polygon offset): every replayable call
+// The fixed-function state the main pass inherits from earlier passes (a shadow map leaves depth test and the like switched on
+// for the main pass, which then emits no enable) is recorded too: the last call per state before the first main draw is
+// replayed ahead of the first retained draw, in full.
 // The recorded calls are three's state DELTAS (its cache skips what is already bound), so a retained draw can rely on state an
 // excluded draw (a kong, a transparent mesh) set before it. Each retained draw therefore also replays the non-draw calls of the
 // excluded draws since the previous retained one (reported as calls.perDraw.bridge): a replay that stands on its own, at
@@ -103,6 +106,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       if (typeof f !== "function") continue;
       t[k] = function (this: unknown, ...a: unknown[]) {
         if (seg) seg.push({ f, t, a: a.map(copy), n: k, c: classOf(k, a) });
+        else if (capturing && !drawn && classOf(k, a) === "state") prelude.set(k + ":" + (k === "enable" || k === "disable" ? a[0] : ""), { f, t, a: a.map(copy), n: k, c: "state" });
         return f.apply(this, a);
       };
     }
@@ -110,10 +114,11 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
   const unwrapGl = () => { for (const [t, proto] of targets) for (const k of methodNames(proto)) if (Object.prototype.hasOwnProperty.call(t, k)) delete t[k]; };
   const rbd = r.renderBufferDirect;
   const draws: Draw[] = [];
-  let capturing = false;
+  const prelude = new Map<string, Call>();
+  let capturing = false, drawn = false;
   r.renderBufferDirect = function (this: unknown, camera: unknown, sc: unknown, geometry: unknown, material: any, object: any, group: unknown) {
     if (!capturing || camera !== cam || sc !== scene) return rbd.call(this, camera, sc, geometry, material, object, group);
-    seg = [];
+    seg = []; drawn = true;
     try { return rbd.call(this, camera, sc, geometry, material, object, group); }
     finally { draws.push({ geometry, material, object, group, calls: seg, lead: [] }); seg = null; }
   };
@@ -153,9 +158,9 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
         const m = moduleName(d.object);
         if (!m) { noModule++; const t = topName(d.object); other[t] = (other[t] ?? 0) + 1; }
         const left = (!m && !o.all) || d.material.transparent;
-        if (d.material.transparent) transparent++;
+        if (d.material.transparent && (m || o.all)) transparent++;
         if (left) { for (const c of d.calls) if (c.c !== "draw" && c.c !== "skip") bridge.push(c); continue; }
-        d.lead = bridge; bridge = [];
+        d.lead = set.length ? bridge : [...prelude.values(), ...bridge]; bridge = [];
         byModule[m || "(none)"] = (byModule[m || "(none)"] ?? 0) + 1; set.push(d);
         for (const c of d.calls) if (c.c === "skip") skipped[c.n] = (skipped[c.n] ?? 0) + 1; else perDraw[c.c] = (perDraw[c.c] ?? 0) + 1;
       }
@@ -179,13 +184,13 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       ];
     };
     const runAll = () => {
-      const fb = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
+      const rt = r.getRenderTarget();
       const warm = frame === 0;
       if (warm) while (gl.getError() !== gl.NO_ERROR) { /* drain errors from before */ }
       for (let j = 0; j < variants.length; j++) {
         const v = variants[(frame + j) % variants.length];
         r.resetState();
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        r.setRenderTarget(rt);
         gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
         const t0 = performance.now();
         for (let k = 0; k < o.reps; k++) v.run();
@@ -230,8 +235,8 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const files = process.argv.slice(2);
   if (!files.length) { console.error("usage: npx tsx tools/performance/draw-lab.mts lab-1.json [lab-2.json ...]"); process.exit(2); }
-  const runs = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")) as LabResult & { renderer?: string; segments?: string; preset?: string; viewport?: string });
-  const sig = (x: (typeof runs)[number]) => [x.renderer, x.segments, x.preset, x.viewport, x.frames, x.reps, x.all].join(" | ");
+  const runs = files.map((f) => JSON.parse(fs.readFileSync(f, "utf8")) as LabResult & { renderer?: string; query?: string; segments?: string; preset?: string; viewport?: string });
+  const sig = (x: (typeof runs)[number]) => [x.renderer, x.segments, x.preset, x.viewport, x.query, x.frames, x.reps, x.all].join(" | ");
   if (runs.some((x) => sig(x) !== sig(runs[0]))) { console.error("the lab files differ in renderer, segments, preset, viewport, frames, reps or all; summarise one kind at a time:\n" + files.map((f, i) => "  " + f + ": " + sig(runs[i])).join("\n")); process.exit(1); }
   const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
   console.log(runs.length + " run(s) on " + [...new Set(runs.map((x) => x.renderer ?? "?"))].join(", ") + "; set " + runs.map((x) => x.draws.set).join("/") + " draws of " + runs.map((x) => x.draws.main).join("/") + (runs.every((x) => x.streamed) ? "" : "; NOT streamed in every run"));
