@@ -220,7 +220,7 @@ export function bananaPath(c: CanvasRenderingContext2D, cx: number, cy: number, 
   c.restore();
 }
 
-const SPAN = THREE.MathUtils.degToRad(122);
+const SPAN = 122 * (Math.PI / 180);
 /** crescent geometry helpers (px, before translate/rotate): centre of curvature, radius, width at t∈[0,1] */
 function crescent(len: number) {
   const R = len / (2 * Math.sin(SPAN / 2));
