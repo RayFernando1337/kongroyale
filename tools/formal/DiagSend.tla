@@ -97,8 +97,11 @@ ToastGone ==
 ShowNotice == screen \in {"title", "crash"} /\ Runs /\ ~gpc /\ ~told /\ told' = TRUE /\ UNCHANGED <<screen, consented, sent, via, back, autoSet, gpc, wish, bot, flagged, beat>>
 SettingsToggle == \E v \in {"on", "off"} :
   /\ screen \in {"title", "menu"} /\ ~gpc /\ autoSet' = v /\ wish' = v /\ told' = TRUE
-  /\ beat' = IF ~flagged /\ v = "off" THEN FALSE ELSE beat
-  /\ UNCHANGED <<screen, consented, sent, via, back, gpc, bot, flagged>>
+  /\ UNCHANGED <<screen, consented, sent, via, back, gpc, bot, flagged, beat>>
+(* the heartbeat's next write (beat.ts writeBeat, every 5 s and on pagehide or visibility): outside an explicit ?diag, with
+   the summaries off, it deletes the record instead of writing it. (Not modelled while a send is in flight: a write there changes
+   nothing a send reads, and EverySendAnswered watches every step of vars. The 5 s timer keeps running, so Spec makes it strongly fair.) *)
+BeatTick == screen /= "sending" /\ beat /\ ~flagged /\ autoSet = "off" /\ beat' = FALSE /\ UNCHANGED <<screen, consented, sent, via, back, told, autoSet, gpc, wish, bot, flagged>>
 (* a summary leaves (auto.ts emit and beacon): only when the player was told and has not turned it off and the privacy
    signal is off; never with the callsign *)
 AutoSend ==
@@ -111,9 +114,9 @@ AutoSend ==
 BootBeat == screen \in {"title", "crash"} /\ ~beat /\ Runs /\ (flagged \/ (~gpc /\ autoSet /= "off")) /\ beat' = TRUE /\ UNCHANGED <<screen, consented, sent, via, back, told, autoSet, gpc, wish, bot, flagged>>
 
 Next == Play \/ OpenMenu \/ CloseMenu \/ EndMatch \/ QuickSend \/ OpenSheet \/ SheetSend \/ SheetCancel \/ DismissCrash
-  \/ Accepted \/ Refused \/ ToastGone \/ ShowNotice \/ SettingsToggle \/ AutoSend \/ BootBeat
+  \/ Accepted \/ Refused \/ ToastGone \/ ShowNotice \/ SettingsToggle \/ AutoSend \/ BootBeat \/ BeatTick
 \* every upload is answered in the end: the server replies, or report.ts send aborts it after TIMEOUT_MS
-Spec == Init /\ [][Next]_vars /\ WF_vars(Accepted \/ Refused)
+Spec == Init /\ [][Next]_vars /\ WF_vars(Accepted \/ Refused) /\ SF_vars(BeatTick)
 
 (* --- the rules --- *)
 \* Nothing a player sends by hand leaves the browser before they have seen the consent text on the sheet.
@@ -128,8 +131,9 @@ AutoRespectsOff == \A r \in sent : r.kind = "auto" => (~r.off /\ ~r.gpc)
 AutoNeverInAutomation == \A r \in sent : r.kind = "auto" => (~r.bot \/ r.flagged)
 \* The default stores no heartbeat under the browser's privacy signal; only an explicit ?diag does.
 NoBeatUnderSignal == beat => (flagged \/ ~gpc)
-\* ... and none once the player turned the summaries off in Settings (beat.ts writeBeat deletes the record instead of writing it).
-NoBeatAfterOff == beat => (flagged \/ autoSet /= "off")
+\* ... and a record that outlives a switch-off in Settings is deleted by the next write (within one 5 s beat), unless the player
+\* switched back on first.
+NoBeatAfterOff == (beat /\ ~flagged /\ autoSet = "off") ~> (~beat \/ autoSet /= "off")
 \* Every send ends with something on screen: the thank-you with the report id, or a message that it did not go.
 EverySendAnswered == [][screen = "sending" => screen' \in {"sent", "refused"}]_vars
 \* ... and a send never hangs: the player always sees one of the two in the end.
