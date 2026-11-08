@@ -36,6 +36,17 @@ export interface ChoiceRow extends RowBase {
   kind: "seg" | "cycle"; options(): Opt[]; get(): unknown; set(v: unknown): void;
   /** the label of a current value that is a state rather than a choice (CUSTOM) */
   state?(): string | null;
+  /** the first option is the safe default: stepping back from it stays put instead of wrapping to the last */
+  stopAtFirst?: boolean;
+}
+/** the option a step of `dir` lands on, or null when the row stays where it is */
+export function nextChoice(r: ChoiceRow, dir: number, wrap: boolean): Opt | null {
+  const opts = r.options(), n = opts.length;
+  let j = opts.findIndex((o) => o.v === r.get());
+  if (j < 0) j = dir > 0 ? -1 : n;                         // a state (Custom): step onto the first / last real choice
+  if (j === 0 && dir < 0 && r.stopAtFirst) return null;
+  j = wrap ? (j + dir + n) % n : Math.max(0, Math.min(n - 1, j + dir));
+  return opts[j] && opts[j].v !== r.get() ? opts[j] : null;
 }
 /** a binding: `count` slots starting at index `first` (two = primary + alternate; one for the fixed slot / seat keys) */
 export interface BindRow extends RowBase { kind: "bind"; device: "kbm" | "pad"; action: string; first: number; count: 1 | 2 }
@@ -83,6 +94,7 @@ export function videoCategory(engine: Engine, display: Display): Category {
   const graphics: Section = { id: "graphics", name: "Graphics", rows: () => [
     { kind: "cycle", id: "preset", label: "Quality preset",
       options: () => [{ v: "auto", label: `Auto · ${cap(s().auto)}` }, ...LV],
+      stopAtFirst: true,
       get: () => s().preset, set: (v) => set({ preset: v as VideoSettings["preset"] }), state: () => s().preset === "custom" ? "Custom" : null,
       help: () => ({ eb: "Graphics", body: ["Auto picks the best preset for your GPU (detected on your first visit, confirmed by a short benchmark). Low and Medium are tuned for laptops; Epic is everything at full quality for desktop GPUs.", "Changing any option below makes it Custom."], viz: "gfx" }) },
     { kind: "cycle", id: "aa", label: "Anti-aliasing", options: () => [{ v: "taa", label: "TAA" }, { v: "fxaa", label: "FXAA" }, { v: "off", label: "Off" }],
