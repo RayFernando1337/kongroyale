@@ -89,7 +89,7 @@ const transport = opt("--transport", "ws") === "wt" ? "wt" : "ws";
 const fps = Number(opt("--fps", "144")), deferRx = fps < 144;
 if (!(fps > 0)) { console.error("netlab: --fps must be a positive number"); process.exit(1); }
 const stallOpt = opt("--stall", "").split(":"), stallDir = ["up", "down", "both"].includes(stallOpt[0]) ? stallOpt[0] : "", stallMs = Number(stallOpt[1] ?? 0), stallEveryMs = Number(stallOpt[2] ?? 0) * 1000;
-if (stallOpt[0] && (!stallDir || !(stallMs > 0) || !(stallEveryMs > stallMs))) { console.error("netlab: --stall wants up|down|both:MS:EVERY_S, with EVERY_S longer than MS"); process.exit(1); }
+if (stallOpt[0] && (!stallDir || !(stallMs > 0) || !(stallEveryMs >= 2 * stallMs))) { console.error("netlab: --stall wants up|down|both:MS:EVERY_S, with EVERY_S at least twice MS"); process.exit(1); }
 const loss = Number(opt("--loss", "0")) / 100, aux = transport === "ws" && argv.includes("--aux"), servePort = Number(opt("--serve", "0")), connectUrl = opt("--connect", ""), token = opt("--token", "");
 /** how much later a lost TCP message arrives: the sender resends it once a later segment's SACK shows the gap (RACK-TLP).
  *  netpath.py, 1% loss, 20 ms jitter, Linux cubic + SACK + RACK: stall peaks 68-100 ms at 50 ms RTT, 167-201 ms at 150 ms,
