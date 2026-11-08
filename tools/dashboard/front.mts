@@ -199,7 +199,7 @@ export function renderHillPage(h: Hill, prLink: (n: number) => string): string {
 }
 
 /** The front page's HTML: why, biggest wins, what I learned, what I test on, why so many PRs, where I'm going. */
-export function renderFront(f: Front, live: Live, goalBars: string): string {
+export function renderFront(f: Front, live: Live, goalBars: string, nowHtml: string): string {
   const sizes = live.merged.map((p) => p.additions + p.deletions).sort((a, b) => a - b);
   const median = sizes.length ? (sizes.length % 2 ? sizes[(sizes.length - 1) / 2] : (sizes[sizes.length / 2 - 1] + sizes[sizes.length / 2]) / 2) : 0;
   const small = sizes.filter((n) => n <= 200).length;
@@ -220,7 +220,7 @@ export function renderFront(f: Front, live: Live, goalBars: string): string {
   const cols: [keyof Cells, string][] = [["safari", "Safari"], ["chrome", "Chrome"], ["edge", "Edge"], ["none", "No graphics card"]];
   return '<div class="hero front"><p class="byline">' + esc(f.byline) + "</p><h1>" + esc(f.title) + '</h1><p class="lead">' + esc(f.why) + "</p>" +
     '<ul class="dlegend key"><li>' + kindPill(f, "measured") + " " + esc(f.kinds.measured) + "</li><li>" + kindPill(f, "model") + " " + esc(f.kinds.model) + "</li><li>" + kindPill(f, "estimate") + " " + esc(f.kinds.estimate) + "</li></ul></div>" +
-    "<h2>What I'm chasing</h2>" + goalBars + '<p class="tech-line"><a href="#goals">Every goal, its steps and the PRs moving it →</a></p>' +
+    nowHtml + "<h2>What I'm chasing</h2>" + goalBars + '<p class="tech-line"><a href="#goals">Every goal, its steps and the PRs moving it →</a></p>' +
     "<h2>Biggest wins</h2><div class=\"story\">" + f.wins.map(win).join("") + "</div>" +
     "<h2>What I learned along the way</h2><div class=\"story\">" + f.lessons.map(lesson).join("") + "</div>" +
     '<h2>What I test on</h2><p class="lead">A change that helps one setup can hurt another, so every release runs on all of these before it goes stable.</p>' +

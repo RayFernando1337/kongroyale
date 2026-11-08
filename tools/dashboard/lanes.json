@@ -1,0 +1,87 @@
+{
+  "updated": "2026-11-08",
+  "updatedBy": "Kong Cloud (KONG-3)",
+  "source": "project drive handoffs/dashboard/lanes.md",
+  "plan": [
+    "Ship the Safari descent fixes (#317, #318, #320) to stable as kong-v1.3.1 once the Safari memory check (RAY-278) clears.",
+    "Frame rate: build the static draw-list replay (about 2–2.6 ms of the ~21 ms main thread on RTX), one location at a time behind ?drawlist=1, with identical pixels.",
+    "Fix what live play showed: Safari spikes in the plane and tuk-tuk, and Firefox at 16 fps on Apple Silicon (RAY-280).",
+    "Turn on automatic performance summaries for every player after RAY-278, so real-player data drives the next fixes.",
+    "Upstream: batch 16 sends ~60 fork PRs to Max, and the fork stays synced."
+  ],
+  "lanes": [
+    {
+      "lane": "Release",
+      "thread": "KONG-3, Kong Mini (KONG-54), Kong RTX (KONG-16)",
+      "issue": "RAY-278",
+      "what": "kong-v1.3.1 on next (25ecfe7); stable = v1.2.0",
+      "status": "D3D11 gate PASS; held on the Safari memory check",
+      "next": "Mini runs the Safari root-cause runbook, then the v1.3.1 Metal gate"
+    },
+    {
+      "lane": "Safari memory",
+      "thread": "KONG-108",
+      "issue": "RAY-278",
+      "what": "Is v1.3.0's +514 MB Safari peak real or test-harness state?",
+      "status": "Code read: likely harness (double load); Mini run pending",
+      "next": "Verdict decides promotion"
+    },
+    {
+      "lane": "Frame rate hill climb",
+      "thread": "KONG-93",
+      "issue": "RAY-237",
+      "what": "Static draw-list replay: can a draw cost 4–6 µs instead of 16–22?",
+      "status": "Gate PASS on RTX: 4.79 µs per replayed draw vs 15.3 µs in three (n=8), worth ~2.1–2.6 ms",
+      "next": "Step 2: first module behind ?drawlist=1, identical stills"
+    },
+    {
+      "lane": "Live play reports",
+      "thread": "KONG-110",
+      "issue": "RAY-280",
+      "what": "Safari plane/tuk-tuk drops; Firefox friend at 16 fps",
+      "status": "Analysis running",
+      "next": "Ranked fixes + a Firefox gate lane proposal"
+    },
+    {
+      "lane": "Performance summaries",
+      "thread": "KONG-107",
+      "issue": "RAY-277",
+      "what": "Summaries on by default (passive toast; GPC/DNT/Settings off)",
+      "status": "#322 ready, held on RAY-278",
+      "next": "Merge after the Safari verdict; server switch KR_DIAG_AUTO is Ray's"
+    },
+    {
+      "lane": "Upstream",
+      "thread": "KONG-17",
+      "issue": "RAY-20",
+      "what": "Batch 16: ~60 fork PRs to Max, stale issue cleanup",
+      "status": "Porting chunk 1 of 4",
+      "next": "Upstream PR numbers + merge order"
+    },
+    {
+      "lane": "Dashboard",
+      "thread": "KONG-90",
+      "issue": "RAY-93",
+      "what": "Owner of every dashboard page; power baseline data (#324)",
+      "status": "#324 in CI",
+      "next": "Full page sweep (this brief)"
+    },
+    {
+      "lane": "Hostworker",
+      "thread": "KONG-94",
+      "issue": "RAY-237",
+      "what": "Practice host in a Web Worker: input-to-ack p95 +10–16 ms on RTX",
+      "status": "Waiting on the Metal A/B",
+      "next": "No default flip until Metal is clean"
+    },
+    {
+      "lane": "deferkong",
+      "thread": "KONG-59",
+      "issue": "RAY-132",
+      "what": "?deferkong=1 (D3D11 ready −889 ms)",
+      "status": "Waiting on the Metal A/B (title p99)",
+      "next": "Default flip if Metal is clean"
+    }
+  ],
+  "landed": "#317, #318, #320 (Safari descent fixes), #319 (upstream sync), #321 (TLA+ in CI), #323 (draw-list lab), #316 (12 GB / 10 GB memory page)"
+}

@@ -7,6 +7,7 @@ import type { DeviceChart } from "./device-chart.mts";
 import { renderBuilt } from "./built.mts";
 import type { Built } from "./built.mts";
 import { readFront, renderFront, renderHillPage } from "./front.mts";
+import { readNow, renderNow } from "./now.mts";
 import { readGoals, renderGoalBars, renderGoalsPage, renderTimeline, scoreGoals } from "./goals.mts";
 import type { Gates } from "./goals.mts";
 import { readHill } from "./hillclimb.mts";
@@ -334,7 +335,7 @@ function main(): void {
     upOpen: upOpen.length,
     upTotal: upstream.length,
     prLink,
-  }, renderGoalBars(scored));
+  }, renderGoalBars(scored), renderNow(readNow(path.join(HERE, "lanes.json")), now.getTime(), prLink));
   const gates = JSON.parse(fs.readFileSync(path.join(HERE, "release-gates.json"), "utf8")) as Gates;
   const releasesPage = renderTimeline(releases, goals, gates, { ...goalCtx, baseTag: data.baseTag, baseDate: "2026-11-02", nextTag, stableTag }) + unreleasedList;
 
