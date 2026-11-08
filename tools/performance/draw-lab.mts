@@ -103,10 +103,10 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
   if (md) targets.push([md, Object.getPrototypeOf(md)]);
   let seg: Call[] | null = null;
   const copy = (x: unknown) => ArrayBuffer.isView(x) && !(x instanceof DataView) ? (x as unknown as Float32Array).slice() : x;
-  const own = new Map<string, any>();
+  const ownGl = new Map<string, any>();
   for (const [t, proto] of targets) {
     for (const k of methodNames(proto)) {
-      if (Object.prototype.hasOwnProperty.call(t, k)) own.set(k, t[k]);
+      if (Object.prototype.hasOwnProperty.call(t, k)) ownGl.set(k, t[k]);
       const f = t[k];
       if (typeof f !== "function") continue;
       t[k] = function (this: unknown, ...a: unknown[]) {
@@ -116,7 +116,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       };
     }
   }
-  const unwrapGl = () => { for (const [t, proto] of targets) for (const k of methodNames(proto)) if (own.has(k)) t[k] = own.get(k); else if (Object.prototype.hasOwnProperty.call(t, k)) delete t[k]; };
+  const unwrapGl = () => { for (const [t, proto] of targets) for (const k of methodNames(proto)) if (ownGl.has(k)) t[k] = ownGl.get(k); else if (Object.prototype.hasOwnProperty.call(t, k)) delete t[k]; };
   const rbd = r.renderBufferDirect;
   const draws: Draw[] = [];
   const prelude = new Map<string, Call>();
