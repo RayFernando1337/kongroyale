@@ -629,7 +629,7 @@
                   "m": "plan",
                   "n": 0,
                   "date": "2026-11-07",
-                  "note": "1,433 MB minus the 81 MB geofree removed in a match on the cloud test machine (219 to 138 MB). A Mac and Windows check comes before it turns on.",
+                  "note": "1,433 MB minus the 81 MB geofree removed in a match on the cloud test machine (219 to 138 MB). geofree has been on by default since #268, but no Mac or Windows measurement with it on is on this page yet, so this is an estimate.",
                   "work": "geofree on by default: the island's shapes drop their copies after upload (memory plan step A2: #255, #262 and #264, then #268 turned it on by default; no Mac or Windows measurement with it on is on this page yet)."
                 }
               ]

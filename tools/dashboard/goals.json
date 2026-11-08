@@ -31,10 +31,13 @@
           "pr": 277
         },
         {
+<<<<<<< HEAD
           "label": "Draw-list lab: a replayed draw costs 4.79 µs against 15.3 µs in three.js (n=8, RTX laptop)",
           "pr": 323
         },
         {
+=======
+>>>>>>> origin/main
           "label": "Relative energy-impact baseline on a Mac (partial: Safari High still to come)",
           "hill": {
             "metric": "energy-impact"
