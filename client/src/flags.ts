@@ -80,7 +80,7 @@ const FLAGS = {
   /** __kr.drawCensus: per-draw main-thread cost by pass and class */
   drawcensus: { kind: present, owner: "engine" },
   /** draw list: these modules' static draws skip setProgram; =1 Mango, =all */
-  drawlist: { kind: list, owner: "engine" },
+  drawlist: { kind: { ...list, default: ["1"] }, owner: "engine" },
   /** device pixel ratio instead of the screen's (capped at 2); 0 = the screen's */
   dpr: { kind: num(0), owner: "engine" },
   /** Mist Falls materials render double-sided */
