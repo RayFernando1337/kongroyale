@@ -61,7 +61,7 @@ const STATUS = `(() => { const k = window.__kr; if (!k) return { ready: false, s
     x: cm && cm.pred ? cm.pred.x : 0, z: cm && cm.pred ? cm.pred.z : 0, frames: k.censusC ? k.censusC.frame : 0, streamed: !!k.streamed }; })()`;
 const INSTALL = `(() => {
   const k = window.__kr, e = k.engine, r = e.renderer, info = r.info, gl = r.getContext();
-  const c = { on: false, frames: 0, frame: 0, passes: {}, mods: {}, stack: [], tot: { calls: 0, tris: 0, points: 0 } };
+  const c = { on: false, frames: 0, frame: 0, passes: {}, mods: {}, objs: new Map(), stack: [], tot: { calls: 0, tris: 0, points: 0 } };
   k.censusC = c;
   const modOf = (o) => { let p = o; while (p.parent && p.parent !== e.scene) p = p.parent; return p.parent === e.scene ? (p.name || p.type) : "(" + (p.name || p.type) + ")"; };
   const px = () => { const t = r.getRenderTarget(); return t ? t.width * t.height : gl.drawingBufferWidth * gl.drawingBufferHeight; };
@@ -95,7 +95,8 @@ const INSTALL = `(() => {
       const key = c.stack[c.stack.length - 1] || "(none)", p = pass(key);
       const dc = info.render.calls - a0, dt = info.render.triangles - a1, dp = info.render.points - a2;
       p.calls += dc; p.tris += dt; p.points += dp;
-      if (!key.startsWith("aux")) { const mk = key.replace(/^shadow:.*/, "shadow") + " | " + modOf(object), m = c.mods[mk] || (c.mods[mk] = { calls: 0, tris: 0, points: 0 }); m.calls += dc; m.tris += dt; m.points += dp; }
+      if (!key.startsWith("aux")) { const mk = key.replace(/^shadow:.*/, "shadow") + " | " + modOf(object), m = c.mods[mk] || (c.mods[mk] = { calls: 0, tris: 0, points: 0 }); m.calls += dc; m.tris += dt; m.points += dp;
+        let ob = c.objs.get(object); if (!ob) c.objs.set(object, (ob = { key: mk + " / " + (object.name || object.type) + (object.isInstancedMesh ? " [inst " + object.count + "]" : ""), calls: 0, tris: 0, points: 0 })); ob.calls += dc; ob.tris += dt; ob.points += dp; }
     }
   };
   const step = e.step;
@@ -110,7 +111,7 @@ const INSTALL = `(() => {
   };
   return "ok";
 })()`;
-const ARM = "(() => { const c = window.__kr.censusC; c.on = true; c.frames = 0; c.passes = {}; c.mods = {}; c.tot = { calls: 0, tris: 0, points: 0 }; return 'ok'; })()";
+const ARM = "(() => { const c = window.__kr.censusC; c.on = true; c.frames = 0; c.passes = {}; c.mods = {}; c.objs = new Map(); c.tot = { calls: 0, tris: 0, points: 0 }; return 'ok'; })()";
 const DISARM = "(() => { window.__kr.censusC.on = false; return 'ok'; })()";
 const READ = `(() => {
   const k = window.__kr, c = k.censusC, e = k.engine, r = e.renderer, n = Math.max(1, c.frames), d = k.display;
@@ -118,6 +119,7 @@ const READ = `(() => {
   const cam = e.camera, g = k.game, cm = g && g.cm;
   return { frames: c.frames, calls: c.tot.calls / n, tris: c.tot.tris / n, points: c.tot.points / n,
     passes: per(c.passes), mods: per(c.mods),
+    objects: [...c.objs.values()].sort((a, b) => b.tris - a.tris).slice(0, 60).map((o) => ({ key: o.key, calls: +(o.calls / n).toFixed(1), tris: Math.round(o.tris / n), points: Math.round(o.points / n) })),
     programs: (r.info.programs || []).length, textures: r.info.memory.textures, geometries: r.info.memory.geometries,
     renderScale: e.renderScale, dynamicRes: e.dynamicRes, canvas: [r.domElement.width, r.domElement.height], dprBase: e.dprBase, quality: e.quality,
     video: d ? d.settings : null, gpuLevel: d ? d.gpuLevel : null, veg: d ? d.vegState : null, cull: e.cull && e.cull.info ? e.cull.info() : null,
@@ -184,6 +186,7 @@ async function run() {
         await ev(INSTALL);
         if (LIVE) { await ev("(() => { window.__kr.display.set({ preset: " + JSON.stringify(LIVE) + " }); return 'ok'; })()"); log("switched to " + LIVE + " the menu's way"); }
         await ev("(() => { window.__kr.game.practice('solo'); return 'ok'; })()");
+        const play0 = Date.now();
         const frames = async (n: number, keep?: () => Promise<unknown>) => { const f0 = (await status()).frames; for (let s = await status(); s.frames - f0 < n; s = await status()) { if (keep) await keep(); await sleep(500); } };
         const measure = async (pose: string, keep?: () => Promise<unknown>) => {
           await ev(ARM); await frames(FRAMES, keep); await ev(DISARM);
@@ -212,20 +215,20 @@ async function run() {
               { id: "noErrors", pass: !r.errors.length, detail: r.errors.slice(0, 3).join(" | ") || "none" },
               { id: "phase", pass: pose === "plane" ? r.phase === 1 : r.phase === 2, detail: "phase " + r.phase + ", st " + r.st },
             ],
-            detail: { cam: r.cam, passes: r.passes, mods: r.mods, video: r.video, veg: r.veg, cull: r.cull, quality: r.quality, canvas: r.canvas, dynamicRes: r.dynamicRes },
+            detail: { cam: r.cam, passes: r.passes, mods: r.mods, objects: r.objects, video: r.video, veg: r.veg, cull: r.cull, quality: r.quality, canvas: r.canvas, dynamicRes: r.dynamicRes },
           } as CaseResult);
           log(pose + ": " + Math.round(r.calls) + " calls, " + (r.tris / 1e6).toFixed(2) + " M tris, " + (r.points / 1e6).toFixed(2) + " M points, " + r.programs + " programs, " + r.textures + " textures, scale " + r.renderScale + " at " + r.cam.join(","));
         };
         for (const p of poses) {
           if (p.at === "plane") {
-            for (let s = await status(); !(s.inMatch && s.phase >= 1); s = await status()) { if (Date.now() - t0 > (READY_S + 300) * 1000) throw Error("no plane phase"); await sleep(500); }
+            for (let s = await status(); !(s.inMatch && s.phase >= 1); s = await status()) { if (Date.now() - play0 > 900_000) throw Error("no plane phase 900 s after the practice started"); await sleep(500); }
             if ((await status()).phase !== 1) { errors.push("plane: the match was past phase 1"); continue; }
             for (let s = await status(); Math.hypot(s.x, s.z) > PLANE_R; s = await status()) { if (s.phase !== 1) throw Error("the plane never came within " + PLANE_R + " m of the centre"); await sleep(250); }
             await measure(p.name);
             continue;
           }
           const [x, z, yd, pd] = p.at, yaw = (yd * Math.PI) / 180, pitch = (pd * Math.PI) / 180;
-          for (let s = await status(); !(s.inMatch && s.phase >= 2); s = await status()) { if (Date.now() - t0 > (READY_S + 600) * 1000) throw Error("no play phase"); await sleep(500); }
+          for (let s = await status(); !(s.inMatch && s.phase >= 2); s = await status()) { if (Date.now() - play0 > 1_800_000) throw Error("no play phase 1800 s after the practice started"); await sleep(500); }
           await ev(PLACE(x, z, yaw, pitch));
           const set0 = Date.now(); while (Date.now() - set0 < SETTLE_S * 1000) { await ev(KEEP(yaw, pitch)); await sleep(500); }
           await frames(SETTLE_FRAMES, () => ev(KEEP(yaw, pitch)));
