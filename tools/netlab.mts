@@ -420,7 +420,8 @@ async function connect(url: string, token: string) {
       ws.on("error", reject);
     }, k * 300);
   }))));
-  // client loop: --fps frames a second (144) on the wall clock; a late frame takes the real elapsed time as its dt. Server frames reach the game at once (the sockets' callbacks), so --fps only paces the frames here
+  // client loop: --fps frames a second (144) on the wall clock; a late frame takes the real elapsed time as its dt.
+  // Server frames reach the game at once (the sockets' callbacks), so --fps only paces the frames here
   let nextFrame = now, last = now;
   while (!C.done(1500)) {
     realTime();
