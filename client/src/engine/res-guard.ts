@@ -105,8 +105,10 @@ export function decide(st: GuardState, s: GuardSecond, scale: number, top: numbe
 
 /** one step: page and match seconds, phase, the second's fps and frame p95 before it (stream frames left out), the
  *  scale before and after, why, the engine's display refresh estimate, the canvas backing size, whether the page was
- *  hidden or focused, and how many of the second's frames were stream frames */
-export interface ResStep { at: number; t: number; ph: number; fps: number; p95: number; from: number; to: number; why: StepWhy; hz: number; cv: [number, number]; hid: boolean; foc: boolean; sf: number }
+ *  hidden or focused, how many of the second's frames were stream frames, and the GPU's and the main thread's smoothed
+ *  ms per frame (engine.gpuMs, 0 = no timer, and engine.stepEma): a scale that bought no frame time shows here whether
+ *  the GPU got faster */
+export interface ResStep { at: number; t: number; ph: number; fps: number; p95: number; from: number; to: number; why: StepWhy; hz: number; cv: [number, number]; hid: boolean; foc: boolean; sf: number; gpu: number; cpu: number }
 
 /** one second's frame intervals without the stream frames: the newest `n` of the engine's rings (frameMs and
  *  frameStream, `count` frames drawn so far), sorted into `out`; the median, p95 and mean of what is left, how many
@@ -135,7 +137,7 @@ export function startResGuard(engine: Engine): void {
   const r1 = (v: number) => Math.round(v * 10) / 10;
   const log = (why: StepWhy, from: number, to: number, fps: number, p95: number, sf: number) => {
     const cm = kr.game?.inMatch ? kr.game.cm ?? null : null, c = engine.renderer.domElement;
-    resLog.push({ at: r1(performance.now() / 1000), t: cm ? r1(cm.time) : -1, ph: cm ? cm.phase : -1, fps: r1(fps), p95: r1(p95), from, to, why, hz: engine.refreshHz, cv: [c.width, c.height], hid: document.visibilityState === "hidden", foc: document.hasFocus(), sf });
+    resLog.push({ at: r1(performance.now() / 1000), t: cm ? r1(cm.time) : -1, ph: cm ? cm.phase : -1, fps: r1(fps), p95: r1(p95), from, to, why, hz: engine.refreshHz, cv: [c.width, c.height], hid: document.visibilityState === "hidden", foc: document.hasFocus(), sf, gpu: r1(engine.gpuMs), cpu: r1(engine.stepEma) });
     if (resLog.length > RES_LOG_MAX) resLog.splice(0, resLog.length - RES_LOG_MAX);
   };
   setInterval(() => {

@@ -1,6 +1,6 @@
 import type { Engine } from "../engine/engine";
 
-export const FIELDS = ["t", "fps", "p50Ms", "p95Ms", "maxMs", "over50", "over100", "gpuMs", "pingMs", "jitterMs", "heapMB", "textures", "geometries", "programs", "renderScale", "phase"] as const;
+export const FIELDS = ["t", "fps", "p50Ms", "p95Ms", "maxMs", "over50", "over100", "gpuMs", "pingMs", "jitterMs", "heapMB", "textures", "geometries", "programs", "renderScale", "phase", "cpuMs"] as const;
 export const WIDTH = FIELDS.length;
 export const CAPACITY_S = 7200;
 export const ring = new Float32Array(CAPACITY_S * WIDTH);
@@ -71,6 +71,7 @@ export function rollSecond(engine: Engine): number {
   ring[row + 13] = info.programs ? info.programs.length : 0;
   ring[row + 14] = engine.renderScale;
   ring[row + 15] = cm ? cm.phase : -1;
+  ring[row + 16] = engine.stepEma;
   clearSecond();
   cursor.rows++;
   return row;

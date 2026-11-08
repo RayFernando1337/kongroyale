@@ -1,6 +1,6 @@
 ---
 name: playtest
-description: "Read Kong Royale playtest bundles: what Ray (or a script) saved when he pressed the KONGBOT report or F8 during a ?perfhud session. Each bundle holds a per-second metrics timeline (fps, frame p95, GPU ms, ping, jitter, heap, textures, geometries, programs), the KONGBOT context and logs, the movement trail, the input replay of an offline bot match, the active flags, the build identity and a screenshot. Use when asked about lag, stalls, hitches, memory growth or a bug Ray marked while playing, or before and after a perf change to compare sessions."
+description: "Read Kong Royale playtest bundles: what Ray (or a script) saved when he pressed the KONGBOT report or F8 during a ?perfhud session. Each bundle holds a per-second metrics timeline (fps, frame p95, GPU ms, main-thread ms, ping, jitter, heap, textures, geometries, programs), the KONGBOT context and logs, the movement trail, the input replay of an offline bot match, the active flags, the build identity and a screenshot. Use when asked about lag, stalls, hitches, memory growth or a bug Ray marked while playing, or before and after a perf change to compare sessions."
 ---
 
 # Read playtest bundles
