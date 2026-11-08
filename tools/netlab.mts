@@ -420,7 +420,7 @@ async function connect(url: string, token: string) {
       ws.on("error", reject);
     }, k * 300);
   }))));
-  // client loop: --fps frames a second (144) on the wall clock; a late frame takes the real elapsed time as its dt
+  // client loop: --fps frames a second (144) on the wall clock; a late frame takes the real elapsed time as its dt. Server frames reach the game at once (the sockets' callbacks), so --fps only paces the frames here
   let nextFrame = now, last = now;
   while (!C.done(1500)) {
     realTime();
@@ -452,7 +452,7 @@ for (const go of runs) {
   if (r.predMissing !== 0) problems.push(`${r.predMissing} predicted pellets have no server verdict`);
   if (r.predHits > 0 && r.confirmPct < CHECK_MIN_CONFIRM_PCT) problems.push(`confirm ${r.confirmPct}% < ${CHECK_MIN_CONFIRM_PCT}%`);
   // a steady link must keep its instant markers: the deferral is for slow and stalled links only
-  if (!connectUrl && rtt <= CHECK_STEADY_RTT_MS && jitter <= 20 && loss === 0 && !stallMs && r.deferredMarkerPct > CHECK_MAX_DEFERRED_PCT) problems.push(`${r.deferredMarkerPct}% of hits waited for the server > ${CHECK_MAX_DEFERRED_PCT}%`);
+  if (!connectUrl && rtt <= CHECK_STEADY_RTT_MS && jitter <= 20 && loss === 0 && !(stallMs && stallEveryMs / 2 < secs * 1000 + rtt) && r.deferredMarkerPct > CHECK_MAX_DEFERRED_PCT) problems.push(`${r.deferredMarkerPct}% of hits waited for the server > ${CHECK_MAX_DEFERRED_PCT}%`);
   if (r.ghost > 0) problems.push(`${r.ghost} ghost hits`);
   if (!problems.length) continue;
   const label = `${weapon} rtt=${rtt}ms jitter=${r.jitter}${killable ? " kill" : ""}: ${problems.join(", ")}`;
