@@ -66,6 +66,8 @@ export interface LabResult {
   variants: Record<string, LabVariant>;
   /** us per draw each layer adds (p50 differences), and three's cost over the full replay */
   layers: Record<string, number>;
+  /** with ?drawlist: the share of the set's draws the lean variant served (the rest went to three: not pinned, or not valid) */
+  drawList?: { leanShare: number };
 }
 
 /** Page function: capture one frame's static draws, then time the variants. Self-contained (Playwright serialises it). */
@@ -126,7 +128,12 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
 
   const own = (k: string) => Object.prototype.hasOwnProperty.call(scene, k) ? scene[k] : undefined;
   const ownBefore = own("onBeforeRender"), ownAfter = own("onAfterRender");
+  // with ?drawlist the renderer's renderBufferDirect is engine/draw-list.ts's: it is off while the lab records (so the
+  // replay layers are three's calls), off for the three variant and on for the lean one
+  const dl = kr.drawList as { on: boolean; counts(): { lean: number; fallback: number }; reset(): void } | undefined, dlOn = dl?.on ?? false;
+  if (dl) dl.on = false;
   const restore = () => {
+    if (dl) dl.on = dlOn;
     unwrapGl(); r.renderBufferDirect = rbd; seg = null; capturing = false;
     if (ownBefore) scene.onBeforeRender = ownBefore; else delete scene.onBeforeRender;
     if (ownAfter) scene.onAfterRender = ownAfter; else delete scene.onAfterRender;
@@ -138,6 +145,17 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
   const moduleName = (x: any) => { for (let p = x; p && p !== scene; p = p.parent) { const m = moduleOf.get(p); if (m) return m; } return ""; };
   const topName = (x: any) => { let p = x; while (p.parent && p.parent !== scene) p = p.parent; return p.parent === scene ? "~" + (p.name || p.type) : "(detached)"; };
   type Variant = { name: string; run: () => void; calls: number; errors: number; t: number[] };
+  let leanDraws = 0, leanPasses = 0;
+  const threeVariant = (name: string, on: boolean): Variant => ({ name, calls: 0, errors: 0, t: [], run: () => {
+    if (dl) { dl.on = on; dl.reset(); }
+    for (let i = 0; i < set.length; i++) {
+      const d = set[i], ob = d.object;
+      ob.modelViewMatrix.multiplyMatrices(cam.matrixWorldInverse, ob.matrixWorld);
+      ob.normalMatrix.getNormalMatrix(ob.modelViewMatrix);
+      rbd.call(r, cam, scene, d.geometry, d.material, ob, d.group);
+    }
+    if (dl) { if (on) { leanDraws += dl.counts().lean; leanPasses++; } dl.on = false; }
+  } });
   const layer = (name: string, set: Draw[], keep: string[]): Variant => {
     const fns: Function[] = [], ts: object[] = [], as: unknown[][] = [];
     for (const d of set) for (const c of [...d.lead, ...d.calls]) if (keep.includes(c.c)) { fns.push(c.f); ts.push(c.t); as.push(c.a); }
@@ -145,8 +163,9 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
     return { name, calls: n / set.length, errors: 0, t: [], run: () => { for (let i = 0; i < n; i++) fns[i].apply(ts[i], as[i]); } };
   };
 
+  const set: Draw[] = [];
   return new Promise<LabResult>((resolve, reject) => {
-    let stage = "arm", frame = -1, set: Draw[] = [], variants: Variant[] = [], transparent = 0, noModule = 0;
+    let stage = "arm", frame = -1, variants: Variant[] = [], transparent = 0, noModule = 0;
     const byModule: Record<string, number> = {}, other: Record<string, number> = {}, perDraw: Record<string, number> = {}, skipped: Record<string, number> = {};
     // a watchdog, not a deadline: a software renderer takes seconds a frame, so only a 60 s gap between renders fails
     let lastRender = performance.now();
@@ -170,14 +189,8 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       for (const k in perDraw) perDraw[k] = +(perDraw[k] / set.length).toFixed(2);
       const s = set;
       variants = [
-        { name: "three", calls: 0, errors: 0, t: [], run: () => {
-          for (let i = 0; i < s.length; i++) {
-            const d = s[i], ob = d.object;
-            ob.modelViewMatrix.multiplyMatrices(cam.matrixWorldInverse, ob.matrixWorld);
-            ob.normalMatrix.getNormalMatrix(ob.modelViewMatrix);
-            rbd.call(r, cam, scene, d.geometry, d.material, ob, d.group);
-          }
-        } },
+        threeVariant("three", false),
+        ...(dl ? [threeVariant("lean", true)] : []),
         layer("core", s, ["program", "geometry", "draw"]),
         layer("+texture", s, ["program", "geometry", "draw", "texture"]),
         layer("+uniform", s, ["program", "geometry", "draw", "texture", "uniform"]),
@@ -210,8 +223,8 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
         out[v.name] = { usPerDraw: { p10: +q(us, 0.1).toFixed(3), p50: +q(us, 0.5).toFixed(3), p90: +q(us, 0.9).toFixed(3) }, msPerPass: +q(v.t, 0.5).toFixed(4), callsPerDraw: +v.calls.toFixed(2), glErrors: v.errors };
       }
       const p = (k: string) => out[k].usPerDraw.p50;
-      const layers = { core: p("core"), texture: +(p("+texture") - p("core")).toFixed(3), uniform: +(p("+uniform") - p("+texture")).toFixed(3), state: +(p("full") - p("+uniform")).toFixed(3), threeOverFull: +(p("three") - p("full")).toFixed(3) };
-      resolve({ frames: o.frames, reps: o.reps, all: !!o.all, draws: { main: draws.length, set: set.length, transparent, noModule, byModule, other }, streamed: !!kr.streamed, calls: { perDraw, skipped }, variants: out, layers });
+      const layers = { core: p("core"), texture: +(p("+texture") - p("core")).toFixed(3), uniform: +(p("+uniform") - p("+texture")).toFixed(3), state: +(p("full") - p("+uniform")).toFixed(3), threeOverFull: +(p("three") - p("full")).toFixed(3), ...(dl ? { threeOverLean: +(p("three") - p("lean")).toFixed(3) } : {}) };
+      resolve({ frames: o.frames, reps: o.reps, all: !!o.all, draws: { main: draws.length, set: set.length, transparent, noModule, byModule, other }, streamed: !!kr.streamed, calls: { perDraw, skipped }, variants: out, layers, ...(dl ? { drawList: { leanShare: +(leanDraws / Math.max(1, leanPasses) / set.length).toFixed(3) } } : {}) });
     };
     scene.onBeforeRender = function (this: unknown, ...a: any[]) {
       if (stage === "arm" && a[2] === cam) { capturing = true; stage = "capture"; }
