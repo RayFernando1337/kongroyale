@@ -1,5 +1,5 @@
 // Copies the project drive's lanes.md into lanes.json: the Updated line, the lanes table and the Recently landed line.
-// The plan lines are written by hand in lanes.json and kept as they are.
+// The "## Plan" bullets become the plan lines; without that section the plan already in lanes.json is kept.
 //   npx tsx tools/dashboard/lanes-import.mts [path/to/lanes.md]
 import fs from "node:fs";
 import os from "node:os";
@@ -19,8 +19,9 @@ const lanes: Lane[] = md.split("\n").map((l) => l.trim()).filter((l) => l.starts
   const [lane, thread, issue, what, status, next] = l.split("|").slice(1, -1).map((c) => c.trim());
   return { lane, thread, issue, what, status, next };
 });
+const plan = md.match(/^## Plan\n((?:- .+\n?)+)/m)?.[1].trim().split("\n").map((l) => l.replace(/^- /, ""));
 const prev = JSON.parse(fs.readFileSync(out, "utf8")) as Now;
-const next: Now = { updated: upd[1], updatedBy: upd[2], source: "project drive handoffs/dashboard/lanes.md", plan: prev.plan, lanes, landed: landed[1] };
+const next: Now = { updated: upd[1], updatedBy: upd[2], source: "project drive handoffs/dashboard/lanes.md", plan: plan ?? prev.plan, lanes, landed: landed[1] };
 checkNow(next);
 fs.writeFileSync(out, JSON.stringify(next, null, 2) + "\n");
 console.log("lanes.json: " + lanes.length + " lanes, updated " + next.updated);

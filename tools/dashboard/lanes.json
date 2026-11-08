@@ -3,11 +3,11 @@
   "updatedBy": "Kong Cloud (KONG-3)",
   "source": "project drive handoffs/dashboard/lanes.md",
   "plan": [
-    "Stable is kong-v1.2.0. kong-v1.3.1 (25ecfe7) is on next; it passed the D3D11 gate and is held on the Safari memory check.",
-    "I am finding out whether v1.3.0's +514 MB Safari peak is real or test-harness state (a double load). The verdict decides promotion.",
-    "Frame rate: the draw-list gate passed on the RTX laptop, 4.79 µs per replayed draw against 15.3 µs in three.js (n=8), worth about 2.1 to 2.6 ms. Step 2 is the first module behind ?drawlist=1 with identical stills.",
-    "The practice host in a worker and ?deferkong wait on the Metal A/B, and no default flips until Metal is clean.",
-    "The Mac power baseline (#324) is partial: Safari High is still to come."
+    "Ship the Safari descent fixes (#317, #318, #320) to stable as kong-v1.3.1 once the Safari memory check (RAY-278) clears.",
+    "Frame rate: build the static draw-list replay (about 2–2.6 ms of the ~21 ms main thread on RTX), one location at a time behind ?drawlist=1, with identical pixels.",
+    "Fix what live play showed: Safari spikes in the plane and tuk-tuk, and Firefox at 16 fps on Apple Silicon (RAY-280).",
+    "Turn on automatic performance summaries for every player after RAY-278, so real-player data drives the next fixes.",
+    "Upstream: batch 16 sends ~60 fork PRs to Max, and the fork stays synced."
   ],
   "lanes": [
     {
