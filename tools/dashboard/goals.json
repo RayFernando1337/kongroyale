@@ -31,9 +31,9 @@
           "pr": 277
         },
         {
-          "label": "Power and thermal baseline on a Mac",
+          "label": "Relative energy-impact baseline on a Mac (partial: Safari High still to come)",
           "hill": {
-            "metric": "power-w"
+            "metric": "energy-impact"
           }
         },
         {

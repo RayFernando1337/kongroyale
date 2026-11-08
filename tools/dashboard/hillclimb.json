@@ -49,40 +49,69 @@
         }
       }
     },
-    "power-w": {
-      "label": "Power over a practice match",
-      "unit": "W",
-      "plain": "CPU, GPU and package watts from powermetrics over a full practice match on Honu. Release to release, this should not go up.",
+    "energy-impact": {
+      "label": "Relative energy impact over a practice match",
+      "unit": "POWER",
+      "plain": "Top's POWER column summed over the browser's processes, averaged over the plane, glide and on-foot part of one full practice match on the Mac mini. It is a relative, unitless figure, not watts, and n=2 per arm for Chrome (n=1 for Safari), so it shows direction only. Lower is better. Safari High is still to come. Read it beside the frame rate below: Chrome High uses less in total because it draws about 36 frames a second instead of 60.",
       "lower": true,
       "series": {
-        "honu-cpu": {
-          "label": "CPU",
-          "machine": "Honu (Mac), Safari"
+        "chrome-auto": {
+          "label": "Chrome Auto",
+          "machine": "Mac mini M4 (Honu), Chrome 154.0.8037.57 on Metal"
         },
-        "honu-gpu": {
-          "label": "GPU",
-          "machine": "Honu (Mac), Safari"
+        "chrome-high": {
+          "label": "Chrome High",
+          "machine": "Mac mini M4 (Honu), Chrome 154.0.8037.57 on Metal"
         },
-        "honu-package": {
-          "label": "Package",
-          "machine": "Honu (Mac), Safari"
+        "safari-auto": {
+          "label": "Safari Auto",
+          "machine": "Mac mini M4 (Honu), Safari 27.0.1"
         }
       },
-      "pending": "The power baseline on Honu runs now; its first points land from handoffs/power-baseline/."
+      "pending": "The power baseline has not landed yet."
     },
     "thermal": {
       "label": "Thermal state over a practice match",
       "unit": "",
-      "plain": "macOS thermal pressure (or fan speed) at the end of a full practice match on Honu.",
+      "plain": "macOS thermal pressure before and after each full practice match on the Mac mini, from pmset -g therm. Watts, package power and fan state were not observable: powermetrics needs a password that was not asked for.",
       "lower": true,
       "state": true,
       "series": {
-        "honu": {
-          "label": "Honu",
-          "machine": "Honu (Mac), Safari"
+        "chrome-auto": {
+          "label": "Chrome Auto",
+          "machine": "Mac mini M4 (Honu), Chrome 154.0.8037.57 on Metal"
+        },
+        "chrome-high": {
+          "label": "Chrome High",
+          "machine": "Mac mini M4 (Honu), Chrome 154.0.8037.57 on Metal"
+        },
+        "safari-auto": {
+          "label": "Safari Auto",
+          "machine": "Mac mini M4 (Honu), Safari 27.0.1"
         }
       },
       "pending": "Lands with the power baseline."
+    },
+    "fps-power": {
+      "label": "Frames per second in the power runs",
+      "unit": "fps",
+      "plain": "Median frame rate on foot in the same runs as the energy impact above, with the display setting left at its default. Chrome Auto steps its quality down to hold about 60; Chrome High stays at full resolution and runs about 36.",
+      "lower": false,
+      "series": {
+        "chrome-auto": {
+          "label": "Chrome Auto",
+          "machine": "Mac mini M4 (Honu), Chrome 154.0.8037.57 on Metal"
+        },
+        "chrome-high": {
+          "label": "Chrome High",
+          "machine": "Mac mini M4 (Honu), Chrome 154.0.8037.57 on Metal"
+        },
+        "safari-auto": {
+          "label": "Safari Auto",
+          "machine": "Mac mini M4 (Honu), Safari 27.0.1"
+        }
+      },
+      "pending": "Not measured yet."
     },
     "fps": {
       "label": "Frames per second",
@@ -259,6 +288,127 @@
       "n": 6,
       "method": "B arm (?deferkong=1) of the A/B, 6 interleaved cold loads per arm, median and range; head 8e2e4c5, before the 8921945 fix",
       "source": "handoffs/KONG-59/defer-kong-d3d11/"
+    },
+    {
+      "metric": "energy-impact",
+      "series": "chrome-auto",
+      "at": "Chrome Auto",
+      "value": 135.8,
+      "low": 133.8,
+      "high": 137.8,
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 2,
+      "method": "Production build, local server, seed 42, ?perfhud&dpr=2, one full practice match to Results per run, Chrome, Auto (starts high, steps down to low at about res3d 0.68), n=2. Top's POWER column sampled every few seconds per browser process and summed; in-match means plane, glide and on foot. Not watts. Other work ran on the Mac, so only browser columns are compared",
+      "note": "Runs 137.8 and 133.8; energy per frame-per-second 2.3 and 2.2."
+    },
+    {
+      "metric": "fps-power",
+      "series": "chrome-auto",
+      "at": "Chrome Auto",
+      "value": 60,
+      "low": 60,
+      "high": 60,
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 2,
+      "method": "Median frame rate on foot from the in-page flight record (?perfhud), same runs as the energy impact, display frame cap left at its default; mean of the two runs' medians",
+      "note": "Both runs 60."
+    },
+    {
+      "metric": "thermal",
+      "series": "chrome-auto",
+      "at": "Chrome Auto",
+      "state": "No thermal or performance warning level recorded, before or after",
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 2,
+      "method": "pmset -g therm at the start and end of each run; no root, so no fan state or package watts"
+    },
+    {
+      "metric": "energy-impact",
+      "series": "chrome-high",
+      "at": "Chrome High",
+      "value": 108.5,
+      "low": 105.8,
+      "high": 111.2,
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 2,
+      "method": "Production build, local server, seed 42, ?perfhud&dpr=2, one full practice match to Results per run, Chrome, High (res3d 1), n=2. Top's POWER column sampled every few seconds per browser process and summed; in-match means plane, glide and on foot. Not watts. Other work ran on the Mac, so only browser columns are compared",
+      "note": "Runs 105.8 and 111.2; energy per frame-per-second 2.9 and 3.1. Lower total because it draws fewer frames, higher per frame."
+    },
+    {
+      "metric": "fps-power",
+      "series": "chrome-high",
+      "at": "Chrome High",
+      "value": 36.5,
+      "low": 36,
+      "high": 37,
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 2,
+      "method": "Median frame rate on foot from the in-page flight record (?perfhud), same runs as the energy impact, display frame cap left at its default; mean of the two runs' medians",
+      "note": "Run medians 37 and 36."
+    },
+    {
+      "metric": "thermal",
+      "series": "chrome-high",
+      "at": "Chrome High",
+      "state": "No thermal or performance warning level recorded, before or after",
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 2,
+      "method": "pmset -g therm at the start and end of each run; no root, so no fan state or package watts"
+    },
+    {
+      "metric": "energy-impact",
+      "series": "safari-auto",
+      "at": "Safari Auto",
+      "value": 109.2,
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 1,
+      "method": "Production build, local server, seed 42, ?perfhud&dpr=2, one full practice match to Results per run, Safari, Auto (settles at the low tier, res 0.67), n=1. Top's POWER column sampled every few seconds per browser process and summed; in-match means plane, glide and on foot. Not watts. Other work ran on the Mac, so only browser columns are compared",
+      "note": "One run only. About 20% below Chrome Auto at the same frame rate (109.2 against the 135.8 mean), but that compares one run with two. Energy per frame-per-second 1.9."
+    },
+    {
+      "metric": "fps-power",
+      "series": "safari-auto",
+      "at": "Safari Auto",
+      "value": 59,
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 1,
+      "method": "Median frame rate on foot from the in-page flight record (?perfhud), same runs as the energy impact, display frame cap left at its default; one run"
+    },
+    {
+      "metric": "thermal",
+      "series": "safari-auto",
+      "at": "Safari Auto",
+      "state": "No thermal or performance warning level recorded, before or after",
+      "kind": "measured",
+      "build": "main 25ecfe7",
+      "date": "2026-11-08",
+      "source": "project drive: handoffs/power-baseline (RAY-226), table.md and runs/",
+      "n": 1,
+      "method": "pmset -g therm at the start and end of each run; no root, so no fan state or package watts"
     }
   ]
 }
