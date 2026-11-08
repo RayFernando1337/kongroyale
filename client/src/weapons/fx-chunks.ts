@@ -1,8 +1,11 @@
 // Lit 3D debris for the weapons FX: ejected banana casings + shotgun hulls, wood splinters,
-// stone chips, glass shards, dirt clods and banana-peel confetti. ONE InstancedMesh draw: every shape lives in one
-// geometry tagged per vertex (aShape); the vertex shader collapses the shapes an instance does not use. The pool is
-// dense (swap-remove on death) so update() and the matrix upload are O(live). PBR (MeshStandard) so debris is lit,
-// shadowed (receives) and hazed like the world around it.
+// stone chips, glass shards, dirt clods and banana-peel confetti. One InstancedMesh per shape, all on one shared vertex
+// buffer (each shape's geometry is a draw range of it) and one material: an instance runs only its own shape's
+// vertices. (Every shape in one instanced draw, the unused ones collapsed in the vertex shader, ran all 2388 vertices
+// for every chunk: a full pool of 384 was 306 k triangles, RAY-288.) A shape with no live chunk draws nothing (cull.ts
+// skips empty instanced meshes). Each pool is dense (swap-remove on death) so update() and the matrix upload are
+// O(live); the cap counts every shape together. PBR (MeshStandard) so debris is lit, shadowed (receives) and hazed like
+// the world around it.
 import * as THREE from "three";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -34,7 +37,8 @@ function latheZ(prof: Array<[number, number]>, seg: number): THREE.BufferGeometr
 }
 function rngf(seed: number) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
-function buildShapes(): THREE.BufferGeometry {
+/** every shape's vertices in one non-indexed geometry (shape by shape, in K order) and each shape's [first, count] */
+function buildShapes(): { geo: THREE.BufferGeometry; ranges: Array<[number, number]> } {
   const parts: THREE.BufferGeometry[] = [];
   const tag = (g: THREE.BufferGeometry, shape: number) => { g.setAttribute("aShape", new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(shape), 1)); parts.push(g); };
 
@@ -139,8 +143,9 @@ function buildShapes(): THREE.BufferGeometry {
     for (const k of Object.keys(q.attributes)) if (!["position", "normal", "color", "aShape"].includes(k)) q.deleteAttribute(k);
     return q;
   });
+  list.sort((a, b) => a.attributes.aShape.getX(0) - b.attributes.aShape.getX(0));
   const out = new THREE.BufferGeometry();
-  for (const name of ["position", "normal", "color", "aShape"]) {
+  for (const name of ["position", "normal", "color"]) {
     const size = list[0].attributes[name].itemSize;
     const total = list.reduce((s, x) => s + x.attributes[name].count, 0);
     const arr = new Float32Array(total * size);
@@ -148,7 +153,10 @@ function buildShapes(): THREE.BufferGeometry {
     for (const x of list) { arr.set((x.attributes[name] as THREE.BufferAttribute).array as Float32Array, off); off += x.attributes[name].count * size; }
     out.setAttribute(name, new THREE.BufferAttribute(arr, size));
   }
-  return out;
+  const ranges: Array<[number, number]> = [];
+  let first = 0;
+  for (const x of list) { const n = x.attributes.position.count; ranges[x.attributes.aShape.getX(0)] = [first, n]; first += n; }
+  return { geo: out, ranges };
 }
 
 export interface ChunkParams {
@@ -160,71 +168,78 @@ const DEF: ChunkParams = { shape: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life
 
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _m = new THREE.Matrix4();
 
+/** one shape's live chunks: F holds 20 floats per chunk, dense (swap-remove on death) */
+interface Pool { mesh: THREE.InstancedMesh; F: Float32Array; count: number; colorDirty: boolean }
+
 export class Chunks {
-  readonly mesh: THREE.InstancedMesh;
+  /** the debris root: one InstancedMesh per shape */
+  readonly mesh = new THREE.Group();
+  readonly material: THREE.MeshStandardMaterial;
   readonly p: ChunkParams = { ...DEF };
+  /** live chunks, every shape together (never more than cap) */
   count = 0;
-  private readonly F: Float32Array; // per particle: 20 floats
-  private readonly shapeAttr: THREE.InstancedBufferAttribute;
-  private colorDirty = false;
+  private readonly pools: Pool[] = [];
   private rnd = rngf(99);
   constructor(readonly cap: number) {
-    const geo = buildShapes();
-    this.shapeAttr = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
-    this.shapeAttr.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute("iShape", this.shapeAttr);
+    const { geo, ranges } = buildShapes();
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.05, envMapIntensity: 0.8, side: THREE.DoubleSide });
     mat.name = "fx-chunks";
-    mat.onBeforeCompile = (s) => {
-      s.vertexShader = s.vertexShader
-        .replace("#include <common>", "#include <common>\nattribute float aShape;\nattribute float iShape;")
-        .replace("#include <begin_vertex>", "#include <begin_vertex>\nif (abs(aShape - iShape) > 0.5) transformed = vec3(0.0);");
-    };
-    mat.customProgramCacheKey = () => "kr-fx-chunks-1";
-    this.mesh = new THREE.InstancedMesh(geo, mat, cap);
+    this.material = mat;
     this.mesh.name = "fx-chunks";
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.setColorAt(0, new THREE.Color(1, 1, 1));
-    this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
-    this.mesh.frustumCulled = false;
-    this.mesh.castShadow = false; this.mesh.receiveShadow = true;
-    this.mesh.userData.castShadow = false; this.mesh.userData.noOutline = true;
-    this.mesh.visible = false;
-    this.F = new Float32Array(cap * 20);
+    for (let s = 0; s < ranges.length; s++) {
+      const g = new THREE.BufferGeometry();
+      for (const name of ["position", "normal", "color"]) g.setAttribute(name, geo.attributes[name]);
+      g.setDrawRange(ranges[s][0], ranges[s][1]);
+      const mesh = new THREE.InstancedMesh(g, mat, cap);
+      mesh.name = "fx-chunks:" + s;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.setColorAt(0, new THREE.Color(1, 1, 1));
+      mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+      mesh.count = 0;
+      mesh.frustumCulled = false;
+      mesh.castShadow = false; mesh.receiveShadow = true;
+      mesh.userData.castShadow = false; mesh.userData.noOutline = true;
+      mesh.visible = false;
+      this.mesh.add(mesh);
+      this.pools.push({ mesh, F: new Float32Array(cap * 20), count: 0, colorDirty: false });
+    }
   }
 
   emit() {
-    const p = this.p;
-    if (this.count >= this.cap) { Object.assign(p, DEF); return; }
-    const i = this.count++, o = i * 20, F = this.F, R = this.rnd;
+    const p = this.p, pool = this.pools[p.shape];
+    if (this.count >= this.cap || !pool) { Object.assign(p, DEF); return; }
+    this.count++;
+    const i = pool.count++, o = i * 20, F = pool.F, R = this.rnd;
     F[o] = p.x; F[o + 1] = p.y; F[o + 2] = p.z; F[o + 3] = p.vx; F[o + 4] = p.vy; F[o + 5] = p.vz;
     F[o + 6] = R() * 6.28; F[o + 7] = R() * 6.28; F[o + 8] = R() * 6.28;
     F[o + 9] = (R() - 0.5) * 2 * p.spin; F[o + 10] = (R() - 0.5) * 2 * p.spin; F[o + 11] = (R() - 0.5) * 2 * p.spin;
     F[o + 12] = p.scale; F[o + 13] = p.len; F[o + 14] = 0; F[o + 15] = p.life; F[o + 16] = p.floor;
     F[o + 17] = p.rest; F[o + 18] = p.flutter; F[o + 19] = p.grav;
-    this.shapeAttr.array[i] = p.shape;
-    const c = this.mesh.instanceColor!.array as Float32Array; c[i * 3] = p.r; c[i * 3 + 1] = p.g; c[i * 3 + 2] = p.b;
-    this.colorDirty = true;
+    const c = pool.mesh.instanceColor!.array as Float32Array; c[i * 3] = p.r; c[i * 3 + 1] = p.g; c[i * 3 + 2] = p.b;
+    pool.colorDirty = true;
     Object.assign(p, DEF);
   }
 
-  private kill(i: number) {
-    const last = --this.count;
+  private kill(pool: Pool, i: number) {
+    const last = --pool.count;
+    this.count--;
     if (i !== last) {
-      this.F.copyWithin(i * 20, last * 20, last * 20 + 20);
-      const s = this.shapeAttr.array as Float32Array; s[i] = s[last];
-      const c = this.mesh.instanceColor!.array as Float32Array; c[i * 3] = c[last * 3]; c[i * 3 + 1] = c[last * 3 + 1]; c[i * 3 + 2] = c[last * 3 + 2];
-      this.colorDirty = true;
+      pool.F.copyWithin(i * 20, last * 20, last * 20 + 20);
+      const c = pool.mesh.instanceColor!.array as Float32Array; c[i * 3] = c[last * 3]; c[i * 3 + 1] = c[last * 3 + 1]; c[i * 3 + 2] = c[last * 3 + 2];
+      pool.colorDirty = true;
     }
   }
 
   update(dt: number) {
-    const F = this.F, arr = this.mesh.instanceMatrix.array as Float32Array;
-    for (let i = 0; i < this.count; i++) {
+    for (let k = 0; k < this.pools.length; k++) this.step(this.pools[k], dt);
+  }
+
+  private step(pool: Pool, dt: number) {
+    const F = pool.F, arr = pool.mesh.instanceMatrix.array as Float32Array;
+    for (let i = 0; i < pool.count; i++) {
       const o = i * 20;
       const age = (F[o + 14] += dt), life = F[o + 15];
-      if (age >= life) { this.kill(i); i--; continue; }
+      if (age >= life) { this.kill(pool, i); i--; continue; }
       let vx = F[o + 3], vy = F[o + 4], vz = F[o + 5];
       const flutter = F[o + 18];
       const resting = F[o + 17] < 0;
@@ -261,15 +276,14 @@ export class Chunks {
       _m.compose(_p, _q, _s);
       _m.toArray(arr, i * 16);
     }
-    const n = this.count;
-    this.mesh.count = n;
-    this.mesh.visible = n > 0;
+    const n = pool.count, mesh = pool.mesh;
+    mesh.count = n;
+    mesh.visible = n > 0;
     if (n > 0) {
-      this.mesh.instanceMatrix.clearUpdateRanges(); this.mesh.instanceMatrix.addUpdateRange(0, n * 16); this.mesh.instanceMatrix.needsUpdate = true;
-      if (this.colorDirty) {
-        const c = this.mesh.instanceColor!; c.clearUpdateRanges(); c.addUpdateRange(0, n * 3); c.needsUpdate = true;
-        this.shapeAttr.clearUpdateRanges(); this.shapeAttr.addUpdateRange(0, n); this.shapeAttr.needsUpdate = true;
-        this.colorDirty = false;
+      mesh.instanceMatrix.clearUpdateRanges(); mesh.instanceMatrix.addUpdateRange(0, n * 16); mesh.instanceMatrix.needsUpdate = true;
+      if (pool.colorDirty) {
+        const c = mesh.instanceColor!; c.clearUpdateRanges(); c.addUpdateRange(0, n * 3); c.needsUpdate = true;
+        pool.colorDirty = false;
       }
     }
   }

@@ -341,6 +341,11 @@ export function shadowOnlyMaterial(): THREE.ShaderMaterial {
  *  - PROXY: one merged box town, the only thing drawn beyond `far` from the POI's bounds (atmos' far shadow map).
  */
 const PARITY = flag("nocull");
+/** the Low view distance (engine/display.ts publishes it as "display:viewDist"): no town draws its detailed tiers
+ *  beyond this many metres from its bounds, whatever its own `far` (the Murk keeps them to 900 m, Wreck Bay to 560 m:
+ *  at the Plantation ridge the Murk's thatch alone was 358 k triangles 575 m away, RAY-288). Every other view distance
+ *  keeps each town's own switch. */
+const LOW_FAR_M = 300;
 export class TownLod {
   private items = new Map<string, LodItem>();
   private batches: THREE.BatchedMesh[] = [];
@@ -613,7 +618,7 @@ export class TownLod {
   /** Every detailed tier finished fading out; only the far proxy remains. */
   private dormant = false;
   update(p: THREE.Vector3, force = false) {
-    const far = this.o.far ?? 260;
+    const far = Math.min(this.o.far ?? 260, this.ctx?.shared.get("display:viewDist") === "low" ? LOW_FAR_M : Infinity);
     const d = this.poiDist(p);
     const farOn = force ? d > far : this.farOn ? d > far - 15 : d > far + 15;
     // the water's waterline-foam bake ACCUMULATES whatever is visible when it runs (at load, then every 8–60 frames):
