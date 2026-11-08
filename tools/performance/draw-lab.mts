@@ -26,9 +26,11 @@
 // excluded draws since the previous retained one (reported as calls.perDraw.bridge): a replay that stands on its own, at
 // the price of counting some state calls a stand-alone static list might not need, so full is an upper bound on its cost.
 // Calls a replay leaves out (framebuffer, viewport, scissor test, uploads, read-backs) are counted under skipped. renderer.resetState()
-// runs before every variant, untimed, so each starts from the same GL state and three's state cache matches it. Each
-// variant's time is performance.now() around its reps (the page is cross-origin isolated: 5 us resolution), divided by
-// reps and by the draw count. The first replay frame is a warm-up: its gl.getError() count per variant is reported and its
+// runs before every variant, untimed, so each starts from the same GL state and three's state cache matches it. Before each
+// variant one untimed gl.getError() (a round trip to the GPU process) empties the command buffer, so a backlog left by the
+// game's frame or another variant cannot land in its time. Each variant's time is performance.now() around its reps (the
+// page is cross-origin isolated: 5 us resolution), divided by reps and by the draw count; drained adds one closing
+// gl.getError(), so it also counts the GPU process turning the calls into backend (D3D11, Metal) commands. The first replay frame is a warm-up: its gl.getError() count per variant is reported and its
 // times are dropped. A replayed call goes through Function.prototype.apply (tens of ns per call; a real draw list would
 // call the GL methods directly).
 //
@@ -50,7 +52,17 @@ export interface DrawLabOptions {
 }
 
 /** one variant's times over the measured frames */
-export interface LabVariant { usPerDraw: { p10: number; p50: number; p90: number }; msPerPass: number; callsPerDraw: number; glErrors: number }
+export interface LabVariant {
+  /** CPU time to submit the variant's calls (performance.now around its reps), the command buffer drained first */
+  usPerDraw: { p10: number; p50: number; p90: number };
+  /** submit plus one gl.getError() round trip: the GPU process has also turned the calls into backend commands */
+  drainedUsPerDraw?: { p10: number; p50: number; p90: number };
+  msPerPass: number; callsPerDraw: number; glErrors: number;
+  /** errors raised by measured (not warm-up) passes */
+  lateErrors?: number;
+  /** per measured frame, in frame order: us/draw submitted and drained (the variant order rotates by frame) */
+  samples?: { us: number[]; drained: number[] };
+}
 
 /** what drawLab returns (gpu-match adds the run's config around it) */
 export interface LabResult {
@@ -146,9 +158,9 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
   for (const id of kr.moduleIds?.() ?? []) for (const root of kr.moduleRoots?.(id) ?? []) moduleOf.set(root, id);
   const moduleName = (x: any) => { for (let p = x; p && p !== scene; p = p.parent) { const m = moduleOf.get(p); if (m) return m; } return ""; };
   const topName = (x: any) => { let p = x; while (p.parent && p.parent !== scene) p = p.parent; return p.parent === scene ? "~" + (p.name || p.type) : "(detached)"; };
-  type Variant = { name: string; run: () => void; calls: number; errors: number; t: number[] };
+  type Variant = { name: string; run: () => void; calls: number; errors: number; late: number; t: number[]; td: number[] };
   let leanDraws = 0, leanPasses = 0;
-  const threeVariant = (name: string, on: boolean): Variant => ({ name, calls: 0, errors: 0, t: [], run: () => {
+  const threeVariant = (name: string, on: boolean): Variant => ({ name, calls: 0, errors: 0, late: 0, t: [], td: [], run: () => {
     if (dl) { dl.on = on; dl.reset(); }
     for (let i = 0; i < set.length; i++) {
       const d = set[i], ob = d.object;
@@ -162,7 +174,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
     const fns: Function[] = [], ts: object[] = [], as: unknown[][] = [];
     for (const d of set) for (const c of [...d.lead, ...d.calls]) if (keep.includes(c.c)) { fns.push(c.f); ts.push(c.t); as.push(c.a); }
     const n = fns.length;
-    return { name, calls: n / set.length, errors: 0, t: [], run: () => { for (let i = 0; i < n; i++) fns[i].apply(ts[i], as[i]); } };
+    return { name, calls: n / set.length, errors: 0, late: 0, t: [], td: [], run: () => { for (let i = 0; i < n; i++) fns[i].apply(ts[i], as[i]); } };
   };
 
   const set: Draw[] = [];
@@ -208,11 +220,12 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
         r.resetState();
         r.setRenderTarget(rt);
         gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
+        for (let g = 0; g < 16 && gl.getError() !== gl.NO_ERROR; g++) if (!warm) v.late++;
         const t0 = performance.now();
         for (let k = 0; k < o.reps; k++) v.run();
-        const dt = (performance.now() - t0) / o.reps;
-        if (warm) { for (let g = 0; g < 16 && gl.getError() !== gl.NO_ERROR; g++) v.errors++; }
-        else v.t.push(dt);
+        const t1 = performance.now(), e = gl.getError(), t2 = performance.now();
+        if (warm) { if (e !== gl.NO_ERROR) v.errors++; for (let g = 0; g < 16 && gl.getError() !== gl.NO_ERROR; g++) v.errors++; }
+        else { if (e !== gl.NO_ERROR) v.late++; v.t.push((t1 - t0) / o.reps); v.td.push((t2 - t0) / o.reps); }
       }
       r.resetState();
     };
@@ -221,8 +234,8 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
       const q = (a: number[], p: number) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
       const out: Record<string, LabVariant> = {};
       for (const v of variants) {
-        const us = v.t.map((x) => (x * 1000) / set.length);
-        out[v.name] = { usPerDraw: { p10: +q(us, 0.1).toFixed(3), p50: +q(us, 0.5).toFixed(3), p90: +q(us, 0.9).toFixed(3) }, msPerPass: +q(v.t, 0.5).toFixed(4), callsPerDraw: +v.calls.toFixed(2), glErrors: v.errors };
+        const us = v.t.map((x) => (x * 1000) / set.length), ud = v.td.map((x) => (x * 1000) / set.length);
+        out[v.name] = { usPerDraw: { p10: +q(us, 0.1).toFixed(3), p50: +q(us, 0.5).toFixed(3), p90: +q(us, 0.9).toFixed(3) }, drainedUsPerDraw: { p10: +q(ud, 0.1).toFixed(3), p50: +q(ud, 0.5).toFixed(3), p90: +q(ud, 0.9).toFixed(3) }, msPerPass: +q(v.t, 0.5).toFixed(4), callsPerDraw: +v.calls.toFixed(2), glErrors: v.errors, lateErrors: v.late, samples: { us: us.map((x) => +x.toFixed(2)), drained: ud.map((x) => +x.toFixed(2)) } };
       }
       const p = (k: string) => out[k].usPerDraw.p50;
       const layers = { core: p("core"), texture: +(p("+texture") - p("core")).toFixed(3), uniform: +(p("+uniform") - p("+texture")).toFixed(3), state: +(p("full") - p("+uniform")).toFixed(3), threeOverFull: +(p("three") - p("full")).toFixed(3), ...(dl ? { threeOverLean: +(p("three") - p("lean")).toFixed(3) } : {}) };
@@ -256,10 +269,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (runs.some((x) => sig(x) !== sig(runs[0]))) { console.error("the lab files differ in renderer, segments, preset, viewport, frames, reps or all; summarise one kind at a time:\n" + files.map((f, i) => "  " + f + ": " + sig(runs[i])).join("\n")); process.exit(1); }
   const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
   console.log(runs.length + " run(s) on " + [...new Set(runs.map((x) => x.renderer ?? "?"))].join(", ") + "; set " + runs.map((x) => x.draws.set).join("/") + " draws of " + runs.map((x) => x.draws.main).join("/") + (runs.every((x) => x.streamed) ? "" : "; NOT streamed in every run"));
-  console.log("variant    us/draw p50 (median of runs)  min..max of runs   calls/draw  glErrors");
+  console.log("variant    us/draw p50 (median of runs)  min..max of runs   calls/draw  glErrors  drained p50 (median)  p10..p90 (median)");
   for (const k of Object.keys(runs[0].variants)) {
-    const v = runs.map((x) => x.variants[k].usPerDraw.p50);
-    console.log(k.padEnd(10) + " " + med(v).toFixed(2).padStart(8) + "                      " + (Math.min(...v).toFixed(2) + ".." + Math.max(...v).toFixed(2)).padEnd(18) + " " + String(runs[0].variants[k].callsPerDraw).padStart(10) + "  " + runs.map((x) => x.variants[k].glErrors).join("/"));
+    const v = runs.map((x) => x.variants[k].usPerDraw.p50), dr = runs.map((x) => x.variants[k].drainedUsPerDraw);
+    const drained = dr.every(Boolean) ? med(dr.map((d) => d!.p50)).toFixed(2).padStart(8) + "              " + med(dr.map((d) => d!.p10)).toFixed(2) + ".." + med(dr.map((d) => d!.p90)).toFixed(2) : "";
+    console.log(k.padEnd(10) + " " + med(v).toFixed(2).padStart(8) + "                      " + (Math.min(...v).toFixed(2) + ".." + Math.max(...v).toFixed(2)).padEnd(18) + " " + String(runs[0].variants[k].callsPerDraw).padStart(10) + "  " + runs.map((x) => x.variants[k].glErrors).join("/").padEnd(8) + "  " + drained);
   }
   for (const k of Object.keys(runs[0].layers)) console.log("layer " + k.padEnd(14) + med(runs.map((x) => x.layers[k])).toFixed(2) + " us/draw");
   const full = med(runs.map((x) => x.variants.full.usPerDraw.p50));
