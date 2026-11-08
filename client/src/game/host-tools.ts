@@ -23,9 +23,9 @@ export interface HostView {
   vehs: ReadonlyArray<{ kind: number; x: number; y: number; z: number; st: number; seats: readonly number[] }>;
 }
 
-function place(m: Match, q: Player, x: number, z: number, y?: number) {
+function place(m: Match, q: Player, x: number, z: number, y = Math.max(m.world.ground(x, z), 0)) {
   const w = m.world;
-  w.velY = 0; w.resolveCapsule(x, (y ?? Math.max(w.ground(x, z), 0)) + 0.05, z, PLAYER_R, PLAYER_H, false);
+  w.velY = 0; w.resolveCapsule(x, y + 0.05, z, PLAYER_R, PLAYER_H, false);
   q.x = w.P[0]; q.y = w.P[1]; q.z = w.P[2]; q.vx = q.vy = q.vz = 0; q.grounded = true;
 }
 
