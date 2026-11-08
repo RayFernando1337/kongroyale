@@ -84,6 +84,16 @@
         "verdict": "pass",
         "note": "verify, teardown, two-player smoke, flight check and load A/B all clean",
         "source": "project drive handoffs/release-kong-v1.2.0-d3d11/README.md"
+      },
+      "metal": {
+        "verdict": "pass",
+        "note": "all 5 parts",
+        "source": "Kong Mini gate report, KONG-54, 2026-11-07"
+      },
+      "safari": {
+        "verdict": "pass",
+        "note": "finished with no kill, 6.6 GB WebContent peak (one run, about 770 MB below v1.1.0)",
+        "source": "Kong Mini gate report, KONG-54, 2026-11-07"
       }
     },
     "kong-v1.3.0": {
