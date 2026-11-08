@@ -417,7 +417,7 @@ export function paint(hex: string, o: { rough?: number; metal?: number; seed?: n
     // (ONE neutral painted tile tinted by the colour — a paint() painting its own 512² tile on the
     // main thread costs 20–40 ms each, inside the parts' build tasks; the tile is painted by the texture worker)
     const mats = harborMats();
-    const col = new THREE.Color(hex).multiplyScalar(1 / NEUTRAL_LIN);
+    const col = new THREE.Color(hex).multiplyScalar(1 / new THREE.Color(NEUTRAL_HEX).r);
     m = weather(new THREE.MeshStandardMaterial({ map: T("neutral"), color: col, roughnessMap: mats.yellowPaint.roughnessMap, roughness: o.rough ?? 0.5, metalness: o.metal ?? 0.05, normalMap: mats.dentNormal, normalScale: new THREE.Vector2(0.3, 0.3) }), { grime: o.grime ?? 0.28 });
     m.name = o.name ?? `paint-${hex}`;
     tileMetres(m, o.tile ?? 2);
@@ -460,7 +460,7 @@ function roofTile(kind: "yellow" | "grey"): { color: HTMLCanvasElement; normal: 
 /** every texture the harbor paints, in named groups (a group paints its maps together: color + normal + rough from
  *  one height field). `harborMatsAsync()` paints them in worker threads (harbor-tex.worker.ts, OffscreenCanvas) and
  *  the main thread only uploads ImageBitmaps; `harborMats()` alone still paints any missing one live. */
-const NEUTRAL_HEX = "#bdbdbd", NEUTRAL_LIN = new THREE.Color(NEUTRAL_HEX).r;
+const NEUTRAL_HEX = "#bdbdbd";
 type Cv = HTMLCanvasElement;
 const one = (k: string, f: () => Cv) => (): Record<string, Cv> => ({ [k]: f() });
 const trio = (k: string, f: () => { color: Cv; normal: Cv; rough?: Cv }) => (): Record<string, Cv> => { const t = f(); const o: Record<string, Cv> = { [`${k}.color`]: t.color, [`${k}.normal`]: t.normal }; if (t.rough) o[`${k}.rough`] = t.rough; return o; };
@@ -511,6 +511,96 @@ function shipHullTile(): { color: Cv; normal: Cv } {
   splotches(c, 0, 0, W, H, { n: 16, rMin: 3, rMax: 10, color: "rgba(140,140,135,1)", alpha: 0.25, seed: 307 });
   return { color: el, normal: normalFromHeight(hel, 2.4) };
 }
+// ---- the rooms' finishes (harbor-rooms.ts roomMats: offices, corridors, machinery houses, the wreck's cabins)
+/** cream plaster: mottled, hairline cracks, scuffs and grime toward the floor (3 m tile) */
+function roomPlaster(): Cv {
+  const S = 512, [el, c] = canvas(S, S);
+  c.fillStyle = "#e6dcc6"; c.fillRect(0, 0, S, S);
+  paintNoise(c, 0, 0, S, S, { seed: 7101, scale: 300, alpha: 0.18, blend: "overlay" });
+  splotches(c, 0, 0, S, S, { n: 26, rMin: 18, rMax: 70, color: "rgba(170,150,115,1)", alpha: 0.12, seed: 7102, blend: "multiply" });
+  const r = rng(7103);
+  c.strokeStyle = "rgba(95,80,60,0.35)"; c.lineWidth = 1;
+  for (let i = 0; i < 7; i++) { let x = r() * S, y = r() * S; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 8; k++) { x += (r() - 0.5) * 30; y += r() * 18; c.lineTo(x, y); } c.stroke(); }
+  scratches(c, 0, S * 0.55, S, S * 0.45, { n: 50, color: "rgba(90,75,55,1)", alpha: 0.18, seed: 7104 } as never);
+  streaks(c, 0, 0, S, S, { n: 10, color: "rgba(140,120,90,1)", alpha: 0.12, lenMin: S * 0.1, lenMax: S * 0.4, width: 6, seed: 7105, blend: "multiply" });
+  return el;
+}
+/** the lower wall band: gloss teal-grey paint with chips (office / crew corridors) */
+function roomDado(): Cv {
+  const S = 256, [el, c] = canvas(S, S);
+  c.fillStyle = "#58787c"; c.fillRect(0, 0, S, S);
+  paintNoise(c, 0, 0, S, S, { seed: 7111, scale: 200, alpha: 0.14, blend: "overlay" });
+  splotches(c, 0, 0, S, S, { n: 30, rMin: 2, rMax: 7, color: "rgba(210,200,180,1)", alpha: 0.5, seed: 7112 });
+  scratches(c, 0, 0, S, S, { n: 60, color: "rgba(30,40,40,1)", alpha: 0.25, seed: 7113 } as never);
+  return el;
+}
+/** vinyl floor tiles (0.5 m, two warm greys, scuffed traffic path) */
+function roomVinyl(): Cv {
+  const S = 512, [el, c] = canvas(S, S), n = 4, t = S / n;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { c.fillStyle = (i + j) % 2 ? "#a59d8b" : "#bdb5a2"; c.fillRect(i * t, j * t, t, t); }
+  paintNoise(c, 0, 0, S, S, { seed: 7121, scale: 160, alpha: 0.2, blend: "overlay" });
+  c.strokeStyle = "rgba(60,50,40,0.45)"; c.lineWidth = 2;
+  for (let i = 0; i <= n; i++) { c.beginPath(); c.moveTo(i * t, 0); c.lineTo(i * t, S); c.stroke(); c.beginPath(); c.moveTo(0, i * t); c.lineTo(S, i * t); c.stroke(); }
+  scratches(c, 0, 0, S, S, { n: 120, color: "rgba(60,50,40,1)", alpha: 0.22, seed: 7122 } as never);
+  splotches(c, 0, 0, S, S, { n: 10, rMin: 20, rMax: 60, color: "rgba(80,65,45,1)", alpha: 0.15, seed: 7123, blend: "multiply" });
+  return el;
+}
+/** suspended ceiling tiles (0.6 m grid, a few stained / missing) */
+function roomCeiling(): Cv {
+  const S = 512, [el, c] = canvas(S, S), n = 5, t = S / n, r = rng(7131);
+  c.fillStyle = "#d9d3c4"; c.fillRect(0, 0, S, S);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const u = r();
+    c.fillStyle = u < 0.08 ? "#3a352d" : u < 0.2 ? "#cbbd9c" : "#dcd6c8"; c.fillRect(i * t + 3, j * t + 3, t - 6, t - 6);
+  }
+  paintNoise(c, 0, 0, S, S, { seed: 7132, scale: 90, alpha: 0.12, blend: "overlay" });
+  c.fillStyle = "#8d8a82"; for (let i = 0; i <= n; i++) { c.fillRect(i * t - 3, 0, 6, S); c.fillRect(0, i * t - 3, S, 6); }
+  return el;
+}
+/** steel bar grating (30 mm bars, cross rods) with a height-derived normal map */
+function roomGrating(): { color: Cv; normal: Cv } {
+  const S = 256, [el, c] = canvas(S, S), [hel, hc] = canvas(S, S);
+  c.fillStyle = "#1c1d1f"; c.fillRect(0, 0, S, S); hc.fillStyle = "#000"; hc.fillRect(0, 0, S, S);
+  const bars = 16, cross = 4;
+  for (let i = 0; i < bars; i++) { const x = (i + 0.5) * (S / bars); c.fillStyle = "#7d8286"; c.fillRect(x - 2.5, 0, 5, S); hc.fillStyle = "#fff"; hc.fillRect(x - 2, 0, 4, S); }
+  for (let j = 0; j < cross; j++) { const y = (j + 0.5) * (S / cross); c.fillStyle = "#6d7276"; c.fillRect(0, y - 2, S, 4); hc.fillStyle = "#bbb"; hc.fillRect(0, y - 1.5, S, 3); }
+  paintNoise(c, 0, 0, S, S, { seed: 7141, scale: 120, alpha: 0.3, blend: "overlay" });
+  splotches(c, 0, 0, S, S, { n: 16, rMin: 6, rMax: 30, color: "rgba(120,70,35,1)", alpha: 0.35, seed: 7142, blend: "multiply" });
+  return { color: el, normal: normalFromHeight(hel, 4) };
+}
+/** diamond checker plate (tread nosings, machinery floors, ship decks inside) */
+function roomChecker(): { color: Cv; normal: Cv } {
+  const S = 256, [el, c] = canvas(S, S), [hel, hc] = canvas(S, S);
+  c.fillStyle = "#7e8388"; c.fillRect(0, 0, S, S); hc.fillStyle = "#555"; hc.fillRect(0, 0, S, S);
+  const n = 8, t = S / n;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = i * t + t / 2, y = j * t + t / 2, rot = (i + j) % 2 ? 0.8 : -0.8;
+    for (const [cc, col] of [[c, "rgba(200,205,210,0.5)"], [hc, "#ddd"]] as Array<[CanvasRenderingContext2D, string]>) {
+      cc.save(); cc.translate(x, y); cc.rotate(rot); cc.fillStyle = col; cc.fillRect(-t * 0.32, -2.5, t * 0.64, 5); cc.restore();
+    }
+  }
+  paintNoise(c, 0, 0, S, S, { seed: 7151, scale: 140, alpha: 0.28, blend: "overlay" });
+  splotches(c, 0, 0, S, S, { n: 12, rMin: 10, rMax: 40, color: "rgba(60,50,40,1)", alpha: 0.25, seed: 7152, blend: "multiply" });
+  return { color: el, normal: normalFromHeight(hel, 3) };
+}
+
+function rot(c: CanvasRenderingContext2D, S: number, seed: number, amount: number) {
+  // rust + water runs from the top, mould blooms, peeled paint islands, a tide of grime at the floor
+  streaks(c, 0, 0, S, S, { n: Math.round(40 * amount), color: "rgba(120,62,28,1)", alpha: 0.5, lenMin: S * 0.15, lenMax: S * 0.9, width: 7, seed, blend: "multiply" });
+  streaks(c, 0, 0, S, S, { n: Math.round(60 * amount), color: "rgba(70,62,50,1)", alpha: 0.35, lenMin: S * 0.1, lenMax: S * 0.6, width: 4, seed: seed + 1, blend: "multiply" });
+  splotches(c, 0, 0, S, S, { n: Math.round(18 * amount), rMin: 8, rMax: 60, color: "rgba(64,82,48,1)", alpha: 0.35, seed: seed + 2, blend: "multiply" });
+  splotches(c, 0, 0, S, S, { n: Math.round(26 * amount), rMin: 4, rMax: 26, color: "rgba(150,140,125,1)", alpha: 0.5, seed: seed + 3 });
+  const g = c.createLinearGradient(0, S, 0, S * 0.7); g.addColorStop(0, "rgba(60,48,34,0.55)"); g.addColorStop(1, "rgba(60,48,34,0)");
+  c.fillStyle = g; c.fillRect(0, S * 0.7, S, S * 0.3);
+}
+/** a room finish after years of salt, rain and rust (the wreck's rooms) */
+function derelict(src: Cv, seed: number, amount: number): Cv {
+  const S = src.width, [el, c] = canvas(S, S);
+  c.drawImage(src, 0, 0);
+  c.fillStyle = "rgba(120,110,95,0.22)"; c.globalCompositeOperation = "multiply"; c.fillRect(0, 0, S, S); c.globalCompositeOperation = "source-over";
+  rot(c, S, seed, amount);
+  return el;
+}
 export const TEX_GROUPS: Record<string, () => Record<string, Cv>> = {
   dn: one("dn", () => dentNormal()),
   yellow: one("yellow", () => baseTile(1024, "#f2c010", { seed: 101, grime: 0.0, streaks: 0.09, scratches: 0.1, noise: 0.08, chips: 0.18 })),
@@ -545,6 +635,15 @@ export const TEX_GROUPS: Record<string, () => Record<string, Cv>> = {
   roofY: trio("roofY", () => roofTile("yellow")),
   roofG: trio("roofG", () => roofTile("grey")),
   shipHull: trio("shipHull", () => shipHullTile()),
+  roomPlaster: one("roomPlaster", roomPlaster),
+  roomDado: one("roomDado", roomDado),
+  roomVinyl: one("roomVinyl", roomVinyl),
+  roomCeiling: one("roomCeiling", roomCeiling),
+  roomGrating: trio("roomGrating", roomGrating),
+  roomChecker: trio("roomChecker", roomChecker),
+  roomPlasterD: one("roomPlasterD", () => derelict(roomPlaster(), 7201, 1.0)),
+  roomVinylD: one("roomVinylD", () => derelict(roomVinyl(), 7211, 0.8)),
+  roomDadoD: one("roomDadoD", () => derelict(roomDado(), 7221, 1.2)),
   neutral: one("neutral", () => baseTile(512, NEUTRAL_HEX, { seed: 211, grime: 0.07, streaks: 0.16, scratches: 0.14, noise: 0.1, chips: 0.3 })),
 };
 /** the worker's entry: paint these groups → name → canvas */
@@ -575,7 +674,7 @@ export function harborMatsAsync(): Promise<HarborMats> {
       try {
         const pool = workerPool(() => new Worker(new URL("./harbor-tex.worker.ts", import.meta.url), { type: "module" }), 4);
         // balanced by cost (1024² tiles + normal maps first, round-robin)
-        const order = ["rust", "concrete", "slab", "roofY", "roofG", "shipHull", "yellow", "white", "tankW", "dn", "wood", "quay", "corrG", "corrY", "wallW", "asph", "rock", "moss", "red", "dark", "hazard", "ply", "blue", "green", "deck", "algae", "neutral", "rough", "roughMatte", "galv", "steel", "rubber", "rope", "banana"];
+        const order = ["rust", "concrete", "slab", "roofY", "roofG", "shipHull", "yellow", "white", "tankW", "dn", "wood", "quay", "corrG", "corrY", "wallW", "asph", "rock", "moss", "roomPlaster", "roomVinyl", "roomCeiling", "roomPlasterD", "roomVinylD", "red", "dark", "hazard", "ply", "blue", "green", "deck", "algae", "neutral", "roomGrating", "roomChecker", "roomDado", "roomDadoD", "rough", "roughMatte", "galv", "steel", "rubber", "rope", "banana"];
         const chunks: string[][] = [[], [], [], []];
         order.forEach((g, i) => chunks[i % 4].push(g));
         const res = await Promise.all(chunks.map((c) => pool.run<{ bm: Record<string, ImageBitmap>; means: Record<string, [number, number, number]> }>("paintMeans", c)));
