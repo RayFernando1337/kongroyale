@@ -155,7 +155,8 @@ export const BULLET_RANGE = 320;
  * stores the SAME quantised values, so a client's interpolated target and the server's rewound target are bit-equal. */
 export const POS_Q = 512;
 export const qpos = (v: number) => Math.round(v * POS_Q) / POS_Q;
-/** server input pacing (per human): every client input is simulated at most once (1:1 with client prediction); a stale backlog is shed, see INPUT_BACKLOG_MIN_TICKS */
+/** server input pacing (per human): every client input is simulated at most once (1:1 with client prediction);
+ * a stale backlog is shed, see INPUT_BACKLOG_MIN_TICKS */
 export const INPUT_CREDIT_MAX = 30;          // ticks of backlog a stalled link may catch up (500 ms)
 export const INPUT_MAX_PER_TICK = 4;         // catch-up speed after a stall
 // no input this long → the server steps the player with a neutral input. Long on purpose: a loaded tab
