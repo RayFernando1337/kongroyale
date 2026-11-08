@@ -1,18 +1,4 @@
 {
- "deck": {
-  "id": "weathered_brown_planks",
-  "source": "https://polyhaven.com/a/weathered_brown_planks",
-  "license": "CC0",
-  "tileM": 1.8,
-  "via": "copied from public/assets/pois/murk/deck-*.webp"
- },
- "wall": {
-  "id": "worn_planks",
-  "source": "https://polyhaven.com/a/worn_planks",
-  "license": "CC0",
-  "tileM": 1.4,
-  "via": "copied from public/assets/pois/murk/wall-*.webp"
- },
  "cliff-rock": {
   "source": "painted for KONG ROYALE (public/assets/pois/coast/tex/cliff-rock*.jpg), copied",
   "license": "project asset"

@@ -19,10 +19,11 @@ const WOOD = "#e6c9a0", WOOD_D = "#9a8068", WOOD_L = "#f4e0c0", BEAM = "#b09070"
 
 export interface TimberMats { wood: THREE.MeshStandardMaterial; wall: THREE.MeshStandardMaterial; metal: THREE.MeshStandardMaterial; glass: THREE.MeshStandardMaterial; bulb: THREE.MeshStandardMaterial; rope: THREE.MeshStandardMaterial; cloth: THREE.MeshStandardMaterial; crate: THREE.MeshStandardMaterial; tin: THREE.MeshStandardMaterial; sign: THREE.MeshStandardMaterial; gold: THREE.MeshStandardMaterial; leaf: THREE.MeshStandardMaterial; net: THREE.MeshStandardMaterial }
 export function timberMats(ctx: WorldCtx): TimberMats {
-  // Poly Haven CC0 planks (public/assets/pois/caves/tex/SOURCES.json), warmed + lifted toward a toy timber look
+  // The Murk's Poly Haven CC0 planks (public/assets/pois/murk/tex.json), warmed + lifted toward a toy timber look: the
+  // same files, so the two POIs share one GPU copy of each map
   const plankMat = (name: string, set: "deck" | "wall", tile: number, color: [number, number, number]) => {
     const m = new THREE.MeshStandardMaterial({ name, vertexColors: true, roughness: 1, color: new THREE.Color(...color) });
-    Promise.all([ctx.assets.texture(`assets/pois/caves/tex/${set}-d.webp`), ctx.assets.texture(`assets/pois/caves/tex/${set}-n.webp`, { srgb: false }), ctx.assets.texture(`assets/pois/caves/tex/${set}-arm.webp`, { srgb: false })]).then(([d, n, arm]) => {
+    Promise.all([ctx.assets.texture(`assets/pois/murk/${set}-d.webp`), ctx.assets.texture(`assets/pois/murk/${set}-n.webp`, { srgb: false }), ctx.assets.texture(`assets/pois/murk/${set}-arm.webp`, { srgb: false })]).then(([d, n, arm]) => {
       const rep = (t: THREE.Texture) => { const c = shareTexture(t); c.wrapS = c.wrapT = THREE.RepeatWrapping; c.repeat.set(1 / tile, 1 / tile); return c; };
       m.map = rep(d); m.normalMap = rep(n); m.roughnessMap = rep(arm); m.aoMap = null; m.needsUpdate = true;
     }).catch(() => {});
