@@ -89,7 +89,7 @@ const transport = opt("--transport", "ws") === "wt" ? "wt" : "ws";
 const fps = Number(opt("--fps", "144")), deferRx = fps < 144;
 if (!(fps > 0)) { console.error("netlab: --fps must be a positive number"); process.exit(1); }
 const stallOpt = opt("--stall", "").split(":"), stallDir = ["up", "down", "both"].includes(stallOpt[0]) ? stallOpt[0] : "", stallMs = Number(stallOpt[1] ?? 0), stallEveryMs = Number(stallOpt[2] ?? 0) * 1000;
-if (stallOpt[0] && (!stallDir || !(stallMs > 0) || !(stallEveryMs > stallMs))) { console.error("netlab: --stall wants up|down|both:MS:EVERY_S, with EVERY_S longer than MS"); process.exit(1); }
+if (stallOpt[0] && (!stallDir || !(stallMs > 0) || !(stallEveryMs >= 2 * stallMs))) { console.error("netlab: --stall wants up|down|both:MS:EVERY_S, with EVERY_S at least twice MS"); process.exit(1); }
 const loss = Number(opt("--loss", "0")) / 100, aux = transport === "ws" && argv.includes("--aux"), servePort = Number(opt("--serve", "0")), connectUrl = opt("--connect", ""), token = opt("--token", "");
 /** how much later a lost TCP message arrives: the sender resends it once a later segment's SACK shows the gap (RACK-TLP).
  *  netpath.py, 1% loss, 20 ms jitter, Linux cubic + SACK + RACK: stall peaks 68-100 ms at 50 ms RTT, 167-201 ms at 150 ms,
@@ -420,7 +420,8 @@ async function connect(url: string, token: string) {
       ws.on("error", reject);
     }, k * 300);
   }))));
-  // client loop: --fps frames a second (144) on the wall clock; a late frame takes the real elapsed time as its dt
+  // client loop: --fps frames a second (144) on the wall clock; a late frame takes the real elapsed time as its dt.
+  // Server frames reach the game at once (the sockets' callbacks), so --fps only paces the frames here
   let nextFrame = now, last = now;
   while (!C.done(1500)) {
     realTime();
@@ -452,7 +453,7 @@ for (const go of runs) {
   if (r.predMissing !== 0) problems.push(`${r.predMissing} predicted pellets have no server verdict`);
   if (r.predHits > 0 && r.confirmPct < CHECK_MIN_CONFIRM_PCT) problems.push(`confirm ${r.confirmPct}% < ${CHECK_MIN_CONFIRM_PCT}%`);
   // a steady link must keep its instant markers: the deferral is for slow and stalled links only
-  if (!connectUrl && rtt <= CHECK_STEADY_RTT_MS && jitter <= 20 && loss === 0 && !stallMs && r.deferredMarkerPct > CHECK_MAX_DEFERRED_PCT) problems.push(`${r.deferredMarkerPct}% of hits waited for the server > ${CHECK_MAX_DEFERRED_PCT}%`);
+  if (!connectUrl && rtt <= CHECK_STEADY_RTT_MS && jitter <= 20 && loss === 0 && !(stallMs && stallEveryMs / 2 < secs * 1000 + rtt) && r.deferredMarkerPct > CHECK_MAX_DEFERRED_PCT) problems.push(`${r.deferredMarkerPct}% of hits waited for the server > ${CHECK_MAX_DEFERRED_PCT}%`);
   if (r.ghost > 0) problems.push(`${r.ghost} ghost hits`);
   if (!problems.length) continue;
   const label = `${weapon} rtt=${rtt}ms jitter=${r.jitter}${killable ? " kill" : ""}: ${problems.join(", ")}`;
