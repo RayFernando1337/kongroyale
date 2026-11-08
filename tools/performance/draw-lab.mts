@@ -25,7 +25,7 @@
 // excluded draw (a kong, a transparent mesh) set before it. Each retained draw therefore also replays the non-draw calls of the
 // excluded draws since the previous retained one (reported as calls.perDraw.bridge): a replay that stands on its own, at
 // the price of counting some state calls a stand-alone static list might not need, so full is an upper bound on its cost.
-// Calls a replay leaves out (framebuffer, viewport, uploads, read-backs) are counted under skipped. renderer.resetState()
+// Calls a replay leaves out (framebuffer, viewport, scissor test, uploads, read-backs) are counted under skipped. renderer.resetState()
 // runs before every variant, untimed, so each starts from the same GL state and three's state cache matches it. Each
 // variant's time is performance.now() around its reps (the page is cross-origin isolated: 5 us resolution), divided by
 // reps and by the draw count. The first replay frame is a warm-up: its gl.getError() count per variant is reported and its
@@ -83,6 +83,7 @@ export function drawLab(o: DrawLabOptions): Promise<LabResult> {
   ];
   const classOf = (n: string, a: unknown[]) => {
     if (n === "bindBuffer" && a[0] === gl.UNIFORM_BUFFER) return "uniform";
+    if ((n === "enable" || n === "disable") && a[0] === gl.SCISSOR_TEST) return "skip";
     for (const [c, re] of CLASSES) if (re.test(n)) return c;
     return "skip";
   };
