@@ -60,8 +60,9 @@ export interface Link {
 
 export interface LinkReport {
   transport: Transport["kind"]; fallback: FallbackReason | null; arm: WtArm; stats: Transport["stats"];
-  /** input→ack over the link's life, from ACK_BIN_MS bins (null: no input acknowledged yet) */
-  ackMs: { n: number; p50: number | null; p95: number | null; p99: number | null };
+  /** input→ack over the link's life, from ACK_BIN_MS bins (null: no input acknowledged yet). `over`: acks at or past the
+   *  histogram's ceiling (ACK_BINS × ACK_BIN_MS); a percentile that lands there reads as the last bin's centre */
+  ackMs: { n: number; p50: number | null; p95: number | null; p99: number | null; over: number };
   /** hit markers that waited for the server's verdict during play, and the seconds of play they happened in: both
    *  over the link's life, so their rate doesn't depend on how much of the timeline a report kept */
   deferred: number; playS: number;
@@ -77,8 +78,9 @@ export function roomUrl(url: string, code: string) {
   if (!code) return url;
   const u = new URL(url); u.searchParams.set("room", code); return u.href;
 }
-/** input→ack histogram bins: ACK_BIN_MS wide, the last one holds everything slower */
-const ACK_BIN_MS = 5, ACK_BINS = 200;
+/** input→ack histogram bins: ACK_BIN_MS wide up to 5 s, the last one holds everything slower. A 1 s ceiling hid the tail
+ *  of a stalling mobile link: p95 and p99 both read 997.5 */
+const ACK_BIN_MS = 5, ACK_BINS = 1000;
 const ARM_KEY = "kr.wt-arm";
 /** this tab's arm: the page's ?wt=1 / ?wt=0, else the first arm a server assigned in this tab's session (a reconnect or a
  *  reload keeps it, so a player's arm never flips mid-session), else the one this welcome assigns */
@@ -127,7 +129,7 @@ export function connectWs(url: string, timeoutMs = 4000): Promise<Link> {
       get transport() { return active; }, get fallback() { return fallback; }, get proc() { return proc; },
       report: () => {
         let n = 0; for (const c of ack) n += c;
-        return { transport: active.kind, fallback, arm, stats: structuredClone(active.stats), ackMs: { n, p50: n ? ackAt(0.5, n) : null, p95: n ? ackAt(0.95, n) : null, p99: n ? ackAt(0.99, n) : null }, deferred, playS: Math.round(playS), since };
+        return { transport: active.kind, fallback, arm, stats: structuredClone(active.stats), ackMs: { n, p50: n ? ackAt(0.5, n) : null, p95: n ? ackAt(0.95, n) : null, p99: n ? ackAt(0.99, n) : null, over: ack[ACK_BINS - 1] }, deferred, playS: Math.round(playS), since };
       },
       noteAck: (ms) => { ack[Math.max(0, Math.min(ACK_BINS - 1, Math.floor(ms / ACK_BIN_MS)))]++; },
       noteDeferred: () => { deferred++; },
