@@ -176,7 +176,10 @@ async function webdriver(bin: string, args: string[], port: number, caps: Record
   };
 }
 const safari = () => webdriver(SAFARIDRIVER, ["-p", String(SD_PORT)], SD_PORT, { browserName: "safari" });
-const firefox = () => webdriver("geckodriver", ["--port", String(GD_PORT)], GD_PORT, { browserName: "firefox" });
+// a fresh geckodriver profile on a new install: no Terms of Use / welcome / onboarding screen in the way of Marionette
+// (geckodriver itself already sets the data-reporting bypass and the homepage-override "ignore")
+const FIREFOX_FIRST_RUN_PREFS = { "termsofuse.bypassNotification": true, "browser.preonboarding.enabled": false, "browser.aboutwelcome.enabled": false };
+const firefox = () => webdriver("geckodriver", ["--port", String(GD_PORT)], GD_PORT, { browserName: "firefox", "moz:firefoxOptions": { prefs: FIREFOX_FIRST_RUN_PREFS } });
 async function chromium(kind: "chrome" | "chromium"): Promise<Driver> {
   const pw = await import("playwright");
   const angle = SOFTWARE ? "swiftshader" : process.platform === "darwin" ? "metal" : process.platform === "win32" ? "d3d11" : "vulkan";

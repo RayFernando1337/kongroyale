@@ -286,6 +286,7 @@ function moduleRoots(id: string, streamed: boolean): THREE.Object3D[] {
 /** tools: a module's scene roots (ablation — GPU / CPU share per module) */
 kr.moduleRoots = (id: string) => moduleRoots(id, false);
 kr.moduleIds = () => [...rootsOf.keys()];
+if (flag("drawlist").length) import("./engine/draw-list").then((m) => m.installDrawList(kr), (e) => report("drawlist", e));
 
 function registerStatics(id: string, streamed: boolean) {
   for (const r of moduleRoots(id, streamed)) { engine.statics.register(r); engine.cull.register(r); }
