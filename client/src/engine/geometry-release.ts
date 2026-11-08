@@ -14,12 +14,21 @@ function dropArray(this: THREE.BufferAttribute): void {
   a.array = null;
 }
 
+/** A batch's index keeps an empty array of its own type instead of none: BatchedMesh.onBeforeRender reads
+ *  index.array.BYTES_PER_ELEMENT whenever an instance's visibility changes, which TownLod does every LOD swap. */
+function dropIndex(this: THREE.BufferAttribute): void {
+  const a = this as unknown as { array: THREE.TypedArray; releasedBytes?: number };
+  a.releasedBytes = a.array.byteLength;
+  a.array = new (a.array.constructor as new (length: number) => THREE.TypedArray)(0);
+}
+
 export function releaseBatchAfterUpload(bm: THREE.BatchedMesh): void {
   if (!ENABLED) return;
   const g = bm.geometry;
   if (bm.boundingSphere) g.boundingSphere = bm.boundingSphere.clone();
   if (bm.boundingBox) g.boundingBox = bm.boundingBox.clone();
   for (const a of Object.values(g.attributes)) if ((a as THREE.BufferAttribute).isBufferAttribute) (a as THREE.BufferAttribute).onUpload(dropArray);
+  g.index?.onUpload(dropIndex);
   g.addEventListener("dispose", unrestorable());
 }
 
