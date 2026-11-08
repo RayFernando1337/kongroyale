@@ -6,6 +6,8 @@
 //   (actors/plane.ts), and the screenshot crowd of kongs (crowd.ts, stage "lobby-crowd").
 // Static meshes are merged per material by a Batch (≈8 draw calls) using two procedurally painted 2K atlases (atlas.ts).
 // Under ?geofree the merges drop their CPU arrays after upload, and a context restore replays the seeded build to refill them.
+// On the Low view distance the props (every merge but the rock and the runway, and the plane) stop drawing beyond 600 m
+// (props-gate.hot.ts).
 import * as THREE from "three";
 import type { WorldModule } from "../../module";
 import type { WorldCtx } from "../../../engine/engine";
@@ -28,14 +30,11 @@ import { createPlane } from "../../../actors/plane";
 import { releaseGeometryAfterUpload } from "../../../engine/geometry-release";
 import { onRestore } from "../../../engine/res/restore";
 import { poiById } from "../../../../../shared/world/map";
+import { gateIsletProps } from "./props-gate.hot";
 
 const LAYOUT_SEED = 20260923;
-/** the Low view distance (engine/display.ts publishes it as "display:viewDist"): beyond this many metres from the
- *  islet's centre its props (every merge but the rock and the runway, and the parked plane) stop drawing. They are
- *  merged per material into meshes as big as the islet, so the screen-size cull never cuts them: from Banana Temple,
- *  1.25 km away, they were 0.39 M triangles in 30 draws (RAY-288). The rock, the runway, the island's terrain and its
- *  palms (the veg area's) stay. */
-const LOW_PROPS_M = 600;
+/** the merges that stay at any distance (the rest, and the parked plane, are props: props-gate.hot.ts) */
+const KEEP_FAR = new Set(["lobby:rock", "lobby:tarmac", "lobby:decal"]);
 
 // ------------------------------------------------------------------------------------------------ views
 const fp = (lx: number, d: number, y: number): [number, number, number] => { const [x, z] = toWorld(lx, d); return [+x.toFixed(2), y, +z.toFixed(2)]; };
@@ -85,13 +84,12 @@ const mod: WorldModule = {
     const meshes = await k.b.meshesAsync(mats, "lobby", () => ctx.yield());
     const props = new THREE.Group();
     props.name = "lobby:props";
+    // (far-merge must not capture them: its proxies follow the POI root, not this gate)
+    props.userData.noMerge = true;
     group.add(props);
-    for (const m of meshes) (m.name === "lobby:rock" || m.name === "lobby:tarmac" ? group : props).add(m);
+    for (const m of meshes) (KEEP_FAR.has(m.name) ? group : props).add(m);
     const { x: cx, z: cz } = poiById("lobby-islet");
-    ctx.onUpdate(() => {
-      const c = ctx.camera.position;
-      props.visible = ctx.shared.get("display:viewDist") !== "low" || Math.hypot(c.x - cx, c.z - cz) < LOW_PROPS_M;
-    });
+    ctx.onUpdate(() => gateIsletProps(props, ctx.camera.position, cx, cz, ctx.shared.get("display:viewDist")));
     // ?geofree: the merges drop their CPU arrays after upload; a context restore refills them from one replay of the
     // seeded build (no water: the dock's foam is registered once), shared by every merge in that restore
     let fresh: Map<string, THREE.BufferGeometry> | null = null;
