@@ -1,5 +1,6 @@
 // Copies the project drive's lanes.md into lanes.json: the Updated line, the lanes table and the Recently landed line.
-// The "## Plan" bullets become the plan lines, so lanes.md is the one source for the whole block and an import without a plan fails.
+// The "## Plan" bullets become the plan lines, so lanes.md is the one source for the whole block.
+// An import without a plan fails.
 //   npx tsx tools/dashboard/lanes-import.mts [path/to/lanes.md]
 import fs from "node:fs";
 import os from "node:os";
