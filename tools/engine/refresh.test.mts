@@ -76,4 +76,26 @@ const SCREEN = "1920,1080,0,0";
   assert.equal(e.add(vsync(60, repeat([2], 90)), SCREEN), 30);
   assert.equal(e.add(vsync(60, repeat([1, 2, 3, 3, 2, 3, 4, 3, 2, 3], 90)), SCREEN), 60, "recovers from a half-rate start");
 }
+// RAY-288: a game slower than the display, its frames a few whole periods each (a Radeon 740M at 16-23 fps, which read
+// 21-36 Hz): no display rate, so the estimate stays unknown, or at the last display rate it read
+{
+  const slow = vsync(144, repeat([4], 90));
+  assert.equal(refreshSample(slow).hz, 36, "the sample alone reads 36");
+  const e = new RefreshEstimate();
+  assert.equal(e.add(slow, SCREEN), 0, "unknown, not a 36 Hz display");
+  assert.equal(e.add(vsync(144, repeat([7], 90)), SCREEN), 0, "unknown at 21 fps too");
+  assert.equal(e.add(vsync(144, repeat([1], 90)), SCREEN), 144);
+  assert.equal(e.add(slow, SCREEN), 144, "the last display rate it read");
+}
+{
+  const e = new RefreshEstimate();
+  assert.equal(e.add(vsync(30, repeat([1, 1, 2], 90)), SCREEN), 30, "30 Hz pacing still reads 30");
+  assert.equal(e.add(vsync(120, repeat([3], 90)), SCREEN), 30, "a game at 3 periods of 120 Hz is no 40 Hz display: the last estimate");
+}
+// a move to another screen forgets the last screen's rate: a slow game there reads unknown, not the old 144
+{
+  const e = new RefreshEstimate();
+  assert.equal(e.add(vsync(144, repeat([1], 90)), SCREEN), 144);
+  assert.equal(e.add(vsync(144, repeat([7], 90)), "2560,1440,1920,0"), 0, "unknown on the new screen");
+}
 console.log("refresh: ok");
