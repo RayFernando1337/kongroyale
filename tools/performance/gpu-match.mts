@@ -201,7 +201,7 @@ function install(cfg: { maxFrames: number; panRate: number; panPitch: number; pl
   // pending queries and the frame each one timed (-1 = discard: a disjoint event happened while it was in flight;
   // -2 = a pre-match frame the collector dropped)
   const pq: WebGLQuery[] = [], pi: number[] = [], free: WebGLQuery[] = [];
-  const step = e.step;
+  const step = e.step; e.gpuHold = true;
   e.step = function (dt: number) {
     const g = kr.game, cm = g?.cm;
     if (c.on && !c.pan && !c.landed && cm && cm.phase >= 2 && cm.pred.st === 0) { if (pan) { c.pan = true; c.panT0 = performance.now(); } else c.landed = true; }
