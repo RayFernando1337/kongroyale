@@ -14,7 +14,9 @@
 // first), --port 3032, --viewport 1592x960 (CSS px; Safari renders at the display's own DPR, Chrome at --dpr 2),
 // --preset low|medium|high|epic|auto|auto-high|auto-medium (default high; auto leaves the game's own pick and its
 // first-visit bench), --query "a=1&b=2" (extra URL
-// flags), --pose x,z,yawDeg,pitchDeg (default: Ray's Banana Temple report, RAY-186), --settle-s 20, --hold-s 10,
+// flags), --pose x,z,yawDeg,pitchDeg[,y] (default: Ray's Banana Temple report, RAY-186; y = the bundle's player.pos[1], needed
+// when the player stood on a roof, a deck or a crane: without it the player is put on the terrain and pushed out of what
+// stands there), --settle-s 20, --hold-s 10,
 // --capture "<command>" (a shell command started when the match starts and stopped after the hold, e.g. a screen
 // recorder, for the "while streaming" arm), --mode solo|trios, --seed 42, --ready-timeout-s 300, --play-timeout-s 300,
 // --at-phase 2 (the match phase to teleport in: 2 = Play; 0 = the warm-up, a quick check of the harness itself), --gpu
@@ -47,7 +49,8 @@ const PORT = Number(arg("--port", "3032"));
 const [VW, VH] = arg("--viewport", "1592x960").split("x").map(Number);
 const PRESET = arg("--preset", "high");
 const EXTRA = arg("--query", "");
-const [PX, PZ, YAW_DEG, PITCH_DEG] = arg("--pose", "-41.83,-85.06,494.23,-0.13").split(",").map(Number);
+const POSE = arg("--pose", "-41.83,-85.06,494.23,-0.13").split(",");
+const [PX, PZ, YAW_DEG, PITCH_DEG, PY] = POSE.map((v) => (v.trim() === "" ? NaN : Number(v)));
 const SETTLE_S = Number(arg("--settle-s", "20"));
 const HOLD_S = Number(arg("--hold-s", "10"));
 const CAPTURE = arg("--capture", "");
@@ -64,7 +67,7 @@ const ORIGIN = "http://127.0.0.1:" + PORT;
 if (!["safari", "firefox", "chrome", "chromium"].includes(BROWSER)) throw Error("--browser " + BROWSER + ": one of safari, firefox, chrome, chromium");
 if (!["low", "medium", "high", "epic", "auto", "auto-high", "auto-medium"].includes(PRESET)) throw Error("--preset " + PRESET + ": one of low, medium, high, epic, auto, auto-high, auto-medium");
 if (BROWSER === "firefox" && GPU) throw Error("--gpu: Firefox has no GPU timer query");
-if (![PX, PZ, YAW_DEG, PITCH_DEG].every(Number.isFinite)) throw Error("--pose x,z,yawDeg,pitchDeg");
+if ((POSE.length !== 4 && POSE.length !== 5) || ![PX, PZ, YAW_DEG, PITCH_DEG].every(Number.isFinite) || (PY !== undefined && !Number.isFinite(PY))) throw Error("--pose x,z,yawDeg,pitchDeg[,y]");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const t0 = Date.now();
 const log = (s: string) => console.log("[pose-hold " + ((Date.now() - t0) / 1000).toFixed(0).padStart(4) + " s] " + s);
@@ -116,9 +119,9 @@ const INSTALL = `(() => {
 const START = (mode: string) => "(() => { window.__kr.game.practice(" + JSON.stringify(mode) + "); return 'ok'; })()";
 // place the player on the practice match's host through the link's host tools (as gpu-match's tour does; in this tab
 // or in its worker under ?hostworker=1) and point the view; healed so a bot or the storm can't end the hold
-const PLACE = (x: number, z: number, yaw: number, pitch: number) => `(() => {
+const PLACE = (x: number, z: number, yaw: number, pitch: number, y?: number) => `(() => {
   const g = window.__kr.game, l = g.link; if (!l || !l.hostTool || !g.cm) return "no host";
-  l.hostTool({ op: "place", pid: g.cm.me, x: ${x}, z: ${z}, yaw: ${yaw} });
+  l.hostTool({ op: "place", pid: g.cm.me, x: ${x}, z: ${z}, yaw: ${yaw}${y === undefined ? "" : ", y: " + y} });
   g.input.yaw = ${yaw}; g.input.pitch = ${pitch};
   return "ok";
 })()`;
@@ -225,7 +228,7 @@ try {
   }
   marks.playMs = Date.now() - play0; marks.programsAtPlay = s.programs;
   log("phase " + s.phase + " after " + (marks.playMs / 1000).toFixed(0) + " s, " + s.programs + " programs; teleporting");
-  await d.run(PLACE(PX, PZ, yaw, pitch));
+  await d.run(PLACE(PX, PZ, yaw, pitch, PY));
   const set0 = Date.now();
   while (Date.now() - set0 < SETTLE_S * 1000) { await d.run(KEEP(yaw, pitch)); await sleep(500); }
   s = await status();
@@ -280,7 +283,7 @@ if (page && page.n > 1) {
       { id: "hardwareGpu", pass: SOFTWARE || !software, detail: page.renderer },
       { id: "windowLongEnough", pass: secs >= HOLD_S * 0.8, detail: secs.toFixed(1) + " s" },
       { id: "noErrors", pass: !page.errors.length, detail: page.errors.slice(0, 3).join(" | ") || "none" },
-      { id: "atPose", pass: !!page.pos && Math.hypot(page.pos[0] - PX, page.pos[2] - PZ) < 3, detail: JSON.stringify(page.pos) },
+      { id: "atPose", pass: !!page.pos && Math.hypot(page.pos[0] - PX, page.pos[2] - PZ) < 3 && (PY === undefined || Math.abs(page.pos[1] - PY) < 3), detail: JSON.stringify(page.pos) },
     ],
   });
   const f = (m: Metric) => "summary" in m ? "p50 " + m.summary.p50.toFixed(1) + " p95 " + m.summary.p95.toFixed(1) + " p99 " + m.summary.p99.toFixed(1) : "value" in m ? m.value.toFixed(1) : m.status;
@@ -290,7 +293,7 @@ if (page && page.n > 1) {
 const result: RunResult = {
   schema: RESULT_SCHEMA, version: RESULT_VERSION, tool: "tools/performance/pose-hold.mts", startedAt: new Date(t0).toISOString(), durationMs: Date.now() - t0,
   source: source(root), environment: { ...env(), gpu: page ? String(page.renderer) : null },
-  config: { browser: BROWSER + " " + (d?.version ?? "?"), viewport: VW + "x" + VH, preset: PRESET, query: QUERY, pose: [PX, PZ, YAW_DEG, PITCH_DEG].join(","), settleS: SETTLE_S, holdS: HOLD_S, mode: MODE, capture: CAPTURE ? "on" : "off", ...(GPU ? { gpu: "on" } : {}), atPhase: AT_PHASE, dpr: page ? Number(page.dpr) : -1, headed: BROWSER === "safari" || BROWSER === "firefox" || process.argv.includes("--headed") },
+  config: { browser: BROWSER + " " + (d?.version ?? "?"), viewport: VW + "x" + VH, preset: PRESET, query: QUERY, pose: [PX, PZ, YAW_DEG, PITCH_DEG, ...(PY === undefined ? [] : [PY])].join(","), settleS: SETTLE_S, holdS: HOLD_S, mode: MODE, capture: CAPTURE ? "on" : "off", ...(GPU ? { gpu: "on" } : {}), atPhase: AT_PHASE, dpr: page ? Number(page.dpr) : -1, headed: BROWSER === "safari" || BROWSER === "firefox" || process.argv.includes("--headed") },
   cases, errors, artifacts,
 };
 (result as unknown as Record<string, unknown>).detail = { marks, host: os.hostname(), page: page ? { ...page, T: undefined, frames: { t: page.T.map((x: number) => +(x - page.T[0]).toFixed(2)), cpu: page.CPU, calls: page.CALLS, tris: page.TRIS, points: page.PTS, programs: page.PROG } } : null };
