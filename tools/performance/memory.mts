@@ -508,6 +508,11 @@ async function run() {
     if (!await waitFor("the title (__kr.ready)", "!!(window.__kr && window.__kr.ready)", waitS, false, 250)) throw Error("the title never became ready");
     const sinceReady = await evalIn<number>(pageCdp, "performance.now() - (window.__kr.readyAt ?? performance.now())");
     if (sinceReady > 2000) notes.push(`the title sample came ${Math.round(sinceReady / 100) / 10} s after ready: the page was busy, so it may include work that starts after ready`);
+    // a low-memory page loads its far impostors (16 baked meshes, ~8 MB of CPU geometry geofree does not drop) from the 2 s
+    // trim timer after ready; a sample taken before that read 109.5-110.8 MB of geometry CPU copies instead of 118.1-118.9.
+    // __kr.lowMem is the page's own decision, so ?farimp=1 without low-memory mode, which loads nothing, is not waited for
+    const farOn = url.searchParams.get("farimp") !== "0" && await evalIn<boolean>(pageCdp, "window.__kr.lowMem === true");
+    if (farOn) await waitFor("the far impostors", "(async () => { const g = window.__kr.engine.scene.children.find((o) => o.name === 'far-merge-impostors'); if (!g) return false; const n = Object.keys((await (await fetch('/assets/far/index.json')).json()).pois).length; return g.children.length >= n; })()", 60, true, 250);
     gpu = await evalIn<string>(pageCdp, "(() => { const c = window.__kr.engine.renderer.getContext(), d = c.getExtension('WEBGL_debug_renderer_info'); return String(d ? c.getParameter(d.UNMASKED_RENDERER_WEBGL) : c.getParameter(c.RENDERER)); })()");
     samples.push(await takeSample("title", browserCdp, pageCdp, t0));
     if (flag("--heap")) { samples[0].heap = await heapSnapshot(pageCdp, path.join(out, "title.heapsnapshot")); console.log(`  heap snapshot: ${samples[0].heap.totalMB} MB in ${samples[0].heap.nodes} nodes`); }
